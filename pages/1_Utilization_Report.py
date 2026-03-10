@@ -127,6 +127,11 @@ EMPLOYEE_LOCATION = {
     "Olson, Austin D":        ("USA",                 None,      None),
     "Finalle-Newton, Jesse":  ("USA",                 None,      None),
     "Church, Jason G":        ("USA",                 None,      None),
+    "Alam, Laisa":            ("USA",                 None,      None),
+    "Chan, Joven":            ("Manila (PH)",         None,      None),
+    "Eyong, Eyong":           ("USA",                 None,      None),
+    "Hernandez, Camila":      ("USA",                 None,      None),
+    "Rushbrook, Emma C":      ("Wales",               None,      None),
 }
 
 def _emp_location(name):
@@ -163,12 +168,15 @@ def _emp_active(name, period_str):
 PS_REGION_OVERRIDE = {
     "NAQVI, SYED":  "EMEA",  # Canada-based but reports into EMEA
     "Cruz, Daniel": "NOAM",  # Manila-based but reports into NOAM
+    "Chan, Joven":    "NOAM",   # Manila-based but reports into NOAM
+    "Rushbrook, Emma C": "EMEA",  # Wales → EMEA
 }
 
 PS_REGION_MAP = {
     "Sydney (NSW)":     "APAC",
     "Manila (PH)":      "APAC",
     "UK":               "EMEA",
+    "Wales":            "EMEA",
     "Spain":            "EMEA",
     "Netherlands":      "EMEA",
     "Northern Ireland": "EMEA",
