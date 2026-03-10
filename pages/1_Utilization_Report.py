@@ -329,7 +329,7 @@ def auto_detect_columns(df):
 def assign_credits(df, scope_map):
     col_map, unmatched = auto_detect_columns(df)
     if unmatched:
-        st.warning(f"⚠️ Could not auto-detect columns: {unmatched}. Check your file headers.")
+        st.warning(f"Could not auto-detect columns: {unmatched}. Check your file headers.")
 
     df = df.rename(columns=col_map)
     df["non_billable"] = df["non_billable"].astype(str).str.strip().str.upper()
@@ -1520,7 +1520,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # ── Credit tag reference ───────────────────────────────────
-    with st.expander("📋 Credit Tag Logic", expanded=False):
+    with st.expander("Credit Tag Logic", expanded=False):
         st.markdown("""
         <style>
         .ref-table { width: 100%; border-collapse: collapse; font-family: Manrope, sans-serif; font-size: 13px; margin-bottom: 8px; }
@@ -1543,17 +1543,17 @@ def main():
         </table>
         """, unsafe_allow_html=True)
 
-    with st.expander("🎯 Utilization Target & RAG Status", expanded=False):
+    with st.expander("Utilization Target & RAG Status", expanded=False):
         st.markdown("""
         <table class='ref-table'>
             <tr><th>Status</th><th>Threshold</th><th>Description</th></tr>
-            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>🟢 Green</td><td style='color:#1a1a1a'>≥ 70%</td><td style='color:#1a1a1a'>At or above target utilization.</td></tr>
-            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>🟡 Amber</td><td style='color:#1a1a1a'>60% – 69%</td><td style='color:#1a1a1a'>Below target. Monitor and assess project mix.</td></tr>
-            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>🔴 Red</td><td style='color:#1a1a1a'>&lt; 60%</td><td style='color:#1a1a1a'>Significantly below target. Action required.</td></tr>
+            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>Green</td><td style='color:#1a1a1a'>≥ 70%</td><td style='color:#1a1a1a'>At or above target utilization.</td></tr>
+            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>Amber</td><td style='color:#1a1a1a'>60% – 69%</td><td style='color:#1a1a1a'>Below target. Monitor and assess project mix.</td></tr>
+            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>Red</td><td style='color:#1a1a1a'>&lt; 60%</td><td style='color:#1a1a1a'>Significantly below target. Action required.</td></tr>
         </table>
         """, unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
     # ── Upload ────────────────────────────────────────────────
     st.subheader("Step 1 — Upload NetSuite Time Detail Export")
@@ -1568,7 +1568,7 @@ def main():
 
     if not uploaded:
         # Show stored config as reference
-        with st.expander("📋 View stored scope map & available hours"):
+        with st.expander(" View stored scope map & available hours"):
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("**Fixed Fee Scope Hours**")
@@ -1580,7 +1580,7 @@ def main():
                     {"Region": r, **months} for r, months in AVAIL_HOURS.items()
                 ])
                 st.dataframe(avail_df, hide_index=True, use_container_width=True)
-        st.info("👆 Upload your NetSuite export to continue.")
+                st.info(" Upload your NetSuite export to continue.")
         return
 
     # Load file
@@ -1595,23 +1595,23 @@ def main():
         except Exception as e:
             st.error(f"Could not read file: {e}"); return
 
-    st.success(f"✅ Loaded **{len(df_raw):,} rows** from `{uploaded.name}`")
-    with st.expander("Preview raw data (first 5 rows)"):
-        st.dataframe(df_raw.head(), use_container_width=True)
+            st.success(f" Loaded **{len(df_raw):,} rows** from `{uploaded.name}`")
+            with st.expander("Preview raw data (first 5 rows)"):
+                st.dataframe(df_raw.head(), use_container_width=True)
 
     st.divider()
 
     # ── Process ───────────────────────────────────────────────
     st.subheader("Step 2 — Generate Report")
 
-    if st.button("▶️ Run Utilization Engine", type="primary"):
+    if st.button("Run Utilization Engine", type="primary"):
         with st.spinner("Processing..."):
             try:
                 df, consumed, skipped_df = assign_credits(df_raw.copy(), DEFAULT_SCOPE)
             except Exception as e:
                 st.error(f"Processing error: {e}"); return
 
-        st.success("✅ Processing complete!")
+                st.success(" Processing complete!")
 
 
         # ── Warn on unmapped employees + alumni in period ────
@@ -1635,14 +1635,14 @@ def main():
                     _alumni.append(_emp_s)
         if _unmapped:
             st.warning(
-                f"⚠️ **{len(_unmapped)} employee(s) have no location defined** — "
+                f"**{len(_unmapped)} employee(s) have no location defined** — "
                 f"avail hours and PS region will show as Unknown. "
                 f"Add them to EMPLOYEE_LOCATION in the app config.\n\n"
                 + ", ".join(sorted(_unmapped))
             )
         if _alumni:
             st.info(
-                f"ℹ️ **{len(_alumni)} employee(s) have time entries but are outside their active tenure** — "
+                f"**{len(_alumni)} employee(s) have time entries but are outside their active tenure** — "
                 f"excluded from utilization targets. Check exit dates in EMPLOYEE_LOCATION if incorrect.\n\n"
                 + ", ".join(sorted(_alumni))
             )
@@ -1670,7 +1670,7 @@ def main():
             date_str = max_date.strftime("%-d %B %Y") if pd.notna(max_date) else "—"
         else:
             date_str = "—"
-        st.markdown(f"<div style='font-size:13px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:12px'>Data through <strong style='color:#ffffff'>{date_str}</strong></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='font-size:13px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:12px'>Data through <strong style='color:#ffffff'>{date_str}</strong></div>", unsafe_allow_html=True)
 
         def fmt_hrs(n):
             """Show 2 decimals only if needed — drops .00 and .X0 trailing zeros."""
@@ -1690,19 +1690,19 @@ def main():
         </style>""", unsafe_allow_html=True)
 
         m1, m2, m3, _gap, m4, m5 = st.columns([2, 2, 2, 0.3, 2, 2])
-        with m1: st.markdown(metric_card("Projects This Period",   f"{df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups:,}"), unsafe_allow_html=True)
-        with m2: st.markdown(metric_card("Hours This Period",      fmt_hrs(hours_this_period)), unsafe_allow_html=True)
-        with m3: st.markdown(metric_card("Utilization Credits",    fmt_hrs(total_credit),    f"{credit_pct:.1%} of hrs · {credit_label}", credit_color), unsafe_allow_html=True)
-        with m4: st.markdown(metric_card("FF Project Overrun Hrs", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "#ff4b4b", pill_icon="⚠"), unsafe_allow_html=True)
-        with m5: st.markdown(metric_card("Admin Hrs",              fmt_hrs(total_admin),     f"{admin_pct:.1%} of hrs",    "#808495", pill_icon="·"), unsafe_allow_html=True)
+        with m1: st.markdown(metric_card("Projects This Period", f"{df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups:,}"), unsafe_allow_html=True)
+        with m2: st.markdown(metric_card("Hours This Period", fmt_hrs(hours_this_period)), unsafe_allow_html=True)
+        with m3: st.markdown(metric_card("Utilization Credits", fmt_hrs(total_credit), f"{credit_pct:.1%} of hrs · {credit_label}", credit_color), unsafe_allow_html=True)
+        with m4: st.markdown(metric_card("FF Project Overrun Hrs", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "#ff4b4b", pill_icon=""), unsafe_allow_html=True)
+        with m5: st.markdown(metric_card("Admin Hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs", "#808495", pill_icon="·"), unsafe_allow_html=True)
 
         # ── No-scope banner ───────────────────────────────────────
         _noscope_hrs = df[df["credit_tag"] == "UNCONFIGURED"]["hours"].sum() if "credit_tag" in df.columns else 0
         if _noscope_hrs > 0:
             st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
-            st.warning(f"⚠️ {fmt_hrs(_noscope_hrs)} hour(s) on FF projects with NO SCOPE DEFINED — see Watch List tab in the downloaded report.")
+            st.warning(f"{fmt_hrs(_noscope_hrs)} hour(s) on FF projects with NO SCOPE DEFINED — see Watch List tab in the downloaded report.")
 
-        st.markdown("---")
+            st.markdown("---")
         tab1, tab2, tab3, tab4, tab5 = st.tabs(
             ["By Employee", "By Project", "Non-Billable", "Task Analysis", "Detail"]
         )
@@ -1780,7 +1780,7 @@ def main():
         filename  = f"utilization_report_{timestamp}.xlsx"
 
         st.download_button(
-            label="⬇️ Download Excel Report",
+label="⬇ Download Excel Report",
             data=excel_buf,
             file_name=filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

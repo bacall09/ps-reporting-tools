@@ -12,7 +12,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="FF Workload Score", page_icon="📊", layout="wide")
+st.set_page_config(page_title="FF Workload Score", page_icon=None, layout="wide")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 NAVY     = "1e2c63"
@@ -1022,7 +1022,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # Phase weight reference
-    with st.expander("📋 View phase weights & scoring model"):
+    with st.expander("View phase weights & scoring model"):
         weight_df = pd.DataFrame([
             {"Phase": k.title(), "Weight (pts)": v}
             for k, v in PHASE_WEIGHTS.items()
@@ -1030,7 +1030,7 @@ def main():
         st.dataframe(weight_df, hide_index=True, use_container_width=True)
 
     # ── Exclusions & Limitations ──────────────────────────────────────────────
-    with st.expander("⚠️ Exclusions & Limitations", expanded=False):
+    with st.expander("Exclusions & Limitations", expanded=False):
         st.markdown("""
         <style>
         .excl-list { font-family: Manrope, sans-serif; font-size: 13px; color: #4a5568; line-height: 1.8; padding-left: 4px; }
@@ -1044,7 +1044,7 @@ def main():
         </ul>
         """, unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
     # ── Uploads ───────────────────────────────────────────────────────────────
     st.subheader("Step 1 — Upload Smartsheets DRS Export")
@@ -1064,7 +1064,7 @@ def main():
     )
 
     if not ss_file:
-        st.info("👆 Upload your Smartsheets DRS export to continue.")
+        st.info(" Upload your Smartsheets DRS export to continue.")
         return
 
     # ── Process ───────────────────────────────────────────────────────────────
@@ -1079,7 +1079,7 @@ def main():
         st.exception(e)
         return
 
-    st.success("✅ Processing complete!")
+        st.success(" Processing complete!")
 
     # ── Metrics ───────────────────────────────────────────────────────────────
     total    = len(consultant_df)
@@ -1098,21 +1098,21 @@ def main():
         return f"<div style='font-size:14px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div><div style='font-size:36px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>{pill}"
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.markdown(metric_card("Consultants Scored",  f"{total:,}"), unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Total FF Projects",   f"{total_projects:,}"), unsafe_allow_html=True)
-    with m3: st.markdown(metric_card("Active Projects",     f"{active_projects:,}", "Excl. On Hold", "#4472C4"), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("High Workload",       f"{high}",  "At or over capacity", "#e74c3c"), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Medium Workload",     f"{medium}", "Monitor for changes", "#f39c12"), unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("Consultants Scored", f"{total:,}"), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Total FF Projects", f"{total_projects:,}"), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Active Projects", f"{active_projects:,}", "Excl. On Hold", "#4472C4"), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("High Workload", f"{high}", "At or over capacity", "#e74c3c"), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Medium Workload", f"{medium}", "Monitor for changes", "#f39c12"), unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
     if missing_pm > 0:
         if ns_min_date is not None and pd.notna(ns_min_date):
             no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            st.warning(f"⚠️ {missing_pm} project(s) with no time booked since {no_time_since} — see 'No Time Booked This Period' tab in the report.")
+            st.warning(f"{missing_pm} project(s) with no time booked since {no_time_since} — see 'No Time Booked This Period' tab in the report.")
         else:
-            st.warning(f"⚠️ {missing_pm} project(s) with no time booked in this NS report period — see 'No Time Booked This Period' tab.")
+            st.warning(f"{missing_pm} project(s) with no time booked in this NS report period — see 'No Time Booked This Period' tab.")
 
-    st.markdown("---")
+            st.markdown("---")
 
     # ── Preview tabs ──────────────────────────────────────────────────────────
     tab1, tab2 = st.tabs(["By Consultant", "At-Risk"])
@@ -1152,7 +1152,7 @@ def main():
     excel_buf = build_excel(scored_df, consultant_df, missing_pm, as_of, ns_min_date)
     fname = f"Workload_Health_Score_{datetime.today().strftime('%Y%m%d')}.xlsx"
     st.download_button(
-        label="⬇️  Download Workload Health Score Report",
+label="⬇ Download Workload Health Score Report",
         data=excel_buf,
         file_name=fname,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
