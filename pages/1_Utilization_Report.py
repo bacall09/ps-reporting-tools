@@ -1534,12 +1534,12 @@ def main():
         </style>
         <table class='ref-table'>
             <tr><th>Credit Tag</th><th>Billing Type</th><th>Logic</th></tr>
-            <tr><td class='tag-credited'>CREDITED</td><td style='color:#1a1a1a'>T&amp;M</td><td style='color:#1a1a1a'>Full hours credited. No cap.</td></tr>
-            <tr><td class='tag-credited'>CREDITED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to scoped amount.</td></tr>
-            <tr><td class='tag-partial'>PARTIAL</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Project has used some but not all scope. Hours credited up to remaining scope.</td></tr>
-            <tr><td class='tag-overrun'>OVERRUN</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours logged beyond contracted scope. Not credited. Tracked separately on the Watch List.</td></tr>
-            <tr><td class='tag-nonbill'>NON-BILLABLE</td><td style='color:#1a1a1a'>Internal</td><td style='color:#1a1a1a'>Internal time (admin, training, etc.). Excluded from utilization entirely. Tracked as Admin Hours.</td></tr>
-            <tr><td class='tag-noscope'>FF: NO SCOPE DEFINED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>FF project with no matching scope entry in the config. Hours not credited. Flagged for follow-up.</td></tr>
+            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>T&amp;M</td><td style='color:#1a1a1a'>Full hours credited. No cap.</td></tr>
+            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to scoped amount.</td></tr>
+            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>PARTIAL</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Project has used some but not all scope. Hours credited up to remaining scope.</td></tr>
+            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>OVERRUN</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours logged beyond contracted scope. Not credited. Tracked separately on the Watch List.</td></tr>
+            <tr style='background:#F2F2F2'><td style='color:#555555;font-weight:700'>NON-BILLABLE</td><td style='color:#1a1a1a'>Internal</td><td style='color:#1a1a1a'>Internal time (admin, training, etc.). Excluded from utilization entirely. Tracked as Admin Hours.</td></tr>
+            <tr style='background:#F2F2F2'><td style='color:#777777;font-weight:700'>FF: NO SCOPE DEFINED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>FF project with no matching scope entry in the config. Hours not credited. Flagged for follow-up.</td></tr>
         </table>
         """, unsafe_allow_html=True)
 
