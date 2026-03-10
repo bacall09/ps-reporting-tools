@@ -1464,7 +1464,42 @@ def main():
         </div>
     """, unsafe_allow_html=True)
 
-    # ── Adaptive metric color CSS ────────────────────────────
+    # ── Credit tag reference ───────────────────────────────────
+    with st.expander("📋 Credit Tag Logic", expanded=False):
+        st.markdown("""
+        <style>
+        .ref-table { width: 100%; border-collapse: collapse; font-family: Manrope, sans-serif; font-size: 13px; margin-bottom: 8px; }
+        .ref-table th { background: #4472C4; color: white; padding: 8px 12px; text-align: left; font-weight: 600; }
+        .ref-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+        .tag-credited  { background: #EAF9F1; color: #1E8449; font-weight: 700; }
+        .tag-partial   { background: #FEF9E7; color: #E67E22; font-weight: 700; }
+        .tag-overrun   { background: #FDECED; color: #C0392B; font-weight: 700; }
+        .tag-nonbill   { background: #F2F2F2; color: #555555; font-weight: 700; }
+        .tag-noscope   { background: #F2F2F2; color: #777777; font-weight: 700; }
+        </style>
+        <table class='ref-table'>
+            <tr><th>Credit Tag</th><th>Billing Type</th><th>Logic</th></tr>
+            <tr><td class='tag-credited'>CREDITED</td><td>T&amp;M</td><td>Full hours credited. No cap.</td></tr>
+            <tr><td class='tag-credited'>CREDITED</td><td>Fixed Fee</td><td>Hours credited up to scoped amount.</td></tr>
+            <tr><td class='tag-partial'>PARTIAL</td><td>Fixed Fee</td><td>Project has used some but not all scope. Hours credited up to remaining scope.</td></tr>
+            <tr><td class='tag-overrun'>OVERRUN</td><td>Fixed Fee</td><td>Hours logged beyond contracted scope. Not credited. Tracked separately on the Watch List.</td></tr>
+            <tr><td class='tag-nonbill'>NON-BILLABLE</td><td>Internal</td><td>Internal time (admin, training, etc.). Excluded from utilization entirely. Tracked as Admin Hours.</td></tr>
+            <tr><td class='tag-noscope'>FF: NO SCOPE DEFINED</td><td>Fixed Fee</td><td>FF project with no matching scope entry in the config. Hours not credited. Flagged for follow-up.</td></tr>
+        </table>
+        """, unsafe_allow_html=True)
+
+    with st.expander("🎯 Utilization Target & RAG Status", expanded=False):
+        st.markdown("""
+        <table class='ref-table'>
+            <tr><th>Status</th><th>Threshold</th><th>Description</th></tr>
+            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>🟢 Green</td><td>≥ 70%</td><td>At or above target utilization.</td></tr>
+            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>🟡 Amber</td><td>60% – 69%</td><td>Below target. Monitor and assess project mix.</td></tr>
+            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>🔴 Red</td><td>&lt; 60%</td><td>Significantly below target. Action required.</td></tr>
+        </table>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
     # ── Upload ────────────────────────────────────────────────
     st.subheader("Step 1 — Upload NetSuite Time Detail Export")
     st.caption("Supported columns: Employee, Region, Project, Project Type, Billing Type, "

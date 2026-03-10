@@ -12,7 +12,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Workload Health Score", page_icon="📊", layout="wide")
+st.set_page_config(page_title="FF Workload Score", page_icon="📊", layout="wide")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 NAVY     = "1e2c63"
@@ -514,7 +514,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         ws_dash.row_dimensions[row].height = 18
 
     # Title
-    tc = ws_dash.cell(row=2, column=2, value="Professional Services — Workload Health Score")
+    tc = ws_dash.cell(row=2, column=2, value="Professional Services — FF Workload Score")
     tc.font = Font(name="Manrope", size=16, bold=True, color="FFFFFF")
     tc.fill = _hdr_fill(NAVY)
     ws_dash.merge_cells(start_row=2, start_column=2, end_row=2, end_column=7)
@@ -991,7 +991,7 @@ def main():
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
         </style>
         <div style='background-color:#1e2c63;padding:24px 32px;border-radius:8px;margin-bottom:24px;font-family:Manrope,sans-serif'>
-            <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Workload Health Score</h1>
+            <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>FF Workload Score</h1>
             <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>
                 Weighted project scoring across active Fixed Fee engagements — by consultant and phase
             </p>
@@ -1010,6 +1010,23 @@ def main():
             for k, v in PHASE_WEIGHTS.items()
         ])
         st.dataframe(weight_df, hide_index=True, use_container_width=True)
+
+    # ── Exclusions & Limitations ──────────────────────────────────────────────
+    with st.expander("⚠️ Exclusions & Limitations", expanded=False):
+        st.markdown("""
+        <style>
+        .excl-list { font-family: Manrope, sans-serif; font-size: 13px; color: #4a5568; line-height: 1.8; padding-left: 4px; }
+        .excl-list li { margin-bottom: 4px; }
+        </style>
+        <ul class='excl-list'>
+            <li><b>T&amp;M projects</b> are excluded from all scoring and project counts.</li>
+            <li><b>Projects not found in the NetSuite time report</b> are treated as inactive for scoring purposes.</li>
+            <li><b>Workload scores</b> do not account for hours per week or project complexity beyond phase and client signals.</li>
+            <li><b>PS Region</b> is assigned from a maintained employee location lookup — update required when headcount changes.</li>
+        </ul>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
     # ── Uploads ───────────────────────────────────────────────────────────────
     st.subheader("Step 1 — Upload Smartsheets DRS Export")
