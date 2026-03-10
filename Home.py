@@ -75,11 +75,15 @@ with col1:
 
 with col2:
     st.markdown("""
-    <div class='tool-card-soon'>
-        <div class='tool-title-soon'>Coming Soon</div>
-        <div class='tool-desc'>Next report or tool goes here.</div>
+    <div class='tool-card'>
+        <div class='tool-title'>Workload Health Score</div>
+        <div class='tool-desc'>
+            Upload a Smartsheets DRS export + NetSuite actuals to generate a
+            weighted workload score per consultant across active Fixed Fee projects.
+        </div>
     </div>
     """, unsafe_allow_html=True)
+    st.page_link("pages/2_Workload_Health_Score.py", label="Open Report")
 
 with col3:
     st.markdown("""
