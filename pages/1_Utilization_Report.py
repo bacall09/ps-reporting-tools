@@ -192,10 +192,7 @@ def get_avail_hours(region, period):
 # ════════════════════════════════════════════════════════
 # UTILS
 # ════════════════════════════════════════════════════════
-"""
-PS Tools — Shared Utilities
-Excel helpers, credit logic, and report builder.
-"""
+
 import pandas as pd
 import io
 from datetime import datetime
@@ -1435,10 +1432,7 @@ def build_excel(df, scope_map, consumed):
 # ════════════════════════════════════════════════════════
 # PAGE
 # ════════════════════════════════════════════════════════
-"""
-PS Utilization Credit Report
-Upload a NetSuite time detail export to generate the utilization Excel report.
-"""
+
 import streamlit as st
 import pandas as pd
 import io
@@ -1611,10 +1605,15 @@ def main():
 
         m1,m2,m3,m4,m5 = st.columns(5)
         with m1: st.markdown(metric_card("Projects This Period",   f"{df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups:,}"), unsafe_allow_html=True)
-        with m2: st.markdown(metric_card("Hours This Period",      f"{hours_this_period:,.1f}"), unsafe_allow_html=True)
-        with m3: st.markdown(metric_card("Utilization Credits",    f"{total_credit:,.1f}",    f"{credit_pct:.1%} of total hrs · {credit_label}", credit_color), unsafe_allow_html=True)
-        with m4: st.markdown(metric_card("FF Project Overrun Hrs", f"{total_proj_overrun:,.1f}", f"{overrun_pct:.1%} of total hrs", "#ff4b4b"), unsafe_allow_html=True)
-        with m5: st.markdown(metric_card("Admin Hrs",              f"{total_admin:,.1f}",     f"{admin_pct:.1%} of total hrs",    "#808495"), unsafe_allow_html=True)
+        with m2: st.markdown(metric_card("Hours This Period",      f"{hours_this_period:,.2f}"), unsafe_allow_html=True)
+        with m3: st.markdown(metric_card("Utilization Credits",    f"{total_credit:,.2f}",    f"{credit_pct:.1%} of total hrs · {credit_label}", credit_color), unsafe_allow_html=True)
+        with m4: st.markdown(metric_card("FF Project Overrun Hrs", f"{total_proj_overrun:,.2f}", f"{overrun_pct:.1%} of total hrs", "#ff4b4b"), unsafe_allow_html=True)
+        with m5: st.markdown(metric_card("Admin Hrs",              f"{total_admin:,.2f}",     f"{admin_pct:.1%} of total hrs",    "#808495"), unsafe_allow_html=True)
+
+        # ── No-scope banner ───────────────────────────────────────
+        _noscope_hrs = df[df["credit_tag"] == "UNCONFIGURED"]["hours"].sum() if "credit_tag" in df.columns else 0
+        if _noscope_hrs > 0:
+            st.warning(f"⚠️ {_noscope_hrs:,.2f} hour(s) on FF projects with NO SCOPE DEFINED — see Watch List tab in the downloaded report.")
 
         st.markdown("---")
         tab1, tab2, tab3, tab4, tab5 = st.tabs(
