@@ -614,9 +614,9 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     if missing_pm_count > 0:
         if ns_min_date is not None and pd.notna(ns_min_date):
             no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked since {no_time_since} — see 'Projects w/o Time this period' tab."
+            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked since {no_time_since} — see 'No Time Booked This Period' tab."
         else:
-            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked in this NS report period — see 'Projects w/o Time this period' tab."
+            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked in this NS report period — see 'No Time Booked This Period' tab."
         ws_dash.merge_cells(start_row=next_row, start_column=2, end_row=next_row, end_column=7)
         fc = ws_dash.cell(next_row, 2, flag_msg)
         fc.font      = Font(name="Manrope", size=9, color="7D6608")
@@ -819,7 +819,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         ws_phase.column_dimensions["D"].width = 14
 
     # ── Tab 6: No PM Assigned ─────────────────────────────────────────────────
-    ws_nopm = wb.create_sheet("Projects w/o Time this period")
+    ws_nopm = wb.create_sheet("No Time Booked This Period")
     ws_nopm.sheet_properties.tabColor = "F39C12"
 
     no_pm_df = scored_df[scored_df["pm_flag"] == True].copy() if "pm_flag" in scored_df.columns else pd.DataFrame()
@@ -882,7 +882,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
 
     # Tab order
     tab_order = ["Dashboard", "By Consultant", "FF Phase Distribution",
-                 "At-Risk Projects", "Projects w/o Time this period", "Processed Data"]
+                 "At-Risk Projects", "No Time Booked This Period", "Processed Data"]
     wb._sheets = sorted(wb._sheets, key=lambda s: tab_order.index(s.title) if s.title in tab_order else 99)
 
     buf = io.BytesIO()
@@ -929,7 +929,7 @@ def main():
         key="ss_upload"
     )
 
-    st.subheader("Step 2 — Upload NetSuite Time Detail Export *(optional — provides PM assignment)*")
+    st.subheader("Step 2 — Upload NetSuite Time Detail Export")
     st.caption("Used to join Project Manager to each project via Project ID")
     ns_file = st.file_uploader(
         "Drop your file here or click to browse",
@@ -982,9 +982,9 @@ def main():
     if missing_pm > 0:
         if ns_min_date is not None and pd.notna(ns_min_date):
             no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            st.warning(f"⚠️ {missing_pm} project(s) with no time booked since {no_time_since} — see 'Projects w/o Time this period' tab in the report.")
+            st.warning(f"⚠️ {missing_pm} project(s) with no time booked since {no_time_since} — see 'No Time Booked This Period' tab in the report.")
         else:
-            st.warning(f"⚠️ {missing_pm} project(s) with no time booked in this NS report period — see 'Projects w/o Time this period' tab.")
+            st.warning(f"⚠️ {missing_pm} project(s) with no time booked in this NS report period — see 'No Time Booked This Period' tab.")
 
     st.markdown("---")
 
