@@ -36,6 +36,8 @@ st.markdown("""
         .tool-desc-soon { color: #a0aec0; font-size: 13px; font-family: 'Manrope', sans-serif; line-height: 1.65; margin-bottom: 0; }
         .tool-badge      { display: inline-block; font-size: 11px; font-weight: 600; color: #4472C4; background: #EBF0FB; border-radius: 4px; padding: 2px 8px; margin-bottom: 10px; font-family: 'Manrope', sans-serif; letter-spacing: 0.5px; text-transform: uppercase; }
         .tool-badge-soon { display: inline-block; font-size: 11px; font-weight: 600; color: #a0aec0; background: #f0f0f0; border-radius: 4px; padding: 2px 8px; margin-bottom: 10px; font-family: 'Manrope', sans-serif; letter-spacing: 0.5px; text-transform: uppercase; }
+        .tool-link { display: inline-block; margin-top: 14px; color: #4da6ff; font-weight: 600; font-family: 'Manrope', sans-serif; font-size: 13px; text-decoration: none; }
+        .tool-link:hover { color: #7dc0ff; text-decoration: underline; }
 
         /* ── Open Report button ── */
         .stPageLink a {
@@ -127,42 +129,34 @@ st.markdown("#### Available Reports")
 st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
 # ── Card 1: Utilization Credit Report ────────────────────────────────────────
-col_a, col_b = st.columns([5, 1])
-with col_a:
-    st.markdown("""
-    <div class='tool-row'>
-        <div class='tool-badge'>NetSuite Export</div>
-        <div class='tool-title'>Utilization Credit Report</div>
-        <div class='tool-desc'>
-            The Utilization Credit Report tracks billable utilization for each PS consultant
-            using NetSuite time detail exports. By distinguishing between in-scope hours vs.
-            overrun hours on Fixed Fee projects, it provides clearer visibility into consultant
-            performance and potential project scope overruns.
-        </div>
+st.markdown("""
+<div class='tool-row'>
+    <div class='tool-badge'>NetSuite Export</div>
+    <div class='tool-title'>Utilization Credit Report</div>
+    <div class='tool-desc'>
+        The Utilization Credit Report tracks billable utilization for each PS consultant
+        using NetSuite time detail exports. By distinguishing between in-scope hours vs.
+        overrun hours on Fixed Fee projects, it provides clearer visibility into consultant
+        performance and potential project scope overruns.
     </div>
-    """, unsafe_allow_html=True)
-with col_b:
-    st.markdown("<div style='margin-top:38px'></div>", unsafe_allow_html=True)
-    st.page_link("pages/1_Utilization_Report.py", label="Open Report →")
+    <a class='tool-link' href='/Utilization_Report'>Open Report →</a>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Card 2: FF Workload Score ─────────────────────────────────────────────────
-col_c, col_d = st.columns([5, 1])
-with col_c:
-    st.markdown("""
-    <div class='tool-row'>
-        <div class='tool-badge'>Smartsheets + NetSuite</div>
-        <div class='tool-title'>FF Workload Score</div>
-        <div class='tool-desc'>
-            This report measures consultant workload across active Fixed Fee (FF) projects
-            using a weighted scoring model. It helps PS leadership identify potential overload,
-            compare workloads across regions, and flag projects nearing or exceeding
-            contractual limits.
-        </div>
+st.markdown("""
+<div class='tool-row'>
+    <div class='tool-badge'>Smartsheets + NetSuite</div>
+    <div class='tool-title'>FF Workload Score</div>
+    <div class='tool-desc'>
+        This report measures consultant workload across active Fixed Fee (FF) projects
+        using a weighted scoring model. It helps PS leadership identify potential overload,
+        compare workloads across regions, and flag projects nearing or exceeding
+        contractual limits.
     </div>
-    """, unsafe_allow_html=True)
-with col_d:
-    st.markdown("<div style='margin-top:38px'></div>", unsafe_allow_html=True)
-    st.page_link("pages/2_Workload_Health_Score.py", label="Open Report →")
+    <a class='tool-link' href='/Workload_Health_Score'>Open Report →</a>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Card 3: Coming Soon ───────────────────────────────────────────────────────
 st.markdown("""
