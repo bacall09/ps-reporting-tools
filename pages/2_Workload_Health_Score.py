@@ -679,8 +679,25 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
                 tot, act, row["total_score"], level, hr, avg]
         for col, val in enumerate(vals, 1):
             c = ws_con.cell(r, col, val)
-            style_cell(c, bg, align="center" if col > 1 else "left")
-            c.border = border_thin()
+            # Col 9 = Avg Score/Region — highlight vs consultant's own score
+            if col == 9:
+                consultant_score = row["total_score"]
+                diff = consultant_score - avg if avg > 0 else 0
+                if diff > 5:       # meaningfully above regional avg — overloaded vs peers
+                    c.font  = Font(name="Manrope", size=10, bold=True, color="E74C3C")
+                    c.fill  = PatternFill("solid", fgColor="FDECED")
+                elif diff < -5:    # meaningfully below regional avg — capacity available
+                    c.font  = Font(name="Manrope", size=10, bold=True, color="27AE60")
+                    c.fill  = PatternFill("solid", fgColor="EAF9F1")
+                else:              # within ±5 of regional avg — on par
+                    c.font  = Font(name="Manrope", size=10, color="555555")
+                    c.fill  = PatternFill("solid", fgColor=LTGRAY)
+                c.number_format = "0.0"
+                c.alignment = Alignment(horizontal="center", vertical="center")
+                c.border = border_thin()
+            else:
+                style_cell(c, bg, align="center" if col > 1 else "left")
+                c.border = border_thin()
         ws_con.row_dimensions[r].height = 16
     ws_con.freeze_panes = "A3"
 
