@@ -314,6 +314,10 @@ def load_ns(file):
     needed = [c for c in ["project_id", "project_manager", "project", "billing_type"] if c in df.columns]
     df = df[needed].drop_duplicates()
 
+    # Build billing_type map: project_id → billing_type (for FF verification)
+    if "project_id" in df.columns and "billing_type" in df.columns:
+        df["billing_type"] = df["billing_type"].str.strip().str.lower()
+
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip()
 
@@ -329,9 +333,17 @@ def score_projects(ss_df, ns_df):
     df = ss_df.copy()
 
     # Filter FF only — exclude T&M
+    # Primary filter: project_type from SS
     if "project_type" in df.columns:
         tm_mask = df["project_type"].str.lower().str.contains("t&m|time.*material", na=False, regex=True)
         df = df[~tm_mask].copy()
+
+    # Secondary filter: if NS billing_type is available, also exclude rows confirmed as T&M
+    if ns_df is not None and "project_id" in ns_df.columns and "billing_type" in ns_df.columns:
+        bt_map = ns_df.dropna(subset=["billing_type"]).drop_duplicates("project_id").set_index("project_id")["billing_type"]
+        df["ns_billing_type"] = df["project_id"].map(bt_map).fillna("")
+        tm_ns_mask = df["ns_billing_type"].str.contains("t&m|time.*material|time and material", na=False, regex=True)
+        df = df[~tm_ns_mask].copy()
 
     # Exclude inactive phases from score (still kept in data, score = 0)
     def is_active(phase):
@@ -365,9 +377,11 @@ def score_projects(ss_df, ns_df):
     df["risk_mult"] = df[risk_col].apply(risk_multiplier) if risk_col else 1.0
 
     # Active = not on hold by phase OR status
+    # Active statuses: In Progress, Awarded, Pending (anything except On-hold variants)
     def is_active_row(row):
         phase_inactive = not is_active(row.get("phase", ""))
-        status_onhold  = str(row.get("status", "")).strip().lower() in ("on-hold", "on hold", "onhold")
+        status_val     = str(row.get("status", "")).strip().lower()
+        status_onhold  = status_val in ("on-hold", "on hold", "onhold", "on_hold")
         return not phase_inactive and not status_onhold
 
     df["active"] = df.apply(is_active_row, axis=1)
@@ -500,11 +514,11 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
 
     for i, (label, value, fmt, status) in enumerate([
         ("Consultants Scored", total_consultants, "#,##0", None),
-        ("Total FF Projects",  total_projects,    "#,##0", None),
-        ("Active Projects",    active_projects,   "#,##0", None),
         ("High Workload",      high_count,   "#,##0", "red"    if high_count   > 0 else "green"),
         ("Medium Workload",    medium_count, "#,##0", "yellow" if medium_count > 0 else "green"),
         ("Low Workload",       low_count,    "#,##0", "green"),
+        ("Total FF Projects",  total_projects,    "#,##0", None),
+        ("Active Projects",    active_projects,   "#,##0", None),
     ]):
         col = 2 + i
         dash_label(ws_dash, 7, col, label)
@@ -595,7 +609,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         fc.fill      = PatternFill("solid", fgColor="FEF9E7")
         fc.alignment = Alignment(wrap_text=True)
 
-    ws_dash.freeze_panes = "B9"
+    ws_dash.freeze_panes = "B7"
 
     # ── Tab 2: By Consultant ──────────────────────────────────────────────────
     ws_con = wb.create_sheet("By Consultant")
@@ -930,6 +944,7 @@ def main():
     with m4: st.markdown(metric_card("High Workload",       f"{high}",  "At or over capacity", "#e74c3c"), unsafe_allow_html=True)
     with m5: st.markdown(metric_card("Medium Workload",     f"{medium}", "Monitor for changes", "#f39c12"), unsafe_allow_html=True)
 
+    st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
     if missing_pm > 0:
         st.warning(f"⚠️ {missing_pm} project(s) could not be assigned a PM — Project ID not found in NetSuite export. Update NS to include these in consultant scoring.")
 
