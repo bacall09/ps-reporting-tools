@@ -1534,12 +1534,12 @@ def main():
         </style>
         <table class='ref-table'>
             <tr><th>Credit Tag</th><th>Billing Type</th><th>Logic</th></tr>
-            <tr><td class='tag-credited'>CREDITED</td><td>T&amp;M</td><td>Full hours credited. No cap.</td></tr>
-            <tr><td class='tag-credited'>CREDITED</td><td>Fixed Fee</td><td>Hours credited up to scoped amount.</td></tr>
-            <tr><td class='tag-partial'>PARTIAL</td><td>Fixed Fee</td><td>Project has used some but not all scope. Hours credited up to remaining scope.</td></tr>
-            <tr><td class='tag-overrun'>OVERRUN</td><td>Fixed Fee</td><td>Hours logged beyond contracted scope. Not credited. Tracked separately on the Watch List.</td></tr>
-            <tr><td class='tag-nonbill'>NON-BILLABLE</td><td>Internal</td><td>Internal time (admin, training, etc.). Excluded from utilization entirely. Tracked as Admin Hours.</td></tr>
-            <tr><td class='tag-noscope'>FF: NO SCOPE DEFINED</td><td>Fixed Fee</td><td>FF project with no matching scope entry in the config. Hours not credited. Flagged for follow-up.</td></tr>
+            <tr><td class='tag-credited'>CREDITED</td><td style='color:#1a1a1a'>T&amp;M</td><td style='color:#1a1a1a'>Full hours credited. No cap.</td></tr>
+            <tr><td class='tag-credited'>CREDITED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to scoped amount.</td></tr>
+            <tr><td class='tag-partial'>PARTIAL</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Project has used some but not all scope. Hours credited up to remaining scope.</td></tr>
+            <tr><td class='tag-overrun'>OVERRUN</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours logged beyond contracted scope. Not credited. Tracked separately on the Watch List.</td></tr>
+            <tr><td class='tag-nonbill'>NON-BILLABLE</td><td style='color:#1a1a1a'>Internal</td><td style='color:#1a1a1a'>Internal time (admin, training, etc.). Excluded from utilization entirely. Tracked as Admin Hours.</td></tr>
+            <tr><td class='tag-noscope'>FF: NO SCOPE DEFINED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>FF project with no matching scope entry in the config. Hours not credited. Flagged for follow-up.</td></tr>
         </table>
         """, unsafe_allow_html=True)
 
@@ -1547,9 +1547,9 @@ def main():
         st.markdown("""
         <table class='ref-table'>
             <tr><th>Status</th><th>Threshold</th><th>Description</th></tr>
-            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>🟢 Green</td><td>≥ 70%</td><td>At or above target utilization.</td></tr>
-            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>🟡 Amber</td><td>60% – 69%</td><td>Below target. Monitor and assess project mix.</td></tr>
-            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>🔴 Red</td><td>&lt; 60%</td><td>Significantly below target. Action required.</td></tr>
+            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>🟢 Green</td><td style='color:#1a1a1a'>≥ 70%</td><td style='color:#1a1a1a'>At or above target utilization.</td></tr>
+            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>🟡 Amber</td><td style='color:#1a1a1a'>60% – 69%</td><td style='color:#1a1a1a'>Below target. Monitor and assess project mix.</td></tr>
+            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>🔴 Red</td><td style='color:#1a1a1a'>&lt; 60%</td><td style='color:#1a1a1a'>Significantly below target. Action required.</td></tr>
         </table>
         """, unsafe_allow_html=True)
 
