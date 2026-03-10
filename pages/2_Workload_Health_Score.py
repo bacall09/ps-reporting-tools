@@ -62,47 +62,57 @@ EMPLOYEE_ROLES = {
     "Zoric, Ivan": "Consultant",
 }
 
+# ── Employee roster — {name: (location, start_date, end_date)}
+# start/end as "YYYY-MM" strings or None (None = no limit).
 EMPLOYEE_LOCATION = {
-    "Arestarkhov, Yaroslav":  "Czech Republic",
-    "Carpen, Anamaria":       "Spain",
-    "Centinaje, Rhodechild":  "Manila (PH)",
-    "Dolha, Madalina":        "Faroe Islands",
-    "Dolha":                  "Faroe Islands",
-    "Cooke, Ellen":           "Northern Ireland",
-    "Cruz, Daniel":           "Manila (PH)",
-    "DiMarco, Nicole R":      "USA",
-    "Gardner, Cheryll L":     "USA",
-    "Hopkins, Chris":         "USA",
-    "Ickler, Georganne":      "USA",
-    "Isberg, Eric":           "USA",
-    "Jordanova, Marija":      "North Macedonia",
-    "Lappin, Thomas":         "Northern Ireland",
-    "Longalong, Santiago":    "Manila (PH)",
-    "Mohammad, Manaan":       "Canada",
-    "Morris, Lisa":           "Sydney (NSW)",
-    "Pallone, Daniel":        "Sydney (NSW)",
-    "NAQVI, SYED":            "Canada",
-    "Raykova, Silvia":        "Netherlands",
-    "Selvakumar, Sajithan":   "Canada",
-    "Snee, Stefanie J":       "USA",
-    "Stone, Matt":            "USA",
-    "Tuazon, Carol":          "Manila (PH)",
-    "Zoric, Ivan":            "Serbia",
-    "Murphy, Conor":          "USA",
-    "Bell, Stuart":           "USA",
-    "Cloete":                 "Netherlands",
-    "Cloete, Bronwyn":        "Netherlands",
-    "Hamilton C":             "USA",
-    "Hamilton, Julie C":      "USA",
-    "Strauss, John W":        "USA",
-    "Swanson":                "USA",
-    "Barrio, Nairobi":  "USA",
-    "Porangada, Suraj":  "USA",
-    "Hughes, Madalyn":  "USA",
-    "Olson, Austin D":  "USA",
-    "Finalle-Newton, Jesse":  "USA",
-    "Church, Jason G":  "USA",
+    #  Name                        Location            Start      End
+    "Arestarkhov, Yaroslav":  ("Czech Republic",      None,      None),
+    "Carpen, Anamaria":       ("Spain",               None,      None),
+    "Centinaje, Rhodechild":  ("Manila (PH)",         None,      None),
+    "Dolha, Madalina":        ("Faroe Islands",       None,      None),
+    "Dolha":                  ("Faroe Islands",       None,      None),
+    "Cooke, Ellen":           ("Northern Ireland",    None,      None),
+    "Cruz, Daniel":           ("Manila (PH)",         None,      None),
+    "DiMarco, Nicole R":      ("USA",                 None,      None),
+    "Gardner, Cheryll L":     ("USA",                 None,      None),
+    "Hopkins, Chris":         ("USA",                 None,      None),
+    "Ickler, Georganne":      ("USA",                 None,      None),
+    "Isberg, Eric":           ("USA",                 None,      None),
+    "Jordanova, Marija":      ("North Macedonia",     None,      None),
+    "Lappin, Thomas":         ("Northern Ireland",    None,      None),
+    "Longalong, Santiago":    ("Manila (PH)",         None,      None),
+    "Mohammad, Manaan":       ("Canada",              None,      None),
+    "Morris, Lisa":           ("Sydney (NSW)",        None,      None),
+    "Pallone, Daniel":        ("Sydney (NSW)",        None,      None),
+    "NAQVI, SYED":            ("Canada",              None,      None),
+    "Raykova, Silvia":        ("Netherlands",         None,      None),
+    "Selvakumar, Sajithan":   ("Canada",              None,      None),
+    "Snee, Stefanie J":       ("USA",                 None,      None),
+    "Stone, Matt":            ("USA",                 None,      None),
+    "Tuazon, Carol":          ("Manila (PH)",         None,      None),
+    "Zoric, Ivan":            ("Serbia",              None,      None),
+    "Murphy, Conor":          ("USA",                 None,      None),
+    "Bell, Stuart":           ("USA",                 None,      None),
+    "Cloete":                 ("Netherlands",         None,      None),
+    "Cloete, Bronwyn":        ("Netherlands",         None,      None),
+    "Hamilton C":             ("USA",                 None,      None),
+    "Hamilton, Julie C":      ("USA",                 None,      None),
+    "Strauss, John W":        ("USA",                 None,      None),
+    "Swanson":                ("USA",                 None,      None),
+    "Barrio, Nairobi":        ("USA",                 None,      None),
+    "Porangada, Suraj":       ("USA",                 None,      None),
+    "Hughes, Madalyn":        ("USA",                 None,      None),
+    "Olson, Austin D":        ("USA",                 None,      None),
+    "Finalle-Newton, Jesse":  ("USA",                 None,      None),
+    "Church, Jason G":        ("USA",                 None,      None),
 }
+
+def _emp_location(name):
+    """Return location string regardless of tuple or plain string."""
+    v = EMPLOYEE_LOCATION.get(name)
+    if v is None:
+        return None
+    return v[0] if isinstance(v, tuple) else v
 PS_REGION_OVERRIDE = {
     "NAQVI, SYED":  "EMEA",
     "Cruz, Daniel": "NOAM",
@@ -174,10 +184,10 @@ def get_ps_region(name):
     name = str(name).strip()
     if name in PS_REGION_OVERRIDE:
         return PS_REGION_OVERRIDE[name]
-    loc = EMPLOYEE_LOCATION.get(name)
+    loc = _emp_location(name)
     if not loc:
         last = name.split(",")[0].strip()
-        loc = next((v for k, v in EMPLOYEE_LOCATION.items() if k.split(",")[0].strip().lower() == last.lower()), None)
+        loc = next((_emp_location(k) for k, v in EMPLOYEE_LOCATION.items() if k.split(",")[0].strip().lower() == last.lower()), None)
     return PS_REGION_MAP.get(loc, "Unknown") if loc else "Unknown"
 
 # ── Phase weight lookup ───────────────────────────────────────────────────────
