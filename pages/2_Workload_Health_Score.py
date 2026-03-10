@@ -664,13 +664,16 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     high_risk = scored_df[(scored_df["active"]) & (scored_df.get("risk_level", pd.Series(dtype=str)).str.lower().str.contains("high", na=False))]
     high_risk_count = high_risk.groupby("project_manager")["project_id"].nunique().to_dict() if "risk_level" in scored_df.columns else {}
 
+    # Pre-calculate avg weighted score by PS region
+    region_avg_score = consultant_df.groupby("ps_region")["total_score"].mean().round(1).to_dict()
+
     for r_idx, row in consultant_df.iterrows():
         r = 3 + r_idx
         level = row["workload_level"]
         bg = level_color(level)
         act  = row.get("active_project_count", 0)
         tot  = row.get("total_project_count", 0)
-        avg  = round(row["total_score"] / act, 2) if act > 0 else 0
+        avg  = region_avg_score.get(row["ps_region"], 0)
         hr   = high_risk_count.get(row["project_manager"], 0)
         vals = [row["project_manager"], row.get("role", "Consultant"), row["ps_region"],
                 tot, act, row["total_score"], level, hr, avg]
@@ -692,7 +695,11 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             (scored_df.get("rag",              pd.Series(dtype=str)).str.lower().str.contains("red",     na=False)) |
             (scored_df.get("client_sentiment", pd.Series(dtype=str)).str.lower().str.contains("negative",na=False))
         )
-    ].sort_values("weighted_score", ascending=False)
+    ].copy()
+
+    _flag_order = {"expired": 0, "near_expiry": 1, None: 2}
+    at_risk_df["_sort_flag"] = at_risk_df["start_date"].apply(lambda s: _flag_order.get(term_age_flag(s), 2))
+    at_risk_df = at_risk_df.sort_values(["_sort_flag", "weighted_score"], ascending=[True, False]).drop(columns=["_sort_flag"])
 
     risk_headers = ["Project", "Project ID", "Project Manager", "PS Region", "Phase",
                     "Weighted Score", "Risk Level", "Schedule Health", "RAG",
@@ -891,7 +898,15 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         ws_nopm.column_dimensions[get_column_letter(i)].width = w
 
     if len(no_pm_df) > 0:
-        for r_idx, (_, row) in enumerate(no_pm_df.sort_values("project_name").iterrows()):
+        # Sort: Expired first, Near Expiry second, then clean, then alpha within each
+        _flag_order = {"⚠ Expired (>12 months)": 0, "⚠ Near Expiry (10+ months)": 1, "": 2}
+        no_pm_df["_sort_flag"] = no_pm_df["start_date"].apply(
+            lambda s: _flag_order.get(
+                "⚠ Expired (>12 months)" if term_age_flag(s) == "expired"
+                else "⚠ Near Expiry (10+ months)" if term_age_flag(s) == "near_expiry"
+                else "", 2))
+        no_pm_df = no_pm_df.sort_values(["_sort_flag", "project_name"]).drop(columns=["_sort_flag"])
+        for r_idx, (_, row) in enumerate(no_pm_df.iterrows()):
             r = 4 + r_idx
             def gv(col): return row.get(col, "") if pd.notna(row.get(col, "")) else ""
             go_live = gv("go_live_date")
