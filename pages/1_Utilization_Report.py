@@ -78,6 +78,12 @@ EMPLOYEE_LOCATION = {
     "Hamilton, Julie C":       "USA",
     "Strauss, John W":         "USA",
     "Swanson":                "USA",           # util-exempt
+    "Barrio, Nairobi":  "USA",
+    "Porangada, Suraj":  "USA",
+    "Hughes, Madalyn":  "USA",
+    "Olson, Austin D":  "USA",
+    "Finalle-Newton, Jesse":  "USA",
+    "Church, Jason G":  "USA",
 }
 
 # ── PS Region overrides (employee name → region, bypasses location mapping) ──

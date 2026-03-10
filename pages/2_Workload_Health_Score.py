@@ -58,6 +58,12 @@ EMPLOYEE_LOCATION = {
     "Hamilton, Julie C":      "USA",
     "Strauss, John W":        "USA",
     "Swanson":                "USA",
+    "Barrio, Nairobi":  "USA",
+    "Porangada, Suraj":  "USA",
+    "Hughes, Madalyn":  "USA",
+    "Olson, Austin D":  "USA",
+    "Finalle-Newton, Jesse":  "USA",
+    "Church, Jason G":  "USA",
 }
 PS_REGION_OVERRIDE = {
     "NAQVI, SYED":  "EMEA",
@@ -320,8 +326,20 @@ def score_projects(ss_df, ns_df):
     )
     df["risk_mult"] = df[risk_col].apply(risk_multiplier) if risk_col else 1.0
 
-    # Final score — 0 for inactive phases
-    df["active"] = df["phase"].apply(is_active)
+    # Active = not on hold by phase OR status
+    def is_active_row(row):
+        phase_inactive = not is_active(row.get("phase", ""))
+        status_onhold  = str(row.get("status", "")).strip().lower() in ("on-hold", "on hold", "onhold")
+        return not phase_inactive and not status_onhold
+
+    df["active"] = df.apply(is_active_row, axis=1)
+
+    # Total projects = all FF rows (excl Complete/Pending Final Billing)
+    complete_phases = {"10. complete/pending final billing"}
+    df["total_project"] = df["phase"].apply(
+        lambda p: str(p).strip().lower() not in complete_phases if pd.notna(p) else True
+    )
+
     df["weighted_score"] = df.apply(
         lambda r: round(r["phase_weight"] * r["client_health_mult"] * r["risk_mult"], 2)
         if r["active"] else 0.0, axis=1
@@ -336,13 +354,21 @@ def score_projects(ss_df, ns_df):
 def build_consultant_summary(scored_df):
     """Aggregate scored projects by consultant."""
     active = scored_df[scored_df["active"]].copy()
+    total  = scored_df[scored_df["total_project"]].copy() if "total_project" in scored_df.columns else scored_df.copy()
+
+    # Active project count (excludes on-hold by phase or status)
+    active_counts = active.groupby("project_manager")["project_id"].nunique().rename("active_project_count")
+    # Total project count (all FF, excl complete)
+    total_counts  = total.groupby("project_manager")["project_id"].nunique().rename("total_project_count")
 
     grp = active.groupby("project_manager").agg(
-        project_count=("project_id", "nunique"),
         total_score=("weighted_score", "sum"),
         ps_region=("ps_region", "first"),
     ).reset_index()
 
+    grp = grp.join(active_counts, on="project_manager").join(total_counts, on="project_manager")
+    grp["active_project_count"] = grp["active_project_count"].fillna(0).astype(int)
+    grp["total_project_count"]  = grp["total_project_count"].fillna(0).astype(int)
     grp["total_score"] = grp["total_score"].round(1)
     grp["workload_level"] = grp["total_score"].apply(lambda s: workload_level(s)[0])
     grp = grp.sort_values("total_score", ascending=False).reset_index(drop=True)
@@ -379,21 +405,22 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
     ws_dash.row_dimensions[2].height = 16
 
     # Key metrics row
-    total_consultants = len(consultant_df)
-    high_count   = len(consultant_df[consultant_df["workload_level"] == "High"])
-    medium_count = len(consultant_df[consultant_df["workload_level"] == "Medium"])
-    low_count    = len(consultant_df[consultant_df["workload_level"] == "Low"])
-    total_projects = scored_df[scored_df["active"]]["project_id"].nunique()
+    total_consultants  = len(consultant_df)
+    high_count    = len(consultant_df[consultant_df["workload_level"] == "High"])
+    medium_count  = len(consultant_df[consultant_df["workload_level"] == "Medium"])
+    low_count     = len(consultant_df[consultant_df["workload_level"] == "Low"])
+    active_projects = scored_df[scored_df["active"]]["project_id"].nunique()
+    total_projects  = scored_df[scored_df.get("total_project", pd.Series(True, index=scored_df.index))]["project_id"].nunique() if "total_project" in scored_df.columns else active_projects
 
     ws_dash.row_dimensions[4].height = 18
     ws_dash.cell(4, 1, "KEY METRICS").font = Font(bold=True, color=NAVY, size=10, name="Calibri")
 
     metrics = [
-        ("Consultants Scored", total_consultants, LTGRAY),
-        ("Active FF Projects",  total_projects,   LTGRAY),
+        ("Consultants Scored",  total_consultants, LTGRAY),
+        ("Total FF Projects",   total_projects,    LTGRAY),
+        ("Active Projects",     active_projects,   LTGRAY),
         ("High Workload",       high_count,        "FDECED"),
         ("Medium Workload",     medium_count,      "FEF9E7"),
-        ("Low Workload",        low_count,         "EAF9F1"),
     ]
     for col, (label, val, bg) in enumerate(metrics, 1):
         ws_dash.merge_cells(start_row=5, start_column=col, end_row=5, end_column=col)
@@ -409,16 +436,17 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
     ws_dash.row_dimensions[8].height = 18
     ws_dash.cell(8, 1, "CONSULTANT WORKLOAD SUMMARY").font = Font(bold=True, color=NAVY, size=10, name="Calibri")
 
-    dash_headers = ["Consultant", "PS Region", "Active Projects", "Weighted Score", "Workload Level"]
+    dash_headers = ["Consultant", "PS Region", "Total Projects", "Active Projects", "Weighted Score", "Workload Level"]
     style_header(ws_dash, 9, dash_headers, TEAL)
-    for col, w in enumerate([28, 14, 16, 16, 16], 1):
+    for col, w in enumerate([28, 14, 16, 16, 16, 16], 1):
         ws_dash.column_dimensions[get_column_letter(col)].width = w
 
     for r_idx, row in consultant_df.iterrows():
         r = 10 + r_idx
         level = row["workload_level"]
         bg = level_color(level)
-        vals = [row["project_manager"], row["ps_region"], row["project_count"],
+        vals = [row["project_manager"], row["ps_region"],
+                row.get("total_project_count", 0), row.get("active_project_count", 0),
                 row["total_score"], level]
         for col, val in enumerate(vals, 1):
             c = ws_dash.cell(r, col, val)
@@ -439,9 +467,9 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
     ws_con = wb.create_sheet("By Consultant")
     ws_con.sheet_properties.tabColor = TEAL
 
-    con_headers = ["Consultant", "PS Region", "Active Projects", "Weighted Score",
-                   "Workload Level", "High Risk Projects", "Avg Score/Project"]
-    con_widths   = [28, 14, 16, 16, 16, 18, 18]
+    con_headers = ["Consultant", "PS Region", "Total Projects", "Active Projects",
+                   "Weighted Score", "Workload Level", "High Risk Projects", "Avg Score/Project"]
+    con_widths   = [28, 14, 16, 16, 16, 16, 18, 18]
     write_title(ws_con, "WORKLOAD HEALTH SCORE — By Consultant", len(con_headers))
     style_header(ws_con, 2, con_headers, TEAL)
     ws_con.auto_filter.ref = f"A2:{get_column_letter(len(con_headers))}2"
@@ -456,9 +484,11 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         r = 3 + r_idx
         level = row["workload_level"]
         bg = level_color(level)
-        avg = round(row["total_score"] / row["project_count"], 2) if row["project_count"] > 0 else 0
-        hr  = high_risk_count.get(row["project_manager"], 0)
-        vals = [row["project_manager"], row["ps_region"], row["project_count"],
+        act  = row.get("active_project_count", 0)
+        tot  = row.get("total_project_count", 0)
+        avg  = round(row["total_score"] / act, 2) if act > 0 else 0
+        hr   = high_risk_count.get(row["project_manager"], 0)
+        vals = [row["project_manager"], row["ps_region"], tot, act,
                 row["total_score"], level, hr, avg]
         for col, val in enumerate(vals, 1):
             c = ws_con.cell(r, col, val)
@@ -560,11 +590,19 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
     ws_phase.sheet_properties.tabColor = "1ABC9C"
 
     phase_order = [
-        "02. Configuration", "01. Requirements and Design", "03. Enablement/Training",
-        "04. UAT", "05. Prep for Go-Live", "06. Go-Live",
-        "00. Onboarding", "07. Data Migration", "08. Ready for Support Transition",
-        "09. Phase 2 Scoping", "10. Complete/Pending Final Billing",
-        "11. On Hold", "12. PS Review",
+        "00. Onboarding",
+        "01. Requirements and Design",
+        "02. Configuration",
+        "03. Enablement/Training",
+        "04. UAT",
+        "05. Prep for Go-Live",
+        "06. Go-Live",
+        "07. Data Migration",
+        "08. Ready for Support Transition",
+        "09. Phase 2 Scoping",
+        "10. Complete/Pending Final Billing",
+        "11. On Hold",
+        "12. PS Review",
     ]
 
     active_only = scored_df[scored_df["active"]].copy()
@@ -573,9 +611,19 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         existing_phases = [p for p in phase_order if p in pivot.columns]
         other_phases    = [p for p in pivot.columns if p not in phase_order]
         pivot = pivot[existing_phases + other_phases]
-        pivot["Total Projects"] = pivot.sum(axis=1)
-        pivot["Total Score"]    = active_only.groupby("project_manager")["weighted_score"].sum().round(1)
-        pivot["Workload Level"] = pivot["Total Score"].apply(lambda s: workload_level(s)[0])
+        # Total projects per consultant (all FF excl complete)
+        if "total_project" in scored_df.columns:
+            total_only = scored_df[scored_df["total_project"]]
+            total_proj_counts = total_only.groupby("project_manager")["project_id"].nunique().rename("Total Projects")
+        else:
+            total_proj_counts = active_only.groupby("project_manager")["project_id"].nunique().rename("Total Projects")
+
+        active_proj_counts = active_only.groupby("project_manager")["project_id"].nunique().rename("Active Projects")
+
+        pivot["Total Projects"]  = pivot.index.map(total_proj_counts).fillna(0).astype(int)
+        pivot["Active Projects"] = pivot.index.map(active_proj_counts).fillna(0).astype(int)
+        pivot["Total Score"]     = active_only.groupby("project_manager")["weighted_score"].sum().round(1)
+        pivot["Workload Level"]  = pivot["Total Score"].apply(lambda s: workload_level(s)[0])
         pivot = pivot.sort_values("Total Score", ascending=False)
         pivot = pivot.reset_index()
 
@@ -628,48 +676,48 @@ def main():
         <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
         <style>
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
-            h1,h2,h3,.stMarkdown,label,button { font-family: 'Manrope', sans-serif !important; }
+            h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
         </style>
-        <div style='background:#1e2c63;padding:24px 32px;border-radius:8px;margin-bottom:24px'>
-            <div style='font-size:11px;color:#a0aec0;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;font-family:Manrope,sans-serif'>
-                Professional Services
-            </div>
-            <h1 style='color:#fff;font-family:Manrope,sans-serif;margin:0;font-size:26px;font-weight:700'>
-                Workload Health Score
-            </h1>
-            <p style='color:#a0aec0;font-family:Manrope,sans-serif;margin:8px 0 0;font-size:13px'>
+        <div style='background-color:#1e2c63;padding:24px 32px;border-radius:8px;margin-bottom:24px;font-family:Manrope,sans-serif'>
+            <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Workload Health Score</h1>
+            <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>
                 Weighted project scoring across active Fixed Fee engagements — by consultant and phase
+            </p>
+            <p style='color:#8ab0c0;margin:8px 0 0 0;font-size:12px;font-family:Manrope,sans-serif;line-height:1.6;'>
+                Each active FF project is scored by <b>phase weight</b> × <b>client health multiplier</b> × <b>risk multiplier</b>.
+                Thresholds: <b>Low</b> 1–25 pts &nbsp;·&nbsp; <b>Medium</b> 26–60 pts &nbsp;·&nbsp; <b>High</b> 61+ pts (flag to Director).
+                T&amp;M projects and inactive phases (On Hold / Complete) are excluded from scoring.
             </p>
         </div>
     """, unsafe_allow_html=True)
 
     # Phase weight reference
-    with st.expander("View phase weights & scoring model"):
+    with st.expander("📋 View phase weights & scoring model"):
         weight_df = pd.DataFrame([
-            {"Phase": k.title(), "Weight (pts)": v,
-             "Thresholds": "Low: 1–25 · Medium: 26–60 · High: 61+"}
+            {"Phase": k.title(), "Weight (pts)": v}
             for k, v in PHASE_WEIGHTS.items()
         ])
-        weight_df["Thresholds"] = ["Low: 1–25 · Medium: 26–60 · High: 61+"] + [""] * (len(weight_df) - 1)
         st.dataframe(weight_df, hide_index=True, use_container_width=True)
 
-    st.markdown("---")
-
     # ── Uploads ───────────────────────────────────────────────────────────────
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Step 1 — Upload Smartsheets DRS Export**")
-        st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
-        ss_file = st.file_uploader("Smartsheets export", type=["xlsx", "xls", "csv"],
-                                   key="ss_upload", label_visibility="collapsed")
-    with col2:
-        st.markdown("**Step 2 — Upload NetSuite Time Detail Export** *(optional — provides PM assignment)*")
-        st.caption("Used to join Project Manager to each project via Project ID")
-        ns_file = st.file_uploader("NetSuite export", type=["xlsx", "xls", "csv"],
-                                   key="ns_upload", label_visibility="collapsed")
+    st.subheader("Step 1 — Upload Smartsheets DRS Export")
+    st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
+    ss_file = st.file_uploader(
+        "Drop your file here or click to browse",
+        type=["xlsx", "xls", "csv"],
+        key="ss_upload"
+    )
+
+    st.subheader("Step 2 — Upload NetSuite Time Detail Export *(optional — provides PM assignment)*")
+    st.caption("Used to join Project Manager to each project via Project ID")
+    ns_file = st.file_uploader(
+        "Drop your file here or click to browse",
+        type=["xlsx", "xls", "csv"],
+        key="ns_upload"
+    )
 
     if not ss_file:
-        st.info("Upload your Smartsheets DRS export to generate the Workload Health Score report.")
+        st.info("👆 Upload your Smartsheets DRS export to continue.")
         return
 
     # ── Process ───────────────────────────────────────────────────────────────
@@ -684,31 +732,35 @@ def main():
         st.exception(e)
         return
 
-    # ── Summary metrics ───────────────────────────────────────────────────────
+    st.success("✅ Processing complete!")
+
+    # ── Metrics ───────────────────────────────────────────────────────────────
     total    = len(consultant_df)
     high     = len(consultant_df[consultant_df["workload_level"] == "High"])
     medium   = len(consultant_df[consultant_df["workload_level"] == "Medium"])
     low      = len(consultant_df[consultant_df["workload_level"] == "Low"])
-    projects = scored_df[scored_df["active"]]["project_id"].nunique()
+    active_projects = scored_df[scored_df["active"]]["project_id"].nunique()
+    total_projects  = scored_df[scored_df["total_project"]]["project_id"].nunique() if "total_project" in scored_df.columns else active_projects
+
+    st.markdown(f"<div style='font-size:13px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:12px'>Data as of <strong style='color:#ffffff'>{as_of}</strong></div>", unsafe_allow_html=True)
+
+    def metric_card(label, value, pill_txt=None, pill_fg=None):
+        pill = ""
+        if pill_txt and pill_fg:
+            pill = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background-color:{pill_fg}33;font-size:13px;font-family:Manrope,sans-serif;color:{pill_fg}'>&#8593; {pill_txt}</div>"
+        return f"<div style='font-size:14px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div><div style='font-size:36px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>{pill}"
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    for col, label, val, color in [
-        (m1, "Consultants",      total,    "#1e2c63"),
-        (m2, "Active Projects",  projects, "#1e2c63"),
-        (m3, "High Workload",    high,     "#E74C3C"),
-        (m4, "Medium Workload",  medium,   "#F39C12"),
-        (m5, "Low Workload",     low,      "#27AE60"),
-    ]:
-        col.markdown(f"""
-        <div style='background:#f8f9fa;border-radius:8px;padding:16px;text-align:center'>
-            <div style='font-size:11px;color:#718096;font-family:Manrope,sans-serif'>{label}</div>
-            <div style='font-size:28px;font-weight:700;color:{color};font-family:Manrope,sans-serif'>{val}</div>
-        </div>""", unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("Consultants Scored",  f"{total:,}"), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Total FF Projects",   f"{total_projects:,}"), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Active Projects",     f"{active_projects:,}", "Excl. On Hold", "#4472C4"), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("High Workload",       f"{high}",  "At or over capacity", "#e74c3c"), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Medium Workload",     f"{medium}", "Monitor for changes", "#f39c12"), unsafe_allow_html=True)
 
     if missing_pm > 0:
-        st.warning(f"{missing_pm} project(s) could not be assigned a PM — Project ID not found in NetSuite export. Update NS to include these in consultant scoring.")
+        st.warning(f"⚠️ {missing_pm} project(s) could not be assigned a PM — Project ID not found in NetSuite export. Update NS to include these in consultant scoring.")
 
-    st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+    st.markdown("---")
 
     # ── Preview tabs ──────────────────────────────────────────────────────────
     tab1, tab2, tab3 = st.tabs(["By Consultant", "By Project", "At-Risk"])
@@ -736,9 +788,9 @@ def main():
     with tab3:
         at_risk = scored_df[
             (scored_df["active"]) & (
-                (scored_df.get("risk_level",      pd.Series(dtype=str)).str.lower().str.contains("high",     na=False)) |
-                (scored_df.get("schedule_health", pd.Series(dtype=str)).str.lower().str.contains("behind",   na=False)) |
-                (scored_df.get("rag",             pd.Series(dtype=str)).str.lower().str.contains("red",      na=False))
+                (scored_df.get("risk_level",      pd.Series(dtype=str)).str.lower().str.contains("high",   na=False)) |
+                (scored_df.get("schedule_health", pd.Series(dtype=str)).str.lower().str.contains("behind", na=False)) |
+                (scored_df.get("rag",             pd.Series(dtype=str)).str.lower().str.contains("red",    na=False))
             )
         ]
         if len(at_risk) == 0:
@@ -752,10 +804,11 @@ def main():
 
     # ── Download ──────────────────────────────────────────────────────────────
     st.markdown("---")
+    st.subheader("Step 3 — Generate Report")
     excel_buf = build_excel(scored_df, consultant_df, missing_pm, as_of)
     fname = f"Workload_Health_Score_{datetime.today().strftime('%Y%m%d')}.xlsx"
     st.download_button(
-        label="Download Workload Health Score Report",
+        label="⬇️  Download Workload Health Score Report",
         data=excel_buf,
         file_name=fname,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
