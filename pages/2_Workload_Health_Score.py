@@ -297,6 +297,11 @@ def load_ss(file):
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip()
 
+    # Filter T&M at source — keeps all downstream counts consistent
+    if "project_type" in df.columns:
+        tm_mask = df["project_type"].str.lower().str.contains("t&m|time.*material", na=False, regex=True)
+        df = df[~tm_mask].copy()
+
     return df, milestone_present
 
 
@@ -332,18 +337,7 @@ def score_projects(ss_df, ns_df):
     """
     df = ss_df.copy()
 
-    # Filter FF only — exclude T&M
-    # Primary filter: project_type from SS
-    if "project_type" in df.columns:
-        tm_mask = df["project_type"].str.lower().str.contains("t&m|time.*material", na=False, regex=True)
-        df = df[~tm_mask].copy()
-
-    # Secondary filter: if NS billing_type is available, also exclude rows confirmed as T&M
-    if ns_df is not None and "project_id" in ns_df.columns and "billing_type" in ns_df.columns:
-        bt_map = ns_df.dropna(subset=["billing_type"]).drop_duplicates("project_id").set_index("project_id")["billing_type"]
-        df["ns_billing_type"] = df["project_id"].map(bt_map).fillna("")
-        tm_ns_mask = df["ns_billing_type"].str.contains("t&m|time.*material|time and material", na=False, regex=True)
-        df = df[~tm_ns_mask].copy()
+    # T&M already filtered at load_ss — no further filtering needed here
 
     # Exclude inactive phases from score (still kept in data, score = 0)
     def is_active(phase):
@@ -422,9 +416,8 @@ def build_consultant_summary(scored_df):
         role=("role", "first"),
     ).reset_index()
 
-    grp = grp.join(active_counts, on="project_manager").join(total_counts, on="project_manager")
-    grp["active_project_count"] = grp["active_project_count"].fillna(0).astype(int)
-    grp["total_project_count"]  = grp["total_project_count"].fillna(0).astype(int)
+    grp["active_project_count"] = grp["project_manager"].map(active_counts).fillna(0).astype(int)
+    grp["total_project_count"]  = grp["project_manager"].map(total_counts).fillna(0).astype(int)
     grp["total_score"] = grp["total_score"].round(1)
     grp["workload_level"] = grp["total_score"].apply(lambda s: workload_level(s)[0])
     grp = grp.sort_values("total_score", ascending=False).reset_index(drop=True)
@@ -734,7 +727,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
     ws_risk.freeze_panes = "A4"
 
     # ── Tab 5: Phase Distribution Matrix ─────────────────────────────────────
-    ws_phase = wb.create_sheet("Phase Distribution")
+    ws_phase = wb.create_sheet("FF Phase Distribution")
     ws_phase.sheet_properties.tabColor = "1ABC9C"
 
     phase_order = [
@@ -795,6 +788,60 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
             ws_phase.row_dimensions[r].height = 16
         ws_phase.freeze_panes = "B3"
 
+        # ── Weight key ────────────────────────────────────────────────────────
+        key_start = 3 + len(pivot) + 3
+        ws_phase.merge_cells(start_row=key_start, start_column=1,
+                             end_row=key_start, end_column=len(phase_headers))
+        kc = ws_phase.cell(key_start, 1, "PHASE WEIGHT KEY")
+        kc.font = Font(name="Manrope", size=10, bold=True, color="FFFFFF")
+        kc.fill = PatternFill("solid", fgColor=NAVY)
+        ws_phase.row_dimensions[key_start].height = 20
+
+        key_headers = ["Phase", "Weight (pts)", "Rationale", "Workload Impact"]
+        for ci, h in enumerate(key_headers, 1):
+            c = ws_phase.cell(key_start + 1, ci, h)
+            c.font = Font(name="Manrope", size=9, bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor=TEAL)
+            c.alignment = Alignment(horizontal="center")
+        ws_phase.row_dimensions[key_start + 1].height = 16
+
+        key_data = [
+            ("00. Onboarding",                    1.0,  "Low daily effort; mostly scheduling",          "Low"),
+            ("01. Requirements and Design",        2.5,  "Significant effort; analysis-intensive",       "High"),
+            ("02. Configuration",                  3.0,  "Highest daily effort; deep client interaction","High"),
+            ("03. Enablement/Training",            2.0,  "Preparation-intensive; time-boxed",            "Medium"),
+            ("04. UAT",                            1.5,  "Variable on client responsiveness",            "Medium"),
+            ("05. Prep for Go-Live",               1.5,  "Coordination-heavy; moderate effort",          "Medium"),
+            ("06. Go-Live",                        1.5,  "Short duration; high intensity",               "Medium"),
+            ("07. Data Migration",                 1.0,  "Rare in FF; placeholder weight",               "Low"),
+            ("08. Ready for Support Transition",   0.5,  "Handoff; low effort",                          "Low"),
+            ("09. Phase 2 Scoping",                1.0,  "Light engagement; similar to Onboarding",      "Low"),
+            ("10. Complete/Pending Final Billing", 0.0,  "No active delivery effort",                    "None"),
+            ("11. On Hold",                        0.25, "Minimal effort; occupies mental overhead",     "Minimal"),
+            ("12. PS Review",                      0.25, "Internal review; low active effort",           "Minimal"),
+        ]
+        level_colors = {"High": "FDECED", "Medium": "FEF9E7", "Low": "EAF9F1",
+                        "Minimal": LTGRAY, "None": LTGRAY}
+
+        for ki, (phase, weight, rationale, impact) in enumerate(key_data):
+            r = key_start + 2 + ki
+            bg = level_colors.get(impact, WHITE)
+            for ci, val in enumerate([phase, weight, rationale, impact], 1):
+                c = ws_phase.cell(r, ci, val)
+                c.font = Font(name="Manrope", size=9,
+                              color="1e2c63" if ci < 4 else
+                              {"High":"E74C3C","Medium":"F39C12","Low":"27AE60"}.get(impact,"555555"))
+                c.fill = PatternFill("solid", fgColor=bg)
+                c.alignment = Alignment(horizontal="center" if ci == 2 else "left",
+                                        wrap_text=(ci == 3))
+                c.border = border_thin()
+            ws_phase.row_dimensions[r].height = 16
+
+        ws_phase.column_dimensions["A"].width = 32
+        ws_phase.column_dimensions["B"].width = 14
+        ws_phase.column_dimensions["C"].width = 42
+        ws_phase.column_dimensions["D"].width = 14
+
     # ── Tab 6: No PM Assigned ─────────────────────────────────────────────────
     ws_nopm = wb.create_sheet("No PM Assigned")
     ws_nopm.sheet_properties.tabColor = "F39C12"
@@ -848,7 +895,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
 
     # Tab order
     tab_order = ["Dashboard", "By Consultant", "By Project",
-                 "At-Risk Projects", "Phase Distribution", "No PM Assigned", "Processed Data"]
+                 "At-Risk Projects", "FF Phase Distribution", "No PM Assigned", "Processed Data"]
     wb._sheets = sorted(wb._sheets, key=lambda s: tab_order.index(s.title) if s.title in tab_order else 99)
 
     buf = io.BytesIO()
