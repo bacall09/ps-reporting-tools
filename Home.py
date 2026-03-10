@@ -69,7 +69,7 @@ st.markdown("""
         [data-theme="dark"] .tool-title     { color: #c5d0f0; }
         [data-theme="dark"] .tool-desc      { color: #9aa3b8; }
         [data-theme="dark"] .tool-badge     { color: #7da9f0; background: #1e2c4a; }
-        [data-theme="dark"] .stPageLink a   { background: #4472C4; color: #ffffff !important; }
+        [data-theme="dark"] .stPageLink a   { color: #4da6ff !important; background: none !important; }
         [data-theme="dark"] .stPageLink a:hover { background: #5a8ad4 !important; }
 
         /* Streamlit sets this on <html> or body in dark mode */
@@ -96,9 +96,9 @@ st.markdown("""
             titles.forEach(t => t.style.color = '#c5d0f0');
             descs.forEach(d => d.style.color = '#9aa3b8');
             badges.forEach(b => { b.style.color = '#7da9f0'; b.style.background = '#1e2c4a'; });
-            links.forEach(l => { l.style.background = '#4472C4'; l.style.color = '#ffffff'; });
+            links.forEach(l => { l.style.color = '#4da6ff'; l.style.background = 'none'; });
         } else {
-            links.forEach(l => { l.style.background = '#1e2c63'; l.style.color = '#ffffff'; });
+            links.forEach(l => { l.style.color = '#4da6ff'; l.style.background = 'none'; });
         }
     }
     if (document.readyState === 'loading') {
