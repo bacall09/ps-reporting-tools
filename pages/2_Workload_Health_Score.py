@@ -125,12 +125,12 @@ PS_REGION_MAP = {
 # ── Phase weights ─────────────────────────────────────────────────────────────
 PHASE_WEIGHTS = {
     "00. onboarding":                    1.0,
-    "01. requirements and design":       2.5,
-    "02. configuration":                 3.0,
-    "03. enablement/training":           2.0,
-    "04. uat":                           1.5,
-    "05. prep for go-live":              1.5,
-    "06. go-live":                       1.5,
+    "01. requirements and design":       1.0,
+    "02. configuration":                 2.0,
+    "03. enablement/training":           2.5,
+    "04. uat":                           3.0,
+    "05. prep for go-live":              1.0,
+    "06. go-live":                       3.0,
     "07. data migration":                1.0,
     "08. ready for support transition":  0.5,
     "09. phase 2 scoping":               1.0,
@@ -326,7 +326,23 @@ def load_ns(file):
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip()
 
-    return df
+    # Extract min date from NS export for "no time logged since" message
+    ns_min_date = None
+    # Re-read to get date column (not in needed subset above)
+    try:
+        if file.name.endswith(".csv"):
+            df_full = pd.read_csv(file)
+        else:
+            file.seek(0)
+            df_full = pd.read_excel(file)
+        df_full.columns = df_full.columns.str.strip()
+        date_col = next((c for c in df_full.columns if c.lower() == "date"), None)
+        if date_col:
+            ns_min_date = pd.to_datetime(df_full[date_col], errors="coerce").min()
+    except Exception:
+        pass
+
+    return df, ns_min_date
 
 
 # ── Scoring engine ────────────────────────────────────────────────────────────
@@ -388,7 +404,7 @@ def score_projects(ss_df, ns_df):
 
     df["weighted_score"] = df.apply(
         lambda r: round(r["phase_weight"] * r["client_health_mult"] * r["risk_mult"], 2)
-        if r["active"] else 0.0, axis=1
+        if (r["active"] and not r.get("pm_flag", False)) else 0.0, axis=1
     )
 
     # PS Region from employee lookup (consultant = project_manager from NS)
@@ -402,7 +418,8 @@ def score_projects(ss_df, ns_df):
 
 def build_consultant_summary(scored_df):
     """Aggregate scored projects by consultant."""
-    active = scored_df[scored_df["active"]].copy()
+    # Exclude projects with no PM match — functionally inactive for scoring purposes
+    active = scored_df[scored_df["active"] & ~scored_df.get("pm_flag", pd.Series(False, index=scored_df.index))].copy()
     total  = scored_df[scored_df["total_project"]].copy() if "total_project" in scored_df.columns else scored_df.copy()
 
     # Active project count (excludes on-hold by phase or status)
@@ -428,7 +445,7 @@ def build_consultant_summary(scored_df):
 
 
 # ── Excel builder ─────────────────────────────────────────────────────────────
-def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
+def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=None):
     wb = Workbook()
     wb.remove(wb.active)
 
@@ -595,9 +612,13 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
 
     # No PM flag
     if missing_pm_count > 0:
+        if ns_min_date is not None and pd.notna(ns_min_date):
+            no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
+            flag_msg = f"⚠  {missing_pm_count} project(s): PM assignment not found — no time logged since {no_time_since}. See 'PM Assignment Not Found' tab."
+        else:
+            flag_msg = f"⚠  {missing_pm_count} project(s): PM assignment not found in NetSuite. See 'PM Assignment Not Found' tab."
         ws_dash.merge_cells(start_row=next_row, start_column=2, end_row=next_row, end_column=7)
-        fc = ws_dash.cell(next_row, 2,
-            f"⚠  {missing_pm_count} project(s) have no PM assigned in NetSuite — see 'No PM Assigned' tab")
+        fc = ws_dash.cell(next_row, 2, flag_msg)
         fc.font      = Font(name="Manrope", size=9, color="7D6608")
         fc.fill      = PatternFill("solid", fgColor="FEF9E7")
         fc.alignment = Alignment(wrap_text=True)
@@ -638,52 +659,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         ws_con.row_dimensions[r].height = 16
     ws_con.freeze_panes = "A3"
 
-    # ── Tab 3: By Project ─────────────────────────────────────────────────────
-    ws_proj = wb.create_sheet("By Project")
-    ws_proj.sheet_properties.tabColor = "8E44AD"
-
-    proj_base = ["Project", "Project ID", "Project Type", "Phase", "Territory",
-                 "Project Manager", "PS Region", "Status", "Overall RAG",
-                 "Phase Weight", "Client Health Mult", "Risk Mult", "Weighted Score",
-                 "Schedule Health", "Risk Level", "Client Responsiveness", "Client Sentiment",
-                 "Go Live Date", "% Complete", "Active"]
-    proj_widths = [38, 12, 22, 28, 12, 24, 12, 14, 12, 12, 16, 10, 14, 18, 12, 22, 18, 14, 10, 8]
-
-    write_title(ws_proj, "WORKLOAD HEALTH SCORE — By Project (Fixed Fee Active)", len(proj_base))
-    style_header(ws_proj, 2, proj_base, "8E44AD")
-    ws_proj.auto_filter.ref = f"A2:{get_column_letter(len(proj_base))}2"
-    for i, w in enumerate(proj_widths, 1):
-        ws_proj.column_dimensions[get_column_letter(i)].width = w
-
-    proj_sorted = scored_df.sort_values(["project_manager", "weighted_score"], ascending=[True, False])
-
-    for r_idx, (_, row) in enumerate(proj_sorted.iterrows()):
-        r = 3 + r_idx
-        level_bg = level_color(workload_level(row.get("weighted_score", 0))[0])
-        rag_bg   = rag_color(row.get("rag", ""))
-
-        def gv(col): return row.get(col, "") if pd.notna(row.get(col, "")) else ""
-
-        vals = [
-            gv("project_name"), gv("project_id"), gv("project_type"), gv("phase"),
-            gv("territory"), gv("project_manager"), gv("ps_region"),
-            gv("status"), gv("rag"),
-            gv("phase_weight"), gv("client_health_mult"), gv("risk_mult"), gv("weighted_score"),
-            gv("schedule_health"), gv("risk_level"),
-            gv("client_responsiveness"), gv("client_sentiment"),
-            gv("go_live_date").strftime("%Y-%m-%d") if pd.notna(gv("go_live_date")) and hasattr(gv("go_live_date"), "strftime") else gv("go_live_date"),
-            gv("pct_complete"),
-            "Yes" if row.get("active") else "No",
-        ]
-        for col, val in enumerate(vals, 1):
-            c = ws_proj.cell(r, col, val)
-            bg = rag_bg if col == 9 else level_bg if col == 13 else LTGRAY if r_idx % 2 == 0 else WHITE
-            style_cell(c, bg, align="center" if col > 2 else "left")
-            c.border = border_thin()
-        ws_proj.row_dimensions[r].height = 16
-    ws_proj.freeze_panes = "A3"
-
-    # ── Tab 4: At-Risk ────────────────────────────────────────────────────────
+    # ── Tab 3: At-Risk ────────────────────────────────────────────────────────
     ws_risk = wb.create_sheet("At-Risk Projects")
     ws_risk.sheet_properties.tabColor = RED
 
@@ -806,19 +782,19 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         ws_phase.row_dimensions[key_start + 1].height = 16
 
         key_data = [
-            ("00. Onboarding",                    1.0,  "Low daily effort; mostly scheduling",          "Low"),
-            ("01. Requirements and Design",        2.5,  "Significant effort; analysis-intensive",       "High"),
-            ("02. Configuration",                  3.0,  "Highest daily effort; deep client interaction","High"),
-            ("03. Enablement/Training",            2.0,  "Preparation-intensive; time-boxed",            "Medium"),
-            ("04. UAT",                            1.5,  "Variable on client responsiveness",            "Medium"),
-            ("05. Prep for Go-Live",               1.5,  "Coordination-heavy; moderate effort",          "Medium"),
-            ("06. Go-Live",                        1.5,  "Short duration; high intensity",               "Medium"),
-            ("07. Data Migration",                 1.0,  "Rare in FF; placeholder weight",               "Low"),
-            ("08. Ready for Support Transition",   0.5,  "Handoff; low effort",                          "Low"),
-            ("09. Phase 2 Scoping",                1.0,  "Light engagement; similar to Onboarding",      "Low"),
-            ("10. Complete/Pending Final Billing", 0.0,  "No active delivery effort",                    "None"),
-            ("11. On Hold",                        0.25, "Minimal effort; occupies mental overhead",     "Minimal"),
-            ("12. PS Review",                      0.25, "Internal review; low active effort",           "Minimal"),
+            ("00. Onboarding",                    1.0,  "Low daily effort; mostly scheduling",           "Low"),
+            ("01. Requirements and Design",        1.0,  "Significant effort; analysis-intensive",        "Medium"),
+            ("02. Configuration",                  2.0,  "Highest daily effort; deep client interaction", "High"),
+            ("03. Enablement/Training",            2.5,  "Preparation-intensive; time-boxed",             "High"),
+            ("04. UAT",                            3.0,  "Variable on client responsiveness",             "High"),
+            ("05. Prep for Go-Live",               1.0,  "Coordination-heavy; moderate effort",           "Medium"),
+            ("06. Go-Live",                        3.0,  "Short duration; high intensity",                "Medium"),
+            ("07. Data Migration",                 1.0,  "Rare in FF; placeholder weight",                "Low"),
+            ("08. Ready for Support Transition",   0.5,  "Handoff; low effort",                           "Low"),
+            ("09. Phase 2 Scoping",                1.0,  "Light engagement; similar to Onboarding",       "Low"),
+            ("10. Complete/Pending Final Billing", 0.0,  "No active delivery effort",                     "None"),
+            ("11. On Hold",                        0.25, "Minimal effort; occupies mental overhead",      "Minimal"),
+            ("12. PS Review",                      0.25, "Internal review; low active effort",            "Minimal"),
         ]
         level_colors = {"High": "FDECED", "Medium": "FEF9E7", "Low": "EAF9F1",
                         "Minimal": LTGRAY, "None": LTGRAY}
@@ -843,18 +819,24 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         ws_phase.column_dimensions["D"].width = 14
 
     # ── Tab 6: No PM Assigned ─────────────────────────────────────────────────
-    ws_nopm = wb.create_sheet("No PM Assigned")
+    ws_nopm = wb.create_sheet("PM Assignment Not Found")
     ws_nopm.sheet_properties.tabColor = "F39C12"
 
     no_pm_df = scored_df[scored_df["pm_flag"] == True].copy() if "pm_flag" in scored_df.columns else pd.DataFrame()
 
-    nopm_headers = ["Project", "Project ID", "Project Type", "Phase", "Territory",
-                    "Status", "Overall RAG", "Weighted Score", "Go Live Date"]
-    nopm_widths  = [38, 12, 22, 28, 12, 14, 12, 14, 14]
+    # Build "no time since" note
+    if ns_min_date is not None and pd.notna(ns_min_date):
+        no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
+        nopm_note = f"PM assignment not found in NetSuite — no time logged since {no_time_since}. Confirm PM assignment in NS."
+    else:
+        nopm_note = "PM assignment not found in NetSuite export. Update NS to include these projects in consultant scoring."
 
-    write_title(ws_nopm, "NO PM ASSIGNED — Projects Not Found in NetSuite Export",
-                len(nopm_headers),
-                "Update NetSuite to assign a Project Manager so these projects are included in consultant scoring.")
+    nopm_headers = ["Project", "Project ID", "Project Type", "Phase", "Territory",
+                    "Status", "Overall RAG", "Weighted Score", "Go Live Date", "Note"]
+    nopm_widths  = [38, 12, 22, 28, 12, 14, 12, 14, 14, 52]
+
+    write_title(ws_nopm, "PM ASSIGNMENT NOT FOUND — No Time Logged in NetSuite Export",
+                len(nopm_headers), nopm_note)
     style_header(ws_nopm, 3, nopm_headers, "F39C12")
     ws_nopm.auto_filter.ref = f"A3:{get_column_letter(len(nopm_headers))}3"
     for i, w in enumerate(nopm_widths, 1):
@@ -867,7 +849,8 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
             go_live = gv("go_live_date")
             go_live_str = go_live.strftime("%Y-%m-%d") if pd.notna(go_live) and hasattr(go_live, "strftime") else go_live
             vals = [gv("project_name"), gv("project_id"), gv("project_type"), gv("phase"),
-                    gv("territory"), gv("status"), gv("rag"), gv("weighted_score"), go_live_str]
+                    gv("territory"), gv("status"), gv("rag"), gv("weighted_score"), go_live_str,
+                    nopm_note]
             for col, val in enumerate(vals, 1):
                 c = ws_nopm.cell(r, col, val)
                 style_cell(c, "FEF9E7" if r_idx % 2 == 0 else WHITE,
@@ -894,8 +877,8 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         ws_raw.row_dimensions[r].height = 14
 
     # Tab order
-    tab_order = ["Dashboard", "By Consultant", "By Project",
-                 "At-Risk Projects", "FF Phase Distribution", "No PM Assigned", "Processed Data"]
+    tab_order = ["Dashboard", "By Consultant", "FF Phase Distribution",
+                 "At-Risk Projects", "PM Assignment Not Found", "Processed Data"]
     wb._sheets = sorted(wb._sheets, key=lambda s: tab_order.index(s.title) if s.title in tab_order else 99)
 
     buf = io.BytesIO()
@@ -957,7 +940,7 @@ def main():
     # ── Process ───────────────────────────────────────────────────────────────
     try:
         ss_df, milestone_cols = load_ss(ss_file)
-        ns_df = load_ns(ns_file) if ns_file else None
+        ns_df, ns_min_date = load_ns(ns_file) if ns_file else (None, None)
         scored_df = score_projects(ss_df, ns_df)
         consultant_df, missing_pm = build_consultant_summary(scored_df)
         as_of = datetime.today().strftime("%B %d, %Y")
@@ -993,12 +976,16 @@ def main():
 
     st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
     if missing_pm > 0:
-        st.warning(f"⚠️ {missing_pm} project(s) could not be assigned a PM — Project ID not found in NetSuite export. Update NS to include these in consultant scoring.")
+        if ns_min_date is not None and pd.notna(ns_min_date):
+            no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
+            st.warning(f"⚠️ {missing_pm} project(s): PM assignment not found — no time logged since {no_time_since}. See 'PM Assignment Not Found' tab in the report.")
+        else:
+            st.warning(f"⚠️ {missing_pm} project(s): PM assignment not found in NetSuite export. See 'PM Assignment Not Found' tab.")
 
     st.markdown("---")
 
     # ── Preview tabs ──────────────────────────────────────────────────────────
-    tab1, tab2, tab3 = st.tabs(["By Consultant", "By Project", "At-Risk"])
+    tab1, tab2 = st.tabs(["By Consultant", "At-Risk"])
 
     with tab1:
         display_con = consultant_df.rename(columns={
@@ -1013,16 +1000,6 @@ def main():
         st.dataframe(display_con, hide_index=True, use_container_width=True)
 
     with tab2:
-        proj_display_cols = ["project_name", "project_id", "project_type", "phase",
-                             "project_manager", "territory", "weighted_score",
-                             "schedule_health", "risk_level", "rag", "active"]
-        avail = [c for c in proj_display_cols if c in scored_df.columns]
-        st.dataframe(
-            scored_df[avail].sort_values("weighted_score", ascending=False),
-            hide_index=True, use_container_width=True
-        )
-
-    with tab3:
         at_risk = scored_df[
             (scored_df["active"]) & (
                 (scored_df.get("risk_level",      pd.Series(dtype=str)).str.lower().str.contains("high",   na=False)) |
@@ -1042,7 +1019,7 @@ def main():
     # ── Download ──────────────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Step 3 — Generate Report")
-    excel_buf = build_excel(scored_df, consultant_df, missing_pm, as_of)
+    excel_buf = build_excel(scored_df, consultant_df, missing_pm, as_of, ns_min_date)
     fname = f"Workload_Health_Score_{datetime.today().strftime('%Y%m%d')}.xlsx"
     st.download_button(
         label="⬇️  Download Workload Health Score Report",
