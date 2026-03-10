@@ -237,7 +237,7 @@ def hex_fill(hex_color):
 
 def style_cell(cell, bg, bold=False, align="left", font_color="000000", size=10):
     cell.fill = hex_fill(bg)
-    cell.font = Font(bold=bold, color=font_color, name="Calibri", size=size)
+    cell.font = Font(bold=bold, color=font_color, name="Manrope", size=size)
     cell.alignment = Alignment(horizontal=align, vertical="center", wrap_text=True)
 
 def write_title(ws, title, ncols, subtitle=None):
@@ -610,13 +610,13 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             next_row += 1
         next_row += 1
 
-    # No PM flag
+    # No time booked flag
     if missing_pm_count > 0:
         if ns_min_date is not None and pd.notna(ns_min_date):
             no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            flag_msg = f"⚠  {missing_pm_count} project(s): PM assignment not found — no time logged since {no_time_since}. See 'PM Assignment Not Found' tab."
+            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked since {no_time_since} — see 'PM Assignment Not Found' tab."
         else:
-            flag_msg = f"⚠  {missing_pm_count} project(s): PM assignment not found in NetSuite. See 'PM Assignment Not Found' tab."
+            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked in this NS report period — see 'PM Assignment Not Found' tab."
         ws_dash.merge_cells(start_row=next_row, start_column=2, end_row=next_row, end_column=7)
         fc = ws_dash.cell(next_row, 2, flag_msg)
         fc.font      = Font(name="Manrope", size=9, color="7D6608")
@@ -824,19 +824,22 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
 
     no_pm_df = scored_df[scored_df["pm_flag"] == True].copy() if "pm_flag" in scored_df.columns else pd.DataFrame()
 
-    # Build "no time since" note
+    # Date label for title and subtitle
     if ns_min_date is not None and pd.notna(ns_min_date):
         no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-        nopm_note = f"PM assignment not found in NetSuite — no time logged since {no_time_since}. Confirm PM assignment in NS."
+        nopm_title    = f"NO TIME BOOKED SINCE {no_time_since.upper()} — Projects Not in NetSuite Time Report"
+        nopm_subtitle = (f"These {len(no_pm_df)} project(s) had no time logged in NetSuite on or after "
+                         f"{no_time_since}. Verify if active and confirm consultant assignment.")
     else:
-        nopm_note = "PM assignment not found in NetSuite export. Update NS to include these projects in consultant scoring."
+        nopm_title    = "NO TIME BOOKED — Projects Not Found in NetSuite Time Report"
+        nopm_subtitle = (f"These {len(no_pm_df)} project(s) were not found in the NetSuite time report. "
+                         "Verify if active and confirm consultant assignment.")
 
     nopm_headers = ["Project", "Project ID", "Project Type", "Phase", "Territory",
-                    "Status", "Overall RAG", "Weighted Score", "Go Live Date", "Note"]
-    nopm_widths  = [38, 12, 22, 28, 12, 14, 12, 14, 14, 52]
+                    "Status", "Overall RAG", "Go Live Date"]
+    nopm_widths  = [42, 12, 22, 30, 14, 14, 12, 14]
 
-    write_title(ws_nopm, "PM ASSIGNMENT NOT FOUND — No Time Logged in NetSuite Export",
-                len(nopm_headers), nopm_note)
+    write_title(ws_nopm, nopm_title, len(nopm_headers), nopm_subtitle)
     style_header(ws_nopm, 3, nopm_headers, "F39C12")
     ws_nopm.auto_filter.ref = f"A3:{get_column_letter(len(nopm_headers))}3"
     for i, w in enumerate(nopm_widths, 1):
@@ -849,8 +852,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             go_live = gv("go_live_date")
             go_live_str = go_live.strftime("%Y-%m-%d") if pd.notna(go_live) and hasattr(go_live, "strftime") else go_live
             vals = [gv("project_name"), gv("project_id"), gv("project_type"), gv("phase"),
-                    gv("territory"), gv("status"), gv("rag"), gv("weighted_score"), go_live_str,
-                    nopm_note]
+                    gv("territory"), gv("status"), gv("rag"), go_live_str]
             for col, val in enumerate(vals, 1):
                 c = ws_nopm.cell(r, col, val)
                 style_cell(c, "FEF9E7" if r_idx % 2 == 0 else WHITE,
@@ -859,7 +861,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             ws_nopm.row_dimensions[r].height = 16
     else:
         ws_nopm.merge_cells(start_row=4, start_column=1, end_row=4, end_column=len(nopm_headers))
-        nc = ws_nopm.cell(4, 1, "All projects have a PM assigned in NetSuite.")
+        nc = ws_nopm.cell(4, 1, "All projects have time logged in the NetSuite report.")
         style_cell(nc, "EAF9F1", font_color="27AE60")
 
     ws_nopm.freeze_panes = "A4"
@@ -872,7 +874,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         r = 2 + r_idx
         for col, val in enumerate(row_data.tolist(), 1):
             c = ws_raw.cell(r, col, str(val) if pd.notna(val) else "")
-            c.font      = Font(size=9, name="Calibri")
+            c.font      = Font(size=9, name="Manrope")
             c.alignment = Alignment(horizontal="left")
         ws_raw.row_dimensions[r].height = 14
 
@@ -978,9 +980,9 @@ def main():
     if missing_pm > 0:
         if ns_min_date is not None and pd.notna(ns_min_date):
             no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            st.warning(f"⚠️ {missing_pm} project(s): PM assignment not found — no time logged since {no_time_since}. See 'PM Assignment Not Found' tab in the report.")
+            st.warning(f"⚠️ {missing_pm} project(s) with no time booked since {no_time_since} — see 'PM Assignment Not Found' tab in the report.")
         else:
-            st.warning(f"⚠️ {missing_pm} project(s): PM assignment not found in NetSuite export. See 'PM Assignment Not Found' tab.")
+            st.warning(f"⚠️ {missing_pm} project(s) with no time booked in this NS report period — see 'PM Assignment Not Found' tab.")
 
     st.markdown("---")
 
