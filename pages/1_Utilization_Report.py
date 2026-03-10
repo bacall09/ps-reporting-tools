@@ -1282,7 +1282,7 @@ def build_excel(df, scope_map, consumed):
     ws_dash.row_dimensions[5].height = 22
     hours_tp_d    = df[df["credit_tag"] != "SKIPPED"]["hours"].sum()
     credit_hrs_d  = df[df["credit_tag"].isin(["CREDITED","PARTIAL"])]["credit_hrs"].sum()
-    overrun_hrs_d = df[df["credit_tag"] == "OVERRUN"]["variance_hrs"].sum()
+    overrun_hrs_d = df[df["credit_tag"].isin(["OVERRUN", "PARTIAL"])]["variance_hrs"].sum()
     admin_hrs_d   = df[df["billing_type"].str.lower()=="internal"]["hours"].sum() if "billing_type" in df.columns else 0
     total_rows_d  = len(df[df["credit_tag"] != "SKIPPED"])
     util_pct_d    = credit_hrs_d / hours_tp_d if hours_tp_d > 0 else 0
@@ -1586,7 +1586,7 @@ def main():
         total_overrun  = len(df[df["credit_tag"] == "OVERRUN"])
         hours_this_period = df[df["credit_tag"] != "SKIPPED"]["hours"].sum() if "hours" in df.columns else 0
         total_admin    = df[df["billing_type"].str.lower() == "internal"]["hours"].sum()             if "billing_type" in df.columns else 0
-        total_proj_overrun = df[df["credit_tag"] == "OVERRUN"]["variance_hrs"].sum()             if "variance_hrs" in df.columns else 0
+        total_proj_overrun = df[df["credit_tag"].isin(["OVERRUN", "PARTIAL"])]["variance_hrs"].sum()             if "variance_hrs" in df.columns else 0
 
         credit_pct  = total_credit       / hours_this_period if hours_this_period else 0
         overrun_pct = total_proj_overrun / hours_this_period if hours_this_period else 0
