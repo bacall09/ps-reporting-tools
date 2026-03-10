@@ -24,6 +24,44 @@ GREEN    = "27AE60"
 AMBER    = "F39C12"
 
 # ── Employee / Region config (mirrors utilization report) ─────────────────────
+EMPLOYEE_ROLES = {
+    "Arestarkhov, Yaroslav": "Consultant",
+    "Barrio, Nairobi": "Project Manager",
+    "Bell, Stuart": "Solution Architect",
+    "Carpen, Anamaria": "Consultant",
+    "Centinaje, Rhodechild": "Consultant",
+    "Church, Jason G": "Consultant",
+    "Cloete, Bronwyn": "Consultant",
+    "Cooke, Ellen": "Consultant",
+    "Cruz, Daniel": "Consultant",
+    "DiMarco, Nicole R": "Solution Architect",
+    "Dolha, Madalina": "Consultant",
+    "Finalle-Newton, Jesse": "Consultant",
+    "Gardner, Cheryll L": "Consultant",
+    "Hamilton, Julie C": "Consultant",
+    "Hopkins, Chris": "Consultant",
+    "Hughes, Madalyn": "Project Manager",
+    "Ickler, Georganne": "Consultant",
+    "Isberg, Eric": "Consultant",
+    "Jordanova, Marija": "Consultant",
+    "Lappin, Thomas": "Consultant",
+    "Longalong, Santiago": "Consultant",
+    "Mohammad, Manaan": "Consultant",
+    "Morris, Lisa": "Consultant",
+    "Murphy, Conor": "Solution Architect",
+    "NAQVI, SYED": "Consultant",
+    "Olson, Austin D": "Consultant",
+    "Pallone, Daniel": "Consultant",
+    "Porangada, Suraj": "Project Manager",
+    "Raykova, Silvia": "Consultant",
+    "Selvakumar, Sajithan": "Consultant",
+    "Snee, Stefanie J": "Consultant",
+    "Stone, Matt": "Consultant",
+    "Strauss, John W": "Consultant",
+    "Tuazon, Carol": "Consultant",
+    "Zoric, Ivan": "Consultant",
+}
+
 EMPLOYEE_LOCATION = {
     "Arestarkhov, Yaroslav":  "Czech Republic",
     "Carpen, Anamaria":       "Spain",
@@ -347,6 +385,9 @@ def score_projects(ss_df, ns_df):
 
     # PS Region from employee lookup (consultant = project_manager from NS)
     df["ps_region"] = df["project_manager"].apply(get_ps_region)
+    df["role"] = df["project_manager"].apply(
+        lambda n: EMPLOYEE_ROLES.get(str(n).strip(), "Consultant") if pd.notna(n) else ""
+    )
 
     return df
 
@@ -364,6 +405,7 @@ def build_consultant_summary(scored_df):
     grp = active.groupby("project_manager").agg(
         total_score=("weighted_score", "sum"),
         ps_region=("ps_region", "first"),
+        role=("role", "first"),
     ).reset_index()
 
     grp = grp.join(active_counts, on="project_manager").join(total_counts, on="project_manager")
@@ -386,90 +428,182 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
     # ── Tab 1: Dashboard ──────────────────────────────────────────────────────
     ws_dash = wb.create_sheet("Dashboard")
     ws_dash.sheet_properties.tabColor = NAVY
+    ws_dash.sheet_view.showGridLines = False
 
-    ws_dash.column_dimensions["A"].width = 28
-    ws_dash.column_dimensions["B"].width = 14
-    ws_dash.column_dimensions["C"].width = 14
-    ws_dash.column_dimensions["D"].width = 14
-    ws_dash.column_dimensions["E"].width = 14
+    def _hdr_fill(hex_color):
+        return PatternFill("solid", fgColor=hex_color)
+
+    def dash_label(ws, row, col, text, size=10, bold=False, color="808080"):
+        c = ws.cell(row=row, column=col, value=text)
+        c.font = Font(name="Manrope", size=size, bold=bold, color=color)
+        return c
+
+    def dash_value(ws, row, col, value, fmt=None, size=18, bold=True, color=NAVY):
+        c = ws.cell(row=row, column=col, value=value)
+        c.font = Font(name="Manrope", size=size, bold=bold, color=color)
+        if fmt: c.number_format = fmt
+        return c
+
+    def dash_section(ws, row, col, text, ncols=6):
+        c = ws.cell(row=row, column=col, value=text)
+        c.font = Font(name="Manrope", size=11, bold=True, color="FFFFFF")
+        c.fill = _hdr_fill(NAVY)
+        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col+ncols-1)
+        return c
+
+    def rag_cell_d(ws, row, col, value, fmt=None, status="green"):
+        colors = {"green": "EAF9F1", "yellow": "FEF9E7", "red": "FDECED"}
+        txt    = {"green": "2ECC71", "yellow": "F39C12", "red": "E74C3C"}
+        c = ws.cell(row=row, column=col, value=value)
+        c.font      = Font(name="Manrope", size=14, bold=True, color=txt.get(status, "000000"))
+        c.fill      = PatternFill("solid", fgColor=colors.get(status, "FFFFFF"))
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        if fmt: c.number_format = fmt
+        return c
+
+    # Column widths — buffer cols A and H
+    for col, w in [(1,3),(2,22),(3,18),(4,18),(5,18),(6,18),(7,18),(8,3)]:
+        ws_dash.column_dimensions[get_column_letter(col)].width = w
+    for row in range(1, 55):
+        ws_dash.row_dimensions[row].height = 18
 
     # Title
-    ws_dash.merge_cells("A1:E1")
-    c = ws_dash.cell(1, 1, "WORKLOAD HEALTH SCORE — PS Team Overview")
-    style_cell(c, NAVY, bold=True, font_color=WHITE, size=13)
-    ws_dash.row_dimensions[1].height = 32
+    tc = ws_dash.cell(row=2, column=2, value="Professional Services — Workload Health Score")
+    tc.font = Font(name="Manrope", size=16, bold=True, color="FFFFFF")
+    tc.fill = _hdr_fill(NAVY)
+    ws_dash.merge_cells(start_row=2, start_column=2, end_row=2, end_column=7)
+    ws_dash.row_dimensions[2].height = 30
 
-    ws_dash.merge_cells("A2:E2")
-    c2 = ws_dash.cell(2, 1, f"Fixed Fee active projects only  ·  Data as of {as_of}")
-    style_cell(c2, "EBF5FB", bold=False, font_color="1A5276", size=9)
-    ws_dash.row_dimensions[2].height = 16
+    sc = ws_dash.cell(row=3, column=2, value=f"Data as of {as_of}  ·  Fixed Fee active projects only  ·  T&M excluded")
+    sc.font = Font(name="Manrope", size=10, color="808080")
+    ws_dash.merge_cells(start_row=3, start_column=2, end_row=3, end_column=7)
 
-    # Key metrics row
-    total_consultants  = len(consultant_df)
-    high_count    = len(consultant_df[consultant_df["workload_level"] == "High"])
-    medium_count  = len(consultant_df[consultant_df["workload_level"] == "Medium"])
-    low_count     = len(consultant_df[consultant_df["workload_level"] == "Low"])
+    kc = ws_dash.cell(row=4, column=2,
+        value="Each active FF project is scored: Phase Weight × Client Health Multiplier × Risk Multiplier. "
+              "Thresholds: Low 1–25 pts · Medium 26–60 pts · High 61+ pts (flag to Director). "
+              "Active = not On Hold by phase or status. Total Projects includes On Hold, excludes Complete/Pending Final Billing.")
+    kc.font      = Font(name="Manrope", size=9, italic=True, color="808080")
+    kc.alignment = Alignment(wrap_text=True)
+    ws_dash.merge_cells(start_row=4, start_column=2, end_row=4, end_column=7)
+    ws_dash.row_dimensions[4].height = 30
+
+    # ── Key Metrics ───────────────────────────────────────────────────────────
+    total_consultants = len(consultant_df)
+    high_count   = len(consultant_df[consultant_df["workload_level"] == "High"])
+    medium_count = len(consultant_df[consultant_df["workload_level"] == "Medium"])
+    low_count    = len(consultant_df[consultant_df["workload_level"] == "Low"])
     active_projects = scored_df[scored_df["active"]]["project_id"].nunique()
-    total_projects  = scored_df[scored_df.get("total_project", pd.Series(True, index=scored_df.index))]["project_id"].nunique() if "total_project" in scored_df.columns else active_projects
+    total_projects  = scored_df[scored_df["total_project"]]["project_id"].nunique() if "total_project" in scored_df.columns else active_projects
 
-    ws_dash.row_dimensions[4].height = 18
-    ws_dash.cell(4, 1, "KEY METRICS").font = Font(bold=True, color=NAVY, size=10, name="Calibri")
+    dash_section(ws_dash, 6, 2, "KEY METRICS", ncols=6)
+    ws_dash.row_dimensions[5].height = 22
 
-    metrics = [
-        ("Consultants Scored",  total_consultants, LTGRAY),
-        ("Total FF Projects",   total_projects,    LTGRAY),
-        ("Active Projects",     active_projects,   LTGRAY),
-        ("High Workload",       high_count,        "FDECED"),
-        ("Medium Workload",     medium_count,      "FEF9E7"),
-    ]
-    for col, (label, val, bg) in enumerate(metrics, 1):
-        ws_dash.merge_cells(start_row=5, start_column=col, end_row=5, end_column=col)
-        ws_dash.merge_cells(start_row=6, start_column=col, end_row=6, end_column=col)
-        lc = ws_dash.cell(5, col, label)
-        vc = ws_dash.cell(6, col, val)
-        style_cell(lc, bg, bold=False, align="center", font_color="555555", size=9)
-        style_cell(vc, bg, bold=True,  align="center", font_color=NAVY,     size=16)
-        ws_dash.row_dimensions[5].height = 16
-        ws_dash.row_dimensions[6].height = 36
+    for i, (label, value, fmt, status) in enumerate([
+        ("Consultants Scored", total_consultants, "#,##0", None),
+        ("Total FF Projects",  total_projects,    "#,##0", None),
+        ("Active Projects",    active_projects,   "#,##0", None),
+        ("High Workload",      high_count,   "#,##0", "red"    if high_count   > 0 else "green"),
+        ("Medium Workload",    medium_count, "#,##0", "yellow" if medium_count > 0 else "green"),
+        ("Low Workload",       low_count,    "#,##0", "green"),
+    ]):
+        col = 2 + i
+        dash_label(ws_dash, 7, col, label)
+        if status:
+            rag_cell_d(ws_dash, 8, col, value, fmt=fmt, status=status)
+        else:
+            dash_value(ws_dash, 8, col, value, fmt=fmt, size=14)
+    ws_dash.row_dimensions[8].height = 28
 
-    # Consultant summary table
-    ws_dash.row_dimensions[8].height = 18
-    ws_dash.cell(8, 1, "CONSULTANT WORKLOAD SUMMARY").font = Font(bold=True, color=NAVY, size=10, name="Calibri")
+    # ── Workload by PS Region ─────────────────────────────────────────────────
+    dash_section(ws_dash, 10, 2, "WORKLOAD BY PS REGION", ncols=6)
+    ws_dash.row_dimensions[9].height = 22
 
-    dash_headers = ["Consultant", "PS Region", "Total Projects", "Active Projects", "Weighted Score", "Workload Level"]
-    style_header(ws_dash, 9, dash_headers, TEAL)
-    for col, w in enumerate([28, 14, 16, 16, 16, 16], 1):
-        ws_dash.column_dimensions[get_column_letter(col)].width = w
+    for ci, hdr in enumerate(["PS Region", "Total Projects", "Active Projects",
+                               "Avg Weighted Score", "High Workload", "Consultants"], 2):
+        c = ws_dash.cell(row=11, column=ci, value=hdr)
+        c.font      = Font(name="Manrope", size=9, bold=True, color="FFFFFF")
+        c.fill      = _hdr_fill(TEAL)
+        c.alignment = Alignment(horizontal="center")
 
-    for r_idx, row in consultant_df.iterrows():
-        r = 10 + r_idx
-        level = row["workload_level"]
-        bg = level_color(level)
-        vals = [row["project_manager"], row["ps_region"],
+    region_data = []
+    for region in ["APAC", "EMEA", "NOAM"]:
+        con_r    = consultant_df[consultant_df["ps_region"] == region]
+        if len(con_r) == 0: continue
+        scored_r = scored_df[scored_df["ps_region"] == region]
+        r_total  = scored_r[scored_r["total_project"]]["project_id"].nunique() if "total_project" in scored_df.columns else 0
+        r_active = scored_r[scored_r["active"]]["project_id"].nunique()
+        r_avg    = round(con_r["total_score"].mean(), 1)
+        r_high   = len(con_r[con_r["workload_level"] == "High"])
+        r_cons   = len(con_r)
+        region_data.append((region, r_total, r_active, r_avg, r_high, r_cons))
+
+    for ri, (reg, r_total, r_active, r_avg, r_high, r_cons) in enumerate(region_data, 12):
+        avg_status = "red" if r_avg > 60 else "yellow" if r_avg > 25 else "green"
+        for ci, val in enumerate([reg, r_total, r_active, r_avg, r_high, r_cons], 2):
+            c = ws_dash.cell(row=ri, column=ci, value=val)
+            if ci == 5:  # Avg Weighted Score — RAG
+                colors_d = {"red": ("E74C3C","FDECED"), "yellow": ("F39C12","FEF9E7"), "green": ("2ECC71","EAF9F1")}
+                fc, bc = colors_d[avg_status]
+                c.font = Font(name="Manrope", size=11, bold=True, color=fc)
+                c.fill = PatternFill("solid", fgColor=bc)
+            elif ci == 6 and r_high > 0:
+                c.font = Font(name="Manrope", size=11, bold=True, color="E74C3C")
+                c.fill = PatternFill("solid", fgColor="FDECED")
+            else:
+                c.font = Font(name="Manrope", size=10, color="1e2c63")
+                c.fill = PatternFill("solid", fgColor=LTGRAY if ri % 2 == 0 else WHITE)
+            c.alignment = Alignment(horizontal="center" if ci > 2 else "left", vertical="center")
+            c.border    = border_thin()
+        ws_dash.row_dimensions[ri].height = 18
+
+    next_row = 12 + len(region_data) + 2
+
+    # ── High Workload Consultants ─────────────────────────────────────────────
+    high_cons = consultant_df[consultant_df["workload_level"] == "High"].sort_values("total_score", ascending=False)
+    if len(high_cons) > 0:
+        dash_section(ws_dash, next_row, 2, "HIGH WORKLOAD CONSULTANTS — Director Review Required", ncols=6)
+        ws_dash.row_dimensions[next_row].height = 22
+        next_row += 1
+        for ci, hdr in enumerate(["Consultant", "Role", "PS Region", "Total Projects",
+                                   "Active Projects", "Weighted Score", "Workload Level"], 2):
+            c = ws_dash.cell(row=next_row, column=ci, value=hdr)
+            c.font = Font(name="Manrope", size=9, bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor=RED)
+            c.alignment = Alignment(horizontal="center")
+        next_row += 1
+        for _, row in high_cons.iterrows():
+            for ci, val in enumerate([
+                row["project_manager"], row.get("role", "Consultant"), row["ps_region"],
                 row.get("total_project_count", 0), row.get("active_project_count", 0),
-                row["total_score"], level]
-        for col, val in enumerate(vals, 1):
-            c = ws_dash.cell(r, col, val)
-            style_cell(c, bg, align="center" if col > 1 else "left")
-            c.border = border_thin()
-        ws_dash.row_dimensions[r].height = 16
+                row["total_score"], row["workload_level"]
+            ], 2):
+                c = ws_dash.cell(row=next_row, column=ci, value=val)
+                c.font      = Font(name="Manrope", size=10, bold=(ci == 7), color="E74C3C" if ci == 7 else "1e2c63")
+                c.fill      = PatternFill("solid", fgColor="FDECED")
+                c.alignment = Alignment(horizontal="center" if ci > 2 else "left", vertical="center")
+                c.border    = border_thin()
+            ws_dash.row_dimensions[next_row].height = 16
+            next_row += 1
+        next_row += 1
 
+    # No PM flag
     if missing_pm_count > 0:
-        flag_row = 10 + len(consultant_df) + 2
-        ws_dash.merge_cells(start_row=flag_row, start_column=1, end_row=flag_row, end_column=5)
-        fc = ws_dash.cell(flag_row, 1,
-            f"⚠  {missing_pm_count} project(s) have no PM assigned in NetSuite — update NS to include in scoring")
-        style_cell(fc, "FEF9E7", bold=False, font_color="7D6608", size=9)
+        ws_dash.merge_cells(start_row=next_row, start_column=2, end_row=next_row, end_column=7)
+        fc = ws_dash.cell(next_row, 2,
+            f"⚠  {missing_pm_count} project(s) have no PM assigned in NetSuite — see 'No PM Assigned' tab")
+        fc.font      = Font(name="Manrope", size=9, color="7D6608")
+        fc.fill      = PatternFill("solid", fgColor="FEF9E7")
+        fc.alignment = Alignment(wrap_text=True)
 
-    ws_dash.freeze_panes = "A10"
+    ws_dash.freeze_panes = "B9"
 
     # ── Tab 2: By Consultant ──────────────────────────────────────────────────
     ws_con = wb.create_sheet("By Consultant")
     ws_con.sheet_properties.tabColor = TEAL
 
-    con_headers = ["Consultant", "PS Region", "Total Projects", "Active Projects",
+    con_headers = ["Consultant", "Role", "PS Region", "Total Projects", "Active Projects",
                    "Weighted Score", "Workload Level", "High Risk Projects", "Avg Score/Project"]
-    con_widths   = [28, 14, 16, 16, 16, 16, 18, 18]
+    con_widths   = [28, 18, 14, 16, 16, 16, 16, 18, 18]
     write_title(ws_con, "WORKLOAD HEALTH SCORE — By Consultant", len(con_headers))
     style_header(ws_con, 2, con_headers, TEAL)
     ws_con.auto_filter.ref = f"A2:{get_column_letter(len(con_headers))}2"
@@ -488,8 +622,8 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
         tot  = row.get("total_project_count", 0)
         avg  = round(row["total_score"] / act, 2) if act > 0 else 0
         hr   = high_risk_count.get(row["project_manager"], 0)
-        vals = [row["project_manager"], row["ps_region"], tot, act,
-                row["total_score"], level, hr, avg]
+        vals = [row["project_manager"], row.get("role", "Consultant"), row["ps_region"],
+                tot, act, row["total_score"], level, hr, avg]
         for col, val in enumerate(vals, 1):
             c = ws_con.cell(r, col, val)
             style_cell(c, bg, align="center" if col > 1 else "left")
@@ -647,7 +781,46 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
             ws_phase.row_dimensions[r].height = 16
         ws_phase.freeze_panes = "B3"
 
-    # ── Tab 6: Processed Data ─────────────────────────────────────────────────
+    # ── Tab 6: No PM Assigned ─────────────────────────────────────────────────
+    ws_nopm = wb.create_sheet("No PM Assigned")
+    ws_nopm.sheet_properties.tabColor = "F39C12"
+
+    no_pm_df = scored_df[scored_df["pm_flag"] == True].copy() if "pm_flag" in scored_df.columns else pd.DataFrame()
+
+    nopm_headers = ["Project", "Project ID", "Project Type", "Phase", "Territory",
+                    "Status", "Overall RAG", "Weighted Score", "Go Live Date"]
+    nopm_widths  = [38, 12, 22, 28, 12, 14, 12, 14, 14]
+
+    write_title(ws_nopm, "NO PM ASSIGNED — Projects Not Found in NetSuite Export",
+                len(nopm_headers),
+                "Update NetSuite to assign a Project Manager so these projects are included in consultant scoring.")
+    style_header(ws_nopm, 3, nopm_headers, "F39C12")
+    ws_nopm.auto_filter.ref = f"A3:{get_column_letter(len(nopm_headers))}3"
+    for i, w in enumerate(nopm_widths, 1):
+        ws_nopm.column_dimensions[get_column_letter(i)].width = w
+
+    if len(no_pm_df) > 0:
+        for r_idx, (_, row) in enumerate(no_pm_df.sort_values("project_name").iterrows()):
+            r = 4 + r_idx
+            def gv(col): return row.get(col, "") if pd.notna(row.get(col, "")) else ""
+            go_live = gv("go_live_date")
+            go_live_str = go_live.strftime("%Y-%m-%d") if pd.notna(go_live) and hasattr(go_live, "strftime") else go_live
+            vals = [gv("project_name"), gv("project_id"), gv("project_type"), gv("phase"),
+                    gv("territory"), gv("status"), gv("rag"), gv("weighted_score"), go_live_str]
+            for col, val in enumerate(vals, 1):
+                c = ws_nopm.cell(r, col, val)
+                style_cell(c, "FEF9E7" if r_idx % 2 == 0 else WHITE,
+                           align="center" if col > 2 else "left")
+                c.border = border_thin()
+            ws_nopm.row_dimensions[r].height = 16
+    else:
+        ws_nopm.merge_cells(start_row=4, start_column=1, end_row=4, end_column=len(nopm_headers))
+        nc = ws_nopm.cell(4, 1, "All projects have a PM assigned in NetSuite.")
+        style_cell(nc, "EAF9F1", font_color="27AE60")
+
+    ws_nopm.freeze_panes = "A4"
+
+    # ── Tab 7: Processed Data ─────────────────────────────────────────────────
     ws_raw = wb.create_sheet("Processed Data")
     raw_cols = [c for c in scored_df.columns]
     style_header(ws_raw, 1, raw_cols, NAVY)
@@ -661,7 +834,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of):
 
     # Tab order
     tab_order = ["Dashboard", "By Consultant", "By Project",
-                 "At-Risk Projects", "Phase Distribution", "Processed Data"]
+                 "At-Risk Projects", "Phase Distribution", "No PM Assigned", "Processed Data"]
     wb._sheets = sorted(wb._sheets, key=lambda s: tab_order.index(s.title) if s.title in tab_order else 99)
 
     buf = io.BytesIO()
@@ -768,8 +941,10 @@ def main():
     with tab1:
         display_con = consultant_df.rename(columns={
             "project_manager": "Consultant",
+            "role":            "Role",
             "ps_region":       "PS Region",
-            "project_count":   "Active Projects",
+            "active_project_count": "Active Projects",
+            "total_project_count":  "Total Projects",
             "total_score":     "Weighted Score",
             "workload_level":  "Workload Level",
         })
