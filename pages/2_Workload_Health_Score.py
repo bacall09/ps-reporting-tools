@@ -1004,7 +1004,7 @@ def main():
     )
 
     st.subheader("Step 2 — Upload NetSuite Time Detail Export")
-    st.caption("Used to join Project Manager to each project via Project ID")
+    st.caption("Used to compare time data with the current project list to identify project manager assignments and projects without time entries for the period.")
     ns_file = st.file_uploader(
         "Drop your file here or click to browse",
         type=["xlsx", "xls", "csv"],
