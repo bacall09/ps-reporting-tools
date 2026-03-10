@@ -588,7 +588,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         dash_section(ws_dash, next_row, 2, "HIGH WORKLOAD CONSULTANTS — Director Review Required", ncols=6)
         ws_dash.row_dimensions[next_row].height = 22
         next_row += 1
-        for ci, hdr in enumerate(["Consultant", "Role", "PS Region", "Total Projects",
+        for ci, hdr in enumerate(["Consultant", "PS Region", "Total Projects",
                                    "Active Projects", "Weighted Score", "Workload Level"], 2):
             c = ws_dash.cell(row=next_row, column=ci, value=hdr)
             c.font = Font(name="Manrope", size=9, bold=True, color="FFFFFF")
@@ -597,7 +597,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         next_row += 1
         for _, row in high_cons.iterrows():
             for ci, val in enumerate([
-                row["project_manager"], row.get("role", "Consultant"), row["ps_region"],
+                row["project_manager"], row["ps_region"],
                 row.get("total_project_count", 0), row.get("active_project_count", 0),
                 row["total_score"], row["workload_level"]
             ], 2):
@@ -614,9 +614,9 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     if missing_pm_count > 0:
         if ns_min_date is not None and pd.notna(ns_min_date):
             no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked since {no_time_since} — see 'PM Assignment Not Found' tab."
+            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked since {no_time_since} — see 'Projects w/o Time this period' tab."
         else:
-            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked in this NS report period — see 'PM Assignment Not Found' tab."
+            flag_msg = f"⚠  {missing_pm_count} project(s) with no time booked in this NS report period — see 'Projects w/o Time this period' tab."
         ws_dash.merge_cells(start_row=next_row, start_column=2, end_row=next_row, end_column=7)
         fc = ws_dash.cell(next_row, 2, flag_msg)
         fc.font      = Font(name="Manrope", size=9, color="7D6608")
@@ -819,7 +819,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         ws_phase.column_dimensions["D"].width = 14
 
     # ── Tab 6: No PM Assigned ─────────────────────────────────────────────────
-    ws_nopm = wb.create_sheet("PM Assignment Not Found")
+    ws_nopm = wb.create_sheet("Projects w/o Time this period")
     ws_nopm.sheet_properties.tabColor = "F39C12"
 
     no_pm_df = scored_df[scored_df["pm_flag"] == True].copy() if "pm_flag" in scored_df.columns else pd.DataFrame()
@@ -836,8 +836,8 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
                          "Verify if active and confirm consultant assignment.")
 
     nopm_headers = ["Project", "Project ID", "Project Type", "Phase", "Territory",
-                    "Status", "Overall RAG", "Go Live Date"]
-    nopm_widths  = [42, 12, 22, 30, 14, 14, 12, 14]
+                    "Status", "Overall RAG", "Start Date", "Go Live Date"]
+    nopm_widths  = [42, 12, 22, 30, 14, 14, 12, 14, 14]
 
     write_title(ws_nopm, nopm_title, len(nopm_headers), nopm_subtitle)
     style_header(ws_nopm, 3, nopm_headers, "F39C12")
@@ -851,8 +851,10 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             def gv(col): return row.get(col, "") if pd.notna(row.get(col, "")) else ""
             go_live = gv("go_live_date")
             go_live_str = go_live.strftime("%Y-%m-%d") if pd.notna(go_live) and hasattr(go_live, "strftime") else go_live
+            start = gv("start_date")
+            start_str = start.strftime("%Y-%m-%d") if pd.notna(start) and hasattr(start, "strftime") else start
             vals = [gv("project_name"), gv("project_id"), gv("project_type"), gv("phase"),
-                    gv("territory"), gv("status"), gv("rag"), go_live_str]
+                    gv("territory"), gv("status"), gv("rag"), start_str, go_live_str]
             for col, val in enumerate(vals, 1):
                 c = ws_nopm.cell(r, col, val)
                 style_cell(c, "FEF9E7" if r_idx % 2 == 0 else WHITE,
@@ -880,7 +882,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
 
     # Tab order
     tab_order = ["Dashboard", "By Consultant", "FF Phase Distribution",
-                 "At-Risk Projects", "PM Assignment Not Found", "Processed Data"]
+                 "At-Risk Projects", "Projects w/o Time this period", "Processed Data"]
     wb._sheets = sorted(wb._sheets, key=lambda s: tab_order.index(s.title) if s.title in tab_order else 99)
 
     buf = io.BytesIO()
@@ -980,9 +982,9 @@ def main():
     if missing_pm > 0:
         if ns_min_date is not None and pd.notna(ns_min_date):
             no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            st.warning(f"⚠️ {missing_pm} project(s) with no time booked since {no_time_since} — see 'PM Assignment Not Found' tab in the report.")
+            st.warning(f"⚠️ {missing_pm} project(s) with no time booked since {no_time_since} — see 'Projects w/o Time this period' tab in the report.")
         else:
-            st.warning(f"⚠️ {missing_pm} project(s) with no time booked in this NS report period — see 'PM Assignment Not Found' tab.")
+            st.warning(f"⚠️ {missing_pm} project(s) with no time booked in this NS report period — see 'Projects w/o Time this period' tab.")
 
     st.markdown("---")
 
