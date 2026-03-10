@@ -1601,18 +1601,26 @@ def main():
             pill = ""
             if pill_txt and pill_fg:
                 pill = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background-color:{pill_fg}33;font-size:13px;font-family:Manrope,sans-serif;color:{pill_fg}'>&#8593; {pill_txt}</div>"
-            return f"<div style='font-size:14px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div><div style='font-size:36px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>{pill}"
+            return f"""<div style='font-size:12px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{label}</div>
+<div style='font-size:28px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.15;white-space:nowrap'>{value}</div>{pill}"""
 
-        m1,m2,m3,m4,m5 = st.columns(5)
+        # ── Metric row: 3 left + 2 right, with gap column in between ──
+        st.markdown("""
+        <style>
+        [data-testid="stHorizontalBlock"] > div { padding-left: 6px !important; padding-right: 6px !important; }
+        </style>""", unsafe_allow_html=True)
+
+        m1, m2, m3, _gap, m4, m5 = st.columns([2, 2, 2, 0.3, 2, 2])
         with m1: st.markdown(metric_card("Projects This Period",   f"{df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups:,}"), unsafe_allow_html=True)
         with m2: st.markdown(metric_card("Hours This Period",      f"{hours_this_period:,.2f}"), unsafe_allow_html=True)
-        with m3: st.markdown(metric_card("Utilization Credits",    f"{total_credit:,.2f}",    f"{credit_pct:.1%} of total hrs · {credit_label}", credit_color), unsafe_allow_html=True)
-        with m4: st.markdown(metric_card("FF Project Overrun Hrs", f"{total_proj_overrun:,.2f}", f"{overrun_pct:.1%} of total hrs", "#ff4b4b"), unsafe_allow_html=True)
-        with m5: st.markdown(metric_card("Admin Hrs",              f"{total_admin:,.2f}",     f"{admin_pct:.1%} of total hrs",    "#808495"), unsafe_allow_html=True)
+        with m3: st.markdown(metric_card("Utilization Credits",    f"{total_credit:,.2f}",    f"{credit_pct:.1%} of hrs · {credit_label}", credit_color), unsafe_allow_html=True)
+        with m4: st.markdown(metric_card("FF Project Overrun Hrs", f"{total_proj_overrun:,.2f}", f"{overrun_pct:.1%} of hrs", "#ff4b4b"), unsafe_allow_html=True)
+        with m5: st.markdown(metric_card("Admin Hrs",              f"{total_admin:,.2f}",     f"{admin_pct:.1%} of hrs",    "#808495"), unsafe_allow_html=True)
 
         # ── No-scope banner ───────────────────────────────────────
         _noscope_hrs = df[df["credit_tag"] == "UNCONFIGURED"]["hours"].sum() if "credit_tag" in df.columns else 0
         if _noscope_hrs > 0:
+            st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
             st.warning(f"⚠️ {_noscope_hrs:,.2f} hour(s) on FF projects with NO SCOPE DEFINED — see Watch List tab in the downloaded report.")
 
         st.markdown("---")
