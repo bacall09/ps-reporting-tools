@@ -72,7 +72,8 @@ EMPLOYEE_LOCATION = {
     "Zoric, Ivan":            "Serbia",
     "Murphy, Conor":          "USA",
     "Bell, Stuart":           "USA",
-    "Cloete":                 "South Africa",  # location TBD — flagged
+    "Cloete":                 "Netherlands",
+    "Cloete, Bronwyn":         "Netherlands",
     "Hamilton C":             "USA",
     "Hamilton, Julie C":       "USA",
     "Strauss, John W":         "USA",
