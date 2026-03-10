@@ -73,7 +73,9 @@ EMPLOYEE_LOCATION = {
     "Murphy, Conor":          "USA",
     "Bell, Stuart":           "USA",
     "Cloete":                 "South Africa",  # location TBD — flagged
-    "Hamilton C":             "USA",           # location TBD — flagged
+    "Hamilton C":             "USA",
+    "Hamilton, Julie C":       "USA",
+    "Strauss, John W":         "USA",
     "Swanson":                "USA",           # util-exempt
 }
 
