@@ -259,6 +259,28 @@ def style_header(ws, row, headers, bg=None):
         style_cell(c, bg, bold=True, align="center", font_color=WHITE, size=10)
         ws.row_dimensions[row].height = 22
 
+def term_age_flag(start_date_val):
+    """Return ('expired'|'near_expiry'|None) based on project start date vs today.
+    expired    = start date > 12 months ago (past PS term limit)
+    near_expiry = start date >= 10 months ago (approaching limit)
+    """
+    try:
+        if not start_date_val or (hasattr(start_date_val, '__class__') and str(start_date_val) in ('', 'nan', 'None', 'NaT')):
+            return None
+        sd = pd.to_datetime(start_date_val, errors="coerce")
+        if pd.isna(sd):
+            return None
+        today = pd.Timestamp.today().normalize()
+        months_old = (today.year - sd.year) * 12 + (today.month - sd.month)
+        if months_old >= 12:
+            return "expired"
+        elif months_old >= 10:
+            return "near_expiry"
+        return None
+    except Exception:
+        return None
+
+
 def rag_color(rag):
     r = str(rag).strip().lower() if pd.notna(rag) else ""
     if "red"    in r: return "FDECED"
@@ -630,7 +652,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     ws_con.sheet_properties.tabColor = TEAL
 
     con_headers = ["Consultant", "Role", "PS Region", "Total Projects", "Active Projects",
-                   "Weighted Score", "Workload Level", "High Risk Projects", "Avg Score/Project"]
+                   "Weighted Score", "Workload Level", "High Risk Projects", "Avg Score/Region"]
     con_widths   = [28, 18, 14, 16, 16, 16, 16, 18, 18]
     write_title(ws_con, "WORKLOAD HEALTH SCORE — By Consultant", len(con_headers))
     style_header(ws_con, 2, con_headers, TEAL)
@@ -674,8 +696,8 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
 
     risk_headers = ["Project", "Project ID", "Project Manager", "PS Region", "Phase",
                     "Weighted Score", "Risk Level", "Schedule Health", "RAG",
-                    "Client Sentiment", "Client Responsiveness", "Go Live Date"]
-    risk_widths   = [38, 12, 24, 12, 28, 14, 12, 18, 10, 18, 22, 14]
+                    "Client Sentiment", "Client Responsiveness", "Start Date", "Go Live Date", "Term Flag"]
+    risk_widths   = [38, 12, 24, 12, 28, 14, 12, 18, 10, 18, 22, 14, 14, 22]
 
     write_title(ws_risk, "AT-RISK PROJECTS — High Risk / Behind Schedule / Red RAG",
                 len(risk_headers),
@@ -688,15 +710,38 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     for r_idx, (_, row) in enumerate(at_risk_df.iterrows()):
         r = 4 + r_idx
         def gv(col): return row.get(col, "") if pd.notna(row.get(col, "")) else ""
+        start_raw = gv("start_date")
+        start_str = start_raw.strftime("%Y-%m-%d") if pd.notna(start_raw) and hasattr(start_raw, "strftime") else start_raw
+        go_live_raw = gv("go_live_date")
+        go_live_str = go_live_raw.strftime("%Y-%m-%d") if pd.notna(go_live_raw) and hasattr(go_live_raw, "strftime") else go_live_raw
+        term_flag = term_age_flag(start_raw)
+        term_label = ("⚠ Expired (>12 months)" if term_flag == "expired"
+                      else "⚠ Near Expiry (10+ months)" if term_flag == "near_expiry"
+                      else "")
+        # Row background: expired = strong orange, near_expiry = amber, default = light red
+        row_bg = ("FDEBD0" if term_flag == "expired"
+                  else "FEF9E7" if term_flag == "near_expiry"
+                  else "FEF0EE")
         vals = [
             gv("project_name"), gv("project_id"), gv("project_manager"), gv("ps_region"),
             gv("phase"), gv("weighted_score"), gv("risk_level"), gv("schedule_health"),
             gv("rag"), gv("client_sentiment"), gv("client_responsiveness"),
-            gv("go_live_date").strftime("%Y-%m-%d") if pd.notna(gv("go_live_date")) and hasattr(gv("go_live_date"), "strftime") else gv("go_live_date"),
+            start_str, go_live_str, term_label,
         ]
         for col, val in enumerate(vals, 1):
             c = ws_risk.cell(r, col, val)
-            bg = rag_color(gv("rag")) if col == 9 else "FEF0EE"
+            if col == 9:
+                bg = rag_color(gv("rag"))
+            elif col == 14 and term_flag:  # Term Flag column
+                bg = "FDEBD0" if term_flag == "expired" else "FEF9E7"
+                c.font = Font(name="Manrope", size=9, bold=True,
+                              color="E67E22" if term_flag == "expired" else "F39C12")
+                c.fill = PatternFill("solid", fgColor=bg)
+                c.alignment = Alignment(horizontal="left")
+                c.border = border_thin()
+                continue
+            else:
+                bg = row_bg
             style_cell(c, bg, align="center" if col > 2 else "left")
             c.border = border_thin()
         ws_risk.row_dimensions[r].height = 16
@@ -836,8 +881,8 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
                          "Verify if active and confirm consultant assignment.")
 
     nopm_headers = ["Project", "Project ID", "Project Type", "Phase", "Territory",
-                    "Status", "Overall RAG", "Start Date", "Go Live Date"]
-    nopm_widths  = [42, 12, 22, 30, 14, 14, 12, 14, 14]
+                    "Status", "Overall RAG", "Start Date", "Go Live Date", "Term Flag"]
+    nopm_widths  = [42, 12, 22, 30, 14, 14, 12, 14, 14, 22]
 
     write_title(ws_nopm, nopm_title, len(nopm_headers), nopm_subtitle)
     style_header(ws_nopm, 3, nopm_headers, "F39C12")
@@ -853,12 +898,26 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             go_live_str = go_live.strftime("%Y-%m-%d") if pd.notna(go_live) and hasattr(go_live, "strftime") else go_live
             start = gv("start_date")
             start_str = start.strftime("%Y-%m-%d") if pd.notna(start) and hasattr(start, "strftime") else start
+            term_flag = term_age_flag(start)
+            term_label = ("⚠ Expired (>12 months)" if term_flag == "expired"
+                          else "⚠ Near Expiry (10+ months)" if term_flag == "near_expiry"
+                          else "")
+            row_bg = ("FDEBD0" if term_flag == "expired"
+                      else "FEF9E7" if term_flag == "near_expiry"
+                      else "F5F5F5" if r_idx % 2 == 0 else WHITE)
             vals = [gv("project_name"), gv("project_id"), gv("project_type"), gv("phase"),
-                    gv("territory"), gv("status"), gv("rag"), start_str, go_live_str]
+                    gv("territory"), gv("status"), gv("rag"), start_str, go_live_str, term_label]
             for col, val in enumerate(vals, 1):
                 c = ws_nopm.cell(r, col, val)
-                style_cell(c, "FEF9E7" if r_idx % 2 == 0 else WHITE,
-                           align="center" if col > 2 else "left")
+                if col == 10 and term_flag:  # Term Flag column
+                    bg = "FDEBD0" if term_flag == "expired" else "FEF9E7"
+                    c.font = Font(name="Manrope", size=9, bold=True,
+                                  color="E67E22" if term_flag == "expired" else "F39C12")
+                    c.fill = PatternFill("solid", fgColor=bg)
+                    c.alignment = Alignment(horizontal="left")
+                    c.border = border_thin()
+                    continue
+                style_cell(c, row_bg, align="center" if col > 2 else "left")
                 c.border = border_thin()
             ws_nopm.row_dimensions[r].height = 16
     else:
