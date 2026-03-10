@@ -3,8 +3,15 @@ PS Utilization Credit Report
 Upload a NetSuite time detail export to generate the utilization Excel report.
 """
 import streamlit as st
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import pandas as pd
+import io
+import sys
+import os
+
+# Ensure shared/ is on the path regardless of how Streamlit Cloud runs the file
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from shared.config import DEFAULT_SCOPE
 from shared.utils import assign_credits, build_excel, auto_detect_columns
@@ -146,7 +153,7 @@ def main():
 
         st.markdown("---")
         tab1, tab2, tab3, tab4, tab5 = st.tabs(
-            ["By Employee", "By Project", "ZCO Non-Billable", "Task Analysis", "Detail"]
+            ["By Employee", "By Project", "Non-Billable", "Task Analysis", "Detail"]
         )
 
         with tab1:
@@ -188,7 +195,7 @@ def main():
                 ).agg(hours=("hours","sum")).sort_values(["task","employee","period"])
                 st.dataframe(zco_sum, use_container_width=True, hide_index=True)
             else:
-                st.info("No ZCO Non-Billable entries in this dataset.")
+                st.info("No Non-Billable (Internal) entries in this dataset.")
 
         with tab4:
             ff_df = df[df["ff_task"].notna()] if "ff_task" in df.columns else pd.DataFrame()
@@ -229,7 +236,7 @@ def main():
             type="primary",
         )
         st.caption(f"`{filename}` — 6 tabs: Processed Data · By Employee · By Project · "
-                   f"ZCO Non-Billable · Task Analysis · Skipped Rows")
+                   f"Non-Billable · Task Analysis · Skipped Rows")
 
 
 if __name__ == "__main__":

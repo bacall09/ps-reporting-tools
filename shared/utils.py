@@ -480,13 +480,13 @@ def build_excel(df, scope_map, consumed):
                        align="right" if c_idx in (5,6,7,8,9,10,11) else "center" if c_idx == 12 else "left")
 
     # ── 4. ZCO NON-BILLABLE BREAKDOWN ─────────────────────────
-    ws5 = wb.create_sheet("ZCO Non-Billable")
+    ws5 = wb.create_sheet("Non-Billable")
     ws5.sheet_properties.tabColor = "95A5A6"
     ws5.freeze_panes = "A3"
 
     znh = ["Task / Activity","Employee","Period","Hours"]
     znw = [35,22,12,12]
-    write_title(ws5, "ZCO NON-BILLABLE — Hours by Employee by Activity", len(znh))
+    write_title(ws5, "NON-BILLABLE — Hours by Employee by Activity", len(znh))
     style_header(ws5, 2, znh, TEAL)
     ws5.auto_filter.ref = "A2:E2"
 
@@ -1226,7 +1226,7 @@ def build_excel(df, scope_map, consumed):
         "By Customer Region (WIP)",
         "By PS Region",
         "Watch List",
-        "ZCO Non-Billable",
+        "Non-Billable",
         "Task Analysis",
         "FF Project Type Analysis",
         "Skipped Rows",
