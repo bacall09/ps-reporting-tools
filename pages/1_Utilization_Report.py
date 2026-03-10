@@ -82,47 +82,82 @@ EMPLOYEE_ROLES = {
     "Zoric, Ivan": "Consultant",
 }
 
+# ── Employee roster — {name: (location, start_date, end_date)}
+# start/end as "YYYY-MM" strings or None (None = no limit).
+# Employees with an end_date will be excluded from utilization targets
+# for any period after their exit month and flagged as Alumni.
 EMPLOYEE_LOCATION = {
-    "Arestarkhov, Yaroslav":  "Czech Republic",
-    "Carpen, Anamaria":       "Spain",
-    "Centinaje, Rhodechild":  "Manila (PH)",
-    "Dolha, Madalina":         "Faroe Islands",
-    "Dolha":                    "Faroe Islands",
-    "Cooke, Ellen":             "Northern Ireland",
-    "Cruz, Daniel":           "Manila (PH)",
-    "DiMarco, Nicole R":      "USA",
-    "Gardner, Cheryll L":     "USA",
-    "Hopkins, Chris":         "USA",
-    "Ickler, Georganne":      "USA",
-    "Isberg, Eric":           "USA",
-    "Jordanova, Marija":      "North Macedonia",
-    "Lappin, Thomas":         "Northern Ireland",
-    "Longalong, Santiago":    "Manila (PH)",
-    "Mohammad, Manaan":       "Canada",
-    "Morris, Lisa":           "Sydney (NSW)",
-    "Pallone, Daniel":        "Sydney (NSW)",
-    "NAQVI, SYED":            "Canada",
-    "Raykova, Silvia":        "Netherlands",
-    "Selvakumar, Sajithan":   "Canada",
-    "Snee, Stefanie J":       "USA",
-    "Stone, Matt":            "USA",
-    "Tuazon, Carol":          "Manila (PH)",
-    "Zoric, Ivan":            "Serbia",
-    "Murphy, Conor":          "USA",
-    "Bell, Stuart":           "USA",
-    "Cloete":                 "Netherlands",
-    "Cloete, Bronwyn":         "Netherlands",
-    "Hamilton C":             "USA",
-    "Hamilton, Julie C":       "USA",
-    "Strauss, John W":         "USA",
-    "Swanson":                "USA",           # util-exempt
-    "Barrio, Nairobi":  "USA",
-    "Porangada, Suraj":  "USA",
-    "Hughes, Madalyn":  "USA",
-    "Olson, Austin D":  "USA",
-    "Finalle-Newton, Jesse":  "USA",
-    "Church, Jason G":  "USA",
+    #  Name                        Location            Start      End
+    "Arestarkhov, Yaroslav":  ("Czech Republic",      None,      None),
+    "Carpen, Anamaria":       ("Spain",               None,      None),
+    "Centinaje, Rhodechild":  ("Manila (PH)",         None,      None),
+    "Dolha, Madalina":        ("Faroe Islands",       None,      None),
+    "Dolha":                  ("Faroe Islands",       None,      None),
+    "Cooke, Ellen":           ("Northern Ireland",    None,      None),
+    "Cruz, Daniel":           ("Manila (PH)",         None,      None),
+    "DiMarco, Nicole R":      ("USA",                 None,      None),
+    "Gardner, Cheryll L":     ("USA",                 None,      None),
+    "Hopkins, Chris":         ("USA",                 None,      None),
+    "Ickler, Georganne":      ("USA",                 None,      None),
+    "Isberg, Eric":           ("USA",                 None,      None),
+    "Jordanova, Marija":      ("North Macedonia",     None,      None),
+    "Lappin, Thomas":         ("Northern Ireland",    None,      None),
+    "Longalong, Santiago":    ("Manila (PH)",         None,      None),
+    "Mohammad, Manaan":       ("Canada",              None,      None),
+    "Morris, Lisa":           ("Sydney (NSW)",        None,      None),
+    "Pallone, Daniel":        ("Sydney (NSW)",        None,      None),
+    "NAQVI, SYED":            ("Canada",              None,      None),
+    "Raykova, Silvia":        ("Netherlands",         None,      None),
+    "Selvakumar, Sajithan":   ("Canada",              None,      None),
+    "Snee, Stefanie J":       ("USA",                 None,      None),
+    "Stone, Matt":            ("USA",                 None,      None),
+    "Tuazon, Carol":          ("Manila (PH)",         None,      None),
+    "Zoric, Ivan":            ("Serbia",              None,      None),
+    "Murphy, Conor":          ("USA",                 None,      None),
+    "Bell, Stuart":           ("USA",                 None,      None),
+    "Cloete":                 ("Netherlands",         None,      None),
+    "Cloete, Bronwyn":        ("Netherlands",         None,      None),
+    "Hamilton C":             ("USA",                 None,      None),
+    "Hamilton, Julie C":      ("USA",                 None,      None),
+    "Strauss, John W":        ("USA",                 None,      None),
+    "Swanson":                ("USA",                 None,      None),  # util-exempt
+    "Barrio, Nairobi":        ("USA",                 None,      None),
+    "Porangada, Suraj":       ("USA",                 None,      None),
+    "Hughes, Madalyn":        ("USA",                 None,      None),
+    "Olson, Austin D":        ("USA",                 None,      None),
+    "Finalle-Newton, Jesse":  ("USA",                 None,      None),
+    "Church, Jason G":        ("USA",                 None,      None),
 }
+
+def _emp_location(name):
+    """Return location string regardless of whether value is tuple or plain string."""
+    v = EMPLOYEE_LOCATION.get(name)
+    if v is None:
+        return None
+    return v[0] if isinstance(v, tuple) else v
+
+def _emp_active(name, period_str):
+    """
+    Return True if the employee should be included for the given period.
+    period_str: "YYYY-MM" or "YYYYMM" or a pandas Period string.
+    Returns True if no tenure dates are set, or if period falls within [start, end].
+    """
+    v = EMPLOYEE_LOCATION.get(name)
+    if v is None or not isinstance(v, tuple):
+        return True   # unknown or plain-string legacy entry — don't exclude
+    _, start, end = v
+    try:
+        # Normalise period to "YYYY-MM"
+        p = str(period_str).strip()
+        if len(p) == 6 and "-" not in p:
+            p = p[:4] + "-" + p[4:]
+        if start and p < start[:7]:
+            return False
+        if end and p > end[:7]:
+            return False
+    except Exception:
+        pass
+    return True
 
 # ── PS Region overrides (employee name → region, bypasses location mapping) ──
 PS_REGION_OVERRIDE = {
@@ -309,12 +344,12 @@ def assign_credits(df, scope_map):
             # Normalize: strip extra spaces, try exact → prefix → last-name match
             emp_n = " ".join(emp.split())
             if emp_n in EMPLOYEE_LOCATION:
-                return EMPLOYEE_LOCATION[emp_n]
+                return _emp_location(emp_n)
             emp_lower = emp_n.lower()
             for key, val in EMPLOYEE_LOCATION.items():
                 key_lower = key.lower()
-                if emp_lower == key_lower: return val
-                if emp_lower.startswith(key_lower) or key_lower.startswith(emp_lower): return val
+                if emp_lower == key_lower: return _emp_location(key)
+                if emp_lower.startswith(key_lower) or key_lower.startswith(emp_lower): return _emp_location(key)
                 # last name only match (before the comma)
                 last = key_lower.split(",")[0].strip()
                 if emp_lower.startswith(last): return val
@@ -330,6 +365,28 @@ def assign_credits(df, scope_map):
                 return PS_REGION_OVERRIDE[key]
         return PS_REGION_MAP.get(str(row.get("region","")).strip(), "Other")
     df["ps_region"] = df.apply(_resolve_ps_region, axis=1)
+
+    # ── Sort by date so entries are processed chronologically per project ────
+    if "date" in df.columns:
+        df = df.sort_values(["project", "date"], na_position="first").reset_index(drop=True)
+
+    # ── Pre-compute prior hours per project ───────────────────────────────────
+    # hours_to_date in NetSuite is cumulative INCLUDING this period's rows.
+    # We want the baseline BEFORE this period starts, so:
+    #   prior_htd[proj] = max(hours_to_date) - sum(hours this period)
+    # Using max HTD as the ceiling snapshot, then subtracting all period hours
+    # gives us hours on the project before any row in this export.
+    _htd_col = "hours_to_date"
+    prior_htd = {}
+    if _htd_col in df.columns:
+        for _proj, _grp in df.groupby("project"):
+            _proj_n = " ".join(str(_proj).split())
+            try:
+                _max_htd   = float(_grp[_htd_col].dropna().astype(float).max() or 0)
+                _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
+                prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
+            except Exception:
+                prior_htd[_proj_n] = 0.0
 
     consumed = {}
     credit_hrs_list    = []
@@ -378,13 +435,9 @@ def assign_credits(df, scope_map):
             htd_start_list.append(0)
             continue
 
-        # Seed starting balance from hours_to_date if first time seeing this project
+        # Seed starting balance from pre-period hours only (not cumulative HTD)
         if proj not in consumed:
-            htd = row.get("hours_to_date", None)
-            try:
-                consumed[proj] = float(htd) if htd is not None and str(htd).strip() not in ("", "nan") else 0
-            except (ValueError, TypeError):
-                consumed[proj] = 0
+            consumed[proj] = prior_htd.get(proj, 0.0)
 
         already    = consumed[proj]
         remaining  = scope_hrs - already
@@ -1553,23 +1606,37 @@ def main():
         st.success("✅ Processing complete!")
 
 
-        # ── Warn on unmapped employees ────────────────────────
+        # ── Warn on unmapped employees + alumni in period ────
         _unmapped = []
+        _alumni   = []
+        # Detect the reporting period (most common period in data)
+        _period_str = str(df["period"].mode().iloc[0]) if "period" in df.columns and len(df) > 0 else None
         for _emp in df["employee"].dropna().unique():
             _emp_s = str(_emp).strip()
             _loc = df[df["employee"]==_emp]["region"].iloc[0] if len(df[df["employee"]==_emp]) > 0 else ""
-            _matched = any(
-                _emp_s.lower().startswith(k.lower()) or k.lower().startswith(_emp_s.lower())
-                for k in EMPLOYEE_LOCATION
-            )
-            if not _matched and not str(_loc).strip():
+            # Find matching key in roster
+            _matched_key = None
+            for k in EMPLOYEE_LOCATION:
+                if _emp_s.lower() == k.lower() or _emp_s.lower().startswith(k.lower()) or k.lower().startswith(_emp_s.lower()):
+                    _matched_key = k
+                    break
+            if not _matched_key and not str(_loc).strip():
                 _unmapped.append(_emp_s)
+            elif _matched_key and _period_str:
+                if not _emp_active(_matched_key, _period_str):
+                    _alumni.append(_emp_s)
         if _unmapped:
             st.warning(
                 f"⚠️ **{len(_unmapped)} employee(s) have no location defined** — "
                 f"avail hours and PS region will show as Unknown. "
                 f"Add them to EMPLOYEE_LOCATION in the app config.\n\n"
                 + ", ".join(sorted(_unmapped))
+            )
+        if _alumni:
+            st.info(
+                f"ℹ️ **{len(_alumni)} employee(s) have time entries but are outside their active tenure** — "
+                f"excluded from utilization targets. Check exit dates in EMPLOYEE_LOCATION if incorrect.\n\n"
+                + ", ".join(sorted(_alumni))
             )
 
         # Metrics
