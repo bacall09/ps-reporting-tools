@@ -96,7 +96,9 @@ st.markdown("""
             titles.forEach(t => t.style.color = '#c5d0f0');
             descs.forEach(d => d.style.color = '#9aa3b8');
             badges.forEach(b => { b.style.color = '#7da9f0'; b.style.background = '#1e2c4a'; });
-            links.forEach(l => l.style.background = '#4472C4');
+            links.forEach(l => { l.style.background = '#4472C4'; l.style.color = '#ffffff'; });
+        } else {
+            links.forEach(l => { l.style.background = '#1e2c63'; l.style.color = '#ffffff'; });
         }
     }
     if (document.readyState === 'loading') {
