@@ -391,6 +391,8 @@ SS_COL_MAP = {
     "territory":         "territory",
     "project manager":   "consultant",
     "pm":                "project_manager",
+    "status":            "status",
+    "project status":    "status",
     "start date":        "start_date",
     "project start date":"start_date",
     "client health":     "client_health",
@@ -417,10 +419,12 @@ def load_ss(file):
         df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
     # Keep all billing types — both FF and T&M consume consultant capacity
     # (T&M unassigned demand is handled separately via NS report)
-    # Exclude complete / inactive phases from active projection
-    inactive = {"10. complete/pending final billing", "11. on hold", "12. ps review"}
-    if "phase" in df.columns:
-        df = df[~df["phase"].isin(inactive)]
+    # Exclude inactive rows — phase-based OR status-based (mirrors WHS logic)
+    inactive_phases  = {"10. complete/pending final billing", "11. on hold", "12. ps review"}
+    onhold_statuses  = {"on-hold", "on hold", "onhold", "on_hold"}
+    phase_inactive   = df["phase"].isin(inactive_phases) if "phase" in df.columns else pd.Series(False, index=df.index)
+    status_inactive  = df["status"].astype(str).str.strip().str.lower().isin(onhold_statuses) if "status" in df.columns else pd.Series(False, index=df.index)
+    df = df[~(phase_inactive | status_inactive)]
     return df
 
 # ── NS Unassigned Projects loader ──────────────────────────────────────────────
@@ -830,13 +834,21 @@ def main():
         st.caption("Required: Project, Territory, Billing Type, Project Type, Signed Date, Project Outreach, Start Date, T&M Scope")
         ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_unassigned_p3")
 
-    ss_df = None
-    ns_df = None
+    ss_df     = None
+    ss_raw_df = None  # unfiltered — for project counts
+    ns_df     = None
 
     if ss_file:
         try:
             ss_df = load_ss(ss_file)
-            st.success(f"Loaded {len(ss_df):,} active FF project rows from SS DRS.")
+            # Raw load for counts (rewind file)
+            ss_file.seek(0)
+            ss_raw_df = pd.read_excel(ss_file) if not ss_file.name.endswith(".csv") else pd.read_csv(ss_file)
+            ss_raw_df.columns = [c.strip().lower() for c in ss_raw_df.columns]
+            ss_raw_df = ss_raw_df.rename(columns={
+                col: SS_COL_MAP[col] for col in ss_raw_df.columns if col in SS_COL_MAP
+            })
+            st.success(f"Loaded {len(ss_df):,} active project rows from SS DRS.")
         except Exception as e:
             st.error(f"Error loading SS file: {e}")
 
@@ -889,24 +901,30 @@ def main():
     # Project counts from SS
     # SS has one row per consultant per project — dedupe by project_id using project_name fallback
     _total_projects, _active_projects, _on_hold_projects = 0, 0, 0
-    if ss_df is not None and not ss_df.empty and "phase" in ss_df.columns:
-        _id_col = "project_id" if "project_id" in ss_df.columns else "project_name"
-        # Get all unique projects and their phases (a project may have multiple phase rows)
-        _proj_phases = ss_df.groupby(_id_col)["phase"].apply(
-            lambda phases: set(phases.astype(str).str.strip().str.lower())
-        )
+    if ss_raw_df is not None and not ss_raw_df.empty:
+        _id_col = "project_id" if "project_id" in ss_raw_df.columns else "project_name"
         _complete_phases = {"10. complete/pending final billing", "12. ps review"}
         _hold_phase      = "11. on hold"
-        _total_projects  = len(_proj_phases)
-        # On hold: all phases for this project are on hold
-        _on_hold_projects = sum(
-            1 for phases in _proj_phases if phases == {_hold_phase} or phases.issubset({_hold_phase})
-        )
-        # Complete: all phases are complete/ps review
-        _complete_count = sum(
-            1 for phases in _proj_phases if phases.issubset(_complete_phases)
-        )
+        _onhold_statuses = {"on-hold", "on hold", "onhold", "on_hold"}
+
+        # Per-project: collect all phases and statuses
+        _grp = ss_raw_df.groupby(_id_col)
+        _total_projects   = _grp.ngroups
+        _on_hold_projects = 0
+        _complete_count   = 0
+        for _, rows in _grp:
+            phases   = set(rows["phase"].astype(str).str.strip().str.lower().unique()) if "phase" in rows.columns else set()
+            statuses = set(rows["status"].astype(str).str.strip().str.lower().unique()) if "status" in rows.columns else set()
+            if statuses & _onhold_statuses or phases.issubset({_hold_phase}):
+                _on_hold_projects += 1
+            elif phases.issubset(_complete_phases):
+                _complete_count += 1
         _active_projects = _total_projects - _on_hold_projects - _complete_count
+    elif ss_df is not None and not ss_df.empty:
+        _id_col = "project_id" if "project_id" in ss_df.columns else "project_name"
+        _active_projects = ss_df[_id_col].nunique() if _id_col in ss_df.columns else len(ss_df)
+        _total_projects  = _active_projects
+        _on_hold_projects = 0
     currently_busy = sum(
         1 for c, months_map in availability.items()
         if _status(months_map.get(months[0], "free")) == "busy"
