@@ -567,8 +567,19 @@ def _projected_phase(current_phase, project_type, start_date, target_month):
 
     # Target date = first day of target month
     target_date = date(target_month[0], target_month[1], 1)
-    if isinstance(start_date, pd.Timestamp):
-        start_date = start_date.date()
+
+    # Normalise start_date — handle Timestamp, date, string, NaT
+    try:
+        if isinstance(start_date, pd.Timestamp):
+            if pd.isna(start_date):
+                return current_phase
+            start_date = start_date.date()
+        elif isinstance(start_date, str):
+            start_date = pd.to_datetime(start_date).date()
+        elif not isinstance(start_date, date):
+            return current_phase
+    except Exception:
+        return current_phase
 
     weeks_elapsed = (target_date - start_date).days / 7.0
 
