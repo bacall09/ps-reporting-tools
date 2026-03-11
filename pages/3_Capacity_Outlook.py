@@ -1128,7 +1128,4 @@ def main():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-if __name__ == "__main__":
-    main()
-
 main()
