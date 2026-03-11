@@ -65,7 +65,8 @@ EMPLOYEE_ROLES = {
     "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-        # ── Leavers (historical) ──────────────────────────────────────────────────
+        "Cruz, Daniel":           {"role": "Consultant",         "products": ["All"],                                                                                  "learning": []},
+    # ── Leavers (historical) ──────────────────────────────────────────────────
     "Alam, Laisa":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
     "Chan, Joven":            {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
     "Cloete, Bronwyn":        {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
@@ -459,7 +460,7 @@ def load_ns_unassigned(file):
         df["tm_scope"] = pd.to_numeric(df["tm_scope"], errors="coerce")
     # Derive scoped hours
     df["scoped_hours"] = df.apply(lambda r: (
-        r.get("tm_scope") if str(r.get("billing_type", "")).strip().lower() == "time & material"
+        r.get("tm_scope") if str(r.get("billing_type", "")).strip().lower() in ("time & material", "time and material", "t&m", "tm")
         else _resolve_ff_scope(str(r.get("project_type", "")))
     ), axis=1)
     # Derive PS region from territory
@@ -468,103 +469,81 @@ def load_ns_unassigned(file):
     return df
 
 # ── Projection engine ─────────────────────────────────────────────────────────
+# WHS bands — mirrors Workload Health Score page exactly
+def _whs_band(score):
+    if score <= 25:  return "Low",    "#C6EFCE", "#276221"
+    if score <= 60:  return "Medium", "#FFEB9C", "#9C6500"
+    return                  "High",   "#FFC7CE", "#9C0006"
+
+def _client_health_mult(responsiveness, sentiment):
+    r = str(responsiveness).strip().lower() if pd.notna(responsiveness) else ""
+    s = str(sentiment).strip().lower() if pd.notna(sentiment) else ""
+    if ("negative" in s or "unresponsive" in r) and ("negative" in s and "unresponsive" in r):
+        return 1.3
+    if "negative" in s or "unresponsive" in r or "not responding" in r:
+        return 1.15
+    return 1.0
+
+def _risk_mult(risk):
+    r = str(risk).strip().lower() if pd.notna(risk) else ""
+    if "high" in r:   return 1.2
+    if "medium" in r: return 1.1
+    return 1.0
+
 def project_consultant_availability(ss_df, months):
     """
-    For each consultant, determine which months they are:
-    - BUSY (active project in that month)
-    - FREE (no active project)
-    Returns dict: {consultant: {(year, month): 'busy'|'free'|'partial'}}
-    Also returns conflict flags for parallel heavy-phase projects.
+    Compute WHS score per consultant using same formula as Workload Health Score page:
+      weighted_score = phase_weight * client_health_mult * risk_mult
+    Summed across all active projects. Bands: Low<=25, Medium<=60, High>60.
+    Current month uses actual phases. Future months repeat current score
+    (phase duration unreliable — no forward projection).
+    Returns availability dict and empty conflicts list.
     """
-    today = date.today()
-    results = {}    # consultant -> {month_tuple: status}
-    conflicts = []  # list of conflict dicts
-    project_spans = {}  # consultant -> list of (project, start, end, phase, weight)
+    results  = {}
+    conflicts = []  # removed — consultants handle 30-50 parallel projects normally
 
     if ss_df is None or ss_df.empty:
         return results, conflicts
 
-    required = {"consultant", "start_date", "phase"}
-    if not required.issubset(ss_df.columns):
+    if "consultant" not in ss_df.columns:
         return results, conflicts
+
+    inactive_phases = {
+        "10. complete/pending final billing",
+        "11. on hold", "12. ps review"
+    }
+
+    # Build per-consultant WHS score from current SS snapshot
+    consultant_scores = {}  # name -> total weighted score
+    consultant_projects = {}  # name -> project count
 
     for _, row in ss_df.iterrows():
         consultant = str(row.get("consultant", "")).strip()
-        if not consultant or consultant.lower() in ("nan", "none", ""):
+        if not consultant or consultant.lower() in ("nan", "none", "", "0", "unassigned"):
             continue
-        # Skip pure PMs
         if not _is_delivery_role(consultant):
             continue
 
-        start_dt = row.get("start_date")
-        if pd.isna(start_dt):
-            continue
-        start_d = start_dt.date() if hasattr(start_dt, "date") else start_dt
-
         phase = str(row.get("phase", "")).strip().lower()
-        project_type = str(row.get("project_type", "")).strip()
-        project_name = str(row.get("project_name", "")).strip()
+        if phase in inactive_phases:
+            continue
 
-        # Estimate project end date from current phase
-        end_d = _current_phase_end_date(start_d, phase, project_type)
-        # Also get full project end
-        full_end_d = _project_end_date(start_d, project_type)
+        phase_weight    = PHASE_WEIGHTS.get(phase, 1.0)
+        ch_mult         = _client_health_mult(
+            row.get("client_health", ""), row.get("risk", ""))
+        risk_mult       = _risk_mult(row.get("risk", ""))
+        weighted        = round(phase_weight * ch_mult * risk_mult, 2)
 
-        phase_weight = PHASE_WEIGHTS.get(phase, 1.0)
+        consultant_scores[consultant]   = consultant_scores.get(consultant, 0) + weighted
+        consultant_projects[consultant] = consultant_projects.get(consultant, 0) + 1
 
-        if consultant not in project_spans:
-            project_spans[consultant] = []
-        project_spans[consultant].append({
-            "project": project_name,
-            "project_type": project_type,
-            "phase": phase,
-            "phase_weight": phase_weight,
-            "start": start_d,
-            "phase_end": end_d,
-            "project_end": full_end_d,
-        })
-
-    # Detect parallel conflicts
-    for consultant, spans in project_spans.items():
-        if len(spans) > 1:
-            for i, s1 in enumerate(spans):
-                for s2 in spans[i+1:]:
-                    # Check overlap
-                    overlap_start = max(s1["start"], s2["start"])
-                    overlap_end = min(s1["phase_end"], s2["phase_end"])
-                    if overlap_start <= overlap_end:
-                        combined_weight = s1["phase_weight"] + s2["phase_weight"]
-                        if combined_weight >= PARALLEL_CONFLICT_THRESHOLD:
-                            conflicts.append({
-                                "consultant": consultant,
-                                "project_1": s1["project"],
-                                "phase_1": s1["phase"],
-                                "project_2": s2["project"],
-                                "phase_2": s2["phase"],
-                                "combined_weight": combined_weight,
-                                "overlap_start": overlap_start,
-                                "overlap_end": overlap_end,
-                            })
-
-    # Build monthly availability grid
-    for consultant, spans in project_spans.items():
+    # All months get the same score — current snapshot, no unreliable projection
+    for consultant, score in consultant_scores.items():
         results[consultant] = {}
-        for (yr, mo) in months:
-            month_start = date(yr, mo, 1)
-            month_end = (month_start + relativedelta(months=1)) - timedelta(days=1)
-            busy_projects = [
-                s for s in spans
-                if s["start"] <= month_end and s["project_end"] >= month_start
-            ]
-            if not busy_projects:
-                results[consultant][(yr, mo)] = "free"
-            else:
-                # Check if all projects are in low-weight phases
-                max_weight = max(s["phase_weight"] for s in busy_projects)
-                if max_weight <= 1.0:
-                    results[consultant][(yr, mo)] = "partial"  # light load
-                else:
-                    results[consultant][(yr, mo)] = "busy"
+        band, _, _ = _whs_band(score)
+        status = "free" if band == "Low" else "partial" if band == "Medium" else "busy"
+        for mo in months:
+            results[consultant][mo] = (status, round(score, 1), consultant_projects[consultant])
 
     return results, conflicts
 
@@ -664,9 +643,9 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
 
     # ── Tab 2: Consultant Detail ───────────────────────────────────────────────
     ws2 = wb.create_sheet("Consultant Detail")
-    hdr_row(ws2, 1, ["Consultant", "Region", "Role", "Products", "Current Projects",
-                     "Current Phase", "Est. Free From", "Learning (Future)"])
-    for col_i, w in enumerate([28, 10, 18, 35, 35, 25, 15, 30], 1):
+    hdr_row(ws2, 1, ["Consultant", "Region", "Role", "WHS Score", "Active Projects (#)",
+                     "Products", "Learning (Future)"])
+    for col_i, w in enumerate([28, 10, 18, 16, 18, 35, 30], 1):
         ws2.column_dimensions[get_column_letter(col_i)].width = w
 
     row_n = 2
@@ -737,7 +716,7 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
         data_cell(ws3, row_n, 2, "Consultants Available", bold=True)
         for col_i, mo in enumerate(months, 3):
             avail = sum(1 for c in region_consultants
-                       if availability[c].get(mo, "free") in ("free", "partial"))
+                       if _status(availability[c].get(mo, ("free",0,0))) in ("free", "partial"))
             fill = green_fill if avail > 2 else amber_fill if avail > 0 else red_fill
             data_cell(ws3, row_n, col_i, avail, fill=fill, align=center)
         row_n += 1
@@ -797,30 +776,7 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
                 data_cell(ws4, row_i, col_i, val, fill=fill,
                          align=center if col_i in (5, 6, 7, 8, 9, 10) else left)
 
-    # ── Tab 5: Parallel Conflicts ──────────────────────────────────────────────
-    ws5 = wb.create_sheet("Parallel Conflicts")
-    hdr_row(ws5, 1, ["Consultant", "Project 1", "Phase 1", "Project 2", "Phase 2",
-                     "Combined Weight", "Overlap Start", "Overlap End", "Flag"])
-    for col_i, w in enumerate([28, 30, 25, 30, 25, 16, 14, 14, 12], 1):
-        ws5.column_dimensions[get_column_letter(col_i)].width = w
 
-    if conflicts:
-        for row_i, cf in enumerate(conflicts, 2):
-            vals = [
-                cf["consultant"],
-                cf["project_1"], cf["phase_1"],
-                cf["project_2"], cf["phase_2"],
-                cf["combined_weight"],
-                cf["overlap_start"].strftime("%Y-%m-%d") if cf.get("overlap_start") else "",
-                cf["overlap_end"].strftime("%Y-%m-%d") if cf.get("overlap_end") else "",
-                "Capacity Conflict",
-            ]
-            for col_i, val in enumerate(vals, 1):
-                fill = red_fill if col_i == 9 else amber_fill if col_i == 6 else white_fill
-                data_cell(ws5, row_i, col_i, val, fill=fill,
-                         align=center if col_i in (6, 7, 8, 9) else left)
-    else:
-        ws5.cell(row=2, column=1, value="No parallel conflicts detected.").font = std_font
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -898,7 +854,7 @@ def main():
 
     # ── Debug: name matching diagnostic ───────────────────────────────────────
     if ss_df is not None and "consultant" in ss_df.columns:
-        ss_names = [str(n).strip() for n in ss_df["consultant"].dropna().unique() if str(n).strip() not in ("", "nan", "None")]
+        ss_names = [str(n).strip() for n in ss_df["consultant"].dropna().unique() if str(n).strip() not in ("", "nan", "None", "0", "unassigned", "Unassigned", "UNASSIGNED")]
         roster_names = list(EMPLOYEE_ROLES.keys())
         matched = [n for n in ss_names if n in roster_names]
         unmatched = [n for n in ss_names if n not in roster_names]
@@ -908,6 +864,23 @@ def main():
             if matched:
                 st.success(f"Matched: {matched}")
 
+    # ── Unassigned SS rows note ───────────────────────────────────────────────
+    if ss_df is not None and "consultant" in ss_df.columns:
+        _unassigned_ss = ss_df[
+            ss_df["consultant"].astype(str).str.strip().str.lower().isin(
+                ["0", "unassigned", "nan", "none", ""]
+            )
+        ]
+        if len(_unassigned_ss) > 0:
+            _proj_col = "project_name" if "project_name" in _unassigned_ss.columns else None
+            _proj_list = _unassigned_ss[_proj_col].dropna().unique().tolist() if _proj_col else []
+            st.info(
+                f"{len(_unassigned_ss)} SS row(s) have no consultant assigned — "
+                f"these are excluded from the capacity projection. "
+                f"Cross-reference with NS Unassigned Projects to confirm staffing status. "
+                + (f"Projects: {', '.join(str(p) for p in _proj_list[:10])}" if _proj_list else "")
+            )
+
     # ── Metrics row ────────────────────────────────────────────────────────────
     today_str = datetime.today().strftime("%Y-%m")
     active_consultants = sum(
@@ -916,18 +889,21 @@ def main():
         and _emp_active(name, today_str)
         and not info.get("util_exempt")
     )
+    def _status(val):
+        return val[0] if isinstance(val, tuple) else val
+
     currently_busy = sum(
         1 for c, months_map in availability.items()
-        if months_map.get(months[0], "free") == "busy"
+        if _status(months_map.get(months[0], "free")) == "busy"
     )
     available_now = sum(
         1 for c, months_map in availability.items()
-        if months_map.get(months[0], "free") in ("free", "partial")
+        if _status(months_map.get(months[0], "free")) in ("free", "partial")
     )
     unassigned_count = len(ns_df) if ns_df is not None else 0
     conflict_count = len(conflicts)
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1, m2, m3, m4 = st.columns(4)
     def metric_card(label, value, sub=None, pill_color=None):
         if pill_color and sub:
             bottom = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background:{pill_color}22;color:{pill_color};font-size:12px'>{sub}</div>"
@@ -947,7 +923,7 @@ def main():
     with m2: st.markdown(metric_card("Available Now", available_now, "free or light load", "#27AE60"), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Fully Busy", currently_busy, "heavy phase load", "#E74C3C"), unsafe_allow_html=True)
     with m4: st.markdown(metric_card("Unassigned Projects", unassigned_count, "closed, not started", "#F39C12"), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Parallel Conflicts", conflict_count, "flagged for review", "#E74C3C" if conflict_count else "#27AE60"), unsafe_allow_html=True)
+
 
     st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
 
@@ -958,11 +934,15 @@ def main():
         "Regional Rollup",
         "Unassigned Projects",
     ])
+    # Note: Parallel Conflicts tab removed — consultants routinely handle 30-50 projects
 
     # ── Tab 1: Heatmap ─────────────────────────────────────────────────────────
     with tab1:
         st.markdown("#### Consultant Availability — Next 6 Months")
         st.caption("Green = Available · Amber = Light load (low-weight phase) · Red = Busy")
+
+        st.caption("Workload score = sum of (phase weight × client health × risk) across all active projects.  "
+                   "Low ≤ 25 · Medium ≤ 60 · High > 60  |  Same score shown across all months — no forward projection.")
 
         if not availability:
             st.info("No active project data found. Upload SS DRS to generate heatmap.")
@@ -971,31 +951,30 @@ def main():
             for consultant in sorted(availability.keys()):
                 region = _emp_ps_region(consultant)
                 row_data = {"Consultant": consultant, "Region": region}
-                for (yr, mo), label in zip(months, month_labels):
-                    status = availability[consultant].get((yr, mo), "free")
-                    row_data[label] = "Available" if status == "free" else "Light" if status == "partial" else "Busy"
+                # Get score from first month (same across all months)
+                first_val = availability[consultant].get(months[0], ("free", 0, 0))
+                score = first_val[1] if isinstance(first_val, tuple) else 0
+                proj_count = first_val[2] if isinstance(first_val, tuple) else 0
+                row_data["WHS Score"] = score
+                row_data["Projects"] = proj_count
+                for mo, label in zip(months, month_labels):
+                    val = availability[consultant].get(mo, ("free", 0, 0))
+                    status, sc, _ = val if isinstance(val, tuple) else (val, 0, 0)
+                    band, _, _ = _whs_band(sc)
+                    row_data[label] = f"{band} ({sc})"
                 heatmap_data.append(row_data)
 
             hm_df = pd.DataFrame(heatmap_data)
 
             def color_cell(val):
-                if val == "Available":
-                    return "background-color:#C6EFCE;color:#276221"
-                if val == "Light":
-                    return "background-color:#FFEB9C;color:#9C6500"
-                if val == "Busy":
-                    return "background-color:#FFC7CE;color:#9C0006"
+                v = str(val)
+                if v.startswith("Low"):    return "background-color:#C6EFCE;color:#276221"
+                if v.startswith("Medium"): return "background-color:#FFEB9C;color:#9C6500"
+                if v.startswith("High"):   return "background-color:#FFC7CE;color:#9C0006"
                 return ""
 
             styled = hm_df.style.applymap(color_cell, subset=month_labels)
             st.dataframe(styled, hide_index=True, use_container_width=True)
-
-        if conflicts:
-            st.markdown("---")
-            st.warning(f"{len(conflicts)} parallel conflict(s) detected — consultants in concurrent heavy-phase projects.")
-            conflict_df = pd.DataFrame(conflicts)[["consultant", "project_1", "phase_1", "project_2", "phase_2", "combined_weight"]]
-            conflict_df.columns = ["Consultant", "Project 1", "Phase 1", "Project 2", "Phase 2", "Combined Weight"]
-            st.dataframe(conflict_df, hide_index=True, use_container_width=True)
 
     # ── Tab 2: Consultant Detail ───────────────────────────────────────────────
     with tab2:
@@ -1011,30 +990,27 @@ def main():
             products = ", ".join(info.get("products", []) or ["All"])
             learning = ", ".join(info.get("learning", []))
 
-            projects, phases, free_from = "", "", "Available Now"
+            projects, free_from = "", "Available Now"
             if ss_df is not None and "consultant" in ss_df.columns:
-                emp_rows = ss_df[ss_df["consultant"].str.strip() == name]
+                emp_rows = ss_df[ss_df["consultant"].astype(str).str.strip() == name]
                 if not emp_rows.empty:
-                    projects = "; ".join(emp_rows["project_name"].dropna().unique()) if "project_name" in emp_rows.columns else ""
-                    phases   = "; ".join(emp_rows["phase"].dropna().unique()) if "phase" in emp_rows.columns else ""
-                    free_dates = []
-                    for _, r in emp_rows.iterrows():
-                        sd = r.get("start_date")
-                        if pd.notna(sd):
-                            sd = sd.date() if hasattr(sd, "date") else sd
-                            pt = str(r.get("project_type", "")).strip()
-                            free_dates.append(_project_end_date(sd, pt))
-                    if free_dates:
-                        free_from = max(free_dates).strftime("%b %Y")
+                    proj_list = emp_rows["project_name"].dropna().unique() if "project_name" in emp_rows.columns else []
+                    projects = str(len(proj_list))
+            # Get WHS score from availability
+            whs_score = ""
+            if name in availability:
+                first_val = availability[name].get(months[0], ("free", 0, 0))
+                if isinstance(first_val, tuple):
+                    band, _, _ = _whs_band(first_val[1])
+                    whs_score = f"{band} ({first_val[1]})"
 
             detail_rows.append({
                 "Consultant": name,
                 "Region": region,
                 "Role": role,
+                "WHS Score": whs_score,
+                "Active Projects (#)": int(projects) if str(projects).isdigit() else 0,
                 "Products": products,
-                "Active Projects": projects,
-                "Current Phase": phases,
-                "Est. Free From": free_from,
                 "Learning (Future)": learning,
             })
 
@@ -1042,7 +1018,8 @@ def main():
             detail_df = pd.DataFrame(detail_rows)
 
             def highlight_free(row):
-                color = "#C6EFCE" if row["Active Projects"] == "" else ""
+                score_str = str(row.get("WHS Score", ""))
+                color = "#C6EFCE" if score_str.startswith("Low") or row.get("Active Projects (#)", 0) == 0 else ""
                 return [f"background-color:{color}" if color else "" for _ in row]
 
             styled_detail = detail_df.style.apply(highlight_free, axis=1)
@@ -1108,6 +1085,10 @@ def main():
                     return "Overdue" if diff < 0 else "This Week" if diff <= 7 else "This Month" if diff <= 30 else "Upcoming"
                 display_df["Urgency"] = display_df["outreach_date"].apply(urgency)
 
+            # Strip time from date columns
+            for _dcol in ["signed_date", "outreach_date", "start_date"]:
+                if _dcol in display_df.columns:
+                    display_df[_dcol] = pd.to_datetime(display_df[_dcol], errors="coerce").dt.strftime("%Y-%m-%d").fillna("")
             col_rename = {
                 "project_name":   "Project",
                 "project_type":   "Project Type",
