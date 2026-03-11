@@ -252,18 +252,20 @@ PARALLEL_CONFLICT_THRESHOLD = 5.0  # sum of phase weights across concurrent proj
 
 # FF scope map (mirrors utilization report)
 FF_SCOPE_MAP = {
-    "capture & e-invoicing": 40,
-    "e-invoicing":           40,
-    "cc statement import":   20,
-    "reconcile psp":         20,
-    "sftp connector":        20,
+    # ZoneApps FF products only — Billing/Reporting/Payroll are T&M (scope from NS)
+    # Keys sorted longest-first so more specific entries match before general ones
+    "capture & e-invoicing": 30,
+    "reconcile premium":     30,
+    "approvals premium":     35,
+    "reconcile 2.0":         20,
+    "reconcile psp":         17,
+    "cc statement import":    6,
+    "sftp connector":        12,
+    "e-invoicing":           15,
+    "approvals":             17,
+    "reconcile":             17,
     "capture":               20,
-    "approvals":             20,
-    "payments":              40,
-    "reconcile":             40,
-    "reporting":             40,
-    "billing":               80,
-    "payroll":               80,
+    "payments":              20,
 }
 
 HORIZON_MONTHS = 6  # how many months forward to project
@@ -462,14 +464,37 @@ def load_ns_unassigned(file):
     # Numeric T&M scope
     if "tm_scope" in df.columns:
         df["tm_scope"] = pd.to_numeric(df["tm_scope"], errors="coerce")
-    # Derive scoped hours
-    df["scoped_hours"] = df.apply(lambda r: (
-        r.get("tm_scope") if str(r.get("billing_type", "")).strip().lower() in ("time & material", "time and material", "t&m", "tm")
-        else _resolve_ff_scope(str(r.get("project_type", "")))
-    ), axis=1)
-    # Derive PS region from territory
+
+    # Derive PS region from territory before dedup
     if "territory" in df.columns:
         df["ps_region"] = df["territory"].apply(_territory_to_ps_region)
+
+    # Dedup by project ID — NS has one row per billing line, not per project
+    # T&M: sum scoped hours across lines (each line may have partial scope)
+    # FF:  take scope from FF_SCOPE_MAP once — ignore per-row values (lookup-based)
+    id_col = "project_id" if "project_id" in df.columns else None
+    if id_col:
+        deduped = []
+        for pid, grp in df.groupby(id_col):
+            row = grp.iloc[0].copy()  # take first row for all metadata
+            billing = str(row.get("billing_type", "")).strip().lower()
+            is_tm = billing in ("time & material", "time and material", "t&m", "tm")
+            if is_tm:
+                # Sum T&M scoped hours across all lines
+                row["scoped_hours"] = grp["tm_scope"].sum() if "tm_scope" in grp.columns else None
+            else:
+                # FF — lookup once from project type (don't sum duplicate lines)
+                row["scoped_hours"] = _resolve_ff_scope(str(row.get("project_type", "")))
+            deduped.append(row)
+        df = pd.DataFrame(deduped).reset_index(drop=True)
+    else:
+        # No project_id — fall back to per-row derivation
+        df["scoped_hours"] = df.apply(lambda r: (
+            r.get("tm_scope") if str(r.get("billing_type", "")).strip().lower()
+            in ("time & material", "time and material", "t&m", "tm")
+            else _resolve_ff_scope(str(r.get("project_type", "")))
+        ), axis=1)
+
     return df
 
 # ── Projection engine ─────────────────────────────────────────────────────────
