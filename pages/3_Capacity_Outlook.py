@@ -65,7 +65,7 @@ EMPLOYEE_ROLES = {
     "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-        "Cruz, Daniel":           {"role": "Consultant",         "products": ["All"],                                                                                  "learning": []},
+        "Cruz, Daniel":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "Payments", "e-Invoicing", "SFTP Connector", "CC Statement Import"],                                                                                  "learning": []},
     # ── Leavers (historical) ──────────────────────────────────────────────────
     "Alam, Laisa":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
     "Chan, Joven":            {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
@@ -623,6 +623,44 @@ def project_consultant_availability(ss_df, months):
     return results, conflicts
 
 
+# Maps NS project type keywords -> EMPLOYEE_ROLES product family names
+NS_PRODUCT_FAMILY_MAP = [
+    (["bill"],                          "Billing"),
+    (["rpt", "report"],                 "Reporting"),
+    (["payroll", "zep"],               "Payroll"),
+    (["zoneapp", "capture", "approvals", "reconcile", "payments",
+       "e-invoicing", "sftp", "cc statement", "za -"],  "Apps"),
+]
+
+def _ns_pt_to_family(project_type):
+    """Map NS project type string to product family label."""
+    pt = str(project_type).lower()
+    for keywords, family in NS_PRODUCT_FAMILY_MAP:
+        if any(kw in pt for kw in keywords):
+            return family
+    return "Other"
+
+def _consultant_handles_family(consultant, family):
+    """Return True if consultant's products include the given product family."""
+    info = EMPLOYEE_ROLES.get(consultant, {})
+    products = info.get("products", [])
+    if not products:
+        return False
+    if "All" in products:
+        return True
+    pl = [p.lower() for p in products]
+    if family == "Billing":
+        return any("bill" in p for p in pl)
+    if family == "Reporting":
+        return any("rpt" in p or "report" in p for p in pl)
+    if family == "Payroll":
+        return any("payroll" in p or "zep" in p for p in pl)
+    if family == "Apps":
+        return any(kw in p for p in pl
+                   for kw in ["capture", "approvals", "reconcile", "payments",
+                               "e-invoicing", "sftp", "cc statement"])
+    return False
+
 def get_available_consultants(availability, months, product_type, ps_region, start_month):
     """
     Return list of consultants who:
@@ -631,17 +669,17 @@ def get_available_consultants(availability, months, product_type, ps_region, sta
     3. Have WHS score <= 60 (Medium or below) in start_month
     Sorted by score ascending (lowest load first).
     """
+    from datetime import date
+    today_period = date.today().strftime("%Y-%m")
     candidates = []
     for consultant, months_map in availability.items():
-        # Product match
-        info = EMPLOYEE_ROLES.get(consultant, {})
-        products = info.get("products", [])
-        if products and "All" not in products:
-            # Normalise product_type for matching
-            pt_lower = (product_type or "").strip().lower()
-            matched = any(pt_lower in p.lower() or p.lower() in pt_lower for p in products)
-            if not matched:
-                continue
+        # Active check — exclude leavers
+        if not _emp_active(consultant, today_period):
+            continue
+        # Product match — map NS project type to family, then check consultant
+        family = _ns_pt_to_family(product_type)
+        if not _consultant_handles_family(consultant, family):
+            continue
         # Region match
         if _emp_ps_region(consultant) != ps_region:
             continue
@@ -954,12 +992,12 @@ def main():
             "</div>"
         )
 
-    with m1: st.markdown(metric_card("Unassigned Projects", _ns_total, "total needing assignment", "#E74C3C" if _ns_total > 0 else None), unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Apps", _ns_apps, "ZoneApp products"), unsafe_allow_html=True)
-    with m3: st.markdown(metric_card("Billing", _ns_billing, "keyword: Bill"), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("Reporting", _ns_reporting, "keyword: Rpt"), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Payroll", _ns_payroll, "keyword: Payroll / ZEP"), unsafe_allow_html=True)
-    with m6: st.markdown(metric_card("Available Consultants", available_now, "WHS ≤ Medium now", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("Unassigned Projects", _ns_total, "", "#E74C3C" if _ns_total > 0 else None), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Apps", _ns_apps), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Billing", _ns_billing), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("Reporting", _ns_reporting), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Payroll", _ns_payroll), unsafe_allow_html=True)
+    with m6: st.markdown(metric_card("Available Consultants", available_now, "", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
 
 
     st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
@@ -1062,129 +1100,6 @@ def main():
             for col, fn in style_cols.items():
                 styled_ns = styled_ns.applymap(fn, subset=[col])
             st.dataframe(styled_ns, hide_index=True, use_container_width=True)
-
-    # ── Tab 2: Heatmap ─────────────────────────────────────────────────────────
-    ws1 = wb.active
-    ws1.title = "Capacity Heatmap"
-    hdr_row(ws1, 1, ["Consultant", "Region", "Role"] + month_labels)
-    ws1.column_dimensions["A"].width = 28
-    ws1.column_dimensions["B"].width = 10
-    ws1.column_dimensions["C"].width = 18
-    for col in range(4, 4 + len(months)):
-        ws1.column_dimensions[get_column_letter(col)].width = 14
-
-    row_n = 2
-    for consultant in sorted(availability.keys()):
-        region = _emp_ps_region(consultant)
-        role_info = EMPLOYEE_ROLES.get(consultant, {})
-        role = role_info.get("role", "Consultant")
-        data_cell(ws1, row_n, 1, consultant, bold=True)
-        data_cell(ws1, row_n, 2, region, align=center)
-        data_cell(ws1, row_n, 3, role, align=center)
-        for col_i, mo in enumerate(months, 4):
-            status = availability[consultant].get(mo, "free")
-            fill = green_fill if status == "free" else amber_fill if status == "partial" else red_fill
-            label = "Available" if status == "free" else "Light" if status == "partial" else "Busy"
-            data_cell(ws1, row_n, col_i, label, fill=fill, align=center)
-        row_n += 1
-
-    # ── Tab 3: Consultant Detail ───────────────────────────────────────────────
-    ws2 = wb.create_sheet("Consultant Detail")
-    hdr_row(ws2, 1, ["Consultant", "Region", "Role", "WHS Score", "Active Projects (#)",
-                     "Products", "Learning (Future)"])
-    for col_i, w in enumerate([28, 10, 18, 16, 18, 35, 30], 1):
-        ws2.column_dimensions[get_column_letter(col_i)].width = w
-
-    row_n = 2
-    if ss_df is not None and not ss_df.empty:
-        active_consultants = ss_df["consultant"].dropna().unique() if "consultant" in ss_df.columns else []
-    else:
-        active_consultants = []
-
-    for name, info in sorted(EMPLOYEE_ROLES.items(), key=lambda x: x[0]):
-        if info.get("role") == "Project Manager":
-            continue
-        if not _emp_active(name, datetime.today().strftime("%Y-%m")):
-            continue
-        region = _emp_ps_region(name)
-        role = info.get("role", "Consultant")
-        products = ", ".join(info.get("products", []) or ["All"])
-        learning = ", ".join(info.get("learning", []))
-
-        # Find their active projects from SS
-        if ss_df is not None and "consultant" in ss_df.columns:
-            emp_rows = ss_df[ss_df["consultant"].str.strip() == name]
-            projects = "; ".join(emp_rows["project_name"].dropna().unique()) if "project_name" in emp_rows.columns else ""
-            phases   = "; ".join(emp_rows["phase"].dropna().unique()) if "phase" in emp_rows.columns else ""
-            # Estimate free from
-            free_dates = []
-            for _, r in emp_rows.iterrows():
-                sd = r.get("start_date")
-                if pd.notna(sd):
-                    sd = sd.date() if hasattr(sd, "date") else sd
-                    pt = str(r.get("project_type", "")).strip()
-                    free_dates.append(_project_end_date(sd, pt))
-            free_from = max(free_dates).strftime("%b %Y") if free_dates else "Available Now"
-        else:
-            projects = ""
-            phases = ""
-            free_from = "Available Now"
-
-        fill = gray_fill if not projects else white_fill
-        data_cell(ws2, row_n, 1, name, bold=True, fill=fill)
-        data_cell(ws2, row_n, 2, region, fill=fill, align=center)
-        data_cell(ws2, row_n, 3, role, fill=fill)
-        data_cell(ws2, row_n, 4, products, fill=fill)
-        data_cell(ws2, row_n, 5, projects, fill=fill)
-        data_cell(ws2, row_n, 6, phases, fill=fill)
-        data_cell(ws2, row_n, 7, free_from, fill=fill, align=center)
-        data_cell(ws2, row_n, 8, learning, fill=fill)
-        row_n += 1
-
-    # ── Tab 4: Regional Rollup ─────────────────────────────────────────────────
-    ws3 = wb.create_sheet("Regional Rollup")
-    regions = ["NOAM", "EMEA", "APAC"]
-    hdr_row(ws3, 1, ["Region", "Metric"] + month_labels)
-    ws3.column_dimensions["A"].width = 10
-    ws3.column_dimensions["B"].width = 22
-    for col in range(3, 3 + len(months)):
-        ws3.column_dimensions[get_column_letter(col)].width = 14
-
-    demand = build_demand_summary(ns_df, months)
-    row_n = 2
-    for region in regions:
-        # Capacity: count of consultants available in each month
-        region_consultants = [
-            c for c in availability
-            if _emp_ps_region(c) == region
-        ]
-        # Available count
-        data_cell(ws3, row_n, 1, region, bold=True, fill=blue_fill, align=center)
-        data_cell(ws3, row_n, 2, "Consultants Available", bold=True)
-        for col_i, mo in enumerate(months, 3):
-            avail = sum(1 for c in region_consultants
-                       if _status(availability[c].get(mo, ("free",0,0))) in ("free", "partial"))
-            fill = green_fill if avail > 2 else amber_fill if avail > 0 else red_fill
-            data_cell(ws3, row_n, col_i, avail, fill=fill, align=center)
-        row_n += 1
-
-        # Demand: unassigned project count
-        data_cell(ws3, row_n, 1, "", fill=blue_fill)
-        data_cell(ws3, row_n, 2, "Unassigned Projects", bold=True)
-        reg_demand = demand.get(region, {})
-        for col_i, mo in enumerate(months, 3):
-            cnt = reg_demand.get(mo, {}).get("count", 0)
-            fill = red_fill if cnt > 2 else amber_fill if cnt > 0 else green_fill
-            data_cell(ws3, row_n, col_i, cnt, fill=fill, align=center)
-        row_n += 1
-
-        # Demand: scoped hours
-        data_cell(ws3, row_n, 1, "", fill=blue_fill)
-        data_cell(ws3, row_n, 2, "Scoped Hours Demand")
-        for col_i, mo in enumerate(months, 3):
-            hrs = reg_demand.get(mo, {}).get("hours", 0)
-            data_cell(ws3, row_n, col_i, round(hrs, 1) if hrs else 0, align=center)
-        row_n += 2  # gap between regions
 
     with tab2:
         st.markdown("#### Consultant Availability — Next 6 Months")
