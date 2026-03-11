@@ -388,7 +388,7 @@ SS_COL_MAP = {
     "status":            "status",
     "project status":    "status",
     "territory":         "territory",
-    "project manager":   "project_manager",
+    "project manager":   "consultant",
     "pm":                "project_manager",
     "start date":        "start_date",
     "project start date":"start_date",
@@ -895,6 +895,18 @@ def main():
     month_labels = [_month_label(y, m) for y, m in months]
 
     availability, conflicts = project_consultant_availability(ss_df, months)
+
+    # ── Debug: name matching diagnostic ───────────────────────────────────────
+    if ss_df is not None and "consultant" in ss_df.columns:
+        ss_names = ss_df["consultant"].dropna().unique().tolist()
+        roster_names = list(EMPLOYEE_ROLES.keys())
+        matched = [n for n in ss_names if n.strip() in roster_names]
+        unmatched = [n for n in ss_names if n.strip() not in roster_names]
+        with st.expander(f"Name matching diagnostic — {len(matched)} matched, {len(unmatched)} unmatched", expanded=True):
+            if unmatched:
+                st.warning(f"Unmatched names from SS (not in roster): {unmatched}")
+            if matched:
+                st.success(f"Matched: {matched}")
 
     # ── Metrics row ────────────────────────────────────────────────────────────
     today_str = datetime.today().strftime("%Y-%m")
