@@ -41,45 +41,71 @@ TAG_BADGE = {
 PTO_KEYWORDS = ["vacation", "pto", "sick", "vacation/pto"]
 
 # ── Employees excluded from utilization targets ──────────────────────────────
-UTIL_EXEMPT_EMPLOYEES = ["swanson"]  # case-insensitive match
+UTIL_EXEMPT_EMPLOYEES = [
+    k.lower() for k, v in EMPLOYEE_ROLES.items()
+    if isinstance(v, dict) and v.get("util_exempt")
+]  # derived from EMPLOYEE_ROLES util_exempt flag
 
 # ── Employee → Location lookup (drives avail hours + PS region) ──────────────
 EMPLOYEE_ROLES = {
-    "Arestarkhov, Yaroslav": "Consultant",
-    "Barrio, Nairobi": "Project Manager",
-    "Bell, Stuart": "Solution Architect",
-    "Carpen, Anamaria": "Consultant",
-    "Centinaje, Rhodechild": "Consultant",
-    "Church, Jason G": "Consultant",
-    "Cloete, Bronwyn": "Consultant",
-    "Cooke, Ellen": "Consultant",
-    "Cruz, Daniel": "Consultant",
-    "DiMarco, Nicole R": "Solution Architect",
-    "Dolha, Madalina": "Consultant",
-    "Finalle-Newton, Jesse": "Consultant",
-    "Gardner, Cheryll L": "Consultant",
-    "Hamilton, Julie C": "Consultant",
-    "Hopkins, Chris": "Consultant",
-    "Hughes, Madalyn": "Project Manager",
-    "Ickler, Georganne": "Consultant",
-    "Isberg, Eric": "Consultant",
-    "Jordanova, Marija": "Consultant",
-    "Lappin, Thomas": "Consultant",
-    "Longalong, Santiago": "Consultant",
-    "Mohammad, Manaan": "Consultant",
-    "Morris, Lisa": "Consultant",
-    "Murphy, Conor": "Solution Architect",
-    "NAQVI, SYED": "Consultant",
-    "Olson, Austin D": "Consultant",
-    "Pallone, Daniel": "Consultant",
-    "Porangada, Suraj": "Project Manager",
-    "Raykova, Silvia": "Consultant",
-    "Selvakumar, Sajithan": "Consultant",
-    "Snee, Stefanie J": "Consultant",
-    "Stone, Matt": "Consultant",
-    "Strauss, John W": "Consultant",
-    "Tuazon, Carol": "Consultant",
-    "Zoric, Ivan": "Consultant",
+    # Structure: name -> {role, products, learning, util_exempt (optional)}
+    # roles: Consultant | Project Manager | Solution Architect | Developer
+    # products: assignable product types
+    # learning: in-training — surface as future capacity only, not current
+    # util_exempt: True = excluded from utilization targets
+
+    # ── Project Managers (no product delivery) ────────────────────────────────
+    "Barrio, Nairobi":          {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+    "Hughes, Madalyn":          {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+    "Porangada, Suraj":       {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+    "Cadelina":             {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+
+    # ── Solution Architects ───────────────────────────────────────────────────
+    "Bell, Stuart":            {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
+    "DiMarco, Nicole R":         {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
+    "Murphy, Conor":          {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
+
+    # ── Developer ─────────────────────────────────────────────────────────────
+    "Church, Jason G":      {"role": "Developer",          "products": ["All"],                                                                                  "learning": [], "util_exempt": True},
+
+    # ── Consultants ───────────────────────────────────────────────────────────
+    "Arestarkhov, Yaroslav":     {"role": "Consultant",         "products": ["Billing", "Capture"],                                                                   "learning": []},
+    "Carpen, Anamaria":          {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
+    "Centinaje, Rhodechild":       {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
+    "Cooke, Ellen":           {"role": "Consultant",         "products": ["Billing", "Payroll"],                                                                   "learning": []},
+    "Dolha, Madalina":           {"role": "Consultant",         "products": ["Capture", "Reconcile", "CC Statement Import", "Reconcile PSP", "e-Invoicing"],          "learning": []},
+    "Finalle-Newton, Jesse":  {"role": "Solution Architect", "products": ["Reporting"],                                                                            "learning": []},
+    "Gardner, Cheryll L":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Hopkins, Chris":         {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
+    "Ickler, Georganne":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Isberg, Eric":          {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
+    "Jordanova, Marija":       {"role": "Consultant",         "products": ["Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],     "learning": []},
+    "Lappin, Thomas":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": ["Capture", "Reconcile"]},
+    "Longalong, Santiago":       {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": ["Billing"]},
+    "Mohammad, Manaan":        {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
+    "Morris, Lisa":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "NAQVI, SYED":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "Olson, Austin D":           {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Pallone, Daniel":         {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "Raykova, Silvia":         {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
+    "Selvakumar, Sajithan":      {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
+    "Snee, Stefanie J":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Swanson":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
+    "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
+    "Zoric, Ivan":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
+
+    "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+    "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+    "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+        # ── Leavers (historical data only) ────────────────────────────────────────
+    "Alam, Laisa":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Chan, Joven":          {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
+    "Cloete, Bronwyn":      {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
+    "Eyong, Eyong":         {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
+    "Hamilton, Julie C":    {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
+    "Hernandez, Camila":    {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Rushbrook, Emma C":    {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "Strauss, John W":      {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
 }
 
 # ── Employee roster — {name: (location, start_date, end_date)}
@@ -87,51 +113,54 @@ EMPLOYEE_ROLES = {
 # Employees with an end_date will be excluded from utilization targets
 # for any period after their exit month and flagged as Alumni.
 EMPLOYEE_LOCATION = {
-    #  Name                        Location            Start      End
-    "Arestarkhov, Yaroslav":  ("Czech Republic",      None,      None),
-    "Carpen, Anamaria":       ("Spain",               None,      None),
-    "Centinaje, Rhodechild":  ("Manila (PH)",         None,      None),
-    "Dolha, Madalina":        ("Faroe Islands",       None,      None),
-    "Dolha":                  ("Faroe Islands",       None,      None),
-    "Cooke, Ellen":           ("Northern Ireland",    None,      None),
-    "Cruz, Daniel":           ("Manila (PH)",         None,      None),
-    "DiMarco, Nicole R":      ("USA",                 None,      None),
-    "Gardner, Cheryll L":     ("USA",                 None,      None),
-    "Hopkins, Chris":         ("USA",                 None,      None),
-    "Ickler, Georganne":      ("USA",                 None,      None),
-    "Isberg, Eric":           ("USA",                 None,      None),
-    "Jordanova, Marija":      ("North Macedonia",     None,      None),
-    "Lappin, Thomas":         ("Northern Ireland",    None,      None),
-    "Longalong, Santiago":    ("Manila (PH)",         None,      None),
-    "Mohammad, Manaan":       ("Canada",              None,      None),
-    "Morris, Lisa":           ("Sydney (NSW)",        None,      None),
-    "Pallone, Daniel":        ("Sydney (NSW)",        None,      None),
-    "NAQVI, SYED":            ("Canada",              None,      None),
-    "Raykova, Silvia":        ("Netherlands",         None,      None),
-    "Selvakumar, Sajithan":   ("Canada",              None,      None),
-    "Snee, Stefanie J":       ("USA",                 None,      None),
-    "Stone, Matt":            ("USA",                 None,      None),
-    "Tuazon, Carol":          ("Manila (PH)",         None,      None),
-    "Zoric, Ivan":            ("Serbia",              None,      None),
-    "Murphy, Conor":          ("USA",                 None,      None),
-    "Bell, Stuart":           ("USA",                 None,      None),
-    "Cloete":                 ("Netherlands",         None,      None),
-    "Cloete, Bronwyn":        ("Netherlands",         None,      None),
-    "Hamilton C":             ("USA",                 None,      None),
-    "Hamilton, Julie C":      ("USA",                 None,      None),
-    "Strauss, John W":        ("USA",                 None,      None),
-    "Swanson":                ("USA",                 None,      None),  # util-exempt
-    "Barrio, Nairobi":        ("USA",                 None,      None),
-    "Porangada, Suraj":       ("USA",                 None,      None),
-    "Hughes, Madalyn":        ("USA",                 None,      None),
-    "Olson, Austin D":        ("USA",                 None,      None),
-    "Finalle-Newton, Jesse":  ("USA",                 None,      None),
-    "Church, Jason G":        ("USA",                 None,      None),
-    "Alam, Laisa":            ("USA",                 None,      None),
-    "Chan, Joven":            ("Manila (PH)",         None,      None),
-    "Eyong, Eyong":           ("USA",                 None,      None),
-    "Hernandez, Camila":      ("USA",                 None,      None),
-    "Rushbrook, Emma C":      ("Wales",               None,      None),
+    #  Name                        Location              Start       End
+    # ── Active employees ──────────────────────────────────────────────────────
+    "Arestarkhov, Yaroslav":  ("Czech Republic",      None,       None),
+    "Barrio, Nairobi":        ("USA",                 None,       None),
+    "Bell, Stuart":           ("USA",                 None,       None),
+    "Cadelina":               ("Manila (PH)",         "2026-03",  None),
+    "Carpen, Anamaria":       ("Spain",               None,       None),
+    "Centinaje, Rhodechild":  ("Manila (PH)",         None,       None),
+    "Church, Jason G":        ("USA",                 None,       None),
+    "Cooke, Ellen":           ("Northern Ireland",    None,       None),
+    "Cruz, Daniel":           ("Manila (PH)",         None,       None),
+    "DiMarco, Nicole R":      ("USA",                 None,       None),
+    "Dolha, Madalina":        ("Faroe Islands",       None,       None),
+    "Finalle-Newton, Jesse":  ("USA",                 None,       None),
+    "Gardner, Cheryll L":     ("USA",                 None,       None),
+    "Hopkins, Chris":         ("USA",                 None,       None),
+    "Hughes, Madalyn":        ("USA",                 None,       None),
+    "Ickler, Georganne":      ("USA",                 None,       None),
+    "Isberg, Eric":           ("USA",                 None,       None),
+    "Jordanova, Marija":      ("North Macedonia",     None,       None),
+    "Lappin, Thomas":         ("Northern Ireland",    None,       None),
+    "Longalong, Santiago":    ("Manila (PH)",         None,       None),
+    "Mohammad, Manaan":       ("Canada",              None,       None),
+    "Morris, Lisa":           ("Sydney (NSW)",        None,       None),
+    "Murphy, Conor":          ("USA",                 None,       None),
+    "NAQVI, SYED":            ("Canada",              None,       None),
+    "Olson, Austin D":        ("USA",                 None,       None),
+    "Pallone, Daniel":        ("Sydney (NSW)",        None,       None),
+    "Porangada, Suraj":       ("USA",                 None,       None),
+    "Raykova, Silvia":        ("Netherlands",         None,       None),
+    "Selvakumar, Sajithan":   ("Canada",              None,       None),
+    "Snee, Stefanie J":       ("USA",                 None,       None),
+    "Stone, Matt":            ("USA",                 None,       None),
+    "Swanson":                ("USA",                 None,       None),
+    "Tuazon, Carol":          ("Manila (PH)",         None,       None),
+    "Zoric, Ivan":            ("Serbia",              None,       None),
+    "Dunn, Steven":           ("USA",                 None,       None),
+    "Law, Brandon":           ("USA",                 None,       None),
+    "Quiambao, Generalyn":    ("Manila (PH)",         None,       None),
+        # ── Leavers ───────────────────────────────────────────────────────────────
+    "Alam, Laisa":            ("USA",                 None,       "2025-12"),
+    "Chan, Joven":            ("Manila (PH)",         None,       "2025-12"),
+    "Cloete, Bronwyn":        ("Netherlands",         None,       "2026-02"),
+    "Eyong, Eyong":           ("USA",                 None,       "2025-12"),
+    "Hamilton, Julie C":      ("USA",                 None,       "2026-01"),
+    "Hernandez, Camila":      ("USA",                 None,       "2025-12"),
+    "Rushbrook, Emma C":      ("Wales",               None,       "2025-12"),
+    "Strauss, John W":        ("USA",                 None,       "2026-03"),
 }
 
 def _emp_location(name):
@@ -222,6 +251,31 @@ AVAIL_HOURS = {
 
 # Fixed fee task keywords (Case/Task/Event column)
 FF_TASKS = ["Configuration", "Enablement", "Training", "Post Go-live", "Project Management"]
+
+def _emp_role(name):
+    """Return role string for an employee, handling new dict structure."""
+    v = EMPLOYEE_ROLES.get(name)
+    if v is None:
+        return None
+    return v["role"] if isinstance(v, dict) else v
+
+def _emp_products(name, include_learning=False):
+    """Return list of assignable products for an employee."""
+    v = EMPLOYEE_ROLES.get(name)
+    if v is None or not isinstance(v, dict):
+        return []
+    products = list(v.get("products", []))
+    if include_learning:
+        products += v.get("products_learning", [])
+    return products
+
+def _emp_util_exempt(name):
+    """Return True if employee is exempt from utilization targets."""
+    v = EMPLOYEE_ROLES.get(name)
+    if isinstance(v, dict):
+        return v.get("util_exempt", False)
+    return False
+
 
 def get_avail_hours(region, period):
     """Look up available hours for a region/period. Returns None if not found."""
@@ -542,8 +596,10 @@ def build_excel(df, scope_map, consumed):
     ws2.freeze_panes = "A3"
 
     eh = ["Employee","Location","PS Region","Period",
-          "Avail Hrs","Hours This Period","Utilization Credits","FF Project Overrun Hrs","Admin Hrs","Util %"]
-    ew = [22,16,14,12,12,15,18,18,14,10]
+          "Avail Hrs (Capacity)","Hours This Period","Utilization Credits",
+          "FF Project Overrun Hrs","Admin Hrs",
+          "Util % (vs Hours Logged)","Util % (vs Capacity)","Projected Full Month Util %"]
+    ew = [22,16,14,12,16,15,18,18,14,20,20,22]
     write_title(ws2, "SUMMARY — Utilization by Employee", len(eh))
     style_header(ws2, 2, eh, TEAL)
     ws2.auto_filter.ref = "A2:J2"
@@ -589,6 +645,21 @@ def build_excel(df, scope_map, consumed):
         _pto_df = df[_pto_mask].groupby(["employee","period"])["hours"].sum()
         _pto_lookup = {(emp, per): hrs for (emp, per), hrs in _pto_df.items()}
 
+    # ── Partial month detection ──────────────────────────────────────────────
+    _period_days = None
+    _total_period_days = None
+    if "date" in df.columns:
+        _dates = df["date"].dropna()
+        if len(_dates) > 0:
+            import calendar
+            _min_d = _dates.min()
+            _max_d = _dates.max()
+            _period_days = len(pd.bdate_range(_min_d, _max_d))
+            _yr, _mo = _min_d.year, _min_d.month
+            _month_start = pd.Timestamp(_yr, _mo, 1)
+            _month_end   = pd.Timestamp(_yr, _mo, calendar.monthrange(_yr, _mo)[1])
+            _total_period_days = len(pd.bdate_range(_month_start, _month_end))
+
     _prev_emp = None; _grp_idx = 0
     for r_idx, (_, row) in enumerate(emp_sum.iterrows(), 3):
         emp     = row["employee"]
@@ -602,15 +673,26 @@ def build_excel(df, scope_map, consumed):
 
         _ps_reg = df[df["employee"]==emp]["ps_region"].iloc[0] \
             if len(df[df["employee"]==emp]) > 0 else ""
+        # Capacity util: credits / available hours in period
+        cap_util = row["credit_hrs"] / avail if avail and avail > 0 else None
+        # Partial month projection
+        proj_util = None
+        if _period_days is not None and _total_period_days is not None and _period_days < _total_period_days:
+            daily_rate = row["credit_hrs"] / _period_days if _period_days > 0 else 0
+            proj_util = (daily_rate * _total_period_days) / avail if avail and avail > 0 else None
+
         vals = [emp, region, _ps_reg, period, avail or "—",
                 row["hours_this_period"], row["credit_hrs"],
                 row["ff_overrun_hrs"], row.get("admin_hrs", 0),
-                util if avail else "—"]
-        fmts = [None,None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%"]
+                util if row["hours_this_period"] > 0 else "—",
+                cap_util if cap_util is not None else "—",
+                proj_util if proj_util is not None else "—"]
+        fmts = [None,None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%","0.0%","0.0%"]
 
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
             cell = ws2.cell(row=r_idx, column=c_idx, value=val)
-            style_cell(cell, util_bg if c_idx == 10 else bg, fmt=fmt,
+            is_util_col = c_idx in (10, 11, 12)
+            style_cell(cell, util_bg if is_util_col else bg, fmt=fmt,
                        align="right" if c_idx > 4 else "center" if c_idx == 4 else "left")
 
     # ── 3. PROJECT SUMMARY ────────────────────────────────────
@@ -1723,12 +1805,56 @@ def main():
             emp_sum_ui["location"]   = emp_sum_ui["employee"].map(_emp_region_ui)
             emp_sum_ui["avail_hrs"]  = emp_sum_ui.apply(
                 lambda r: get_avail_hours(r["location"], r["period"]) if r["location"] else None, axis=1)
-            emp_sum_ui["util_pct"]   = emp_sum_ui.apply(
-                lambda r: f"{r['credit_hrs']/r['avail_hrs']*100:.1f}%" if r["avail_hrs"] else "—", axis=1)
-            display_cols = ["employee","location","period","avail_hrs",
-                            "hours_this_period","credit_hrs","ff_overrun_hrs","util_pct"]
-            st.dataframe(emp_sum_ui[[c for c in display_cols if c in emp_sum_ui.columns]],
-                         use_container_width=True, hide_index=True)
+            # Util % vs hours logged (effort efficiency)
+            emp_sum_ui["util_vs_logged"] = emp_sum_ui.apply(
+                lambda r: f"{r['credit_hrs']/r['hours_this_period']*100:.1f}%"
+                if r["hours_this_period"] > 0 else "—", axis=1)
+            # Util % vs available capacity
+            emp_sum_ui["util_vs_capacity"] = emp_sum_ui.apply(
+                lambda r: f"{r['credit_hrs']/r['avail_hrs']*100:.1f}%"
+                if r["avail_hrs"] and r["avail_hrs"] > 0 else "—", axis=1)
+            # Partial month projection (only if period < full month)
+            _ui_period_days = None
+            _ui_total_days  = None
+            if "date" in df.columns:
+                import calendar as _cal
+                _d = df["date"].dropna()
+                if len(_d) > 0:
+                    _ui_period_days = len(pd.bdate_range(_d.min(), _d.max()))
+                    _yr2, _mo2 = _d.min().year, _d.min().month
+                    _ms = pd.Timestamp(_yr2, _mo2, 1)
+                    _me = pd.Timestamp(_yr2, _mo2, _cal.monthrange(_yr2, _mo2)[1])
+                    _ui_total_days = len(pd.bdate_range(_ms, _me))
+            _is_partial = (_ui_period_days is not None and _ui_total_days is not None
+                           and _ui_period_days < _ui_total_days)
+            if _is_partial:
+                emp_sum_ui["proj_full_month"] = emp_sum_ui.apply(
+                    lambda r: (
+                        f"{(r['credit_hrs'] / _ui_period_days * _ui_total_days) / r['avail_hrs'] * 100:.1f}%"
+                        if r["avail_hrs"] and r["avail_hrs"] > 0 and _ui_period_days > 0 else "—"
+                    ), axis=1)
+
+            display_cols = ["employee", "location", "period", "avail_hrs",
+                            "hours_this_period", "credit_hrs", "ff_overrun_hrs",
+                            "util_vs_logged", "util_vs_capacity"]
+            if _is_partial:
+                display_cols.append("proj_full_month")
+                st.caption(f"Partial period detected ({_ui_period_days} of {_ui_total_days} business days). "
+                           f"Projected Full Month Util extrapolates credits at current run rate.")
+            col_labels = {
+                "employee":         "Employee",
+                "location":         "Location",
+                "period":           "Period",
+                "avail_hrs":        "Avail Hrs (Capacity)",
+                "hours_this_period":"Hours Logged",
+                "credit_hrs":       "Util Credits",
+                "ff_overrun_hrs":   "FF Overrun Hrs",
+                "util_vs_logged":   "Util % (vs Logged)",
+                "util_vs_capacity": "Util % (vs Capacity)",
+                "proj_full_month":  "Projected Full Month",
+            }
+            show_df = emp_sum_ui[[col for col in display_cols if col in emp_sum_ui.columns]].rename(columns=col_labels)
+            st.dataframe(show_df, use_container_width=True, hide_index=True)
 
         with tab2:
             proj_sum_ui = df[df["credit_tag"] != "SKIPPED"].groupby(

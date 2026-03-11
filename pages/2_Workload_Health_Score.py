@@ -25,91 +25,117 @@ AMBER    = "F39C12"
 
 # ── Employee / Region config (mirrors utilization report) ─────────────────────
 EMPLOYEE_ROLES = {
-    "Arestarkhov, Yaroslav": "Consultant",
-    "Barrio, Nairobi": "Project Manager",
-    "Bell, Stuart": "Solution Architect",
-    "Carpen, Anamaria": "Consultant",
-    "Centinaje, Rhodechild": "Consultant",
-    "Church, Jason G": "Consultant",
-    "Cloete, Bronwyn": "Consultant",
-    "Cooke, Ellen": "Consultant",
-    "Cruz, Daniel": "Consultant",
-    "DiMarco, Nicole R": "Solution Architect",
-    "Dolha, Madalina": "Consultant",
-    "Finalle-Newton, Jesse": "Consultant",
-    "Gardner, Cheryll L": "Consultant",
-    "Hamilton, Julie C": "Consultant",
-    "Hopkins, Chris": "Consultant",
-    "Hughes, Madalyn": "Project Manager",
-    "Ickler, Georganne": "Consultant",
-    "Isberg, Eric": "Consultant",
-    "Jordanova, Marija": "Consultant",
-    "Lappin, Thomas": "Consultant",
-    "Longalong, Santiago": "Consultant",
-    "Mohammad, Manaan": "Consultant",
-    "Morris, Lisa": "Consultant",
-    "Murphy, Conor": "Solution Architect",
-    "NAQVI, SYED": "Consultant",
-    "Olson, Austin D": "Consultant",
-    "Pallone, Daniel": "Consultant",
-    "Porangada, Suraj": "Project Manager",
-    "Raykova, Silvia": "Consultant",
-    "Selvakumar, Sajithan": "Consultant",
-    "Snee, Stefanie J": "Consultant",
-    "Stone, Matt": "Consultant",
-    "Strauss, John W": "Consultant",
-    "Tuazon, Carol": "Consultant",
-    "Zoric, Ivan": "Consultant",
+    # Structure: name -> {role, products, learning, util_exempt (optional)}
+    # roles: Consultant | Project Manager | Solution Architect | Developer
+    # products: assignable product types
+    # learning: in-training — surface as future capacity only, not current
+    # util_exempt: True = excluded from utilization targets
+
+    # ── Project Managers (no product delivery) ────────────────────────────────
+    "Barrio, Nairobi":          {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+    "Hughes, Madalyn":          {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+    "Porangada, Suraj":       {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+    "Cadelina":             {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+
+    # ── Solution Architects ───────────────────────────────────────────────────
+    "Bell, Stuart":            {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
+    "DiMarco, Nicole R":         {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
+    "Murphy, Conor":          {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
+
+    # ── Developer ─────────────────────────────────────────────────────────────
+    "Church, Jason G":      {"role": "Developer",          "products": ["All"],                                                                                  "learning": [], "util_exempt": True},
+
+    # ── Consultants ───────────────────────────────────────────────────────────
+    "Arestarkhov, Yaroslav":     {"role": "Consultant",         "products": ["Billing", "Capture"],                                                                   "learning": []},
+    "Carpen, Anamaria":          {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
+    "Centinaje, Rhodechild":       {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
+    "Cooke, Ellen":           {"role": "Consultant",         "products": ["Billing", "Payroll"],                                                                   "learning": []},
+    "Dolha, Madalina":           {"role": "Consultant",         "products": ["Capture", "Reconcile", "CC Statement Import", "Reconcile PSP", "e-Invoicing"],          "learning": []},
+    "Finalle-Newton, Jesse":  {"role": "Solution Architect", "products": ["Reporting"],                                                                            "learning": []},
+    "Gardner, Cheryll L":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Hopkins, Chris":         {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
+    "Ickler, Georganne":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Isberg, Eric":          {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
+    "Jordanova, Marija":       {"role": "Consultant",         "products": ["Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],     "learning": []},
+    "Lappin, Thomas":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": ["Capture", "Reconcile"]},
+    "Longalong, Santiago":       {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": ["Billing"]},
+    "Mohammad, Manaan":        {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
+    "Morris, Lisa":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "NAQVI, SYED":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "Olson, Austin D":           {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Pallone, Daniel":         {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "Raykova, Silvia":         {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
+    "Selvakumar, Sajithan":      {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
+    "Snee, Stefanie J":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Swanson":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
+    "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
+    "Zoric, Ivan":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
+
+    "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+    "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+    "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+        # ── Leavers (historical data only) ────────────────────────────────────────
+    "Alam, Laisa":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Chan, Joven":          {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
+    "Cloete, Bronwyn":      {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
+    "Eyong, Eyong":         {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
+    "Hamilton, Julie C":    {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
+    "Hernandez, Camila":    {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Rushbrook, Emma C":    {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
+    "Strauss, John W":      {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
 }
 
 # ── Employee roster — {name: (location, start_date, end_date)}
 # start/end as "YYYY-MM" strings or None (None = no limit).
 EMPLOYEE_LOCATION = {
-    #  Name                        Location            Start      End
-    "Arestarkhov, Yaroslav":  ("Czech Republic",      None,      None),
-    "Carpen, Anamaria":       ("Spain",               None,      None),
-    "Centinaje, Rhodechild":  ("Manila (PH)",         None,      None),
-    "Dolha, Madalina":        ("Faroe Islands",       None,      None),
-    "Dolha":                  ("Faroe Islands",       None,      None),
-    "Cooke, Ellen":           ("Northern Ireland",    None,      None),
-    "Cruz, Daniel":           ("Manila (PH)",         None,      None),
-    "DiMarco, Nicole R":      ("USA",                 None,      None),
-    "Gardner, Cheryll L":     ("USA",                 None,      None),
-    "Hopkins, Chris":         ("USA",                 None,      None),
-    "Ickler, Georganne":      ("USA",                 None,      None),
-    "Isberg, Eric":           ("USA",                 None,      None),
-    "Jordanova, Marija":      ("North Macedonia",     None,      None),
-    "Lappin, Thomas":         ("Northern Ireland",    None,      None),
-    "Longalong, Santiago":    ("Manila (PH)",         None,      None),
-    "Mohammad, Manaan":       ("Canada",              None,      None),
-    "Morris, Lisa":           ("Sydney (NSW)",        None,      None),
-    "Pallone, Daniel":        ("Sydney (NSW)",        None,      None),
-    "NAQVI, SYED":            ("Canada",              None,      None),
-    "Raykova, Silvia":        ("Netherlands",         None,      None),
-    "Selvakumar, Sajithan":   ("Canada",              None,      None),
-    "Snee, Stefanie J":       ("USA",                 None,      None),
-    "Stone, Matt":            ("USA",                 None,      None),
-    "Tuazon, Carol":          ("Manila (PH)",         None,      None),
-    "Zoric, Ivan":            ("Serbia",              None,      None),
-    "Murphy, Conor":          ("USA",                 None,      None),
-    "Bell, Stuart":           ("USA",                 None,      None),
-    "Cloete":                 ("Netherlands",         None,      None),
-    "Cloete, Bronwyn":        ("Netherlands",         None,      None),
-    "Hamilton C":             ("USA",                 None,      None),
-    "Hamilton, Julie C":      ("USA",                 None,      None),
-    "Strauss, John W":        ("USA",                 None,      None),
-    "Swanson":                ("USA",                 None,      None),
-    "Barrio, Nairobi":        ("USA",                 None,      None),
-    "Porangada, Suraj":       ("USA",                 None,      None),
-    "Hughes, Madalyn":        ("USA",                 None,      None),
-    "Olson, Austin D":        ("USA",                 None,      None),
-    "Finalle-Newton, Jesse":  ("USA",                 None,      None),
-    "Church, Jason G":        ("USA",                 None,      None),
-    "Alam, Laisa":            ("USA",                 None,      None),
-    "Chan, Joven":            ("Manila (PH)",         None,      None),
-    "Eyong, Eyong":           ("USA",                 None,      None),
-    "Hernandez, Camila":      ("USA",                 None,      None),
-    "Rushbrook, Emma C":      ("Wales",               None,      None),
+    #  Name                        Location              Start       End
+    # ── Active employees ──────────────────────────────────────────────────────
+    "Arestarkhov, Yaroslav":  ("Czech Republic",      None,       None),
+    "Barrio, Nairobi":        ("USA",                 None,       None),
+    "Bell, Stuart":           ("USA",                 None,       None),
+    "Cadelina":               ("Manila (PH)",         "2026-03",  None),
+    "Carpen, Anamaria":       ("Spain",               None,       None),
+    "Centinaje, Rhodechild":  ("Manila (PH)",         None,       None),
+    "Church, Jason G":        ("USA",                 None,       None),
+    "Cooke, Ellen":           ("Northern Ireland",    None,       None),
+    "Cruz, Daniel":           ("Manila (PH)",         None,       None),
+    "DiMarco, Nicole R":      ("USA",                 None,       None),
+    "Dolha, Madalina":        ("Faroe Islands",       None,       None),
+    "Finalle-Newton, Jesse":  ("USA",                 None,       None),
+    "Gardner, Cheryll L":     ("USA",                 None,       None),
+    "Hopkins, Chris":         ("USA",                 None,       None),
+    "Hughes, Madalyn":        ("USA",                 None,       None),
+    "Ickler, Georganne":      ("USA",                 None,       None),
+    "Isberg, Eric":           ("USA",                 None,       None),
+    "Jordanova, Marija":      ("North Macedonia",     None,       None),
+    "Lappin, Thomas":         ("Northern Ireland",    None,       None),
+    "Longalong, Santiago":    ("Manila (PH)",         None,       None),
+    "Mohammad, Manaan":       ("Canada",              None,       None),
+    "Morris, Lisa":           ("Sydney (NSW)",        None,       None),
+    "Murphy, Conor":          ("USA",                 None,       None),
+    "NAQVI, SYED":            ("Canada",              None,       None),
+    "Olson, Austin D":        ("USA",                 None,       None),
+    "Pallone, Daniel":        ("Sydney (NSW)",        None,       None),
+    "Porangada, Suraj":       ("USA",                 None,       None),
+    "Raykova, Silvia":        ("Netherlands",         None,       None),
+    "Selvakumar, Sajithan":   ("Canada",              None,       None),
+    "Snee, Stefanie J":       ("USA",                 None,       None),
+    "Stone, Matt":            ("USA",                 None,       None),
+    "Swanson":                ("USA",                 None,       None),
+    "Tuazon, Carol":          ("Manila (PH)",         None,       None),
+    "Zoric, Ivan":            ("Serbia",              None,       None),
+    "Dunn, Steven":           ("USA",                 None,       None),
+    "Law, Brandon":           ("USA",                 None,       None),
+    "Quiambao, Generalyn":    ("Manila (PH)",         None,       None),
+        # ── Leavers ───────────────────────────────────────────────────────────────
+    "Alam, Laisa":            ("USA",                 None,       "2025-12"),
+    "Chan, Joven":            ("Manila (PH)",         None,       "2025-12"),
+    "Cloete, Bronwyn":        ("Netherlands",         None,       "2026-02"),
+    "Eyong, Eyong":           ("USA",                 None,       "2025-12"),
+    "Hamilton, Julie C":      ("USA",                 None,       "2026-01"),
+    "Hernandez, Camila":      ("USA",                 None,       "2025-12"),
+    "Rushbrook, Emma C":      ("Wales",               None,       "2025-12"),
+    "Strauss, John W":        ("USA",                 None,       "2026-03"),
 }
 
 def _emp_location(name):
@@ -161,6 +187,50 @@ PHASE_WEIGHTS = {
 INACTIVE_PHASES = {"10. complete/pending final billing", "11. on hold"}
 
 # ── Workload thresholds ───────────────────────────────────────────────────────
+def _emp_active(name, period_str):
+    """
+    Return True if the employee should be included for the given period.
+    period_str: "YYYY-MM" or "YYYYMM" or a pandas Period string.
+    """
+    v = EMPLOYEE_LOCATION.get(name)
+    if v is None or not isinstance(v, tuple):
+        return True
+    _, start, end = v
+    try:
+        period = str(period_str)[:7]
+        if start and period < start:
+            return False
+        if end and period > end:
+            return False
+    except Exception:
+        pass
+    return True
+
+def _emp_role(name):
+    """Return role string for an employee."""
+    v = EMPLOYEE_ROLES.get(name)
+    if v is None:
+        return None
+    return v["role"] if isinstance(v, dict) else v
+
+def _emp_products(name, include_learning=False):
+    """Return list of assignable products for an employee."""
+    v = EMPLOYEE_ROLES.get(name)
+    if v is None or not isinstance(v, dict):
+        return []
+    products = list(v.get("products", []))
+    if include_learning:
+        products += v.get("products_learning", [])
+    return products
+
+def _emp_util_exempt(name):
+    """Return True if employee is exempt from utilization targets."""
+    v = EMPLOYEE_ROLES.get(name)
+    if isinstance(v, dict):
+        return v.get("util_exempt", False)
+    return False
+
+
 def workload_level(score):
     if score <= 25:   return "Low",    GREEN
     if score <= 60:   return "Medium", AMBER
