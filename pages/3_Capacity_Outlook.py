@@ -414,9 +414,8 @@ def load_ss(file):
     # Parse start_date
     if "start_date" in df.columns:
         df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
-    # Filter FF only for projection (T&M in unassigned report)
-    if "billing_type" in df.columns:
-        df = df[df["billing_type"].astype(str).str.strip().str.lower() == "fixed fee"]
+    # Keep all billing types — both FF and T&M consume consultant capacity
+    # (T&M unassigned demand is handled separately via NS report)
     # Exclude complete / inactive phases from active projection
     inactive = {"10. complete/pending final billing", "11. on hold", "12. ps review"}
     if "phase" in df.columns:
@@ -667,8 +666,8 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
     ws2 = wb.create_sheet("Consultant Detail")
     hdr_row(ws2, 1, ["Consultant", "Region", "Role", "Products", "Current Projects",
                      "Current Phase", "Est. Free From", "Learning (Future)"])
-    for col, w in zip("ABCDEFGH", [28, 10, 18, 35, 35, 25, 15, 30]):
-        ws2.column_dimensions[get_column_letter(col)].width = w
+    for col_i, w in enumerate([28, 10, 18, 35, 35, 25, 15, 30], 1):
+        ws2.column_dimensions[get_column_letter(col_i)].width = w
 
     row_n = 2
     if ss_df is not None and not ss_df.empty:
@@ -765,8 +764,8 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
     ws4 = wb.create_sheet("Unassigned Projects")
     hdr_row(ws4, 1, ["Project", "Project Type", "Billing Type", "Territory", "PS Region",
                      "Signed Date", "Outreach Deadline", "Planned Start", "Scoped Hours", "Urgency"])
-    for col, w in zip("ABCDEFGHIJ", [35, 22, 15, 15, 10, 14, 18, 14, 14, 12]):
-        ws4.column_dimensions[get_column_letter(col)].width = w
+    for col_i, w in enumerate([35, 22, 15, 15, 10, 14, 18, 14, 14, 12], 1):
+        ws4.column_dimensions[get_column_letter(col_i)].width = w
 
     if ns_df is not None and not ns_df.empty:
         today_d = date.today()
@@ -802,8 +801,8 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
     ws5 = wb.create_sheet("Parallel Conflicts")
     hdr_row(ws5, 1, ["Consultant", "Project 1", "Phase 1", "Project 2", "Phase 2",
                      "Combined Weight", "Overlap Start", "Overlap End", "Flag"])
-    for col, w in zip("ABCDEFGHI", [28, 30, 25, 30, 25, 16, 14, 14, 12]):
-        ws5.column_dimensions[get_column_letter(col)].width = w
+    for col_i, w in enumerate([28, 30, 25, 30, 25, 16, 14, 14, 12], 1):
+        ws5.column_dimensions[get_column_letter(col_i)].width = w
 
     if conflicts:
         for row_i, cf in enumerate(conflicts, 2):
