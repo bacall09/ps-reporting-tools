@@ -850,27 +850,7 @@ def main():
 
     availability, conflicts = project_consultant_availability(ss_df, months)
 
-    # ── Unassigned cross-reference banner ────────────────────────────────────
-    if ss_df is not None and "consultant" in ss_df.columns:
-        _unassigned_mask = ss_df["consultant"].astype(str).str.strip().str.lower().isin(
-            ["0", "unassigned", "nan", "none", ""]
-        )
-        _unassigned_ss = ss_df[_unassigned_mask]
-        _ss_unassigned_ids = set()
-        _ns_only_count = 0
-        if len(_unassigned_ss) > 0:
-            # Get SS unassigned project IDs for cross-ref
-            if "project_id" in _unassigned_ss.columns:
-                _ss_unassigned_ids = set(_unassigned_ss["project_id"].astype(str).str.strip().unique())
-            # Count NS-only unassigned (not in SS at all)
-            if ns_df is not None and "project_id" in ns_df.columns and _ss_unassigned_ids:
-                _ns_ids = set(ns_df["project_id"].astype(str).str.strip().unique())
-                _ns_only_count = len(_ns_ids - _ss_unassigned_ids)
-            _ss_count = len(_unassigned_ss)
-            st.warning(
-                f"**{_ss_count} project(s) unassigned in both SS and NS** — excluded from capacity projection.  "
-                + (f"**{_ns_only_count} additional project(s) unassigned in NS only** (not yet in SS)." if _ns_only_count > 0 else "")
-            )
+
 
     # ── Metrics row ────────────────────────────────────────────────────────────
     today_str = datetime.today().strftime("%Y-%m")
@@ -918,6 +898,46 @@ def main():
     unassigned_count = len(ns_df) if ns_df is not None else 0
     conflict_count = len(conflicts)
 
+
+    # ── Product family counts from NS unassigned ──────────────────────────────
+    def _classify_product(pt):
+        pt_l = str(pt).lower()
+        if "zoneapp" in pt_l or "za -" in pt_l:  return "Apps"
+        if "bill" in pt_l:                         return "Billing"
+        if "rpt" in pt_l or "report" in pt_l:      return "Reporting"
+        if "payroll" in pt_l or "zep" in pt_l:     return "Payroll"
+        return "Other"
+
+    # Cross-reference NS unassigned against SS DRS — if a project has a real
+    # consultant assigned in SS, it's already staffed (NS lags by ~1 week)
+    _staffed_in_ss = set()
+    if ss_df is not None and "project_id" in ss_df.columns and "consultant" in ss_df.columns:
+        _invalid = {"", "nan", "none", "0", "unassigned"}
+        _staffed_in_ss = set(
+            ss_df[
+                ~ss_df["consultant"].astype(str).str.strip().str.lower().isin(_invalid)
+            ]["project_id"].astype(str).str.strip().unique()
+        )
+
+    # Filter NS unassigned to true unassigned only
+    if ns_df is not None and not ns_df.empty and "project_id" in ns_df.columns:
+        _true_unassigned = ns_df[
+            ~ns_df["project_id"].astype(str).str.strip().isin(_staffed_in_ss)
+        ]
+    else:
+        _true_unassigned = ns_df if ns_df is not None else pd.DataFrame()
+
+    _ns_total     = len(_true_unassigned)
+    _ns_apps      = 0
+    _ns_billing   = 0
+    _ns_reporting = 0
+    _ns_payroll   = 0
+    if not _true_unassigned.empty and "project_type" in _true_unassigned.columns:
+        _families     = _true_unassigned["project_type"].apply(_classify_product)
+        _ns_apps      = (_families == "Apps").sum()
+        _ns_billing   = (_families == "Billing").sum()
+        _ns_reporting = (_families == "Reporting").sum()
+        _ns_payroll   = (_families == "Payroll").sum()
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     def metric_card(label, value, sub=None, pill_color=None):
         if pill_color and sub:
@@ -934,12 +954,12 @@ def main():
             "</div>"
         )
 
-    with m1: st.markdown(metric_card("Active Delivery Staff", active_consultants), unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Available Now", available_now, "free or light load", "#27AE60"), unsafe_allow_html=True)
-    with m3: st.markdown(metric_card("Fully Busy", currently_busy, "heavy phase load", "#E74C3C"), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("Total Projects (SS)", _total_projects), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Active Projects", _active_projects, "excl. on hold & complete"), unsafe_allow_html=True)
-    with m6: st.markdown(metric_card("On Hold", _on_hold_projects, "paused projects", "#F39C12" if _on_hold_projects > 0 else None), unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("Unassigned Projects", _ns_total, "total needing assignment", "#E74C3C" if _ns_total > 0 else None), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Apps", _ns_apps, "ZoneApp products"), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Billing", _ns_billing, "keyword: Bill"), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("Reporting", _ns_reporting, "keyword: Rpt"), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Payroll", _ns_payroll, "keyword: Payroll / ZEP"), unsafe_allow_html=True)
+    with m6: st.markdown(metric_card("Available Consultants", available_now, "WHS ≤ Medium now", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
 
 
     st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
@@ -960,7 +980,8 @@ def main():
             st.info("Upload NS Unassigned Projects file to view demand.")
         else:
             today_d = date.today()
-            display_df = ns_df.copy()
+            # Use true unassigned (NS minus already-staffed in SS)
+            display_df = _true_unassigned.copy() if not _true_unassigned.empty else ns_df.copy()
 
             # Urgency from outreach deadline
             if "outreach_date" in display_df.columns:
