@@ -865,11 +865,11 @@ def main():
     with col1:
         st.subheader("Step 1 — Upload Smartsheets DRS Export")
         st.caption("Required: Project Name, Consultant, Phase, Project Type, Billing Type, Start Date")
-        ss_file = st.file_uploader("Drop SS DRS file here", type=["xlsx", "xls", "csv"], key="ss_cap")
+        ss_file = st.file_uploader("Drop SS DRS file here", type=["xlsx", "xls", "csv"], key="ss_cap_p3")
     with col2:
         st.subheader("Step 2 — Upload NS Unassigned Projects")
         st.caption("Required: Project, Territory, Billing Type, Project Type, Signed Date, Project Outreach, Start Date, T&M Scope")
-        ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_cap")
+        ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_unassigned_p3")
 
     ss_df = None
     ns_df = None
