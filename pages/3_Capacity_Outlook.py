@@ -544,13 +544,23 @@ def _projected_phase(current_phase, project_type, start_date, target_month):
     from datetime import date
     today = date.today()
 
-    # Find phase duration map for this product type
-    pt = (project_type or "").strip()
+    # Find phase duration map — fuzzy match since SS project_type may include
+    # prefixes like "ZoneApp: Approvals" vs PHASE_END_WEEKS key "Approvals"
+    pt = (project_type or "").strip().lower()
+    for prefix in ("zoneapp: ", "zonebill: ", "zonepay: ", "za - "):
+        if pt.startswith(prefix):
+            pt = pt[len(prefix):]
+            break
     phase_map = None
     for k, v in PHASE_END_WEEKS.items():
-        if k.lower() == pt.lower():
+        if k.lower() == pt:
             phase_map = v
             break
+    if phase_map is None:
+        for k, v in PHASE_END_WEEKS.items():
+            if k.lower() in pt or pt in k.lower():
+                phase_map = v
+                break
 
     if phase_map is None or start_date is None:
         return current_phase  # fallback: hold current phase
@@ -658,11 +668,21 @@ NS_PRODUCT_FAMILY_MAP = [
 ]
 
 def _ns_pt_to_family(project_type):
-    """Map NS project type string to product family label."""
+    """Map NS project type string to product family. Order matters — specific before general."""
     pt = str(project_type).lower()
-    for keywords, family in NS_PRODUCT_FAMILY_MAP:
-        if any(kw in pt for kw in keywords):
-            return family
+    # zonepayments = Apps; zonepay alone = Payroll
+    if "zonepayments" in pt or ("payments" in pt and "zonepay" not in pt):
+        return "Apps"
+    if "zoneapp" in pt or "za -" in pt:
+        return "Apps"
+    if "capture" in pt or "approvals" in pt or "reconcile" in pt        or "e-invoicing" in pt or "sftp" in pt or "cc statement" in pt:
+        return "Apps"
+    if "bill" in pt:
+        return "Billing"
+    if "rpt" in pt or "report" in pt:
+        return "Reporting"
+    if "zonepay" in pt or "payroll" in pt or "zep" in pt:
+        return "Payroll"
     return "Other"
 
 def _consultant_handles_family(consultant, family):
@@ -965,10 +985,13 @@ def main():
     # ── Product family counts from NS unassigned ──────────────────────────────
     def _classify_product(pt):
         pt_l = str(pt).lower()
-        if "zoneapp" in pt_l or "za -" in pt_l:  return "Apps"
-        if "bill" in pt_l:                         return "Billing"
-        if "rpt" in pt_l or "report" in pt_l:      return "Reporting"
-        if "payroll" in pt_l or "zep" in pt_l:     return "Payroll"
+        # zonepayments = Apps; zonepay alone = Payroll
+        if "zonepayments" in pt_l or ("payments" in pt_l and "zonepay" not in pt_l):
+            return "Apps"
+        if "zoneapp" in pt_l or "za -" in pt_l:          return "Apps"
+        if "bill" in pt_l:                                return "Billing"
+        if "rpt" in pt_l or "report" in pt_l:             return "Reporting"
+        if "zonepay" in pt_l or "payroll" in pt_l or "zep" in pt_l: return "Payroll"
         return "Other"
 
     # Cross-reference NS unassigned against SS DRS — if a project has a real
