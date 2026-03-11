@@ -91,7 +91,8 @@ EMPLOYEE_ROLES = {
     "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-        # ── Leavers (historical data only) ────────────────────────────────────────
+        "Cruz, Daniel":           {"role": "Consultant",         "products": ["All"],                                                                                  "learning": []},
+    # ── Leavers (historical data only) ────────────────────────────────────────
     "Alam, Laisa":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
     "Chan, Joven":          {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
     "Cloete, Bronwyn":      {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
@@ -1805,56 +1806,104 @@ def main():
             emp_sum_ui["location"]   = emp_sum_ui["employee"].map(_emp_region_ui)
             emp_sum_ui["avail_hrs"]  = emp_sum_ui.apply(
                 lambda r: get_avail_hours(r["location"], r["period"]) if r["location"] else None, axis=1)
-            # Util % vs hours logged (effort efficiency)
-            emp_sum_ui["util_vs_logged"] = emp_sum_ui.apply(
-                lambda r: f"{r['credit_hrs']/r['hours_this_period']*100:.1f}%"
-                if r["hours_this_period"] > 0 else "—", axis=1)
-            # Util % vs available capacity
-            emp_sum_ui["util_vs_capacity"] = emp_sum_ui.apply(
-                lambda r: f"{r['credit_hrs']/r['avail_hrs']*100:.1f}%"
-                if r["avail_hrs"] and r["avail_hrs"] > 0 else "—", axis=1)
-            # Partial month projection (only if period < full month)
-            _ui_period_days = None
-            _ui_total_days  = None
+            # Util % vs hours logged — numeric for per-column RAG colouring
+            emp_sum_ui["util_vs_logged_n"] = emp_sum_ui.apply(
+                lambda r: r["credit_hrs"] / r["hours_this_period"]
+                if r["hours_this_period"] > 0 else None, axis=1)
+            # Util % vs available capacity — numeric for per-column RAG colouring
+            emp_sum_ui["util_vs_capacity_n"] = emp_sum_ui.apply(
+                lambda r: r["credit_hrs"] / r["avail_hrs"]
+                if r["avail_hrs"] and r["avail_hrs"] > 0 else None, axis=1)
+            # String display versions
+            emp_sum_ui["util_vs_logged"] = emp_sum_ui["util_vs_logged_n"].apply(
+                lambda v: f"{v*100:.1f}%" if v is not None else "—")
+            emp_sum_ui["util_vs_capacity"] = emp_sum_ui["util_vs_capacity_n"].apply(
+                lambda v: f"{v*100:.1f}%" if v is not None else "—")
+            # Partial month projection — per period so multi-month uploads work correctly
+            import calendar as _cal
+            _period_bdays = {}
             if "date" in df.columns:
-                import calendar as _cal
-                _d = df["date"].dropna()
-                if len(_d) > 0:
-                    _ui_period_days = len(pd.bdate_range(_d.min(), _d.max()))
-                    _yr2, _mo2 = _d.min().year, _d.min().month
+                for _per, _grp in df.groupby("period"):
+                    _dates = _grp["date"].dropna()
+                    if len(_dates) == 0: continue
+                    _days_in = len(pd.bdate_range(_dates.min(), _dates.max()))
+                    _yr2, _mo2 = _dates.min().year, _dates.min().month
                     _ms = pd.Timestamp(_yr2, _mo2, 1)
                     _me = pd.Timestamp(_yr2, _mo2, _cal.monthrange(_yr2, _mo2)[1])
-                    _ui_total_days = len(pd.bdate_range(_ms, _me))
-            _is_partial = (_ui_period_days is not None and _ui_total_days is not None
-                           and _ui_period_days < _ui_total_days)
-            if _is_partial:
-                emp_sum_ui["proj_full_month"] = emp_sum_ui.apply(
-                    lambda r: (
-                        f"{(r['credit_hrs'] / _ui_period_days * _ui_total_days) / r['avail_hrs'] * 100:.1f}%"
-                        if r["avail_hrs"] and r["avail_hrs"] > 0 and _ui_period_days > 0 else "—"
-                    ), axis=1)
+                    _total = len(pd.bdate_range(_ms, _me))
+                    _period_bdays[str(_per)] = (_days_in, _total)
+
+            def _proj_util(row):
+                per = str(row["period"])
+                if per not in _period_bdays: return "—"
+                days_in, total = _period_bdays[per]
+                if days_in >= total: return "—"  # full month — no projection
+                avail = row["avail_hrs"]
+                if not avail or avail <= 0 or days_in <= 0: return "—"
+                return f"{(row['credit_hrs'] / days_in * total) / avail * 100:.1f}%"
+
+            emp_sum_ui["proj_full_month"] = emp_sum_ui.apply(_proj_util, axis=1)
+            _is_partial = (emp_sum_ui["proj_full_month"] != "—").any()
 
             display_cols = ["employee", "location", "period", "avail_hrs",
                             "hours_this_period", "credit_hrs", "ff_overrun_hrs",
                             "util_vs_logged", "util_vs_capacity"]
             if _is_partial:
                 display_cols.append("proj_full_month")
-                st.caption(f"Partial period detected ({_ui_period_days} of {_ui_total_days} business days). "
-                           f"Projected Full Month Util extrapolates credits at current run rate.")
+                st.caption("Partial period detected for one or more months. "
+                           "Projected Full Month Util extrapolates credits at current daily run rate.")
             col_labels = {
-                "employee":         "Employee",
-                "location":         "Location",
-                "period":           "Period",
-                "avail_hrs":        "Avail Hrs (Capacity)",
-                "hours_this_period":"Hours Logged",
-                "credit_hrs":       "Util Credits",
-                "ff_overrun_hrs":   "FF Overrun Hrs",
-                "util_vs_logged":   "Util % (vs Logged)",
-                "util_vs_capacity": "Util % (vs Capacity)",
-                "proj_full_month":  "Projected Full Month",
+                "employee":          "Employee",
+                "location":          "Location",
+                "period":            "Period",
+                "avail_hrs":         "Avail Hrs (Capacity)",
+                "hours_this_period": "Hours Logged",
+                "credit_hrs":        "Util Credits",
+                "ff_overrun_hrs":    "FF Overrun Hrs",
+                "util_vs_logged":    "Util % (vs Logged)",
+                "util_vs_capacity":  "Util % (vs Capacity)",
+                "proj_full_month":   "Projected Full Month",
             }
-            show_df = emp_sum_ui[[col for col in display_cols if col in emp_sum_ui.columns]].rename(columns=col_labels)
-            st.dataframe(show_df, use_container_width=True, hide_index=True)
+            show_df = emp_sum_ui[
+                [col for col in display_cols if col in emp_sum_ui.columns]
+            ].rename(columns=col_labels)
+
+            # RAG colouring — separate thresholds per util column, based on numeric values
+            _logged_col   = "Util % (vs Logged)"
+            _capacity_col = "Util % (vs Capacity)"
+            _proj_col     = "Projected Full Month"
+
+            def _rag(val_str, numeric_series, col_name):
+                """Return style string based on numeric lookup."""
+                return ""  # placeholder — applied via apply below
+
+            def _style_util_row(row):
+                styles = [""] * len(row)
+                for col_name, num_col in [
+                    (_logged_col,   "util_vs_logged_n"),
+                    (_capacity_col, "util_vs_capacity_n"),
+                ]:
+                    if col_name in row.index:
+                        idx_pos = list(row.index).index(col_name)
+                        # Look up numeric value from emp_sum_ui
+                        emp = row.get("Employee", "")
+                        per = row.get("Period", "")
+                        match = emp_sum_ui[
+                            (emp_sum_ui["employee"] == emp) &
+                            (emp_sum_ui["period"] == per)
+                        ]
+                        if not match.empty:
+                            n = match.iloc[0].get(num_col)
+                            if n is not None:
+                                color = ("#C6EFCE" if n >= 0.70
+                                         else "#FFEB9C" if n >= 0.60
+                                         else "#FFC7CE")
+                                styles[idx_pos] = f"background-color:{color}"
+                return styles
+
+            styled_df = show_df.style.apply(_style_util_row, axis=1)
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
 
         with tab2:
             proj_sum_ui = df[df["credit_tag"] != "SKIPPED"].groupby(
