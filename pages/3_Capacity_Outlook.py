@@ -580,6 +580,10 @@ def build_demand_summary(ns_df, months):
     return demand
 
 # ── Excel export ───────────────────────────────────────────────────────────────
+def _status(val):
+    """Unpack status from availability tuple (status, score, count) or plain string."""
+    return val[0] if isinstance(val, tuple) else val
+
 def build_excel(availability, conflicts, ns_df, months, ss_df):
     wb = Workbook()
     navy_fill   = PatternFill("solid", fgColor=NAVY)
@@ -852,33 +856,26 @@ def main():
 
     availability, conflicts = project_consultant_availability(ss_df, months)
 
-    # ── Debug: name matching diagnostic ───────────────────────────────────────
+    # ── Unassigned cross-reference banner ────────────────────────────────────
     if ss_df is not None and "consultant" in ss_df.columns:
-        ss_names = [str(n).strip() for n in ss_df["consultant"].dropna().unique() if str(n).strip() not in ("", "nan", "None", "0", "unassigned", "Unassigned", "UNASSIGNED")]
-        roster_names = list(EMPLOYEE_ROLES.keys())
-        matched = [n for n in ss_names if n in roster_names]
-        unmatched = [n for n in ss_names if n not in roster_names]
-        with st.expander(f"Name matching diagnostic — {len(matched)} matched, {len(unmatched)} unmatched", expanded=True):
-            if unmatched:
-                st.warning(f"Unmatched names from SS (not in roster): {unmatched}")
-            if matched:
-                st.success(f"Matched: {matched}")
-
-    # ── Unassigned SS rows note ───────────────────────────────────────────────
-    if ss_df is not None and "consultant" in ss_df.columns:
-        _unassigned_ss = ss_df[
-            ss_df["consultant"].astype(str).str.strip().str.lower().isin(
-                ["0", "unassigned", "nan", "none", ""]
-            )
-        ]
+        _unassigned_mask = ss_df["consultant"].astype(str).str.strip().str.lower().isin(
+            ["0", "unassigned", "nan", "none", ""]
+        )
+        _unassigned_ss = ss_df[_unassigned_mask]
+        _ss_unassigned_ids = set()
+        _ns_only_count = 0
         if len(_unassigned_ss) > 0:
-            _proj_col = "project_name" if "project_name" in _unassigned_ss.columns else None
-            _proj_list = _unassigned_ss[_proj_col].dropna().unique().tolist() if _proj_col else []
-            st.info(
-                f"{len(_unassigned_ss)} SS row(s) have no consultant assigned — "
-                f"these are excluded from the capacity projection. "
-                f"Cross-reference with NS Unassigned Projects to confirm staffing status. "
-                + (f"Projects: {', '.join(str(p) for p in _proj_list[:10])}" if _proj_list else "")
+            # Get SS unassigned project IDs for cross-ref
+            if "project_id" in _unassigned_ss.columns:
+                _ss_unassigned_ids = set(_unassigned_ss["project_id"].astype(str).str.strip().unique())
+            # Count NS-only unassigned (not in SS at all)
+            if ns_df is not None and "project_id" in ns_df.columns and _ss_unassigned_ids:
+                _ns_ids = set(ns_df["project_id"].astype(str).str.strip().unique())
+                _ns_only_count = len(_ns_ids - _ss_unassigned_ids)
+            _ss_count = len(_unassigned_ss)
+            st.warning(
+                f"**{_ss_count} project(s) unassigned in both SS and NS** — excluded from capacity projection.  "
+                + (f"**{_ns_only_count} additional project(s) unassigned in NS only** (not yet in SS)." if _ns_only_count > 0 else "")
             )
 
     # ── Metrics row ────────────────────────────────────────────────────────────
@@ -889,9 +886,16 @@ def main():
         and _emp_active(name, today_str)
         and not info.get("util_exempt")
     )
-    def _status(val):
-        return val[0] if isinstance(val, tuple) else val
-
+    # Project counts from SS
+    _total_projects, _active_projects, _on_hold_projects = 0, 0, 0
+    if ss_df is not None and not ss_df.empty:
+        if "phase" in ss_df.columns:
+            _all = ss_df.drop_duplicates(subset=["project_id"] if "project_id" in ss_df.columns else None)
+            _total_projects  = len(_all)
+            _on_hold_projects = len(_all[_all["phase"] == "11. on hold"])
+            _active_projects  = _total_projects - _on_hold_projects - len(
+                _all[_all["phase"].isin({"10. complete/pending final billing", "12. ps review"})]
+            )
     currently_busy = sum(
         1 for c, months_map in availability.items()
         if _status(months_map.get(months[0], "free")) == "busy"
@@ -903,7 +907,7 @@ def main():
     unassigned_count = len(ns_df) if ns_df is not None else 0
     conflict_count = len(conflicts)
 
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     def metric_card(label, value, sub=None, pill_color=None):
         if pill_color and sub:
             bottom = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background:{pill_color}22;color:{pill_color};font-size:12px'>{sub}</div>"
@@ -922,7 +926,9 @@ def main():
     with m1: st.markdown(metric_card("Active Delivery Staff", active_consultants), unsafe_allow_html=True)
     with m2: st.markdown(metric_card("Available Now", available_now, "free or light load", "#27AE60"), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Fully Busy", currently_busy, "heavy phase load", "#E74C3C"), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("Unassigned Projects", unassigned_count, "closed, not started", "#F39C12"), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("Total Projects (SS)", _total_projects), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Active Projects", _active_projects, "excl. on hold & complete"), unsafe_allow_html=True)
+    with m6: st.markdown(metric_card("On Hold", _on_hold_projects, "paused projects", "#F39C12" if _on_hold_projects > 0 else None), unsafe_allow_html=True)
 
 
     st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
