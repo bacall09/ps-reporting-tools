@@ -887,15 +887,26 @@ def main():
         and not info.get("util_exempt")
     )
     # Project counts from SS
+    # SS has one row per consultant per project — dedupe by project_id using project_name fallback
     _total_projects, _active_projects, _on_hold_projects = 0, 0, 0
-    if ss_df is not None and not ss_df.empty:
-        if "phase" in ss_df.columns:
-            _all = ss_df.drop_duplicates(subset=["project_id"] if "project_id" in ss_df.columns else None)
-            _total_projects  = len(_all)
-            _on_hold_projects = len(_all[_all["phase"] == "11. on hold"])
-            _active_projects  = _total_projects - _on_hold_projects - len(
-                _all[_all["phase"].isin({"10. complete/pending final billing", "12. ps review"})]
-            )
+    if ss_df is not None and not ss_df.empty and "phase" in ss_df.columns:
+        _id_col = "project_id" if "project_id" in ss_df.columns else "project_name"
+        # Get all unique projects and their phases (a project may have multiple phase rows)
+        _proj_phases = ss_df.groupby(_id_col)["phase"].apply(
+            lambda phases: set(phases.astype(str).str.strip().str.lower())
+        )
+        _complete_phases = {"10. complete/pending final billing", "12. ps review"}
+        _hold_phase      = "11. on hold"
+        _total_projects  = len(_proj_phases)
+        # On hold: all phases for this project are on hold
+        _on_hold_projects = sum(
+            1 for phases in _proj_phases if phases == {_hold_phase} or phases.issubset({_hold_phase})
+        )
+        # Complete: all phases are complete/ps review
+        _complete_count = sum(
+            1 for phases in _proj_phases if phases.issubset(_complete_phases)
+        )
+        _active_projects = _total_projects - _on_hold_projects - _complete_count
     currently_busy = sum(
         1 for c, months_map in availability.items()
         if _status(months_map.get(months[0], "free")) == "busy"
