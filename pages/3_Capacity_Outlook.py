@@ -568,16 +568,12 @@ def _projected_phase(current_phase, project_type, start_date, target_month):
     # Target date = first day of target month
     target_date = date(target_month[0], target_month[1], 1)
 
-    # Normalise start_date — handle Timestamp, date, string, NaT
+    # Normalise start_date to plain date — handle all types including numpy/datetime
     try:
-        if isinstance(start_date, pd.Timestamp):
-            if pd.isna(start_date):
-                return current_phase
-            start_date = start_date.date()
-        elif isinstance(start_date, str):
-            start_date = pd.to_datetime(start_date).date()
-        elif not isinstance(start_date, date):
+        sd = pd.to_datetime(start_date)
+        if pd.isna(sd):
             return current_phase
+        start_date = sd.date()
     except Exception:
         return current_phase
 
