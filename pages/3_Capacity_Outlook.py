@@ -918,13 +918,19 @@ def main():
 
     m1, m2, m3, m4, m5 = st.columns(5)
     def metric_card(label, value, sub=None, pill_color=None):
-        sub_html = f"<div style='font-size:12px;color:#888;margin-top:2px'>{sub}</div>" if sub else ""
-        pill_html = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background:{pill_color}22;color:{pill_color};font-size:12px'>{sub}</div>" if pill_color and sub else ""
-        return f"""<div style='background:#f8f9fb;border-radius:8px;padding:16px 20px;border:1px solid #e8eaed'>
-            <div style='font-size:12px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div>
-            <div style='font-size:28px;font-weight:700;color:#1e2c63;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>
-            {pill_html if pill_color else sub_html}
-        </div>"""
+        if pill_color and sub:
+            bottom = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background:{pill_color}22;color:{pill_color};font-size:12px'>{sub}</div>"
+        elif sub:
+            bottom = f"<div style='font-size:12px;color:#888;margin-top:2px'>{sub}</div>"
+        else:
+            bottom = ""
+        return (
+            "<div style='background:#f8f9fb;border-radius:8px;padding:16px 20px;border:1px solid #e8eaed'>"
+            f"<div style='font-size:12px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div>"
+            f"<div style='font-size:28px;font-weight:700;color:#1e2c63;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>"
+            f"{bottom}"
+            "</div>"
+        )
 
     with m1: st.markdown(metric_card("Active Delivery Staff", active_consultants), unsafe_allow_html=True)
     with m2: st.markdown(metric_card("Available Now", available_now, "free or light load", "#27AE60"), unsafe_allow_html=True)
