@@ -1207,12 +1207,15 @@ def main():
         if detail_rows:
             detail_df = pd.DataFrame(detail_rows)
 
-            def highlight_free(row):
-                score_str = str(row.get("WHS Score", ""))
-                color = "#C6EFCE" if score_str.startswith("Low") or row.get("Active Projects (#)", 0) == 0 else ""
-                return [f"background-color:{color}" if color else "" for _ in row]
+            # Colour WHS Score cell only — not full row (avoids dark mode readability issues)
+            def color_whs_cell(val):
+                v = str(val)
+                if v.startswith("Low"):    return "background-color:#C6EFCE;color:#276221"
+                if v.startswith("Medium"): return "background-color:#FFEB9C;color:#9C6500"
+                if v.startswith("High"):   return "background-color:#FFC7CE;color:#9C0006"
+                return ""
 
-            styled_detail = detail_df.style.apply(highlight_free, axis=1)
+            styled_detail = detail_df.style.applymap(color_whs_cell, subset=["WHS Score"])
             st.dataframe(styled_detail, hide_index=True, use_container_width=True)
         else:
             st.info("Upload SS DRS to populate consultant detail.")
@@ -1249,11 +1252,11 @@ def main():
                 if row["Metric"] == "Consultants Available (Free/Light)":
                     for i, col in enumerate(month_labels, 1):
                         v = row.get(col, 0)
-                        colors[i] = "background-color:#C6EFCE" if v > 2 else "background-color:#FFEB9C" if v > 0 else "background-color:#FFC7CE"
+                        colors[i] = "background-color:#C6EFCE;color:#276221" if v > 2 else "background-color:#FFEB9C;color:#9C6500" if v > 0 else "background-color:#FFC7CE;color:#9C0006"
                 elif row["Metric"] == "Unassigned Projects (Demand)":
                     for i, col in enumerate(month_labels, 1):
                         v = row.get(col, 0)
-                        colors[i] = "background-color:#FFC7CE" if v > 2 else "background-color:#FFEB9C" if v > 0 else "background-color:#C6EFCE"
+                        colors[i] = "background-color:#FFC7CE;color:#9C0006" if v > 2 else "background-color:#FFEB9C;color:#9C6500" if v > 0 else "background-color:#C6EFCE;color:#276221"
                 return colors
 
             styled_rollup = rollup_df.style.apply(highlight_rollup, axis=1)
