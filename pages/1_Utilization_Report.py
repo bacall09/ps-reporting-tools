@@ -40,12 +40,6 @@ TAG_BADGE = {
 # ── PTO / Vacation keywords (matched against task/case column) ───────────────
 PTO_KEYWORDS = ["vacation", "pto", "sick", "vacation/pto"]
 
-# ── Employees excluded from utilization targets ──────────────────────────────
-UTIL_EXEMPT_EMPLOYEES = [
-    k.lower() for k, v in EMPLOYEE_ROLES.items()
-    if isinstance(v, dict) and v.get("util_exempt")
-]  # derived from EMPLOYEE_ROLES util_exempt flag
-
 # ── Employee → Location lookup (drives avail hours + PS region) ──────────────
 EMPLOYEE_ROLES = {
     # Structure: name -> {role, products, learning, util_exempt (optional)}
@@ -107,6 +101,12 @@ EMPLOYEE_ROLES = {
     "Rushbrook, Emma C":    {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
     "Strauss, John W":      {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
 }
+
+# ── Employees excluded from utilization targets ──────────────────────────────
+UTIL_EXEMPT_EMPLOYEES = [
+    k.lower() for k, v in EMPLOYEE_ROLES.items()
+    if isinstance(v, dict) and v.get("util_exempt")
+]  # derived from EMPLOYEE_ROLES util_exempt flag
 
 # ── Employee roster — {name: (location, start_date, end_date)}
 # start/end as "YYYY-MM" strings or None (None = no limit).
