@@ -1106,6 +1106,12 @@ def main():
     with sfdc_col2:
         st.empty()
 
+    sfdc_buffer_weeks = st.slider(
+        "Est. weeks from Close to PS Start Dates",
+        min_value=1, max_value=12, value=4,
+        help="Estimated lag between SFDC close date and PS project kick-off"
+    )
+
     sfdc_df = None
     if sfdc_file:
         try:
@@ -1441,15 +1447,7 @@ def main():
     with m6: st.markdown(metric_card("Available Consultants", available_now, "", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
 
 
-    st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
-
-    sfdc_buffer_weeks = st.slider(
-        "Est. weeks from Close to PS Start Dates",
-        min_value=1, max_value=12, value=4,
-        help="Estimated lag between SFDC close date and PS project kick-off"
-    )
-
-    st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 
     # ── Tabs ───────────────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4 = st.tabs([
