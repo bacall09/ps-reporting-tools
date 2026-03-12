@@ -644,6 +644,11 @@ def _projected_phase(current_phase, project_type, start_date, target_month):
     if phase_map is None or start_date is None:
         return current_phase  # fallback: hold current phase
 
+    # If target month is current month — use actual phase from SS, don't forecast
+    today = date.today()
+    if target_month == (today.year, today.month):
+        return current_phase
+
     # Target date = first day of target month
     target_date = date(target_month[0], target_month[1], 1)
 
