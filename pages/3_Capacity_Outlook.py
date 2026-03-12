@@ -447,6 +447,7 @@ NS_COL_MAP = {
     "project":             "project_name",
     "name":                "project_name",
     "territory":           "territory",
+    "billing country":     "billing_country",
     "status":              "status",
     "billing type":        "billing_type",
     "project type":        "project_type",
@@ -462,7 +463,7 @@ def load_ns_unassigned(file):
         df = pd.read_csv(file)
     else:
         df = pd.read_excel(file)
-    df.columns = [c.strip().lower() for c in df.columns]
+    df.columns = [str(c).strip().lower() for c in df.columns]
     rename = {}
     for col in df.columns:
         if col in NS_COL_MAP:
@@ -470,6 +471,11 @@ def load_ns_unassigned(file):
     df = df.rename(columns=rename)
     # Drop duplicate columns (e.g. both "project id" and "internal id" map to project_id)
     df = df.loc[:, ~df.columns.duplicated(keep="first")]
+    # Fill NaN in string columns before any string operations
+    for _scol in ["project_name", "project_type", "billing_type", "territory",
+                  "billing_country", "status", "project_id"]:
+        if _scol in df.columns:
+            df[_scol] = df[_scol].fillna("").astype(str).str.strip()
     # Parse dates
     for dcol in ["signed_date", "outreach_date", "start_date"]:
         if dcol in df.columns:
@@ -484,9 +490,18 @@ def load_ns_unassigned(file):
         in ("time & material", "time and material", "t&m", "tm")
         else _resolve_ff_scope(str(r.get("project_type", "")))
     ), axis=1)
-    # Derive PS region from territory
-    if "territory" in df.columns:
-        df["ps_region"] = df["territory"].apply(_territory_to_ps_region)
+    # Derive PS region — territory first, fall back to billing_country if blank
+    def _get_ps_region(row):
+        t = str(row.get("territory", "")).strip()
+        if t and t.lower() not in ("", "nan", "none"):
+            region = _territory_to_ps_region(t)
+            if region != "Unknown":
+                return region
+        # Fallback: billing country
+        bc = str(row.get("billing_country", "")).strip()
+        return _territory_to_ps_region(bc) if bc and bc.lower() not in ("", "nan", "none") else "Unknown"
+
+    df["ps_region"] = df.apply(_get_ps_region, axis=1)
     return df
 
 # ── Projection engine ─────────────────────────────────────────────────────────
@@ -896,6 +911,7 @@ def main():
     with col2:
         st.subheader("Step 2 — Upload NS Unassigned Projects")
         st.caption("Required: Project, Territory, Billing Type, Project Type, Signed Date, Project Outreach, Start Date, T&M Scope")
+        st.markdown("[Open NS Unassigned Projects Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=)")
         ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_unassigned_p3")
 
     ss_df         = None
