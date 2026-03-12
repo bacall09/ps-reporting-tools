@@ -743,22 +743,30 @@ NS_PRODUCT_FAMILY_MAP = [
 ]
 
 def _ns_pt_to_family(project_type):
-    """Map NS project type string to product family. Order matters — specific before general."""
+    """Map NS/SFDC project type or product field to family. Keyword-based, order matters."""
     pt = str(project_type).lower()
-    # zonepayments = Apps; zonepay alone = Payroll
-    if "zonepayments" in pt or ("payments" in pt and "zonepay" not in pt):
-        return "Apps"
+    # Payroll — zonepay alone = Payroll; zonepayments = Apps
+    if "zonepay" in pt and "payment" not in pt:
+        return "Payroll"
+    if "payroll" in pt or "zep" in pt:
+        return "Payroll"
+    # Billing
+    if "bill" in pt or "zonebill" in pt:
+        return "Billing"
+    # Reporting
+    if "rpt" in pt or "report" in pt or "zonerpt" in pt:
+        return "Reporting"
+    # Apps — ZoneApp products + common SFDC product names
     if "zoneapp" in pt or "za -" in pt:
         return "Apps"
-    if "capture" in pt or "approvals" in pt or "reconcile" in pt        or "e-invoicing" in pt or "sftp" in pt or "cc statement" in pt:
+    if "zonepayments" in pt or ("payments" in pt and "payroll" not in pt):
         return "Apps"
-    if "bill" in pt:
-        return "Billing"
-    if "rpt" in pt or "report" in pt:
-        return "Reporting"
-    if "zonepay" in pt or "payroll" in pt or "zep" in pt:
-        return "Payroll"
+    if any(kw in pt for kw in ["capture", "approvals", "reconcile",
+                                "e-invoicing", "einvoic", "sftp",
+                                "cc statement", "zone app", "apps"]):
+        return "Apps"
     return "Other"
+
 
 def _consultant_handles_family(consultant, family):
     """Return True if consultant's products include the given product family."""
@@ -1159,15 +1167,15 @@ def main():
             else:
                 est_start = None
 
-            # Derive scoped hours — use PS SOW Hours if available, else FF lookup
+            # Derive scoped hours — use PS SOW Hours; SFDC is T&M so no FF lookup
             ps_hours = row.get("ps_hours")
-            if pd.isna(ps_hours) or ps_hours is None:
-                ps_hours = _resolve_ff_scope(str(row.get("product", "")))
+            if pd.isna(ps_hours) or not ps_hours:
+                ps_hours = None  # show blank rather than FF estimate for T&M
 
             _sfdc_rows.append({
                 "project_name":  proj_name,
                 "project_type":  str(row.get("product", "")),
-                "billing_type":  "",
+                "billing_type":  "Time & Material",
                 "territory":     str(row.get("territory", "")),
                 "ps_region":     str(row.get("ps_region", "Unknown")),
                 "signed_date":   close_dt,
@@ -1176,6 +1184,9 @@ def main():
                 "scoped_hours":  ps_hours,
                 "source":        "⚠️ Possible Duplicate" if fuzzy_match else "SFDC",
             })
+
+    # Capture NS count before merge
+    _ns_total = len(_true_unassigned) if _true_unassigned is not None else 0
 
     # Tag NS rows with source
     if not _true_unassigned.empty:
@@ -1188,8 +1199,6 @@ def main():
         _true_unassigned = pd.concat(
             [_true_unassigned, _sfdc_frame], ignore_index=True
         ) if not _true_unassigned.empty else _sfdc_frame
-
-    _ns_total     = len(_true_unassigned)
     _ns_apps      = 0
     _ns_billing   = 0
     _ns_reporting = 0
