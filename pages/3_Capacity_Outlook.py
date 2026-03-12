@@ -456,10 +456,10 @@ SFDC_COL_MAP = {
     "stage":              "stage",
     "territory":          "territory",
     "region":             "territory",
-    "product":            "product",
-    "products":           "product",
-    "project type":       "product",
-    "product family":     "product",
+    "product":            "project_type",
+    "products":           "project_type",
+    "project type":       "project_type",
+    "product family":     "project_type",
     "ps sow hours":       "ps_hours",
     "ps hours":           "ps_hours",
     "sow hours":          "ps_hours",
@@ -475,7 +475,7 @@ def load_sfdc(file):
     df = df.rename(columns=rename)
     df = df.loc[:, ~df.columns.duplicated(keep="first")]
     # Sanitise strings
-    for _scol in ["opp_name", "account_name", "stage", "territory", "product"]:
+    for _scol in ["opp_name", "account_name", "stage", "territory", "project_type"]:
         if _scol in df.columns:
             df[_scol] = df[_scol].fillna("").astype(str).str.strip()
     # Parse dates
@@ -487,8 +487,8 @@ def load_sfdc(file):
     if "territory" in df.columns:
         df["ps_region"] = df["territory"].apply(_territory_to_ps_region)
     # Derive product family
-    if "product" in df.columns:
-        df["product_family"] = df["product"].apply(_ns_pt_to_family)
+    if "project_type" in df.columns:
+        df["product_family"] = df["project_type"].apply(_ns_pt_to_family)
     # Display name mirrors NS format: Account Name : Opp Name
     df["project_name"] = df.apply(
         lambda r: f"{r.get('account_name', '')} : {r.get('opp_name', '')}".strip(" :"),
@@ -1182,12 +1182,15 @@ def main():
             ss_exact = opp_lower in _ss_project_names if _ss_project_names else False
             exact_match = ns_exact or ss_exact
 
-            # Fuzzy flag: account name == NS customer OR SS customer (but opp didn't match)
-            # Catches many-SFDC-opps : one-NS/SS-project scenario
+            # Fuzzy flag:
+            # NS — account name == NS customer column (explicit customer field)
             ns_fuzzy = (not exact_match and acct_lower and
                         acct_lower in _ns_customer_names)
+            # SS — account name found as substring within any SS project name
+            # e.g. "3SI Security Systems" in "3SI Security Systems - ZB Optimization T&M"
             ss_fuzzy = (not exact_match and acct_lower and
-                        acct_lower in _ss_account_names) if _ss_account_names else False
+                        any(acct_lower in ss_name for ss_name in _ss_project_names)
+                        ) if _ss_project_names else False
             fuzzy_match = ns_fuzzy or ss_fuzzy
 
             if exact_match:
@@ -1208,7 +1211,7 @@ def main():
             _sfdc_rows.append({
                 "project_name":  proj_name,
                 "customer":      account_name,
-                "project_type":  str(row.get("product", "")),
+                "project_type":  str(row.get("project_type", "")),
                 "billing_type":  "Time & Material",
                 "territory":     str(row.get("territory", "")),
                 "ps_region":     str(row.get("ps_region", "Unknown")),
