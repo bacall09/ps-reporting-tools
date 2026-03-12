@@ -1253,6 +1253,17 @@ def main():
         scored_df = score_projects(ss_df, ns_df)
         consultant_df, missing_pm = build_consultant_summary(scored_df, ss_df=ss_df)
         stale_df = build_stale_projects(ss_df, ns_df) if ns_df is not None else pd.DataFrame()
+
+        # ── TEMP DEBUG ───────────────────────────────────────────────────────
+        with st.expander("🔍 Debug: SS columns & project count check"):
+            st.write("**ss_df columns:**", list(ss_df.columns))
+            _pm_debug = next((col for col in ["project_manager", "consultant"] if col in ss_df.columns), None)
+            st.write("**PM col detected:**", _pm_debug)
+            if _pm_debug:
+                _sample = ss_df.groupby(_pm_debug).size().reset_index(columns=["Project Count"])
+                st.write("**Row counts per PM:**", _sample)
+            st.write("**consultant_df:**", consultant_df[["project_manager","total_project_count","active_project_count"]].head(10))
+        # ── END DEBUG ────────────────────────────────────────────────────────
         # Add stale project count per consultant
         if not stale_df.empty:
             _stale_counts = stale_df.groupby("Consultant").size().rename("stale_count")
@@ -1284,11 +1295,11 @@ def main():
         return f"<div style='font-size:14px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div><div style='font-size:36px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>{pill}"
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.markdown(metric_card("Consultants Scored", f"{total:,}"), unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Total FF Projects", f"{total_projects:,}"), unsafe_allow_html=True)
-    with m3: st.markdown(metric_card("Active Projects", f"{active_projects:,}", "Excl. On Hold", "#4472C4"), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("High Workload", f"{high}", "At or over capacity", "#e74c3c"), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Medium Workload", f"{medium}", "Monitor for changes", "#f39c12"), unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("Consultants Scored",          f"{total:,}"),             unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Consultant High Workload",    f"{high}",    "At or over capacity",  "#e74c3c"), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Consultant Medium Workload",  f"{medium}",  "Monitor for changes",  "#f39c12"), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("Total FF Projects",           f"{total_projects:,}"),     unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Active Projects",             f"{active_projects:,}", "Excl. On Hold", "#4472C4"), unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
     if missing_pm > 0:
