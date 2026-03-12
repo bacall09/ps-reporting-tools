@@ -1117,13 +1117,25 @@ def main():
     # Cross-reference NS unassigned against SS DRS — if a project has a real
     # consultant assigned in SS, it's already staffed (NS lags by ~1 week)
     _staffed_in_ss = set()
-    if ss_df is not None and "project_id" in ss_df.columns and "consultant" in ss_df.columns:
+    _ss_project_names = set()   # lowercased project names from SS — for SFDC matching
+    _ss_account_names = set()   # lowercased account portion (before " : ") for fuzzy match
+    if ss_df is not None and "consultant" in ss_df.columns:
         _invalid = {"", "nan", "none", "0", "unassigned"}
-        _staffed_in_ss = set(
-            ss_df[
-                ~ss_df["consultant"].astype(str).str.strip().str.lower().isin(_invalid)
-            ]["project_id"].astype(str).str.strip().unique()
-        )
+        _ss_active = ss_df[
+            ~ss_df["consultant"].astype(str).str.strip().str.lower().isin(_invalid)
+        ]
+        if "project_id" in ss_df.columns:
+            _staffed_in_ss = set(_ss_active["project_id"].astype(str).str.strip().unique())
+        if "project_name" in ss_df.columns:
+            _ss_project_names = set(
+                _ss_active["project_name"].astype(str).str.strip().str.lower().unique()
+            )
+            # Extract account portion — SS names follow "Account : Project" format
+            _ss_account_names = set(
+                name.split(" : ")[0].strip()
+                for name in _ss_project_names
+                if " : " in name
+            )
 
     # Filter NS unassigned to true unassigned only
     if ns_df is not None and not ns_df.empty and "project_id" in ns_df.columns:
@@ -1153,12 +1165,23 @@ def main():
             opp_lower = opp_name.lower()
             acct_lower = account_name.lower()
 
-            exact_match = any(opp_lower in ns_name for ns_name in _ns_project_names)
-            fuzzy_match = (not exact_match and acct_lower and
-                           any(acct_lower in ns_name for ns_name in _ns_project_names))
+            # Check against NS project names
+            ns_exact  = any(opp_lower in ns_name for ns_name in _ns_project_names)
+            ns_fuzzy  = (not ns_exact and acct_lower and
+                         any(acct_lower in ns_name for ns_name in _ns_project_names))
+
+            # Check against SS project names (catches staffed projects not yet in NS unassigned)
+            ss_exact  = (any(opp_lower in ss_name for ss_name in _ss_project_names)
+                         if "_ss_project_names" in dir() else False)
+            ss_fuzzy  = (not ss_exact and acct_lower and
+                         acct_lower in _ss_account_names
+                         if "_ss_account_names" in dir() else False)
+
+            exact_match = ns_exact or ss_exact
+            fuzzy_match = not exact_match and (ns_fuzzy or ss_fuzzy)
 
             if exact_match:
-                continue  # already in NS — skip
+                continue  # already in NS or SS — skip
             
             # Derive estimated start date from close date + buffer
             close_dt = row.get("close_date")
