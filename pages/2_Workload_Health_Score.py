@@ -514,13 +514,18 @@ def build_stale_projects(ss_df, ns_df):
     _name_col = "project_name" if "project_name" in stale.columns else "project_id"
     _phase_col = "phase" if "phase" in stale.columns else None
 
+    _start_col  = "start_date" if "start_date" in stale.columns else None
+    _status_col = "status"     if "status"     in stale.columns else None
+
     display = pd.DataFrame()
-    display["Consultant"] = stale[_pm_col].astype(str) if _pm_col else "—"
-    display["Project"]    = stale[_name_col].astype(str)
-    display["Phase"]      = stale[_phase_col].astype(str) if _phase_col else ""
-    display["Last Entry"] = stale["last_entry"].dt.strftime("%Y-%m-%d").where(stale["last_entry"].notna(), "—")
-    display["Days Since"] = stale["days_since"].where(stale["days_since"].notna(), -1).astype(int).replace(-1, "—")
-    display["Staleness"]  = stale["Staleness"]
+    display["Consultant"]          = stale[_pm_col].astype(str) if _pm_col else "—"
+    display["Project"]             = stale[_name_col].astype(str)
+    display["Status"]              = stale[_status_col].astype(str) if _status_col else ""
+    display["Start Date"]          = pd.to_datetime(stale[_start_col], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—") if _start_col else "—"
+    display["Phase"]               = stale[_phase_col].astype(str) if _phase_col else ""
+    display["Last Entry This Period"] = stale["last_entry"].dt.strftime("%Y-%m-%d").where(stale["last_entry"].notna(), "—")
+    display["Days Since"]          = stale["days_since"].where(stale["days_since"].notna(), -1).astype(int).replace(-1, "—")
+    display["Staleness"]           = stale["Staleness"]
 
     _sort_order = {"🔴 60d+": 0, "🟠 30d+": 1, "🟡 14d+": 2, "⚫ No Entry": 3}
     display["_sort"] = display["Staleness"].map(_sort_order).fillna(9)
@@ -1261,16 +1266,6 @@ def main():
         consultant_df, missing_pm = build_consultant_summary(scored_df, ss_df=ss_df)
         stale_df = build_stale_projects(ss_df, ns_df) if ns_df is not None else pd.DataFrame()
 
-        # ── TEMP DEBUG ───────────────────────────────────────────────────────
-        with st.expander("🔍 Debug: SS columns & project count check"):
-            st.write("**ss_df columns:**", list(ss_df.columns))
-            _pm_debug = next((col for col in ["project_manager", "consultant"] if col in ss_df.columns), None)
-            st.write("**PM col detected:**", _pm_debug)
-            if _pm_debug:
-                _sample = ss_df.groupby(_pm_debug).size().reset_index(name="Project Count")
-                st.write("**Row counts per PM:**", _sample)
-            st.write("**consultant_df:**", consultant_df[["project_manager","total_project_count","active_project_count"]].head(10))
-        # ── END DEBUG ────────────────────────────────────────────────────────
         # Add stale project count per consultant
         if not stale_df.empty:
             _stale_counts = stale_df.groupby("Consultant").size().rename("stale_count")
@@ -1376,6 +1371,7 @@ A project is flagged if no time has been booked within the NS report window:
             with _c2: st.markdown(metric_card("30d+ No Time",  str(_counts.get("🟠 30d+",     0)), "30–59 days",        "#e67e22"), unsafe_allow_html=True)
             with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("🔴 60d+",     0)), "60+ days",          "#e74c3c"), unsafe_allow_html=True)
             with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("⚫ No Entry", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
+            st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
             st.dataframe(stale_df, hide_index=True, use_container_width=True)
 
     with tab2:
@@ -1389,10 +1385,27 @@ A project is flagged if no time has been booked within the NS report window:
         if len(at_risk) == 0:
             st.success("No at-risk projects flagged.")
         else:
-            risk_cols = ["project_name", "project_manager", "phase", "weighted_score",
-                         "risk_level", "schedule_health", "rag", "go_live_date"]
-            avail_r = [c for c in risk_cols if c in at_risk.columns]
-            st.dataframe(at_risk[avail_r].sort_values("weighted_score", ascending=False),
+            risk_cols = ["project_name", "project_manager", "status", "start_date",
+                         "phase", "weighted_score", "risk_level", "schedule_health", "rag"]
+            avail_r   = [_rc for _rc in risk_cols if _rc in at_risk.columns]
+            _at_risk_display = at_risk[avail_r].copy()
+            # Format date columns as YYYY-MM-DD
+            for _dc in ["start_date", "go_live_date"]:
+                if _dc in _at_risk_display.columns:
+                    _at_risk_display[_dc] = pd.to_datetime(_at_risk_display[_dc], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
+            _at_risk_display = _at_risk_display.rename(columns={
+                "project_name":    "Project",
+                "project_manager": "Consultant",
+                "status":          "Status",
+                "start_date":      "Start Date",
+                "phase":           "Phase",
+                "weighted_score":  "WHS Score",
+                "risk_level":      "Risk Level",
+                "schedule_health": "Schedule Health",
+                "rag":             "Overall RAG",
+            })
+            st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+            st.dataframe(_at_risk_display.sort_values("WHS Score", ascending=False),
                          hide_index=True, use_container_width=True)
 
     # ── Download ──────────────────────────────────────────────────────────────
