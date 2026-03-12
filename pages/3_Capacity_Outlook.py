@@ -700,6 +700,9 @@ def project_consultant_availability(ss_df, months):
     # Build list of active project rows per consultant
     consultant_projects = {}  # name -> list of project dicts
 
+    # Deduplicate SS rows by project_id per consultant — same as page 2 nunique logic
+    # Use latest phase row per project (highest phase number = most current)
+    seen_projects = {}  # (consultant, project_id) -> row with highest phase
     for _, row in ss_df.iterrows():
         consultant = str(row.get("consultant", "")).strip()
         if not consultant or consultant.lower() in ("nan", "none", "", "0", "unassigned"):
@@ -712,6 +715,26 @@ def project_consultant_availability(ss_df, months):
         if billing in ("t&m", "time & material", "time and material"):
             continue
 
+        project_id = str(row.get("project_id", "")).strip()
+        key = (consultant, project_id) if project_id and project_id.lower() not in ("nan", "none", "") else None
+
+        current_phase = str(row.get("phase", "")).strip().lower()
+
+        if key:
+            # Keep row with the highest (most active) phase per project
+            if key not in seen_projects:
+                seen_projects[key] = row
+            else:
+                existing_phase = str(seen_projects[key].get("phase", "")).strip().lower()
+                # Higher phase number = more progressed — pick the active one
+                if current_phase > existing_phase:
+                    seen_projects[key] = row
+        else:
+            # No project_id — use a unique key per row
+            key = (consultant, id(row))
+            seen_projects[key] = row
+
+    for (consultant, _), row in seen_projects.items():
         current_phase = str(row.get("phase", "")).strip().lower()
         project_type  = str(row.get("project_type", "")).strip()
         start_date    = row.get("start_date")

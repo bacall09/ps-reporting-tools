@@ -521,7 +521,7 @@ def score_projects(ss_df, ns_df):
     # PS Region from employee lookup (consultant = project_manager from NS)
     df["ps_region"] = df["project_manager"].apply(get_ps_region)
     df["role"] = df["project_manager"].apply(
-        lambda n: EMPLOYEE_ROLES.get(str(n).strip(), "Consultant") if pd.notna(n) else ""
+        lambda n: EMPLOYEE_ROLES.get(str(n).strip(), {}).get("role", "Consultant") if pd.notna(n) else ""
     )
 
     return df
@@ -755,9 +755,9 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     ws_con = wb.create_sheet("By Consultant")
     ws_con.sheet_properties.tabColor = TEAL
 
-    con_headers = ["Consultant", "Role", "PS Region", "Total Projects", "Active Projects",
+    con_headers = ["Consultant", "PS Region", "Total Projects", "Active Projects",
                    "Weighted Score", "Workload Level", "High Risk Projects", "Avg Score/Region"]
-    con_widths   = [28, 18, 14, 16, 16, 16, 16, 18, 18]
+    con_widths   = [28, 14, 16, 16, 16, 16, 18, 18]
     write_title(ws_con, "WORKLOAD HEALTH SCORE — By Consultant", len(con_headers))
     style_header(ws_con, 2, con_headers, TEAL)
     ws_con.auto_filter.ref = f"A2:{get_column_letter(len(con_headers))}2"
@@ -779,7 +779,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         tot  = row.get("total_project_count", 0)
         avg  = region_avg_score.get(row["ps_region"], 0)
         hr   = high_risk_count.get(row["project_manager"], 0)
-        vals = [row["project_manager"], row.get("role", "Consultant"), row["ps_region"],
+        vals = [row["project_manager"], row["ps_region"],
                 tot, act, row["total_score"], level, hr, avg]
         for col, val in enumerate(vals, 1):
             c = ws_con.cell(r, col, _safe(val))
@@ -1206,7 +1206,6 @@ def main():
     with tab1:
         display_con = consultant_df.rename(columns={
             "project_manager": "Consultant",
-            "role":            "Role",
             "ps_region":       "PS Region",
             "active_project_count": "Active Projects",
             "total_project_count":  "Total Projects",
