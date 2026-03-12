@@ -1161,13 +1161,16 @@ def main():
         _active_projects = ss_df[_id_col].nunique() if _id_col in ss_df.columns else len(ss_df)
         _total_projects  = _active_projects
         _on_hold_projects = 0
+    def _get_status(val):
+        return val[0] if isinstance(val, tuple) else str(val)
+
     currently_busy = sum(
         1 for _con, months_map in availability.items()
-        if _status(months_map.get(months[0], "free")) == "busy"
+        if _get_status(months_map.get(months[0], "free")) == "busy"
     )
     available_now = sum(
         1 for _con, months_map in availability.items()
-        if _status(months_map.get(months[0], "free")) in ("free", "partial")
+        if _get_status(months_map.get(months[0], "free")) in ("free", "partial")
     )
     unassigned_count = len(ns_df) if ns_df is not None else 0
     conflict_count = len(conflicts)
