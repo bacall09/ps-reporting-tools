@@ -393,6 +393,11 @@ SS_COL_MAP = {
     "billing type":      "billing_type",
     "status":            "status",
     "project status":    "status",
+    "client responsiveness": "client_responsiveness",
+    "client sentiment":      "client_sentiment",
+    "risk level":            "risk_level",
+    "overall rag":           "rag",
+    "start date":            "start_date",
     "territory":         "territory",
     "project manager":   "consultant",
     "pm":                "project_manager",
@@ -697,11 +702,19 @@ def project_consultant_availability(ss_df, months):
         if not _is_delivery_role(consultant):
             continue
 
+        # Only score FF projects — T&M demand tracked separately via NS
+        billing = str(row.get("billing_type", "")).strip().lower()
+        if billing in ("t&m", "time & material", "time and material"):
+            continue
+
         current_phase = str(row.get("phase", "")).strip().lower()
         project_type  = str(row.get("project_type", "")).strip()
         start_date    = row.get("start_date")
-        ch_mult       = _client_health_mult(row.get("client_health", ""), row.get("risk", ""))
-        risk_mult     = _risk_mult(row.get("risk", ""))
+        ch_mult       = _client_health_mult(
+                            row.get("client_responsiveness", row.get("client_health", "")),
+                            row.get("client_sentiment", "")
+                        )
+        risk_mult     = _risk_mult(row.get("risk_level", row.get("risk", "")))
 
         if consultant not in consultant_projects:
             consultant_projects[consultant] = []

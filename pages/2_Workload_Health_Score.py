@@ -74,7 +74,8 @@ EMPLOYEE_ROLES = {
     "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
     "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-        # ── Leavers (historical data only) ────────────────────────────────────────
+        "Cruz, Daniel":           {"role": "Consultant",         "products": ["All"],                                                                                  "learning": []},
+    # ── Leavers (historical data only) ────────────────────────────────────────
     "Alam, Laisa":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
     "Chan, Joven":          {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
     "Cloete, Bronwyn":      {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
@@ -556,6 +557,21 @@ def build_consultant_summary(scored_df):
 
 # ── Excel builder ─────────────────────────────────────────────────────────────
 def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=None):
+    def _safe(v):
+        """Coerce value to a type openpyxl can write."""
+        if v is None or (isinstance(v, float) and (v != v)):
+            return ""
+        try:
+            import numpy as np
+            if isinstance(v, np.integer):  return int(v)
+            if isinstance(v, np.floating): return float(v) if v == v else ""
+            if isinstance(v, np.bool_):    return bool(v)
+        except ImportError:
+            pass
+        import pandas as pd
+        if isinstance(v, pd.Timedelta): return str(v)
+        if hasattr(pd, "NA") and v is pd.NA: return ""
+        return v
     wb = Workbook()
     wb.remove(wb.active)
 
@@ -674,7 +690,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     for ri, (reg, r_total, r_active, r_avg, r_high, r_cons) in enumerate(region_data, 12):
         avg_status = "red" if r_avg > 60 else "yellow" if r_avg > 25 else "green"
         for ci, val in enumerate([reg, r_total, r_active, r_avg, r_high, r_cons], 2):
-            c = ws_dash.cell(row=ri, column=ci, value=val)
+            c = ws_dash.cell(row=ri, column=ci, value=_safe(val))
             if ci == 5:  # Avg Weighted Score — RAG
                 colors_d = {"red": ("E74C3C","FDECED"), "yellow": ("F39C12","FEF9E7"), "green": ("2ECC71","EAF9F1")}
                 fc, bc = colors_d[avg_status]
@@ -711,7 +727,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
                 row.get("total_project_count", 0), row.get("active_project_count", 0),
                 row["total_score"], row["workload_level"]
             ], 2):
-                c = ws_dash.cell(row=next_row, column=ci, value=val)
+                c = ws_dash.cell(row=next_row, column=ci, value=_safe(val))
                 c.font      = Font(name="Manrope", size=10, bold=(ci == 7), color="E74C3C" if ci == 7 else "1e2c63")
                 c.fill      = PatternFill("solid", fgColor="FDECED")
                 c.alignment = Alignment(horizontal="center" if ci > 2 else "left", vertical="center")
@@ -766,7 +782,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         vals = [row["project_manager"], row.get("role", "Consultant"), row["ps_region"],
                 tot, act, row["total_score"], level, hr, avg]
         for col, val in enumerate(vals, 1):
-            c = ws_con.cell(r, col, val)
+            c = ws_con.cell(r, col, _safe(val))
             # Col 9 = Avg Score/Region — highlight vs consultant's own score
             if col == 9:
                 consultant_score = row["total_score"]
@@ -841,7 +857,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             start_str, go_live_str, term_label,
         ]
         for col, val in enumerate(vals, 1):
-            c = ws_risk.cell(r, col, val)
+            c = ws_risk.cell(r, col, _safe(val))
             if col == 9:
                 bg = rag_color(gv("rag"))
             elif col == 14 and term_flag:  # Term Flag column
@@ -915,7 +931,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             level = row_data.get("Workload Level", "")
             bg    = level_color(level)
             for col, val in enumerate(row_data.tolist(), 1):
-                c = ws_phase.cell(r, col, val)
+                c = ws_phase.cell(r, col, _safe(val))
                 style_cell(c, bg, align="center" if col > 1 else "left")
                 c.border = border_thin()
             ws_phase.row_dimensions[r].height = 16
@@ -960,7 +976,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             r = key_start + 2 + ki
             bg = level_colors.get(impact, WHITE)
             for ci, val in enumerate([phase, weight, rationale, impact], 1):
-                c = ws_phase.cell(r, ci, val)
+                c = ws_phase.cell(r, ci, _safe(val))
                 c.font = Font(name="Manrope", size=9,
                               color="1e2c63" if ci < 4 else
                               {"High":"E74C3C","Medium":"F39C12","Low":"27AE60"}.get(impact,"555555"))
@@ -1028,7 +1044,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
             vals = [gv("project_name"), gv("project_id"), gv("project_type"), gv("phase"),
                     gv("territory"), gv("status"), gv("rag"), start_str, go_live_str, term_label]
             for col, val in enumerate(vals, 1):
-                c = ws_nopm.cell(r, col, val)
+                c = ws_nopm.cell(r, col, _safe(val))
                 if col == 10 and term_flag:  # Term Flag column
                     bg = "FDEBD0" if term_flag == "expired" else "FEF9E7"
                     c.font = Font(name="Manrope", size=9, bold=True,
