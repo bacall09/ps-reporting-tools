@@ -59,7 +59,7 @@ EMPLOYEE_ROLES = {
     "Raykova, Silvia":        {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
     "Selvakumar, Sajithan":   {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
     "Snee, Stefanie J":       {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Swanson":                {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
+    "Swanson, Patti":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
     "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
     "Zoric, Ivan":            {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
     "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
@@ -109,7 +109,7 @@ EMPLOYEE_LOCATION = {
     "Selvakumar, Sajithan":   ("Canada",              None,       None),
     "Snee, Stefanie J":       ("USA",                 None,       None),
     "Stone, Matt":            ("USA",                 None,       None),
-    "Swanson":                ("USA",                 None,       None),
+    "Swanson, Patti":         ("UK",                  None,       None),
     "Tuazon, Carol":          ("Manila (PH)",         None,       None),
     "Zoric, Ivan":            ("Serbia",              None,       None),
     "Alam, Laisa":            ("USA",                 None,       "2025-12"),
@@ -934,7 +934,7 @@ def _status(val):
     """Unpack status from availability tuple (status, score, count) or plain string."""
     return val[0] if isinstance(val, tuple) else val
 
-def build_excel(availability, conflicts, ns_df, months, ss_df):
+def build_excel(availability, conflicts, combined_df, months, ss_df):
     from datetime import date as _date
     wb = Workbook()
     wb.remove(wb.active)
@@ -1040,7 +1040,7 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
                        if isinstance(mm.get(months[0]), tuple) and mm.get(months[0],(None,999))[1] > 60)
     avail_cons   = sum(1 for _, mm in availability.items()
                        if isinstance(mm.get(months[0]), tuple) and mm.get(months[0],(None,0))[1] <= 60)
-    total_unassigned = len(ns_df) if ns_df is not None else 0
+    total_unassigned = len(ns_df) if combined_df is not None else 0
 
     dash_section(ws_dash, 5, 2, "CURRENT MONTH SNAPSHOT", ncols=7)
     metrics = [
@@ -1095,12 +1095,12 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
     write_hdr(ws_ua, next_row,
               ["Source", "Account / Customer", "Project", "Project Type", "Billing Type",
                "Territory", "PS Region", "Signed Date", "Outreach Deadline", "Planned Start",
-               "Scoped Hours", "Urgency", "Suggested Consultants"],
-              widths=[8, 24, 30, 18, 12, 14, 10, 12, 16, 12, 12, 12, 35])
+               "Scoped Hours", "Urgency"],
+              widths=[10, 26, 32, 20, 12, 14, 10, 12, 16, 12, 12, 12])
     next_row += 1
 
-    if ns_df is not None and not ns_df.empty:
-        for _, r in ns_df.iterrows():
+    if combined_df is not None and not combined_df.empty:
+        for _, r in combined_df.iterrows():
             outreach   = r.get("outreach_date")
             outreach_d = outreach.date() if pd.notna(outreach) and hasattr(outreach, "date") else None
             days_out   = (outreach_d - today_d).days if outreach_d else None
@@ -1108,8 +1108,18 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
                           "This Week"  if days_out is not None and days_out <= 7 else
                           "This Month" if days_out is not None and days_out <= 30 else "Upcoming")
             urg_fill   = red_fill if urgency == "Overdue" else amber_fill if urgency in ("This Week","This Month") else white_fill
+            src_val = str(r.get("source", "NS"))
+            if src_val == "NS":
+                src_fill = PatternFill("solid", fgColor="E8F4FD")
+            elif src_val == "SFDC":
+                src_fill = PatternFill("solid", fgColor="EBF5EB")
+            elif "Dup:" in src_val:
+                src_fill = PatternFill("solid", fgColor="FEFDE0")
+            else:
+                src_fill = white_fill
+
             vals = [
-                r.get("source", "NS"),
+                src_val,
                 r.get("customer", ""),
                 r.get("project_name", ""),
                 r.get("project_type", ""),
@@ -1119,13 +1129,12 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
                 r.get("signed_date").strftime("%Y-%m-%d") if pd.notna(r.get("signed_date")) else "",
                 outreach_d.strftime("%Y-%m-%d") if outreach_d else "",
                 r.get("start_date").strftime("%Y-%m-%d") if pd.notna(r.get("start_date")) else "",
-                fmt_hrs(r.get("scoped_hours") or 0),
+                fmt_hrs(r.get("scoped_hours") or 0) if r.get("scoped_hours") else "",
                 urgency,
-                "",
             ]
-            for ci, val in enumerate(vals, 1):
-                f = urg_fill if ci == 12 else white_fill
-                write_cell(ws_ua, next_row, ci, val, fill=f,
+            fills = [src_fill] + [white_fill]*10 + [urg_fill]
+            for ci, (val, fl) in enumerate(zip(vals, fills), 1):
+                write_cell(ws_ua, next_row, ci, val, fill=fl,
                            align="center" if ci in (1,6,7,8,9,10,11,12) else "left")
             next_row += 1
 
@@ -1629,7 +1638,12 @@ def main():
 
     _sfdc_total = len(_sfdc_rows) if "_sfdc_rows" in dir() and _sfdc_rows else 0
     _combined_total = _ns_total + _sfdc_total
-    _metric_sub = f"NS: {_ns_total} · SFDC: {_sfdc_total}" if _sfdc_total > 0 else ""
+    _pot_dup_count  = sum(1 for r in (_sfdc_rows if "_sfdc_rows" in dir() and _sfdc_rows else [])
+                          if "Dup:" in str(r.get("source", "")))
+    if _sfdc_total > 0:
+        _metric_sub = f"NS: {_ns_total} · SFDC: {_sfdc_total} · Pot. Dup: {_pot_dup_count}"
+    else:
+        _metric_sub = ""
 
     def _fmt_hrs(h):
         return f"{int(h):,} hrs" if h == int(h) else f"{h:,.1f} hrs"
@@ -1667,6 +1681,22 @@ def main():
             # Use true unassigned (NS minus already-staffed in SS)
             display_df = _true_unassigned.copy() if not _true_unassigned.empty else ns_df.copy()
 
+            # ── Filters ───────────────────────────────────────────────────
+            _f1, _f2, _f3, _f4 = st.columns([2, 2, 2, 2])
+            _src_opts  = sorted(display_df["source"].dropna().unique().tolist()) if "source" in display_df.columns else []
+            _reg_opts  = sorted(display_df["ps_region"].dropna().unique().tolist()) if "ps_region" in display_df.columns else []
+            _type_opts = sorted(display_df["project_type"].dropna().unique().tolist()) if "project_type" in display_df.columns else []
+            with _f1:
+                _f_src  = st.multiselect("Source",     _src_opts,  default=_src_opts,  key="ua_f_src")
+            with _f2:
+                _f_reg  = st.multiselect("PS Region",  _reg_opts,  default=_reg_opts,  key="ua_f_reg")
+            with _f3:
+                _f_type = st.multiselect("Project Type", _type_opts, default=_type_opts, key="ua_f_type")
+            with _f4:
+                _urg_opts = ["Overdue", "This Week", "This Month", "Upcoming", "Unknown"]
+                _f_urg  = st.multiselect("Urgency",    _urg_opts,  default=_urg_opts,  key="ua_f_urg")
+
+            # ── Urgency from outreach deadline (compute before filter) ─────
             # Urgency from outreach deadline
             if "outreach_date" in display_df.columns:
                 def urgency(d):
@@ -1752,6 +1782,13 @@ def main():
                 if v == "SFDC":                     return "background-color:#EBF5EB;color:#1E8449"
                 if "Dup:" in v:                     return "background-color:#FEFDE0;color:#9C6500"
                 return ""
+
+            # ── Apply filters ─────────────────────────────────────────────────
+            if _f_src  and "source"       in display_df.columns: display_df = display_df[display_df["source"].isin(_f_src)]
+            if _f_reg  and "ps_region"    in display_df.columns: display_df = display_df[display_df["ps_region"].isin(_f_reg)]
+            if _f_type and "project_type" in display_df.columns: display_df = display_df[display_df["project_type"].isin(_f_type)]
+            if "Urgency" in display_df.columns and _f_urg: display_df = display_df[display_df["Urgency"].isin(_f_urg)]
+            st.caption(f"{len(display_df):,} project(s) shown")
 
             style_cols = {}
             if "Source" in display_df.columns:
@@ -1974,13 +2011,15 @@ def main():
     # ── Export ─────────────────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Generate Report")
-    excel_buf = build_excel(availability, conflicts, ns_df, months, ss_df)
+    _export_df = _true_unassigned if "_true_unassigned" in dir() and _true_unassigned is not None and not (hasattr(_true_unassigned, "empty") and _true_unassigned.empty) else ns_df
+    excel_buf = build_excel(availability, conflicts, _export_df, months, ss_df)
     fname = f"Capacity_Outlook_{datetime.today().strftime('%Y%m%d')}.xlsx"
     st.download_button(
         label="⬇ Download Capacity Outlook Report",
         data=excel_buf,
         file_name=fname,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary",
     )
 
 main()

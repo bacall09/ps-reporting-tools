@@ -67,7 +67,7 @@ EMPLOYEE_ROLES = {
     "Raykova, Silvia":         {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
     "Selvakumar, Sajithan":      {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
     "Snee, Stefanie J":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Swanson":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
+    "Swanson, Patti":  {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
     "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
     "Zoric, Ivan":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
 
@@ -122,7 +122,7 @@ EMPLOYEE_LOCATION = {
     "Selvakumar, Sajithan":   ("Canada",              None,       None),
     "Snee, Stefanie J":       ("USA",                 None,       None),
     "Stone, Matt":            ("USA",                 None,       None),
-    "Swanson":                ("USA",                 None,       None),
+    "Swanson, Patti":         ("UK",                  None,       None),
     "Tuazon, Carol":          ("Manila (PH)",         None,       None),
     "Zoric, Ivan":            ("Serbia",              None,       None),
     "Dunn, Steven":           ("USA",                 None,       None),

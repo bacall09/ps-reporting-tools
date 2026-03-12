@@ -84,7 +84,7 @@ EMPLOYEE_ROLES = {
     "Raykova, Silvia":         {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
     "Selvakumar, Sajithan":      {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
     "Snee, Stefanie J":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Swanson":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
+    "Swanson, Patti":  {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
     "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
     "Zoric, Ivan":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
 
@@ -147,7 +147,7 @@ EMPLOYEE_LOCATION = {
     "Selvakumar, Sajithan":   ("Canada",              None,       None),
     "Snee, Stefanie J":       ("USA",                 None,       None),
     "Stone, Matt":            ("USA",                 None,       None),
-    "Swanson":                ("USA",                 None,       None),
+    "Swanson, Patti":         ("UK",                  None,       None),
     "Tuazon, Carol":          ("Manila (PH)",         None,       None),
     "Zoric, Ivan":            ("Serbia",              None,       None),
     "Dunn, Steven":           ("USA",                 None,       None),
@@ -565,24 +565,47 @@ def build_excel(df, scope_map, consumed):
                "Project Type","Billing Type","Hrs to Date","Date","Hours Logged",
                "Approval","Task/Case","Non-Billable","Credit Hrs","Variance Hrs",
                "Previous Hrs to Date","Credit Tag","Period","Notes",
-               "Project Phase","Start Date","Days Active"]
-    widths  = [20,16,18,20,35,20,14,13,14,13,14,25,13,12,12,18,16,12,45,16,14,12]
+               "Project Phase","Start Date","Days Active","Scoped Hrs","Variance Flag"]
+    widths  = [20,16,18,20,35,20,14,13,14,13,14,25,13,12,12,18,16,12,45,16,14,12,12,16]
     cols    = ["employee","region","customer_region","project_manager","project",
                "project_type","billing_type","hours_to_date","date","hours",
                "approval","task","non_billable","credit_hrs","variance_hrs",
                "previous_htd","credit_tag","period","notes",
-               "project_phase","start_date_display","days_active"]
+               "project_phase","start_date_display","days_active","_scoped_hrs","_variance_flag"]
 
     write_title(ws, "PROCESSED DATA — Utilization Credit Detail", len(headers))
     style_header(ws, 2, headers, TEAL)
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
+    def _get_scoped(ptype):
+        """Lookup scoped hours for a project type from scope_map."""
+        _m = [(k, float(v)) for k, v in scope_map.items()
+              if k.strip().lower() in str(ptype).strip().lower()]
+        return max(_m, key=lambda x: len(x[0]))[1] if _m else None
+
+    def _variance_flag(tag, scoped):
+        """Derive human-readable variance flag from credit_tag."""
+        t = str(tag).strip().upper()
+        if t in ("SKIPPED", "NON-BILLABLE", "CREDITED"):
+            return "N/A"
+        if t == "UNCONFIGURED":
+            return "No Scope Set"
+        if t in ("OVERRUN", "PARTIAL"):
+            return "True Overrun" if scoped and scoped > 0 else "No Scope Set"
+        return "Within Budget"
+
     for r_idx, (_, row) in enumerate(df.iterrows(), 3):
-        tag = str(row.get("credit_tag","")).strip()
-        bg  = TAG_COLORS.get(tag, "F2F2F2")
+        tag      = str(row.get("credit_tag","")).strip()
+        bg       = TAG_COLORS.get(tag, "F2F2F2")
+        _scoped  = _get_scoped(row.get("project_type",""))
+        _vflag   = _variance_flag(tag, _scoped)
+        # Inject derived values so row.get() resolves them
+        _row_ext = dict(row)
+        _row_ext["_scoped_hrs"]    = round(_scoped, 2) if _scoped is not None else ""
+        _row_ext["_variance_flag"] = _vflag
         for c_idx, col in enumerate(cols, 1):
-            val  = row.get(col, "")
+            val  = _row_ext.get(col, "")
             cell = ws.cell(row=r_idx, column=c_idx, value=val)
             fmt, bold, align = None, False, "left"
             if col == "date" and pd.notna(val):
@@ -593,6 +616,20 @@ def build_excel(df, scope_map, consumed):
                 bold = True; align = "center"
             elif col in ("period","billing_type","region"):
                 align = "center"
+            elif col == "_scoped_hrs":
+                fmt = "#,##0.00"; align = "right"
+            elif col == "_variance_flag":
+                align = "center"
+                bold = True
+                val_str = str(val)
+                if val_str == "True Overrun":
+                    bg = "FFC7CE"
+                elif val_str == "No Scope Set":
+                    bg = "FFEB9C"
+                elif val_str == "Within Budget":
+                    bg = "C6EFCE"
+                else:
+                    bg = TAG_COLORS.get(tag, "F2F2F2")
             style_cell(cell, bg, fmt=fmt, bold=bold, align=align)
 
     ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}2"
@@ -2073,12 +2110,28 @@ def build_tableau_excel(df, scope_map, consumed):
     # ── Sheet 2: fact_processed_time_entries ─────────────────────────────────
     # Mirrors PROCESSED_DATA tab exactly — all same columns, Tableau-friendly names
     ft_headers = [
-        "employee", "location", "customer_region", "project_manager", "project",
+        "employee", "location", "ps_region", "customer_region", "project_manager", "project",
         "project_type", "billing_type", "hrs_to_date", "date", "hours_logged",
         "approval", "task_case", "non_billable", "credit_hrs", "variance_hrs",
         "previous_hrs_to_date", "credit_tag", "period", "notes",
-        "project_phase", "start_date", "days_active", "ps_region",
+        "project_phase", "start_date", "days_active",
+        "scoped_hrs", "variance_flag",
     ]
+    def _tbl_scoped(ptype):
+        _m = [(k, float(v)) for k, v in scope_map.items()
+              if k.strip().lower() in str(ptype).strip().lower()]
+        return round(max(_m, key=lambda x: len(x[0]))[1], 2) if _m else None
+
+    def _tbl_vflag(tag, scoped):
+        t = str(tag).strip().upper()
+        if t in ("SKIPPED", "NON-BILLABLE", "CREDITED"):
+            return "N/A"
+        if t == "UNCONFIGURED":
+            return "No Scope Set"
+        if t in ("OVERRUN", "PARTIAL"):
+            return "True Overrun" if scoped and scoped > 0 else "No Scope Set"
+        return "Within Budget"
+
     ft_rows = []
     for _, row in df.iterrows():
         def _g(col, default=""):
@@ -2087,6 +2140,8 @@ def build_tableau_excel(df, scope_map, consumed):
                 return default
             return v
 
+        _tag    = str(_g("credit_tag")).strip()
+        _scoped = _tbl_scoped(_g("project_type"))
         ft_rows.append([
             _g("employee"), _g("region"), _g("customer_region"), _g("project_manager"),
             _g("project"), _g("project_type"), _g("billing_type"),
@@ -2100,7 +2155,9 @@ def build_tableau_excel(df, scope_map, consumed):
             round(float(_g("previous_htd", 0) or 0), 2),
             _g("credit_tag"), _g("period"), _g("notes",""),
             _g("project_phase"), str(_g("start_date_display", _g("start_date", "")))[:10],
-            _g("days_active",""), _g("ps_region",""),
+            _g("days_active",""),
+            _scoped if _scoped is not None else "",
+            _tbl_vflag(_tag, _scoped),
         ])
     _flat_sheet(wb, "fact_processed_time_entries", ft_headers, ft_rows)
 
