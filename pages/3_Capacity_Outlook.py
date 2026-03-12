@@ -1133,9 +1133,20 @@ def main():
         if "project_id" in ss_df.columns:
             _staffed_in_ss = set(_ss_active["project_id"].astype(str).str.strip().unique())
         if "project_name" in ss_df.columns:
-            # Use ALL SS rows (not just staffed) — we want to know if the project exists
+            # Use ALL SS rows — we want to know if the project exists
             _ss_project_names = set(
                 ss_df["project_name"].astype(str).str.strip().str.lower().unique()
+            ) - {"", "nan", "none"}
+            # Build set of project names that are on-hold or closed in SS
+            _closed_phases   = {"10. complete/pending final billing", "11. on hold", "12. ps review"}
+            _onhold_statuses = {"on-hold", "on hold", "onhold", "on_hold"}
+            _ss_closed_mask  = pd.Series([False] * len(ss_df), index=ss_df.index)
+            if "phase" in ss_df.columns:
+                _ss_closed_mask |= ss_df["phase"].astype(str).str.strip().str.lower().isin(_closed_phases)
+            if "status" in ss_df.columns:
+                _ss_closed_mask |= ss_df["status"].astype(str).str.strip().str.lower().isin(_onhold_statuses)
+            _ss_closed_project_names = set(
+                ss_df[_ss_closed_mask]["project_name"].astype(str).str.strip().str.lower().unique()
             ) - {"", "nan", "none"}
         # Customer/account names from SS — prefer explicit customer col, fallback to project name
         _ss_customer_col = "customer" if "customer" in ss_df.columns else "project_name"
@@ -1196,7 +1207,14 @@ def main():
 
             if exact_match:
                 continue  # already in NS or SS — skip
-            
+
+            # Check if fuzzy-matched SS project is on-hold or closed
+            ss_closed_flag = (
+                fuzzy_match and acct_lower and
+                "_ss_closed_project_names" in dir() and
+                any(acct_lower in ss_name for ss_name in _ss_closed_project_names)
+            )
+
             # Derive estimated start date from close date + buffer
             close_dt = row.get("close_date")
             if pd.notna(close_dt):
@@ -1220,7 +1238,9 @@ def main():
                 "start_date":    est_start,
                 "outreach_date": None,
                 "scoped_hours":  ps_hours,
-                "source":        "⚠️ Possible Duplicate" if fuzzy_match else "SFDC",
+                "source":        ("🔒 On Hold / Closed in SS" if ss_closed_flag
+                                 else "⚠️ Possible Duplicate" if fuzzy_match
+                                 else "SFDC"),
             })
 
     # Capture NS count before merge
@@ -1256,17 +1276,21 @@ def main():
             _ns_reporting_hrs = _hrs[_families == "Reporting"].sum()
             _ns_payroll_hrs   = _hrs[_families == "Payroll"].sum()
     m1, m2, m3, m4, m5, m6 = st.columns(6)
-    def metric_card(label, value, sub=None, pill_color=None):
+    def metric_card(label, value, sub=None, pill_color=None, hrs=None):
         if pill_color and sub:
             bottom = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background:{pill_color}22;color:{pill_color};font-size:12px'>{sub}</div>"
         elif sub:
             bottom = f"<div style='font-size:12px;color:#888;margin-top:2px'>{sub}</div>"
         else:
             bottom = ""
+        hrs_line = (f"<div style='font-size:16px;font-weight:600;color:#5a6a8a;"
+                    f"font-family:Manrope,sans-serif;margin-top:2px;line-height:1.2'>{hrs}</div>"
+                    ) if hrs else ""
         return (
             "<div style='background:#f8f9fb;border-radius:8px;padding:16px 20px;border:1px solid #e8eaed'>"
             f"<div style='font-size:12px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div>"
             f"<div style='font-size:28px;font-weight:700;color:#1e2c63;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>"
+            f"{hrs_line}"
             f"{bottom}"
             "</div>"
         )
@@ -1280,16 +1304,13 @@ def main():
 
     with m1: st.markdown(metric_card("Unassigned Projects", _combined_total,
                 _metric_sub, "#27AE60" if _metric_sub else ("#E74C3C" if _combined_total > 0 else None)), unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Apps", f"{_ns_apps} projects"), unsafe_allow_html=True)
-    with m3: st.markdown(metric_card("Billing",
-                f"{_ns_billing} projects",
-                _fmt_hrs(_ns_billing_hrs) if _ns_billing_hrs > 0 else ""), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("Reporting",
-                f"{_ns_reporting} projects",
-                _fmt_hrs(_ns_reporting_hrs) if _ns_reporting_hrs > 0 else ""), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Payroll",
-                f"{_ns_payroll} projects",
-                _fmt_hrs(_ns_payroll_hrs) if _ns_payroll_hrs > 0 else ""), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Apps Projects", _ns_apps), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Billing Projects", _ns_billing,
+                hrs=_fmt_hrs(_ns_billing_hrs) if _ns_billing_hrs > 0 else None), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("Reporting Projects", _ns_reporting,
+                hrs=_fmt_hrs(_ns_reporting_hrs) if _ns_reporting_hrs > 0 else None), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Payroll Projects", _ns_payroll,
+                hrs=_fmt_hrs(_ns_payroll_hrs) if _ns_payroll_hrs > 0 else None), unsafe_allow_html=True)
     with m6: st.markdown(metric_card("Available Consultants", available_now, "", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
 
 
@@ -1395,9 +1416,10 @@ def main():
 
             def color_source(val):
                 v = str(val)
-                if v == "NS":                   return "background-color:#E8F4FD;color:#1A5276"
-                if v == "SFDC":                 return "background-color:#EBF5EB;color:#1E8449"
-                if "Possible Duplicate" in v:   return "background-color:#FEFDE0;color:#9C6500"
+                if v == "NS":                       return "background-color:#E8F4FD;color:#1A5276"
+                if v == "SFDC":                     return "background-color:#EBF5EB;color:#1E8449"
+                if "On Hold" in v or "Closed" in v: return "background-color:#F2F2F2;color:#666666"
+                if "Possible Duplicate" in v:       return "background-color:#FEFDE0;color:#9C6500"
                 return ""
 
             style_cols = {}
