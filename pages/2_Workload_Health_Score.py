@@ -314,10 +314,15 @@ MILESTONE_COLS = [
 # NS column map (subset needed for PM join)
 NS_COL_MAP = {
     "employee":        "employee",
+    "name":            "employee",
     "project":         "project",
+    "project name":    "project",
     "project id":      "project_id",
     "billing type":    "billing_type",
     "project manager": "project_manager",
+    "date":            "date",
+    "hours":           "hours",
+    "quantity":        "hours",
 }
 
 # ── Excel helpers ─────────────────────────────────────────────────────────────
@@ -408,52 +413,122 @@ def load_ss(file):
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip()
 
-    # Filter T&M at source — keeps all downstream counts consistent
-    if "project_type" in df.columns:
-        tm_mask = df["project_type"].str.lower().str.contains("t&m|time.*material", na=False, regex=True)
-        df = df[~tm_mask].copy()
-
     return df, milestone_present
 
 
 def load_ns(file):
-    """Load NetSuite actuals — extract project_id → project_manager map."""
+    """Load NetSuite time entries — used for stale project detection."""
     if file.name.endswith(".csv"):
         df = pd.read_csv(file)
     else:
         df = pd.read_excel(file)
 
     df.columns = df.columns.str.strip()
-    rename = {c: NS_COL_MAP[c.lower()] for c in df.columns if c.lower() in NS_COL_MAP}
+    rename = {col: NS_COL_MAP[col.lower()] for col in df.columns if col.lower() in NS_COL_MAP}
     df = df.rename(columns=rename)
 
-    needed = [c for c in ["project_id", "project_manager", "project", "billing_type"] if c in df.columns]
-    df = df[needed].drop_duplicates()
-
-    # Build billing_type map: project_id → billing_type (for FF verification)
-    if "project_id" in df.columns and "billing_type" in df.columns:
-        df["billing_type"] = df["billing_type"].str.strip().str.lower()
-
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    if "hours" in df.columns:
+        df["hours"] = pd.to_numeric(df["hours"], errors="coerce").fillna(0)
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip()
+    if "employee" in df.columns:
+        df["employee"] = df["employee"].astype(str).str.strip()
 
-    # Extract min date from NS export for "no time logged since" message
-    ns_min_date = None
-    # Re-read to get date column (not in needed subset above)
-    try:
-        if file.name.endswith(".csv"):
-            df_full = pd.read_csv(file)
-        else:
-            file.seek(0)
-            df_full = pd.read_excel(file)
-        df_full.columns = df_full.columns.str.strip()
-        date_col = next((c for c in df_full.columns if c.lower() == "date"), None)
-        if date_col:
-            ns_min_date = pd.to_datetime(df_full[date_col], errors="coerce").min()
-    except Exception:
-        pass
-
+    ns_min_date = df["date"].min() if "date" in df.columns else None
     return df, ns_min_date
+
+
+def build_stale_projects(ss_df, ns_df):
+    """
+    Cross-reference SS active projects against NS time entries.
+    Returns DataFrame of stale projects with staleness flag.
+    Thresholds: <14 days = ok, 14-29 days = yellow, 30-59 days = orange, 60+ = red.
+    """
+    if ns_df is None or ss_df is None:
+        return pd.DataFrame()
+    if "date" not in ns_df.columns or "employee" not in ns_df.columns:
+        return pd.DataFrame()
+
+    today = pd.Timestamp.today().normalize()
+
+    # Last time entry per (employee, project)
+    join_col = "project_id" if "project_id" in ns_df.columns else "project"
+    last_entry = (
+        ns_df[ns_df["date"].notna()]
+        .groupby(["employee", join_col])["date"]
+        .max()
+        .reset_index()
+        .rename(columns={"employee": "consultant", join_col: "project_id", "date": "last_entry"})
+    )
+
+    # SS active FF projects — exclude complete/on-hold
+    _complete_ph = {"10. complete/pending final billing", "12. ps review"}
+    _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
+    _tm_types    = {"t&m", "time & material", "time and material"}
+
+    _phase  = ss_df.get("phase",   pd.Series(dtype=str)).astype(str).str.strip().str.lower() if "phase" in ss_df.columns else pd.Series("", index=ss_df.index)
+    _stat   = ss_df.get("status",  pd.Series(dtype=str)).astype(str).str.strip().str.lower() if "status" in ss_df.columns else pd.Series("", index=ss_df.index)
+    _bill   = ss_df.get("billing_type", pd.Series(dtype=str)).astype(str).str.strip().str.lower() if "billing_type" in ss_df.columns else pd.Series("", index=ss_df.index)
+
+    active_ss = ss_df[
+        ~_phase.isin(_complete_ph) &
+        ~_stat.isin(_onhold_st) &
+        ~_bill.isin(_tm_types)
+    ].copy()
+
+    if active_ss.empty:
+        return pd.DataFrame()
+
+    # Normalise project_id for join
+    _id_col = "project_id" if "project_id" in active_ss.columns else None
+    if _id_col is None:
+        return pd.DataFrame()
+    active_ss[_id_col] = active_ss[_id_col].astype(str).str.strip()
+
+    # Join last entry onto SS projects
+    merged = active_ss.merge(last_entry, left_on=["consultant", _id_col],
+                             right_on=["consultant", "project_id"], how="left")
+
+    # Days since last entry — NaT means no time ever logged in the NS window
+    merged["days_since"] = (today - merged["last_entry"]).dt.days
+
+    def _flag(days):
+        if pd.isna(days):   return "⚫ No Entry"
+        if days < 14:       return ""            # ok — not stale
+        if days < 30:       return "🟡 14d+"
+        if days < 60:       return "🟠 30d+"
+        return "🔴 60d+"
+
+    merged["Staleness"] = merged["days_since"].apply(_flag)
+
+    # Only surface stale rows (flag not empty)
+    stale = merged[merged["Staleness"] != ""].copy()
+
+    if stale.empty:
+        return pd.DataFrame()
+
+    # Build display columns
+    name_col    = "project_name" if "project_name" in stale.columns else _id_col
+    pm_col      = "project_manager" if "project_manager" in stale.columns else None
+    phase_col   = "phase" if "phase" in stale.columns else None
+
+    display = pd.DataFrame()
+    display["Consultant"]    = stale["consultant"].astype(str)
+    display["Project"]       = stale[name_col].astype(str) if name_col in stale.columns else stale[_id_col]
+    display["PM"]            = stale[pm_col].astype(str) if pm_col else ""
+    display["Phase"]         = stale[phase_col].astype(str) if phase_col else ""
+    display["Last Entry"]    = stale["last_entry"].dt.strftime("%Y-%m-%d").fillna("—")
+    display["Days Since"]    = stale["days_since"].fillna(-1).astype(int).replace(-1, "—")
+    display["Staleness"]     = stale["Staleness"]
+
+    # Sort: red first, then orange, yellow, no entry
+    _sort_order = {"🔴 60d+": 0, "🟠 30d+": 1, "🟡 14d+": 2, "⚫ No Entry": 3}
+    display["_sort"] = display["Staleness"].map(_sort_order).fillna(9)
+    display = display.sort_values(["_sort", "Consultant"]).drop(columns=["_sort"]).reset_index(drop=True)
+
+    return display
 
 
 # ── Scoring engine ────────────────────────────────────────────────────────────
@@ -513,9 +588,11 @@ def score_projects(ss_df, ns_df):
         lambda p: str(p).strip().lower() not in complete_phases if pd.notna(p) else True
     )
 
+    # T&M projects kept for project counts but scored 0 (demand tracked via NS)
+    _tm_mask = df["project_type"].str.lower().str.contains("t&m|time.*material", na=False, regex=True)         if "project_type" in df.columns else pd.Series(False, index=df.index)
     df["weighted_score"] = df.apply(
         lambda r: round(r["phase_weight"] * r["client_health_mult"] * r["risk_mult"], 2)
-        if (r["active"] and not r.get("pm_flag", False)) else 0.0, axis=1
+        if (r["active"] and not r.get("pm_flag", False) and not _tm_mask.loc[r.name]) else 0.0, axis=1
     )
 
     # PS Region from employee lookup (consultant = project_manager from NS)
@@ -527,16 +604,10 @@ def score_projects(ss_df, ns_df):
     return df
 
 
-def build_consultant_summary(scored_df):
+def build_consultant_summary(scored_df, ss_df=None):
     """Aggregate scored projects by consultant."""
-    # Exclude projects with no PM match — functionally inactive for scoring purposes
+    # Scoring groupby — uses project_manager from NS join, pm_flag rows score 0
     active = scored_df[scored_df["active"] & ~scored_df.get("pm_flag", pd.Series(False, index=scored_df.index))].copy()
-    total  = scored_df[scored_df["total_project"]].copy() if "total_project" in scored_df.columns else scored_df.copy()
-
-    # Active project count (excludes on-hold by phase or status)
-    active_counts = active.groupby("project_manager")["project_id"].nunique().rename("active_project_count")
-    # Total project count (all FF, excl complete)
-    total_counts  = total.groupby("project_manager")["project_id"].nunique().rename("total_project_count")
 
     grp = active.groupby("project_manager").agg(
         total_score=("weighted_score", "sum"),
@@ -544,11 +615,40 @@ def build_consultant_summary(scored_df):
         role=("role", "first"),
     ).reset_index()
 
-    grp["active_project_count"] = grp["project_manager"].map(active_counts).fillna(0).astype(int)
-    grp["total_project_count"]  = grp["project_manager"].map(total_counts).fillna(0).astype(int)
     grp["total_score"] = grp["total_score"].round(1)
     grp["workload_level"] = grp["total_score"].apply(lambda s: workload_level(s)[0])
     grp = grp.sort_values("total_score", ascending=False).reset_index(drop=True)
+
+    # Project counts — computed from SS directly (consultant col) to match page 3
+    # This avoids undercounting from pm_flag / T&M exclusions on the NS join side
+    if ss_df is not None and "consultant" in ss_df.columns:
+        _complete_ph = {"10. complete/pending final billing", "12. ps review"}
+        _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
+        _tm_types    = {"t&m", "time & material", "time and material"}
+        _id_col = "project_id" if "project_id" in ss_df.columns else "project_name"
+        _total_map  = {}
+        _active_map = {}
+        for _cons, _grp in ss_df.groupby("consultant"):
+            _billing = (_grp["billing_type"].astype(str).str.strip().str.lower()
+                        if "billing_type" in _grp.columns else pd.Series("", index=_grp.index))
+            _phase   = (_grp["phase"].astype(str).str.strip().str.lower()
+                        if "phase" in _grp.columns else pd.Series("", index=_grp.index))
+            _stat    = (_grp["status"].astype(str).str.strip().str.lower()
+                        if "status" in _grp.columns else pd.Series("", index=_grp.index))
+            _ff           = ~_billing.isin(_tm_types)
+            _not_complete = ~_phase.isin(_complete_ph)
+            _not_onhold   = ~_stat.isin(_onhold_st)
+            _total_map[str(_cons).strip()]  = int(_grp[_ff & _not_complete][_id_col].nunique())
+            _active_map[str(_cons).strip()] = int(_grp[_ff & _not_complete & _not_onhold][_id_col].nunique())
+        grp["total_project_count"]  = grp["project_manager"].map(_total_map).fillna(0).astype(int)
+        grp["active_project_count"] = grp["project_manager"].map(_active_map).fillna(0).astype(int)
+    else:
+        # Fallback to scored_df counts if ss_df not available
+        total = scored_df[scored_df["total_project"]].copy() if "total_project" in scored_df.columns else scored_df.copy()
+        active_counts = active.groupby("project_manager")["project_id"].nunique()
+        total_counts  = total.groupby("project_manager")["project_id"].nunique()
+        grp["active_project_count"] = grp["project_manager"].map(active_counts).fillna(0).astype(int)
+        grp["total_project_count"]  = grp["project_manager"].map(total_counts).fillna(0).astype(int)
 
     # Flag missing PM
     missing = scored_df[scored_df["pm_flag"] == True]["project_id"].nunique()
@@ -1158,7 +1258,14 @@ def main():
         ss_df, milestone_cols = load_ss(ss_file)
         ns_df, ns_min_date = load_ns(ns_file) if ns_file else (None, None)
         scored_df = score_projects(ss_df, ns_df)
-        consultant_df, missing_pm = build_consultant_summary(scored_df)
+        consultant_df, missing_pm = build_consultant_summary(scored_df, ss_df=ss_df)
+        stale_df = build_stale_projects(ss_df, ns_df) if ns_df is not None else pd.DataFrame()
+        # Add stale project count per consultant
+        if not stale_df.empty:
+            _stale_counts = stale_df.groupby("Consultant").size().rename("stale_count")
+            consultant_df["stale_count"] = consultant_df["project_manager"].map(_stale_counts).fillna(0).astype(int)
+        else:
+            consultant_df["stale_count"] = 0
         as_of = datetime.today().strftime("%B %d, %Y")
     except Exception as e:
         st.error(f"Error processing files: {e}")
@@ -1201,18 +1308,46 @@ def main():
             st.markdown("---")
 
     # ── Preview tabs ──────────────────────────────────────────────────────────
-    tab1, tab2 = st.tabs(["By Consultant", "At-Risk"])
+    tab1, tab2, tab3 = st.tabs(["By Consultant", "At-Risk", "Stale Projects"])
 
     with tab1:
         display_con = consultant_df.rename(columns={
-            "project_manager": "Consultant",
-            "ps_region":       "PS Region",
+            "project_manager":      "Consultant",
+            "ps_region":            "PS Region",
             "active_project_count": "Active Projects",
             "total_project_count":  "Total Projects",
-            "total_score":     "Weighted Score",
-            "workload_level":  "Workload Level",
+            "total_score":          "Weighted Score",
+            "workload_level":       "Workload Level",
+            "stale_count":          "Stale Projects",
         })
-        st.dataframe(display_con, hide_index=True, use_container_width=True)
+        _show_cols = ["Consultant", "PS Region", "Total Projects", "Active Projects",
+                      "Weighted Score", "Workload Level"]
+        if not stale_df.empty:
+            _show_cols.append("Stale Projects")
+        st.dataframe(display_con[_show_cols], hide_index=True, use_container_width=True)
+
+    with tab3:
+        if stale_df.empty:
+            if ns_df is None:
+                st.info("Upload your NS time entries report to enable stale project detection.")
+            else:
+                st.success("No stale projects detected — all active projects have recent time entries.")
+        else:
+            st.markdown("#### Stale Projects — No Recent Time Booked")
+            st.caption(
+                "🟡 14d+ = no time in 14–29 days · "
+                "🟠 30d+ = no time in 30–59 days · "
+                "🔴 60d+ = no time in 60+ days · "
+                "⚫ No Entry = no time logged in the NS report window"
+            )
+            # Summary counts
+            _counts = stale_df["Staleness"].value_counts()
+            _c1, _c2, _c3, _c4 = st.columns(4)
+            _c1.metric("🔴 60d+",     _counts.get("🔴 60d+",     0))
+            _c2.metric("🟠 30d+",     _counts.get("🟠 30d+",     0))
+            _c3.metric("🟡 14d+",     _counts.get("🟡 14d+",     0))
+            _c4.metric("⚫ No Entry", _counts.get("⚫ No Entry", 0))
+            st.dataframe(stale_df, hide_index=True, use_container_width=True)
 
     with tab2:
         at_risk = scored_df[
