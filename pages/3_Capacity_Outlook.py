@@ -444,6 +444,56 @@ def load_ss(file):
     df = df[~inactive_mask]
     return df, dropped_df
 
+
+# ── SFDC Closed Won loader ─────────────────────────────────────────────────────
+SFDC_COL_MAP = {
+    "opportunity name":   "opp_name",
+    "opportunity":        "opp_name",
+    "account name":       "account_name",
+    "account":            "account_name",
+    "close date":         "close_date",
+    "closed date":        "close_date",
+    "stage":              "stage",
+    "territory":          "territory",
+    "region":             "territory",
+    "product":            "product",
+    "products":           "product",
+    "ps sow hours":       "ps_hours",
+    "ps hours":           "ps_hours",
+    "sow hours":          "ps_hours",
+}
+
+def load_sfdc(file):
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    rename = {col: SFDC_COL_MAP[col] for col in df.columns if col in SFDC_COL_MAP}
+    df = df.rename(columns=rename)
+    df = df.loc[:, ~df.columns.duplicated(keep="first")]
+    # Sanitise strings
+    for _scol in ["opp_name", "account_name", "stage", "territory", "product"]:
+        if _scol in df.columns:
+            df[_scol] = df[_scol].fillna("").astype(str).str.strip()
+    # Parse dates
+    if "close_date" in df.columns:
+        df["close_date"] = pd.to_datetime(df["close_date"], errors="coerce")
+    if "ps_hours" in df.columns:
+        df["ps_hours"] = pd.to_numeric(df["ps_hours"], errors="coerce")
+    # Derive PS region
+    if "territory" in df.columns:
+        df["ps_region"] = df["territory"].apply(_territory_to_ps_region)
+    # Derive product family
+    if "product" in df.columns:
+        df["product_family"] = df["product"].apply(_ns_pt_to_family)
+    # Display name mirrors NS format: Account Name : Opp Name
+    df["project_name"] = df.apply(
+        lambda r: f"{r.get('account_name', '')} : {r.get('opp_name', '')}".strip(" :"),
+        axis=1
+    )
+    return df
+
 # ── NS Unassigned Projects loader ──────────────────────────────────────────────
 NS_COL_MAP = {
     "project id":          "project_id",
@@ -967,6 +1017,25 @@ def main():
         except Exception as e:
             st.error(f"Error loading NS file: {e}")
 
+    # Step 3 — SFDC Closed Won
+    st.markdown("---")
+    st.subheader("Step 3 — Upload SFDC Closed Won PS Opps (Optional)")
+    st.caption("Required: Opportunity Name, Account Name, Close Date, Territory, Product, PS SOW Hours")
+    sfdc_col1, sfdc_col2 = st.columns([2, 1])
+    with sfdc_col1:
+        sfdc_file = st.file_uploader("Drop SFDC Closed Won file here", type=["xlsx", "xls", "csv"], key="sfdc_cap_p3")
+    with sfdc_col2:
+        sfdc_buffer_weeks = st.slider("Weeks from Close Date to PS Start", min_value=1, max_value=12, value=4,
+                                       help="Estimated lag between SFDC close date and PS project kick-off")
+
+    sfdc_df = None
+    if sfdc_file:
+        try:
+            sfdc_df = load_sfdc(sfdc_file)
+            st.success(f"Loaded {len(sfdc_df):,} closed won opps from SFDC.")
+        except Exception as e:
+            st.error(f"Error loading SFDC file: {e}")
+
     if not ss_file and not ns_file:
         st.info("Upload SS DRS to project current capacity. Add NS Unassigned Projects to overlay demand.")
         return
@@ -1056,6 +1125,70 @@ def main():
     else:
         _true_unassigned = ns_df if ns_df is not None else pd.DataFrame()
 
+    # ── SFDC cross-reference and merge ────────────────────────────────────────
+    # Build set of NS project names for matching (lowercased)
+    _ns_project_names = set()
+    if not _true_unassigned.empty and "project_name" in _true_unassigned.columns:
+        _ns_project_names = set(
+            _true_unassigned["project_name"].astype(str).str.strip().str.lower().unique()
+        )
+
+    _sfdc_rows = []
+    if sfdc_df is not None and not sfdc_df.empty:
+        from datetime import timedelta
+        for _, row in sfdc_df.iterrows():
+            opp_name     = str(row.get("opp_name", "")).strip()
+            account_name = str(row.get("account_name", "")).strip()
+            proj_name    = str(row.get("project_name", "")).strip()
+
+            # Exact match: opp name in NS project names
+            opp_lower = opp_name.lower()
+            acct_lower = account_name.lower()
+
+            exact_match = any(opp_lower in ns_name for ns_name in _ns_project_names)
+            fuzzy_match = (not exact_match and acct_lower and
+                           any(acct_lower in ns_name for ns_name in _ns_project_names))
+
+            if exact_match:
+                continue  # already in NS — skip
+            
+            # Derive estimated start date from close date + buffer
+            close_dt = row.get("close_date")
+            if pd.notna(close_dt):
+                est_start = pd.Timestamp(close_dt) + timedelta(weeks=sfdc_buffer_weeks)
+            else:
+                est_start = None
+
+            # Derive scoped hours — use PS SOW Hours if available, else FF lookup
+            ps_hours = row.get("ps_hours")
+            if pd.isna(ps_hours) or ps_hours is None:
+                ps_hours = _resolve_ff_scope(str(row.get("product", "")))
+
+            _sfdc_rows.append({
+                "project_name":  proj_name,
+                "project_type":  str(row.get("product", "")),
+                "billing_type":  "",
+                "territory":     str(row.get("territory", "")),
+                "ps_region":     str(row.get("ps_region", "Unknown")),
+                "signed_date":   close_dt,
+                "start_date":    est_start,
+                "outreach_date": None,
+                "scoped_hours":  ps_hours,
+                "source":        "⚠️ Possible Duplicate" if fuzzy_match else "SFDC",
+            })
+
+    # Tag NS rows with source
+    if not _true_unassigned.empty:
+        _true_unassigned = _true_unassigned.copy()
+        _true_unassigned["source"] = "NS"
+
+    # Merge NS + SFDC
+    if _sfdc_rows:
+        _sfdc_frame = pd.DataFrame(_sfdc_rows)
+        _true_unassigned = pd.concat(
+            [_true_unassigned, _sfdc_frame], ignore_index=True
+        ) if not _true_unassigned.empty else _sfdc_frame
+
     _ns_total     = len(_true_unassigned)
     _ns_apps      = 0
     _ns_billing   = 0
@@ -1083,7 +1216,10 @@ def main():
             "</div>"
         )
 
-    with m1: st.markdown(metric_card("Unassigned Projects", _ns_total, "", "#E74C3C" if _ns_total > 0 else None), unsafe_allow_html=True)
+    _sfdc_total = len(_sfdc_rows) if "_sfdc_rows" in dir() and _sfdc_rows else 0
+    _combined_total = _ns_total + _sfdc_total
+    _metric_sub = f"NS: {_ns_total} · SFDC: {_sfdc_total}" if _sfdc_total > 0 else ""
+    with m1: st.markdown(metric_card("Unassigned Projects", _combined_total, _metric_sub, "#E74C3C" if _combined_total > 0 else None), unsafe_allow_html=True)
     with m2: st.markdown(metric_card("Apps", _ns_apps), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Billing", _ns_billing), unsafe_allow_html=True)
     with m4: st.markdown(metric_card("Reporting", _ns_reporting), unsafe_allow_html=True)
@@ -1166,11 +1302,12 @@ def main():
             }
             # Explicit column order: Project first, dates in sequence, Urgency, Suggested last
             ordered_cols = [
-                "project_name", "project_type", "billing_type",
+                "source", "project_name", "project_type", "billing_type",
                 "territory", "ps_region",
                 "signed_date", "start_date", "outreach_date",
                 "scoped_hours",
             ]
+            col_rename["source"] = "Source"
             show_cols = (
                 [col for col in ordered_cols if col in display_df.columns]
                 + (["Urgency"] if "Urgency" in display_df.columns else [])
@@ -1189,7 +1326,16 @@ def main():
                 if val == "Upload SS DRS":  return "background-color:#FFEB9C;color:#9C6500"
                 return "background-color:#C6EFCE;color:#276221"
 
+            def color_source(val):
+                v = str(val)
+                if v == "NS":                   return "background-color:#E8F4FD;color:#1A5276"
+                if v == "SFDC":                 return "background-color:#EBF5EB;color:#1E8449"
+                if "Possible Duplicate" in v:   return "background-color:#FEFDE0;color:#9C6500"
+                return ""
+
             style_cols = {}
+            if "Source" in display_df.columns:
+                style_cols["Source"] = color_source
             if "Urgency" in display_df.columns:
                 style_cols["Urgency"] = color_urgency
             style_cols["Suggested Consultants"] = color_suggest
