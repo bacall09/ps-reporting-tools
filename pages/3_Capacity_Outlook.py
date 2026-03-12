@@ -426,13 +426,24 @@ def load_ss(file):
     onhold_statuses  = {"on-hold", "on hold", "onhold", "on_hold"}
     phase_inactive   = df["phase"].isin(inactive_phases) if "phase" in df.columns else pd.Series(False, index=df.index)
     status_inactive  = df["status"].astype(str).str.strip().str.lower().isin(onhold_statuses) if "status" in df.columns else pd.Series(False, index=df.index)
-    df = df[~(phase_inactive | status_inactive)]
-    return df
+    inactive_mask    = phase_inactive | status_inactive
+    dropped_df       = df[inactive_mask].copy()
+    # Tag reason for each dropped row
+    if not dropped_df.empty:
+        def _drop_reason(row):
+            reasons = []
+            if "phase" in row and str(row["phase"]).strip().lower() in inactive_phases:
+                reasons.append(f"phase: {row['phase']}")
+            if "status" in row and str(row["status"]).strip().lower() in onhold_statuses:
+                reasons.append(f"status: {row['status']}")
+            return " | ".join(reasons) if reasons else "unknown"
+        dropped_df["Filter Reason"] = dropped_df.apply(_drop_reason, axis=1)
+    df = df[~inactive_mask]
+    return df, dropped_df
 
 # ── NS Unassigned Projects loader ──────────────────────────────────────────────
 NS_COL_MAP = {
     "project id":          "project_id",
-    "internal id":         "project_id",
     "project":             "project_name",
     "name":                "project_name",
     "territory":           "territory",
@@ -457,6 +468,8 @@ def load_ns_unassigned(file):
         if col in NS_COL_MAP:
             rename[col] = NS_COL_MAP[col]
     df = df.rename(columns=rename)
+    # Drop duplicate columns (e.g. both "project id" and "internal id" map to project_id)
+    df = df.loc[:, ~df.columns.duplicated(keep="first")]
     # Parse dates
     for dcol in ["signed_date", "outreach_date", "start_date"]:
         if dcol in df.columns:
@@ -885,13 +898,14 @@ def main():
         st.caption("Required: Project, Territory, Billing Type, Project Type, Signed Date, Project Outreach, Start Date, T&M Scope")
         ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_unassigned_p3")
 
-    ss_df     = None
-    ss_raw_df = None  # unfiltered — for project counts
-    ns_df     = None
+    ss_df         = None
+    ss_raw_df     = None  # unfiltered — for project counts
+    ss_dropped_df = None  # rows excluded by inactive filter
+    ns_df         = None
 
     if ss_file:
         try:
-            ss_df = load_ss(ss_file)
+            ss_df, ss_dropped_df = load_ss(ss_file)
             # Raw load for counts (rewind file)
             ss_file.seek(0)
             ss_raw_df = pd.read_excel(ss_file) if not ss_file.name.endswith(".csv") else pd.read_csv(ss_file)
@@ -900,6 +914,18 @@ def main():
                 col: SS_COL_MAP[col] for col in ss_raw_df.columns if col in SS_COL_MAP
             })
             st.success(f"Loaded {len(ss_df):,} active project rows from SS DRS.")
+            if ss_dropped_df is not None and not ss_dropped_df.empty:
+                with st.expander(f"⚠️ {len(ss_dropped_df):,} rows excluded by filter — click to review"):
+                    drop_cols = ["project_name", "consultant", "phase", "status", "Filter Reason"]
+                    show_drop = ss_dropped_df[
+                        [col for col in drop_cols if col in ss_dropped_df.columns]
+                    ].rename(columns={
+                        "project_name": "Project",
+                        "consultant":   "Consultant",
+                        "phase":        "Phase",
+                        "status":       "Status",
+                    })
+                    st.dataframe(show_drop, hide_index=True, use_container_width=True)
         except Exception as e:
             st.error(f"Error loading SS file: {e}")
 
