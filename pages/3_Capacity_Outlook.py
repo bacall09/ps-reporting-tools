@@ -119,6 +119,9 @@ EMPLOYEE_LOCATION = {
     "Hamilton, Julie C":      ("USA",                 None,       "2026-01"),
     "Hernandez, Camila":      ("USA",                 None,       "2025-12"),
     "Rushbrook, Emma C":      ("Wales",               None,       "2025-12"),
+    "Dunn, Steven":            ("USA",                 None,       None),
+    "Law, Brandon":            ("USA",                 None,       None),
+    "Quiambao, Generalyn":     ("Manila (PH)",         None,       None),
     "Strauss, John W":        ("USA",                 None,       "2026-03"),
 }
 
@@ -1145,12 +1148,19 @@ def main():
                 "territory":      "Territory",
                 "ps_region":      "PS Region",
                 "signed_date":    "Signed Date",
-                "outreach_date":  "Outreach Deadline",
                 "start_date":     "Planned Start",
+                "outreach_date":  "Outreach Deadline",
                 "scoped_hours":   "Scoped Hours",
             }
+            # Explicit column order: Project first, dates in sequence, Urgency, Suggested last
+            ordered_cols = [
+                "project_name", "project_type", "billing_type",
+                "territory", "ps_region",
+                "signed_date", "start_date", "outreach_date",
+                "scoped_hours",
+            ]
             show_cols = (
-                [c for c in col_rename if c in display_df.columns]
+                [col for col in ordered_cols if col in display_df.columns]
                 + (["Urgency"] if "Urgency" in display_df.columns else [])
                 + ["Suggested Consultants"]
             )
@@ -1251,7 +1261,7 @@ def main():
                 "Role": role,
                 "WHS Score": whs_score,
                 "Active Projects (#)": int(projects) if str(projects).isdigit() else 0,
-                "Products": products,
+                "Enabled Products": products,
                 "Learning (Future)": learning,
             })
 
@@ -1312,6 +1322,38 @@ def main():
 
             styled_rollup = rollup_df.style.apply(highlight_rollup, axis=1)
             st.dataframe(styled_rollup, hide_index=True, use_container_width=True)
+
+            # Drill-down: show unassigned projects making up the demand for this region
+            if _true_unassigned is not None and not _true_unassigned.empty:
+                region_unassigned = _true_unassigned[
+                    _true_unassigned.get("ps_region", pd.Series(dtype=str)) == region
+                ] if "ps_region" in _true_unassigned.columns else _true_unassigned[
+                    _true_unassigned["ps_region"] == region
+                ] if "ps_region" in _true_unassigned.columns else pd.DataFrame()
+
+                if not region_unassigned.empty:
+                    with st.expander(f"📋 {len(region_unassigned)} unassigned project(s) in {region} — click to view"):
+                        drill_cols = ["project_name", "project_type", "start_date",
+                                      "outreach_date", "scoped_hours"]
+                        drill_rename = {
+                            "project_name":  "Project",
+                            "project_type":  "Project Type",
+                            "start_date":    "Planned Start",
+                            "outreach_date": "Outreach Deadline",
+                            "scoped_hours":  "Scoped Hours",
+                        }
+                        drill_df = region_unassigned[
+                            [col for col in drill_cols if col in region_unassigned.columns]
+                        ].copy()
+                        for _dcol in ["start_date", "outreach_date"]:
+                            if _dcol in drill_df.columns:
+                                drill_df[_dcol] = pd.to_datetime(
+                                    drill_df[_dcol], errors="coerce"
+                                ).dt.strftime("%Y-%m-%d").fillna("")
+                        st.dataframe(
+                            drill_df.rename(columns=drill_rename),
+                            hide_index=True, use_container_width=True
+                        )
             st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
 
     # ── Tab 1: Unassigned Projects ─────────────────────────────────────────────
