@@ -1138,22 +1138,51 @@ def main():
             _ss_project_names = set(
                 ss_df["project_name"].astype(str).str.strip().str.lower().unique()
             ) - {"", "nan", "none"}
-            # Build set of project names that are on-hold or closed in SS
-            _closed_phases   = {"10. complete/pending final billing", "11. on hold", "12. ps review"}
-            _onhold_statuses = {"on-hold", "on hold", "onhold", "on_hold"}
-            _ss_closed_mask  = pd.Series([False] * len(ss_df), index=ss_df.index)
-            if "phase" in ss_df.columns:
-                _ss_closed_mask |= ss_df["phase"].astype(str).str.strip().str.lower().isin(_closed_phases)
-            if "status" in ss_df.columns:
-                _ss_closed_mask |= ss_df["status"].astype(str).str.strip().str.lower().isin(_onhold_statuses)
-            _ss_closed_project_names = set(
-                ss_df[_ss_closed_mask]["project_name"].astype(str).str.strip().str.lower().unique()
+            # Build closed/on-hold set from RAW SS (before inactive filter strips them out)
+            _closed_phases   = {
+                "10. complete/pending final billing", "11. on hold", "12. ps review",
+                "complete", "completed", "on hold", "on-hold", "closed", "cancelled",
+            }
+            _onhold_statuses = {"on-hold", "on hold", "onhold", "on_hold", "closed"}
+            _raw = ss_raw_df if ss_raw_df is not None else ss_df
+            # Normalise raw column names to match SS_COL_MAP
+            _raw_cols = {str(c).strip().lower(): c for c in _raw.columns}
+            _phase_col  = next((v for k, v in _raw_cols.items() if k in ("phase", "project phase", "milestone")), None)
+            _status_col = next((v for k, v in _raw_cols.items() if k in ("status", "project status")), None)
+            _name_col   = next((v for k, v in _raw_cols.items() if k in ("project name", "project", "name")), None)
+            _ss_closed_mask = pd.Series([False] * len(_raw), index=_raw.index)
+            if _phase_col:
+                _phase_lower = _raw[_phase_col].astype(str).str.strip().str.lower()
+                _ss_closed_mask |= (
+                    _phase_lower.isin(_closed_phases) |
+                    _phase_lower.str.startswith("10.") |
+                    _phase_lower.str.startswith("11.") |
+                    _phase_lower.str.startswith("12.")
+                )
+            if _status_col:
+                _ss_closed_mask |= _raw[_status_col].astype(str).str.strip().str.lower().isin(_onhold_statuses)
+            if _name_col:
+                _ss_closed_project_names = set(
+                    _raw[_ss_closed_mask][_name_col].astype(str).str.strip().str.lower().unique()
+                ) - {"", "nan", "none"}
+        # Customer/account names from SS — extract account prefix from project name
+        # SS format: "Account Name - za - ..." or "Account Name zb/zc ..."
+        # We want just "account name" for substring matching against SFDC account_name
+        if "customer" in ss_df.columns:
+            _ss_account_names = set(
+                ss_df["customer"].astype(str).str.strip().str.lower().unique()
             ) - {"", "nan", "none"}
-        # Customer/account names from SS — prefer explicit customer col, fallback to project name
-        _ss_customer_col = "customer" if "customer" in ss_df.columns else "project_name"
-        _ss_account_names = set(
-            ss_df[_ss_customer_col].astype(str).str.strip().str.lower().unique()
-        ) - {"", "nan", "none"}
+        elif "project_name" in ss_df.columns:
+            # Extract prefix before " - za", " - zb", " zb ", " zc ", " za " etc.
+            import re as _re
+            def _extract_account(name):
+                n = str(name).strip().lower()
+                # Split on " - za", " - zb", " - zc" or " za ", " zb ", " zc "
+                m = _re.split(r"\s+-\s+z[a-z]|\s+z[a-z]\s+", n)
+                return m[0].strip() if m else n
+            _ss_account_names = set(
+                ss_df["project_name"].astype(str).apply(_extract_account).unique()
+            ) - {"", "nan", "none"}
 
     # Filter NS unassigned to true unassigned only
     if ns_df is not None and not ns_df.empty and "project_id" in ns_df.columns:
@@ -1266,6 +1295,11 @@ def main():
         st.write(f"**SS project names containing '3si':** {_3si_matches}")
         _3si_closed = [n for n in _ss_closed_project_names if "3si" in n.lower()]
         st.write(f"**Closed SS project names containing '3si':** {_3si_closed}")
+        st.write(f"**_ss_account_names sample (first 10):** {sorted(_ss_account_names)[:10]}")
+        if "phase" in ss_df.columns:
+            st.write(f"**Unique phase values in SS:** {sorted(ss_df['phase'].astype(str).str.strip().str.lower().unique())[:20]}")
+        if "status" in ss_df.columns:
+            st.write(f"**Unique status values in SS:** {sorted(ss_df['status'].astype(str).str.strip().str.lower().unique())[:20]}")
 
     # Tag NS rows with source
     if not _true_unassigned.empty:
