@@ -185,7 +185,7 @@ PHASE_WEIGHTS = {
 }
 
 # Phases excluded from active workload score
-INACTIVE_PHASES = {"10. complete/pending final billing", "11. on hold"}
+INACTIVE_PHASES = {"10. complete/pending final billing", "12. ps review"}
 
 # ── Workload thresholds ───────────────────────────────────────────────────────
 def _emp_active(name, period_str):
@@ -272,9 +272,8 @@ def get_phase_weight(phase):
     if not phase or str(phase).strip().lower() in ("", "nan", "none"):
         return 1.0, "Undefined"
     p = str(phase).strip().lower()
-    for key, weight in PHASE_WEIGHTS.items():
-        if p == key or p.startswith(key[:8]):
-            return weight, str(phase).strip()
+    if p in PHASE_WEIGHTS:
+        return PHASE_WEIGHTS[p], str(phase).strip()
     return 1.0, str(phase).strip()
 
 # ── SS column map ─────────────────────────────────────────────────────────────
@@ -546,14 +545,14 @@ def score_projects(ss_df, ns_df):
             return True
         return str(phase).strip().lower() not in INACTIVE_PHASES
 
-    # Join PM from NS
-    if ns_df is not None and "project_id" in ns_df.columns and "project_manager" in ns_df.columns:
-        pm_map = ns_df.dropna(subset=["project_manager"]).drop_duplicates("project_id").set_index("project_id")["project_manager"]
-        df["project_manager"] = df["project_id"].map(pm_map)
-        df["pm_flag"] = df["project_manager"].isna()
-    else:
+    # PM comes from SS directly — NS no longer used for PM lookup
+    # Normalise: use "project_manager" col from SS if present
+    _ss_pm_col = next((col for col in ["project_manager", "consultant"] if col in df.columns), None)
+    if _ss_pm_col and _ss_pm_col != "project_manager":
+        df["project_manager"] = df[_ss_pm_col]
+    elif _ss_pm_col is None:
         df["project_manager"] = None
-        df["pm_flag"] = True
+    df["pm_flag"] = df["project_manager"].isna()
 
     # Phase weight
     df["phase_weight"] = df["phase"].apply(lambda p: get_phase_weight(p)[0])
@@ -1325,8 +1324,7 @@ def main():
 **Total Projects** — All FF (Fixed Fee) projects assigned to a consultant in the SS DRS that are not in a complete phase
 (`10. Complete/Pending Final Billing` or `12. PS Review`). T&M projects and unassigned projects are excluded.
 
-**Active Projects** — Subset of Total Projects where status is not On Hold
-(`On-Hold`, `On Hold`). These are projects a consultant is expected to be actively working.
+**Active Projects** — Projects not in On Hold (`On-Hold`, `On Hold`) status in SS DRS.
 
 **Stale Projects** — Active FF projects cross-referenced against NS time entries.
 A project is flagged if no time has been booked within the NS report window:
