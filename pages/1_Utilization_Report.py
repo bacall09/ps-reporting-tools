@@ -2143,7 +2143,7 @@ def build_tableau_excel(df, scope_map, consumed):
         _tag    = str(_g("credit_tag")).strip()
         _scoped = _tbl_scoped(_g("project_type"))
         ft_rows.append([
-            _g("employee"), _g("region"), _g("customer_region"), _g("project_manager"),
+            _g("employee"), _g("region"), _g("ps_region", ""), _g("customer_region"), _g("project_manager"),
             _g("project"), _g("project_type"), _g("billing_type"),
             round(float(_g("hours_to_date", 0) or 0), 2),
             str(_g("date"))[:10], round(float(_g("hours", 0) or 0), 2),
