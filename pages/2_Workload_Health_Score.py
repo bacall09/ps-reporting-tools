@@ -1310,13 +1310,9 @@ def main():
 
     st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
     if missing_pm > 0:
-        if ns_min_date is not None and pd.notna(ns_min_date):
-            no_time_since = (ns_min_date - pd.Timedelta(days=1)).strftime("%d %B %Y")
-            st.warning(f"{missing_pm} project(s) with no time booked since {no_time_since} — see 'No Time Booked This Period' tab in the report.")
-        else:
-            st.warning(f"{missing_pm} project(s) with no time booked in this NS report period — see 'No Time Booked This Period' tab.")
+        st.warning(f"{missing_pm} active FF project(s) have no Project Manager assigned in SS DRS.")
 
-            st.markdown("---")
+    st.markdown("---")
 
     # ── Metric definitions ────────────────────────────────────────────────────
     with st.expander("How projects are counted & what's excluded", expanded=False):
@@ -1331,7 +1327,7 @@ A project is flagged if no time has been booked within the NS report window:
 - 🟡 **14d+** — No time booked in 14–29 days
 - 🟠 **30d+** — No time booked in 30–59 days
 - 🔴 **60d+** — No time booked in 60+ days
-- ⚫ **No Entry** — Project has no time entries at all in the NS report period
+- ⚫ **No Entry** — No time booked in the NS report period
 
 **Excluded from all counts:**
 - T&M (Time & Material) projects — demand tracked separately via NS
@@ -1371,15 +1367,15 @@ A project is flagged if no time has been booked within the NS report window:
                 "🟡 14d+ = no time in 14–29 days · "
                 "🟠 30d+ = no time in 30–59 days · "
                 "🔴 60d+ = no time in 60+ days · "
-                "⚫ No Entry = no time logged in the NS report window"
+                "⚫ No Entry = no time booked in the NS report period"
             )
-            # Summary counts
+            # Summary counts — ordered lightest to most severe, then no entry
             _counts = stale_df["Staleness"].value_counts()
             _c1, _c2, _c3, _c4 = st.columns(4)
-            _c1.metric("🔴 60d+",     _counts.get("🔴 60d+",     0))
-            _c2.metric("🟠 30d+",     _counts.get("🟠 30d+",     0))
-            _c3.metric("🟡 14d+",     _counts.get("🟡 14d+",     0))
-            _c4.metric("⚫ No Entry", _counts.get("⚫ No Entry", 0))
+            with _c1: st.markdown(metric_card("14d+ No Time",  str(_counts.get("🟡 14d+",     0)), "14–29 days",        "#f39c12"), unsafe_allow_html=True)
+            with _c2: st.markdown(metric_card("30d+ No Time",  str(_counts.get("🟠 30d+",     0)), "30–59 days",        "#e67e22"), unsafe_allow_html=True)
+            with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("🔴 60d+",     0)), "60+ days",          "#e74c3c"), unsafe_allow_html=True)
+            with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("⚫ No Entry", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
             st.dataframe(stale_df, hide_index=True, use_container_width=True)
 
     with tab2:
