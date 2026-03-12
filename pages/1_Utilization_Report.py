@@ -60,7 +60,7 @@ EMPLOYEE_ROLES = {
     "Murphy, Conor":          {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
 
     # ── Developer ─────────────────────────────────────────────────────────────
-    "Church, Jason G":      {"role": "Developer",          "products": ["All"],                                                                                  "learning": [], "util_exempt": True},
+    "Church, Jason G":      {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
 
     # ── Consultants ───────────────────────────────────────────────────────────
     "Arestarkhov, Yaroslav":     {"role": "Consultant",         "products": ["Billing", "Capture"],                                                                   "learning": []},
@@ -271,10 +271,16 @@ def _emp_products(name, include_learning=False):
     return products
 
 def _emp_util_exempt(name):
-    """Return True if employee is exempt from utilization targets."""
+    """Return True if employee is exempt from utilization targets.
+    Falls back to last-name-only match for entries stored without first name (e.g. 'Swanson')."""
     v = EMPLOYEE_ROLES.get(name)
     if isinstance(v, dict):
         return v.get("util_exempt", False)
+    # Try last-name-only fallback (e.g. NS exports 'Swanson, Jeff' but key is 'Swanson')
+    last = name.split(",")[0].strip() if "," in name else name.strip()
+    v2 = EMPLOYEE_ROLES.get(last)
+    if isinstance(v2, dict):
+        return v2.get("util_exempt", False)
     return False
 
 
@@ -1894,7 +1900,7 @@ def main():
                         ]
                         if not match.empty:
                             n = match.iloc[0].get(num_col)
-                            if n is not None:
+                            if n is not None and not _emp_util_exempt(emp):
                                 bg    = ("#C6EFCE" if n >= 0.70
                                          else "#FFEB9C" if n >= 0.60
                                          else "#FFC7CE")
@@ -2028,7 +2034,7 @@ def build_tableau_excel(df, scope_map, consumed):
 
     # ── Sheet 1: fact_utilization ─────────────────────────────────────────────
     fu_headers = [
-        "employee", "location", "ps_region", "role", "excluded_from_util_target",
+        "employee", "location", "ps_region", "role",
         "period", "hours_capacity", "hours_logged", "credit_hrs",
         "admin_hrs", "ff_overrun_hrs",
         "util_pct_vs_logged", "util_pct_vs_capacity",
@@ -2042,8 +2048,7 @@ def build_tableau_excel(df, scope_map, consumed):
         ps_reg = df[df["employee"] == emp]["ps_region"].iloc[0] if "ps_region" in df.columns and len(df[df["employee"] == emp]) > 0 else ""
         info   = EMPLOYEE_ROLES.get(emp, {})
         role        = info.get("role", "Consultant")
-        # excluded_from_util_target: 1 = this consultant is not measured against the 70% util threshold
-        excluded_from_util_target = 1 if info.get("util_exempt") else 0
+
         avail  = get_avail_hours(loc, period) if loc else None
         u_log  = _pct(row["credit_hrs"], row["hours_logged"])
         u_cap  = _pct(row["credit_hrs"], avail)
@@ -2058,7 +2063,7 @@ def build_tableau_excel(df, scope_map, consumed):
             rag = "Red"
 
         fu_rows.append([
-            emp, loc, ps_reg, role, excluded_from_util_target,
+            emp, loc, ps_reg, role,
             period, avail, round(row["hours_logged"], 2), round(row["credit_hrs"], 2),
             round(row["admin_hrs"], 2), round(row["ff_overrun_hrs"], 2),
             u_log, u_cap, rag,
