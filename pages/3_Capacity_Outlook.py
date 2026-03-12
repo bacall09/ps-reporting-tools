@@ -1162,11 +1162,11 @@ def main():
         _total_projects  = _active_projects
         _on_hold_projects = 0
     currently_busy = sum(
-        1 for c, months_map in availability.items()
+        1 for _con, months_map in availability.items()
         if _status(months_map.get(months[0], "free")) == "busy"
     )
     available_now = sum(
-        1 for c, months_map in availability.items()
+        1 for _con, months_map in availability.items()
         if _status(months_map.get(months[0], "free")) in ("free", "partial")
     )
     unassigned_count = len(ns_df) if ns_df is not None else 0
@@ -1608,7 +1608,7 @@ def main():
             # Enforce column order: Consultant, Region, WHS Score, Total, Active, then months
             _fixed_cols = ["Consultant", "Region", "WHS Score", "Total Projects", "Active Projects"]
             _col_order  = _fixed_cols + [l for l in month_labels if l in hm_df.columns]
-            hm_df = hm_df[[c for c in _col_order if c in hm_df.columns]]
+            hm_df = hm_df[[_col for _col in _col_order if _col in hm_df.columns]]
 
             def color_cell(val):
                 v = str(val)
@@ -1689,13 +1689,13 @@ def main():
 
         for region in ["NOAM", "EMEA", "APAC"]:
             st.markdown(f"**{region}**")
-            region_consultants = [c for c in availability if _emp_ps_region(c) == region]
+            region_consultants = [_rc for _rc in availability if _emp_ps_region(_rc) == region]
             reg_demand = demand.get(region, {})
 
             rollup_rows = [
                 {"Metric": "Consultants Available (Free/Light)"} | {
-                    lbl: sum(1 for c in region_consultants
-                             if availability[c].get(mo, "free") in ("free", "partial"))
+                    lbl: sum(1 for _rc in region_consultants
+                             if availability[_rc].get(mo, "free") in ("free", "partial"))
                     for mo, lbl in zip(months, month_labels)
                 },
                 {"Metric": "Unassigned Projects (Demand)"} | {
