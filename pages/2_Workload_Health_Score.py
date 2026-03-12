@@ -612,14 +612,16 @@ def build_consultant_summary(scored_df, ss_df=None):
 
     # Project counts — computed from SS directly (consultant col) to match page 3
     # This avoids undercounting from pm_flag / T&M exclusions on the NS join side
-    if ss_df is not None and "consultant" in ss_df.columns:
+    # Determine which column holds the consultant/PM name in ss_df
+    _pm_col = next((col for col in ["project_manager", "consultant"] if col in ss_df.columns), None) if ss_df is not None else None
+    if ss_df is not None and _pm_col is not None:
         _complete_ph = {"10. complete/pending final billing", "12. ps review"}
         _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
         _tm_types    = {"t&m", "time & material", "time and material"}
         _id_col = "project_id" if "project_id" in ss_df.columns else "project_name"
         _total_map  = {}
         _active_map = {}
-        for _cons, _grp in ss_df.groupby("consultant"):
+        for _cons, _grp in ss_df.groupby(_pm_col):
             _billing = (_grp["billing_type"].astype(str).str.strip().str.lower()
                         if "billing_type" in _grp.columns else pd.Series("", index=_grp.index))
             _phase   = (_grp["phase"].astype(str).str.strip().str.lower()
