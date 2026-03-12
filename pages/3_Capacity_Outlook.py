@@ -1579,14 +1579,20 @@ def main():
                 _complete_ph = {"10. complete/pending final billing", "12. ps review"}
                 _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
                 _tm_types    = {"t&m", "time & material", "time and material"}
+                _id_col = "project_id" if "project_id" in ss_df.columns else "project_name"
                 for _cons, _grp in ss_df.groupby("consultant"):
-                    _billing = _grp.get("billing_type", pd.Series(dtype=str)).astype(str).str.strip().str.lower()
-                    _phase   = _grp.get("phase",   pd.Series(dtype=str)).astype(str).str.strip().str.lower()
-                    _status  = _grp.get("status",  pd.Series(dtype=str)).astype(str).str.strip().str.lower()
-                    _ff      = ~_billing.isin(_tm_types)
+                    _billing = (_grp["billing_type"].astype(str).str.strip().str.lower()
+                                if "billing_type" in _grp.columns
+                                else pd.Series("", index=_grp.index))
+                    _phase   = (_grp["phase"].astype(str).str.strip().str.lower()
+                                if "phase" in _grp.columns
+                                else pd.Series("", index=_grp.index))
+                    _stat    = (_grp["status"].astype(str).str.strip().str.lower()
+                                if "status" in _grp.columns
+                                else pd.Series("", index=_grp.index))
+                    _ff           = ~_billing.isin(_tm_types)
                     _not_complete = ~_phase.isin(_complete_ph)
-                    _not_onhold   = ~_status.isin(_onhold_st)
-                    _id_col  = "project_id" if "project_id" in _grp.columns else "project_name"
+                    _not_onhold   = ~_stat.isin(_onhold_st)
                     _total_proj_map[str(_cons).strip()]  = int(_grp[_ff & _not_complete][_id_col].nunique())
                     _active_proj_map[str(_cons).strip()] = int(_grp[_ff & _not_complete & _not_onhold][_id_col].nunique())
 
