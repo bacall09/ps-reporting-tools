@@ -1104,8 +1104,7 @@ def main():
     with sfdc_col1:
         sfdc_file = st.file_uploader("Drop SFDC Closed Won file here", type=["xlsx", "xls", "csv"], key="sfdc_cap_p3")
     with sfdc_col2:
-        sfdc_buffer_weeks = st.slider("Weeks from Close Date to PS Start", min_value=1, max_value=12, value=4,
-                                       help="Estimated lag between SFDC close date and PS project kick-off")
+        st.empty()
 
     sfdc_df = None
     if sfdc_file:
@@ -1441,6 +1440,14 @@ def main():
                 hrs=_fmt_hrs(_ns_payroll_hrs) if _ns_payroll_hrs > 0 else None), unsafe_allow_html=True)
     with m6: st.markdown(metric_card("Available Consultants", available_now, "", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
 
+
+    st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+
+    sfdc_buffer_weeks = st.slider(
+        "Est. weeks from Close to PS Start Dates",
+        min_value=1, max_value=12, value=4,
+        help="Estimated lag between SFDC close date and PS project kick-off"
+    )
 
     st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
 
