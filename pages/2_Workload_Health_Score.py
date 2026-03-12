@@ -1321,6 +1321,29 @@ def main():
 
             st.markdown("---")
 
+    # ── Metric definitions ────────────────────────────────────────────────────
+    with st.expander("ℹ️  How projects are counted & what's excluded", expanded=False):
+        st.markdown("""
+**Total Projects** — All FF (Fixed Fee) projects assigned to a consultant in the SS DRS that are not in a complete phase
+(`10. Complete/Pending Final Billing` or `12. PS Review`). T&M projects and unassigned projects are excluded.
+
+**Active Projects** — Subset of Total Projects where status is not On Hold
+(`On-Hold`, `On Hold`). These are projects a consultant is expected to be actively working.
+
+**Stale Projects** — Active FF projects cross-referenced against NS time entries.
+A project is flagged if no time has been booked within the NS report window:
+- 🟡 **14d+** — No time booked in 14–29 days
+- 🟠 **30d+** — No time booked in 30–59 days
+- 🔴 **60d+** — No time booked in 60+ days
+- ⚫ **No Entry** — Project has no time entries at all in the NS report period
+
+**Excluded from all counts:**
+- T&M (Time & Material) projects — demand tracked separately via NS
+- Complete / Pending Final Billing projects (phase 10)
+- PS Review projects (phase 12)
+- Projects with no consultant assigned
+        """)
+
     # ── Preview tabs ──────────────────────────────────────────────────────────
     tab1, tab2, tab3 = st.tabs(["By Consultant", "At-Risk", "Stale Projects"])
 
