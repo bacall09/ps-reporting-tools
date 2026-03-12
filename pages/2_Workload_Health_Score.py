@@ -243,17 +243,15 @@ def client_health_multiplier(responsiveness, sentiment):
     s = str(sentiment).strip().lower() if pd.notna(sentiment) else ""
     if ("negative" in s or "unresponsive" in r) and ("negative" in s and "unresponsive" in r):
         return 1.3
-    if "negative" in s or "unresponsive" in r or "not responsive" in r:
-        return 1.2
-    if "highly engaged" in r and "positive" in s:
-        return 0.9
+    if "negative" in s or "unresponsive" in r or "not responding" in r:
+        return 1.15
     return 1.0
 
 # ── Risk multiplier ───────────────────────────────────────────────────────────
 def risk_multiplier(risk_level):
     r = str(risk_level).strip().lower() if pd.notna(risk_level) else ""
     if "high"   in r: return 1.2
-    if "medium" in r: return 1.05
+    if "medium" in r: return 1.1
     return 1.0
 
 # ── Employee → PS Region lookup ───────────────────────────────────────────────
@@ -593,7 +591,7 @@ def score_projects(ss_df, ns_df):
     _tm_mask = df["project_type"].str.lower().str.contains("t&m|time.*material", na=False, regex=True)         if "project_type" in df.columns else pd.Series(False, index=df.index)
     df["weighted_score"] = df.apply(
         lambda r: round(r["phase_weight"] * r["client_health_mult"] * r["risk_mult"], 2)
-        if (r["active"] and not r.get("pm_flag", False) and not _tm_mask.loc[r.name]) else 0.0, axis=1
+        if (r["active"] and not _tm_mask.loc[r.name]) else 0.0, axis=1
     )
 
     # PS Region from employee lookup (consultant = project_manager from NS)
@@ -608,7 +606,7 @@ def score_projects(ss_df, ns_df):
 def build_consultant_summary(scored_df, ss_df=None):
     """Aggregate scored projects by consultant."""
     # Scoring groupby — uses project_manager from NS join, pm_flag rows score 0
-    active = scored_df[scored_df["active"] & ~scored_df.get("pm_flag", pd.Series(False, index=scored_df.index))].copy()
+    active = scored_df[scored_df["active"]].copy()
 
     grp = active.groupby("project_manager").agg(
         total_score=("weighted_score", "sum"),
@@ -1322,7 +1320,7 @@ def main():
             st.markdown("---")
 
     # ── Metric definitions ────────────────────────────────────────────────────
-    with st.expander("ℹ️  How projects are counted & what's excluded", expanded=False):
+    with st.expander("How projects are counted & what's excluded", expanded=False):
         st.markdown("""
 **Total Projects** — All FF (Fixed Fee) projects assigned to a consultant in the SS DRS that are not in a complete phase
 (`10. Complete/Pending Final Billing` or `12. PS Review`). T&M projects and unassigned projects are excluded.
