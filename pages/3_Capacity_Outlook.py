@@ -1245,12 +1245,27 @@ def main():
                 "outreach_date": None,
                 "scoped_hours":  ps_hours,
                 "source":        ("🔒 On Hold / Closed in SS" if ss_closed_flag
-                                 else "⚠️ Possible Duplicate" if fuzzy_match
+                                 else "⚠️ Dup: SFDC<>SS" if ss_fuzzy
+                                 else "⚠️ Dup: SFDC<>NS" if ns_fuzzy
                                  else "SFDC"),
             })
 
     # Capture NS count before merge
     _ns_total = len(_true_unassigned) if _true_unassigned is not None else 0
+
+    # ── DEBUG expander — remove once 3SI issue resolved ─────────────────────
+    with st.expander("🔍 Debug: SFDC cross-reference (remove later)"):
+        st.write(f"**_ss_closed_project_names** ({len(_ss_closed_project_names)}):")
+        st.write(sorted(_ss_closed_project_names)[:20])
+        st.write(f"**_ss_project_names** ({len(_ss_project_names)}):")
+        st.write(sorted(_ss_project_names)[:20])
+        st.write(f"**_ss_account_names** ({len(_ss_account_names)}):")
+        st.write(sorted(_ss_account_names)[:20])
+        # Show 3SI specifically
+        _3si_matches = [n for n in _ss_project_names if "3si" in n.lower()]
+        st.write(f"**SS project names containing '3si':** {_3si_matches}")
+        _3si_closed = [n for n in _ss_closed_project_names if "3si" in n.lower()]
+        st.write(f"**Closed SS project names containing '3si':** {_3si_closed}")
 
     # Tag NS rows with source
     if not _true_unassigned.empty:
@@ -1425,7 +1440,7 @@ def main():
                 if v == "NS":                       return "background-color:#E8F4FD;color:#1A5276"
                 if v == "SFDC":                     return "background-color:#EBF5EB;color:#1E8449"
                 if "On Hold" in v or "Closed" in v: return "background-color:#F2F2F2;color:#666666"
-                if "Possible Duplicate" in v:       return "background-color:#FEFDE0;color:#9C6500"
+                if "Dup:" in v:                     return "background-color:#FEFDE0;color:#9C6500"
                 return ""
 
             style_cols = {}
