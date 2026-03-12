@@ -1123,8 +1123,9 @@ def main():
     # Cross-reference NS unassigned against SS DRS — if a project has a real
     # consultant assigned in SS, it's already staffed (NS lags by ~1 week)
     _staffed_in_ss = set()
-    _ss_project_names = set()   # lowercased project names from SS — for SFDC matching
-    _ss_account_names = set()   # lowercased account portion (before " : ") for fuzzy match
+    _ss_project_names        = set()
+    _ss_account_names        = set()
+    _ss_closed_project_names = set()  # SS projects in closed/on-hold phase
     if ss_df is not None and "consultant" in ss_df.columns:
         _invalid = {"", "nan", "none", "0", "unassigned"}
         _ss_active = ss_df[
@@ -1208,12 +1209,17 @@ def main():
             if exact_match:
                 continue  # already in NS or SS — skip
 
-            # Check if fuzzy-matched SS project is on-hold or closed
-            ss_closed_flag = (
-                fuzzy_match and acct_lower and
-                "_ss_closed_project_names" in dir() and
-                any(acct_lower in ss_name for ss_name in _ss_closed_project_names)
+            # Check if account name substring-matches a CLOSED/ON-HOLD SS project
+            # Independent of fuzzy_match — catches cases where opp isn't a dup but
+            # the account already has a closed project in SS
+            _closed_names = _ss_closed_project_names if _ss_closed_project_names else set()
+            ss_closed_flag = bool(
+                acct_lower and
+                any(acct_lower in ss_name for ss_name in _closed_names)
             )
+            # If it matches a closed project, override fuzzy to True so it surfaces
+            if ss_closed_flag:
+                fuzzy_match = True
 
             # Derive estimated start date from close date + buffer
             close_dt = row.get("close_date")
