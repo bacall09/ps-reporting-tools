@@ -295,7 +295,7 @@ def _emp_active(name, period_str):
         period = str(period_str)[:7]
         if start and period < start:
             return False
-        if end and period > end:
+        if end and period >= end:
             return False
     except Exception:
         pass
