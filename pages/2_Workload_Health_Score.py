@@ -1270,7 +1270,7 @@ def main():
             _pm_debug = next((col for col in ["project_manager", "consultant"] if col in ss_df.columns), None)
             st.write("**PM col detected:**", _pm_debug)
             if _pm_debug:
-                _sample = ss_df.groupby(_pm_debug).size().reset_index(columns=["Project Count"])
+                _sample = ss_df.groupby(_pm_debug).size().reset_index(name="Project Count")
                 st.write("**Row counts per PM:**", _sample)
             st.write("**consultant_df:**", consultant_df[["project_manager","total_project_count","active_project_count"]].head(10))
         # ── END DEBUG ────────────────────────────────────────────────────────
