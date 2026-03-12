@@ -1895,10 +1895,13 @@ def main():
                         if not match.empty:
                             n = match.iloc[0].get(num_col)
                             if n is not None:
-                                color = ("#C6EFCE" if n >= 0.70
+                                bg    = ("#C6EFCE" if n >= 0.70
                                          else "#FFEB9C" if n >= 0.60
                                          else "#FFC7CE")
-                                styles[idx_pos] = f"background-color:{color}"
+                                fg    = ("#276221" if n >= 0.70
+                                         else "#9C6500" if n >= 0.60
+                                         else "#9C0006")
+                                styles[idx_pos] = f"background-color:{bg};color:{fg};font-weight:600"
                 return styles
 
             styled_df = show_df.style.apply(_style_util_row, axis=1)
@@ -1973,8 +1976,9 @@ label="⬇ Download Excel Report",
             data=tableau_buf,
             file_name=tableau_filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
         )
-        st.caption("`" + tableau_filename + "` — 2 flat sheets: fact_utilization · fact_transactions")
+        st.caption("`" + tableau_filename + "` — 2 flat sheets: fact_utilization · fact_processed_time_entries")
 
 
 def build_tableau_excel(df, scope_map, consumed):
@@ -2024,7 +2028,7 @@ def build_tableau_excel(df, scope_map, consumed):
 
     # ── Sheet 1: fact_utilization ─────────────────────────────────────────────
     fu_headers = [
-        "employee", "location", "ps_region", "role", "util_exempt",
+        "employee", "location", "ps_region", "role", "excluded_from_util_target",
         "period", "hours_capacity", "hours_logged", "credit_hrs",
         "admin_hrs", "ff_overrun_hrs",
         "util_pct_vs_logged", "util_pct_vs_capacity",
@@ -2038,7 +2042,8 @@ def build_tableau_excel(df, scope_map, consumed):
         ps_reg = df[df["employee"] == emp]["ps_region"].iloc[0] if "ps_region" in df.columns and len(df[df["employee"] == emp]) > 0 else ""
         info   = EMPLOYEE_ROLES.get(emp, {})
         role        = info.get("role", "Consultant")
-        util_exempt = 1 if info.get("util_exempt") else 0
+        # excluded_from_util_target: 1 = this consultant is not measured against the 70% util threshold
+        excluded_from_util_target = 1 if info.get("util_exempt") else 0
         avail  = get_avail_hours(loc, period) if loc else None
         u_log  = _pct(row["credit_hrs"], row["hours_logged"])
         u_cap  = _pct(row["credit_hrs"], avail)
@@ -2053,22 +2058,22 @@ def build_tableau_excel(df, scope_map, consumed):
             rag = "Red"
 
         fu_rows.append([
-            emp, loc, ps_reg, role, util_exempt,
+            emp, loc, ps_reg, role, excluded_from_util_target,
             period, avail, round(row["hours_logged"], 2), round(row["credit_hrs"], 2),
             round(row["admin_hrs"], 2), round(row["ff_overrun_hrs"], 2),
             u_log, u_cap, rag,
         ])
     _flat_sheet(wb, "fact_utilization", fu_headers, fu_rows)
 
-    # ── Sheet 2: fact_transactions ────────────────────────────────────────────
+    # ── Sheet 2: fact_processed_time_entries ─────────────────────────────────
+    # Mirrors PROCESSED_DATA tab exactly — all same columns, Tableau-friendly names
     ft_headers = [
-        "employee", "location", "ps_region", "customer_region",
-        "project_manager", "project", "project_type", "billing_type",
-        "date", "period", "hours_logged", "credit_hrs", "variance_hrs",
-        "credit_tag", "task", "non_billable", "approval",
-        "project_phase", "start_date", "days_active",
+        "employee", "location", "customer_region", "project_manager", "project",
+        "project_type", "billing_type", "hrs_to_date", "date", "hours_logged",
+        "approval", "task_case", "non_billable", "credit_hrs", "variance_hrs",
+        "previous_hrs_to_date", "credit_tag", "period", "notes",
+        "project_phase", "start_date", "days_active", "ps_region",
     ]
-    _col = lambda col: col if col in df.columns else None
     ft_rows = []
     for _, row in df.iterrows():
         def _g(col, default=""):
@@ -2078,18 +2083,21 @@ def build_tableau_excel(df, scope_map, consumed):
             return v
 
         ft_rows.append([
-            _g("employee"), _g("region"), _g("ps_region"), _g("customer_region"),
-            _g("project_manager"), _g("project"), _g("project_type"), _g("billing_type"),
-            str(_g("date"))[:10], _g("period"),
-            round(float(_g("hours", 0) or 0), 2),
+            _g("employee"), _g("region"), _g("customer_region"), _g("project_manager"),
+            _g("project"), _g("project_type"), _g("billing_type"),
+            round(float(_g("hours_to_date", 0) or 0), 2),
+            str(_g("date"))[:10], round(float(_g("hours", 0) or 0), 2),
+            _g("approval"),
+            _g("task", _g("case_task_event", "")),
+            1 if str(_g("non_billable","")).lower() in ("true","yes","1","x") else 0,
             round(float(_g("credit_hrs", 0) or 0), 2),
             round(float(_g("variance_hrs", 0) or 0), 2),
-            _g("credit_tag"), _g("task", _g("case_task_event", "")),
-            1 if str(_g("non_billable","")).lower() in ("true","yes","1","x") else 0,
-            _g("approval"),
-            _g("project_phase"), str(_g("start_date",""))[:10], _g("days_active",""),
+            round(float(_g("previous_htd", 0) or 0), 2),
+            _g("credit_tag"), _g("period"), _g("notes",""),
+            _g("project_phase"), str(_g("start_date_display", _g("start_date", "")))[:10],
+            _g("days_active",""), _g("ps_region",""),
         ])
-    _flat_sheet(wb, "fact_transactions", ft_headers, ft_rows)
+    _flat_sheet(wb, "fact_processed_time_entries", ft_headers, ft_rows)
 
     buf = _io.BytesIO()
     wb.save(buf)
