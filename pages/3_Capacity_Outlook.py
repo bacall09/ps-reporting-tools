@@ -1133,9 +1133,10 @@ def main():
         if "project_id" in ss_df.columns:
             _staffed_in_ss = set(_ss_active["project_id"].astype(str).str.strip().unique())
         if "project_name" in ss_df.columns:
+            # Use ALL SS rows (not just staffed) — we want to know if the project exists
             _ss_project_names = set(
-                _ss_active["project_name"].astype(str).str.strip().str.lower().unique()
-            )
+                ss_df["project_name"].astype(str).str.strip().str.lower().unique()
+            ) - {"", "nan", "none"}
         # Customer/account names from SS — prefer explicit customer col, fallback to project name
         _ss_customer_col = "customer" if "customer" in ss_df.columns else "project_name"
         _ss_account_names = set(
@@ -1240,12 +1241,20 @@ def main():
     _ns_billing   = 0
     _ns_reporting = 0
     _ns_payroll   = 0
+    _ns_billing_hrs   = 0.0
+    _ns_reporting_hrs = 0.0
+    _ns_payroll_hrs   = 0.0
     if not _true_unassigned.empty and "project_type" in _true_unassigned.columns:
-        _families     = _true_unassigned["project_type"].apply(_classify_product)
-        _ns_apps      = (_families == "Apps").sum()
-        _ns_billing   = (_families == "Billing").sum()
-        _ns_reporting = (_families == "Reporting").sum()
-        _ns_payroll   = (_families == "Payroll").sum()
+        _families         = _true_unassigned["project_type"].apply(_classify_product)
+        _ns_apps          = (_families == "Apps").sum()
+        _ns_billing       = (_families == "Billing").sum()
+        _ns_reporting     = (_families == "Reporting").sum()
+        _ns_payroll       = (_families == "Payroll").sum()
+        if "scoped_hours" in _true_unassigned.columns:
+            _hrs = pd.to_numeric(_true_unassigned["scoped_hours"], errors="coerce").fillna(0)
+            _ns_billing_hrs   = _hrs[_families == "Billing"].sum()
+            _ns_reporting_hrs = _hrs[_families == "Reporting"].sum()
+            _ns_payroll_hrs   = _hrs[_families == "Payroll"].sum()
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     def metric_card(label, value, sub=None, pill_color=None):
         if pill_color and sub:
@@ -1265,11 +1274,22 @@ def main():
     _sfdc_total = len(_sfdc_rows) if "_sfdc_rows" in dir() and _sfdc_rows else 0
     _combined_total = _ns_total + _sfdc_total
     _metric_sub = f"NS: {_ns_total} · SFDC: {_sfdc_total}" if _sfdc_total > 0 else ""
-    with m1: st.markdown(metric_card("Unassigned Projects", _combined_total, _metric_sub, "#E74C3C" if _combined_total > 0 else None), unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Apps", _ns_apps), unsafe_allow_html=True)
-    with m3: st.markdown(metric_card("Billing", _ns_billing), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("Reporting", _ns_reporting), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Payroll", _ns_payroll), unsafe_allow_html=True)
+
+    def _fmt_hrs(h):
+        return f"{int(h):,} hrs" if h == int(h) else f"{h:,.1f} hrs"
+
+    with m1: st.markdown(metric_card("Unassigned Projects", _combined_total,
+                _metric_sub, "#27AE60" if _metric_sub else ("#E74C3C" if _combined_total > 0 else None)), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Apps", f"{_ns_apps} projects"), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Billing",
+                f"{_ns_billing} projects",
+                _fmt_hrs(_ns_billing_hrs) if _ns_billing_hrs > 0 else ""), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("Reporting",
+                f"{_ns_reporting} projects",
+                _fmt_hrs(_ns_reporting_hrs) if _ns_reporting_hrs > 0 else ""), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Payroll",
+                f"{_ns_payroll} projects",
+                _fmt_hrs(_ns_payroll_hrs) if _ns_payroll_hrs > 0 else ""), unsafe_allow_html=True)
     with m6: st.markdown(metric_card("Available Consultants", available_now, "", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
 
 
