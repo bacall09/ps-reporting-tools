@@ -443,87 +443,78 @@ def load_ns(file):
 def build_stale_projects(ss_df, ns_df):
     """
     Cross-reference SS active projects against NS time entries.
-    Returns DataFrame of stale projects with staleness flag.
-    Thresholds: <14 days = ok, 14-29 days = yellow, 30-59 days = orange, 60+ = red.
+    Join key: project_id. Employee name sourced from SS 'Project Manager' column.
+    Thresholds: <14d = ok, 14-29d = yellow, 30-59d = orange, 60+ = red.
     """
     if ns_df is None or ss_df is None:
         return pd.DataFrame()
-    if "date" not in ns_df.columns or "employee" not in ns_df.columns:
+    if "date" not in ns_df.columns:
+        return pd.DataFrame()
+    if "project_id" not in ss_df.columns:
         return pd.DataFrame()
 
     today = pd.Timestamp.today().normalize()
 
-    # Last time entry per (employee, project)
-    join_col = "project_id" if "project_id" in ns_df.columns else "project"
+    # Last time entry per project_id in NS
+    ns_join = "project_id" if "project_id" in ns_df.columns else "project"
     last_entry = (
         ns_df[ns_df["date"].notna()]
-        .groupby(["employee", join_col])["date"]
+        .groupby(ns_join)["date"]
         .max()
         .reset_index()
-        .rename(columns={"employee": "consultant", join_col: "project_id", "date": "last_entry"})
+        .rename(columns={ns_join: "project_id", "date": "last_entry"})
     )
+    last_entry["project_id"] = last_entry["project_id"].astype(str).str.strip()
 
     # SS active FF projects — exclude complete/on-hold
     _complete_ph = {"10. complete/pending final billing", "12. ps review"}
     _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
     _tm_types    = {"t&m", "time & material", "time and material"}
 
-    _phase  = ss_df.get("phase",   pd.Series(dtype=str)).astype(str).str.strip().str.lower() if "phase" in ss_df.columns else pd.Series("", index=ss_df.index)
-    _stat   = ss_df.get("status",  pd.Series(dtype=str)).astype(str).str.strip().str.lower() if "status" in ss_df.columns else pd.Series("", index=ss_df.index)
-    _bill   = ss_df.get("billing_type", pd.Series(dtype=str)).astype(str).str.strip().str.lower() if "billing_type" in ss_df.columns else pd.Series("", index=ss_df.index)
+    _phase = ss_df["phase"].astype(str).str.strip().str.lower() if "phase" in ss_df.columns else pd.Series("", index=ss_df.index)
+    _stat  = ss_df["status"].astype(str).str.strip().str.lower() if "status" in ss_df.columns else pd.Series("", index=ss_df.index)
+    _bill  = ss_df["billing_type"].astype(str).str.strip().str.lower() if "billing_type" in ss_df.columns else pd.Series("", index=ss_df.index)
 
     active_ss = ss_df[
         ~_phase.isin(_complete_ph) &
         ~_stat.isin(_onhold_st) &
         ~_bill.isin(_tm_types)
     ].copy()
+    active_ss["project_id"] = active_ss["project_id"].astype(str).str.strip()
 
     if active_ss.empty:
         return pd.DataFrame()
 
-    # Normalise project_id for join
-    _id_col = "project_id" if "project_id" in active_ss.columns else None
-    if _id_col is None:
-        return pd.DataFrame()
-    active_ss[_id_col] = active_ss[_id_col].astype(str).str.strip()
-
-    # Join last entry onto SS projects
-    merged = active_ss.merge(last_entry, left_on=["consultant", _id_col],
-                             right_on=["consultant", "project_id"], how="left")
-
-    # Days since last entry — NaT means no time ever logged in the NS window
+    # Join on project_id only — employee name comes from SS Project Manager column
+    merged = active_ss.merge(last_entry, on="project_id", how="left")
     merged["days_since"] = (today - merged["last_entry"]).dt.days
 
     def _flag(days):
-        if pd.isna(days):   return "⚫ No Entry"
-        if days < 14:       return ""            # ok — not stale
-        if days < 30:       return "🟡 14d+"
-        if days < 60:       return "🟠 30d+"
+        if pd.isna(days): return "⚫ No Entry"
+        if days < 14:     return ""
+        if days < 30:     return "🟡 14d+"
+        if days < 60:     return "🟠 30d+"
         return "🔴 60d+"
 
     merged["Staleness"] = merged["days_since"].apply(_flag)
-
-    # Only surface stale rows (flag not empty)
     stale = merged[merged["Staleness"] != ""].copy()
 
     if stale.empty:
         return pd.DataFrame()
 
-    # Build display columns
-    name_col    = "project_name" if "project_name" in stale.columns else _id_col
-    pm_col      = "project_manager" if "project_manager" in stale.columns else None
-    phase_col   = "phase" if "phase" in stale.columns else None
+    # Source consultant name from SS Project Manager column
+    _pm_col   = "project_manager" if "project_manager" in stale.columns else None
+    _name_col = "project_name" if "project_name" in stale.columns else "project_id"
+    _phase_col = "phase" if "phase" in stale.columns else None
 
     display = pd.DataFrame()
-    display["Consultant"]    = stale["consultant"].astype(str)
-    display["Project"]       = stale[name_col].astype(str) if name_col in stale.columns else stale[_id_col]
-    display["PM"]            = stale[pm_col].astype(str) if pm_col else ""
-    display["Phase"]         = stale[phase_col].astype(str) if phase_col else ""
-    display["Last Entry"]    = stale["last_entry"].dt.strftime("%Y-%m-%d").fillna("—")
-    display["Days Since"]    = stale["days_since"].fillna(-1).astype(int).replace(-1, "—")
-    display["Staleness"]     = stale["Staleness"]
+    display["Consultant"] = stale[_pm_col].astype(str) if _pm_col else "—"
+    display["Project"]    = stale[_name_col].astype(str)
+    display["Phase"]      = stale[_phase_col].astype(str) if _phase_col else ""
+    display["Last Entry"] = stale["last_entry"].dt.strftime("%Y-%m-%d").where(stale["last_entry"].notna(), "—")
+    display["Days Since"] = stale["days_since"].where(stale["days_since"].notna(), -1).astype(int).replace(-1, "—")
+    display["Staleness"]  = stale["Staleness"]
 
-    # Sort: red first, then orange, yellow, no entry
     _sort_order = {"🔴 60d+": 0, "🟠 30d+": 1, "🟡 14d+": 2, "⚫ No Entry": 3}
     display["_sort"] = display["Staleness"].map(_sort_order).fillna(9)
     display = display.sort_values(["_sort", "Consultant"]).drop(columns=["_sort"]).reset_index(drop=True)
