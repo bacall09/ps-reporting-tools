@@ -63,7 +63,7 @@ EMPLOYEE_ROLES = {
     "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
     "Zoric, Ivan":            {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
     "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-    "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+    "Law, Brandon":           {"role": "Developer",          "products": ["Reporting"],                                                                                  "learning": []},
     "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
         "Cruz, Daniel":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "Payments", "e-Invoicing", "SFTP Connector", "CC Statement Import"],                                                                                  "learning": []},
     # ── Leavers (historical) ──────────────────────────────────────────────────
@@ -448,7 +448,9 @@ def load_ss(file):
 NS_COL_MAP = {
     "project id":          "project_id",
     "project":             "project_name",
+    "project name":        "project_name",
     "name":                "project_name",
+    "customer : project":  "project_name",
     "territory":           "territory",
     "billing country":     "billing_country",
     "status":              "status",
@@ -474,6 +476,12 @@ def load_ns_unassigned(file):
     df = df.rename(columns=rename)
     # Drop duplicate columns (e.g. both "project id" and "internal id" map to project_id)
     df = df.loc[:, ~df.columns.duplicated(keep="first")]
+    # If project_name still not resolved, scan for likely column
+    if "project_name" not in df.columns:
+        for _candidate in df.columns:
+            if "project" in _candidate and "type" not in _candidate and "id" not in _candidate:
+                df = df.rename(columns={_candidate: "project_name"})
+                break
     # Fill NaN in string columns before any string operations
     for _scol in ["project_name", "project_type", "billing_type", "territory",
                   "billing_country", "status", "project_id"]:
@@ -737,6 +745,10 @@ def get_available_consultants(availability, months, product_type, ps_region, sta
     for consultant, months_map in availability.items():
         # Active check — exclude leavers
         if not _emp_active(consultant, today_period):
+            continue
+        # Exclude Developers — matching logic TBD, removed from suggestions for now
+        info_check = EMPLOYEE_ROLES.get(consultant, {})
+        if info_check.get("role") == "Developer":
             continue
         # Product match — map NS project type to family, then check consultant
         family = _ns_pt_to_family(product_type)
