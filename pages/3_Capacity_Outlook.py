@@ -935,62 +935,182 @@ def _status(val):
     return val[0] if isinstance(val, tuple) else val
 
 def build_excel(availability, conflicts, ns_df, months, ss_df):
+    from datetime import date as _date
     wb = Workbook()
-    navy_fill   = PatternFill("solid", fgColor=NAVY)
-    green_fill  = PatternFill("solid", fgColor="C6EFCE")
-    amber_fill  = PatternFill("solid", fgColor="FFEB9C")
-    red_fill    = PatternFill("solid", fgColor="FFC7CE")
-    blue_fill   = PatternFill("solid", fgColor="BDD7EE")
-    gray_fill   = PatternFill("solid", fgColor=LTGRAY)
-    white_fill  = PatternFill("solid", fgColor=WHITE)
-    hdr_font    = Font(bold=True, color=WHITE, name="Calibri", size=11)
-    bold_font   = Font(bold=True, name="Calibri", size=10)
-    std_font    = Font(name="Calibri", size=10)
-    center      = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    left        = Alignment(horizontal="left",   vertical="center")
-    thin        = Side(style="thin", color="CCCCCC")
-    border      = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    def hdr_row(ws, row, values, fill=None):
-        for col, val in enumerate(values, 1):
-            c = ws.cell(row=row, column=col, value=val)
-            c.font = hdr_font
-            c.fill = fill or navy_fill
-            c.alignment = center
-            c.border = border
-
-    def data_cell(ws, row, col, val, fill=None, bold=False, align=None):
-        c = ws.cell(row=row, column=col, value=val)
-        c.font = bold_font if bold else std_font
-        if fill:
-            c.fill = fill
-        c.alignment = align or left
-        c.border = border
-        return c
+    wb.remove(wb.active)
 
     month_labels = [_month_label(y, m) for y, m in months]
+    as_of = datetime.today().strftime("%B %d, %Y")
 
-    # ── Tab 1: Unassigned Projects ─────────────────────────────────────────────
-    ws4 = wb.create_sheet("Unassigned Projects")
-    hdr_row(ws4, 1, ["Project", "Project Type", "Billing Type", "Territory", "PS Region",
-                     "Signed Date", "Outreach Deadline", "Planned Start", "Scoped Hours", "Urgency"])
-    for col_i, w in enumerate([35, 22, 15, 15, 10, 14, 18, 14, 14, 12], 1):
-        ws4.column_dimensions[get_column_letter(col_i)].width = w
+    # ── Shared helpers ────────────────────────────────────────────────────────
+    navy_fill  = PatternFill("solid", fgColor=NAVY)
+    gray_fill  = PatternFill("solid", fgColor=LTGRAY)
+    white_fill = PatternFill("solid", fgColor=WHITE)
+    green_fill = PatternFill("solid", fgColor="C6EFCE")
+    amber_fill = PatternFill("solid", fgColor="FFEB9C")
+    red_fill   = PatternFill("solid", fgColor="FFC7CE")
+    blue_fill  = PatternFill("solid", fgColor="BDD7EE")
+    thin       = Side(style="thin", color="CCCCCC")
+    border     = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def _mfont(size=10, bold=False, color="000000"):
+        return Font(name="Manrope", size=size, bold=bold, color=color)
+
+    def _hdr_fill(hex_color):
+        return PatternFill("solid", fgColor=hex_color)
+
+    def dash_label(ws, row, col, text, size=10, bold=False, color="808080"):
+        cel = ws.cell(row=row, column=col, value=text)
+        cel.font = _mfont(size=size, bold=bold, color=color)
+        return cel
+
+    def dash_value(ws, row, col, value, fmt=None, size=18, bold=True, color=NAVY):
+        cel = ws.cell(row=row, column=col, value=value)
+        cel.font = _mfont(size=size, bold=bold, color=color)
+        if fmt: cel.number_format = fmt
+        return cel
+
+    def dash_section(ws, row, col, text, ncols=8):
+        cel = ws.cell(row=row, column=col, value=text)
+        cel.font = _mfont(size=11, bold=True, color="FFFFFF")
+        cel.fill = _hdr_fill(NAVY)
+        ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col+ncols-1)
+        return cel
+
+    def write_hdr(ws, row, values, widths=None, fill=None):
+        for ci, val in enumerate(values, 1):
+            cel = ws.cell(row=row, column=ci, value=val)
+            cel.font      = _mfont(size=10, bold=True, color="FFFFFF")
+            cel.fill      = fill or navy_fill
+            cel.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cel.border    = border
+        if widths:
+            for ci, w in enumerate(widths, 1):
+                ws.column_dimensions[get_column_letter(ci)].width = w
+
+    def write_cell(ws, row, col, val, fill=None, bold=False, align="left", number_format=None):
+        cel = ws.cell(row=row, column=col, value=val)
+        cel.font      = _mfont(size=10, bold=bold)
+        cel.fill      = fill or white_fill
+        cel.alignment = Alignment(horizontal=align, vertical="center")
+        cel.border    = border
+        if number_format: cel.number_format = number_format
+        return cel
+
+    def write_title(ws, title, subtitle=""):
+        ws.sheet_view.showGridLines = False
+        for col, w in [(1,3),(2,24),(3,18),(4,18),(5,18),(6,18),(7,18),(8,18),(9,3)]:
+            ws.column_dimensions[get_column_letter(col)].width = w
+        tc = ws.cell(row=2, column=2, value=title)
+        tc.font = _mfont(size=14, bold=True, color="FFFFFF")
+        tc.fill = _hdr_fill(NAVY)
+        ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=8)
+        ws.row_dimensions[2].height = 28
+        if subtitle:
+            sc = ws.cell(row=3, column=2, value=subtitle)
+            sc.font = _mfont(size=9, color="808080")
+            ws.merge_cells(start_row=3, start_column=2, end_row=3, end_column=8)
+        return 5  # next data row
+
+    # ── Tab 1: Dashboard ──────────────────────────────────────────────────────
+    ws_dash = wb.create_sheet("Dashboard")
+    ws_dash.sheet_properties.tabColor = NAVY
+    ws_dash.sheet_view.showGridLines = False
+
+    for col, w in [(1,3),(2,22),(3,18),(4,18),(5,18),(6,18),(7,18),(8,18),(9,3)]:
+        ws_dash.column_dimensions[get_column_letter(col)].width = w
+    for row in range(1, 60):
+        ws_dash.row_dimensions[row].height = 18
+
+    # Title
+    tc = ws_dash.cell(row=2, column=2, value="Professional Services — Capacity Outlook")
+    tc.font = _mfont(size=16, bold=True, color="FFFFFF")
+    tc.fill = _hdr_fill(NAVY)
+    ws_dash.merge_cells(start_row=2, start_column=2, end_row=2, end_column=8)
+    ws_dash.row_dimensions[2].height = 30
+
+    sc = ws_dash.cell(row=3, column=2, value=f"Data as of {as_of}  ·  6-month rolling forecast")
+    sc.font = _mfont(size=10, color="808080")
+    ws_dash.merge_cells(start_row=3, start_column=2, end_row=3, end_column=8)
+
+    # Summary metrics
+    today_d = _date.today()
+    total_cons   = len(availability)
+    busy_cons    = sum(1 for _, mm in availability.items()
+                       if isinstance(mm.get(months[0]), tuple) and mm.get(months[0],(None,999))[1] > 60)
+    avail_cons   = sum(1 for _, mm in availability.items()
+                       if isinstance(mm.get(months[0]), tuple) and mm.get(months[0],(None,0))[1] <= 60)
+    total_unassigned = len(ns_df) if ns_df is not None else 0
+
+    dash_section(ws_dash, 5, 2, "CURRENT MONTH SNAPSHOT", ncols=7)
+    metrics = [
+        ("Consultants Tracked", total_cons),
+        ("High Workload (>60)", busy_cons),
+        ("Available (≤60)",     avail_cons),
+        ("Unassigned Projects", total_unassigned),
+    ]
+    for mi, (lbl, val) in enumerate(metrics):
+        col = 2 + mi * 2
+        dash_label(ws_dash, 6, col, lbl)
+        dash_value(ws_dash, 7, col, val)
+        ws_dash.merge_cells(start_row=6, start_column=col, end_row=6, end_column=col+1)
+        ws_dash.merge_cells(start_row=7, start_column=col, end_row=7, end_column=col+1)
+    ws_dash.row_dimensions[7].height = 32
+
+    # Heatmap summary on dashboard
+    dash_section(ws_dash, 9, 2, "CONSULTANT WORKLOAD HEATMAP — NEXT 6 MONTHS", ncols=7)
+    hdr_vals = ["Consultant", "Region"] + month_labels
+    for ci, val in enumerate(hdr_vals, 2):
+        cel = ws_dash.cell(row=10, column=ci, value=val)
+        cel.font      = _mfont(size=9, bold=True, color="FFFFFF")
+        cel.fill      = navy_fill
+        cel.alignment = Alignment(horizontal="center", vertical="center")
+        cel.border    = border
+
+    band_fill = {"low": green_fill, "medium": amber_fill, "high": red_fill, "free": white_fill}
+    for ri, consultant in enumerate(sorted(availability.keys()), 11):
+        region = _emp_ps_region(consultant)
+        ws_dash.cell(row=ri, column=2, value=consultant).font = _mfont(size=9)
+        ws_dash.cell(row=ri, column=3, value=region).font     = _mfont(size=9)
+        for ci, mo in enumerate(months, 4):
+            val   = availability[consultant].get(mo, ("free", 0, 0))
+            status, score, _ = val if isinstance(val, tuple) else (val, 0, 0)
+            band, _, _       = _whs_band(score)
+            cel = ws_dash.cell(row=ri, column=ci, value=f"{band} ({score})")
+            cel.fill      = band_fill.get(band.lower(), white_fill)
+            cel.font      = _mfont(size=9)
+            cel.alignment = Alignment(horizontal="center")
+            cel.border    = border
+
+    ws_dash.column_dimensions[get_column_letter(2)].width = 24
+    ws_dash.column_dimensions[get_column_letter(3)].width = 12
+    for ci in range(4, 4 + len(months)):
+        ws_dash.column_dimensions[get_column_letter(ci)].width = 14
+
+    # ── Tab 2: Unassigned Projects ────────────────────────────────────────────
+    ws_ua = wb.create_sheet("Unassigned Projects")
+    ws_ua.sheet_properties.tabColor = "4472C4"
+    next_row = write_title(ws_ua, "CAPACITY OUTLOOK — Unassigned Projects",
+                           f"Data as of {as_of}  ·  NS + SFDC Closed Won")
+    write_hdr(ws_ua, next_row,
+              ["Source", "Account / Customer", "Project", "Project Type", "Billing Type",
+               "Territory", "PS Region", "Signed Date", "Outreach Deadline", "Planned Start",
+               "Scoped Hours", "Urgency", "Suggested Consultants"],
+              widths=[8, 24, 30, 18, 12, 14, 10, 12, 16, 12, 12, 12, 35])
+    next_row += 1
 
     if ns_df is not None and not ns_df.empty:
-        today_d = date.today()
-        for row_i, (_, r) in enumerate(ns_df.iterrows(), 2):
-            outreach = r.get("outreach_date")
+        for _, r in ns_df.iterrows():
+            outreach   = r.get("outreach_date")
             outreach_d = outreach.date() if pd.notna(outreach) and hasattr(outreach, "date") else None
-            days_to_outreach = (outreach_d - today_d).days if outreach_d else None
-            urgency = ("Overdue" if days_to_outreach is not None and days_to_outreach < 0
-                      else "This Week" if days_to_outreach is not None and days_to_outreach <= 7
-                      else "This Month" if days_to_outreach is not None and days_to_outreach <= 30
-                      else "Upcoming")
-            urg_fill = (red_fill if urgency == "Overdue" else
-                       amber_fill if urgency in ("This Week", "This Month") else white_fill)
-
+            days_out   = (outreach_d - today_d).days if outreach_d else None
+            urgency    = ("Overdue"    if days_out is not None and days_out < 0 else
+                          "This Week"  if days_out is not None and days_out <= 7 else
+                          "This Month" if days_out is not None and days_out <= 30 else "Upcoming")
+            urg_fill   = red_fill if urgency == "Overdue" else amber_fill if urgency in ("This Week","This Month") else white_fill
             vals = [
+                r.get("source", "NS"),
+                r.get("customer", ""),
                 r.get("project_name", ""),
                 r.get("project_type", ""),
                 r.get("billing_type", ""),
@@ -1001,18 +1121,97 @@ def build_excel(availability, conflicts, ns_df, months, ss_df):
                 r.get("start_date").strftime("%Y-%m-%d") if pd.notna(r.get("start_date")) else "",
                 fmt_hrs(r.get("scoped_hours") or 0),
                 urgency,
+                "",
             ]
-            for col_i, val in enumerate(vals, 1):
-                fill = urg_fill if col_i == 10 else white_fill
-                data_cell(ws4, row_i, col_i, val, fill=fill,
-                         align=center if col_i in (5, 6, 7, 8, 9, 10) else left)
+            for ci, val in enumerate(vals, 1):
+                f = urg_fill if ci == 12 else white_fill
+                write_cell(ws_ua, next_row, ci, val, fill=f,
+                           align="center" if ci in (1,6,7,8,9,10,11,12) else "left")
+            next_row += 1
 
+    # ── Tab 3: Capacity Heatmap ───────────────────────────────────────────────
+    ws_hm = wb.create_sheet("Capacity Heatmap")
+    ws_hm.sheet_properties.tabColor = "70AD47"
+    next_row = write_title(ws_hm, "CAPACITY HEATMAP — Consultant Availability",
+                           f"Data as of {as_of}  ·  Green=Low · Amber=Medium · Red=High")
+    hm_headers = ["Consultant", "Region", "WHS Score", "Total Projects", "Active Projects"] + month_labels
+    hm_widths  = [24, 12, 10, 14, 14] + [14]*len(months)
+    write_hdr(ws_hm, next_row, hm_headers, widths=hm_widths)
+    next_row += 1
 
+    for consultant in sorted(availability.keys()):
+        region    = _emp_ps_region(consultant)
+        first_val = availability[consultant].get(months[0], ("free", 0, 0))
+        score     = first_val[1] if isinstance(first_val, tuple) else 0
+        # Project counts from ss_df
+        _total_p  = 0
+        _active_p = 0
+        if ss_df is not None and "consultant" in ss_df.columns:
+            _emp_rows = ss_df[ss_df["consultant"].astype(str).str.strip() == consultant]
+            if not _emp_rows.empty:
+                _complete_ph = {"10. complete/pending final billing", "12. ps review"}
+                _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
+                _tm_types    = {"t&m", "time & material", "time and material"}
+                _id_col      = "project_id" if "project_id" in _emp_rows.columns else "project_name"
+                _billing     = _emp_rows["billing_type"].astype(str).str.strip().str.lower() if "billing_type" in _emp_rows.columns else pd.Series("", index=_emp_rows.index)
+                _phase       = _emp_rows["phase"].astype(str).str.strip().str.lower()        if "phase"        in _emp_rows.columns else pd.Series("", index=_emp_rows.index)
+                _stat        = _emp_rows["status"].astype(str).str.strip().str.lower()       if "status"       in _emp_rows.columns else pd.Series("", index=_emp_rows.index)
+                _ff          = ~_billing.isin(_tm_types)
+                _not_done    = ~_phase.isin(_complete_ph)
+                _not_hold    = ~_stat.isin(_onhold_st)
+                _total_p     = int(_emp_rows[_ff & _not_done][_id_col].nunique())
+                _active_p    = int(_emp_rows[_ff & _not_done & _not_hold][_id_col].nunique())
+
+        row_vals = [consultant, region, score, _total_p, _active_p]
+        for ci, val in enumerate(row_vals, 1):
+            write_cell(ws_hm, next_row, ci, val, align="center" if ci > 1 else "left")
+
+        for ci, mo in enumerate(months, 6):
+            val   = availability[consultant].get(mo, ("free", 0, 0))
+            status, sc, _ = val if isinstance(val, tuple) else (val, 0, 0)
+            band, _, _    = _whs_band(sc)
+            bf = {"low": green_fill, "medium": amber_fill, "high": red_fill}.get(band.lower(), white_fill)
+            cel = ws_hm.cell(row=next_row, column=ci, value=f"{band} ({sc})")
+            cel.fill      = bf
+            cel.font      = _mfont(size=10)
+            cel.alignment = Alignment(horizontal="center", vertical="center")
+            cel.border    = border
+        next_row += 1
+
+    # ── Tab 4: Consultant Detail ──────────────────────────────────────────────
+    ws_cd = wb.create_sheet("Consultant Detail")
+    ws_cd.sheet_properties.tabColor = "ED7D31"
+    next_row = write_title(ws_cd, "CAPACITY OUTLOOK — Consultant Detail",
+                           f"Data as of {as_of}")
+    write_hdr(ws_cd, next_row,
+              ["Consultant", "Region", "Role", "WHS Score", "Workload Band",
+               "Active Projects", "Enabled Products", "Learning"],
+              widths=[24, 12, 18, 10, 14, 14, 30, 10])
+    next_row += 1
+
+    for consultant in sorted(availability.keys()):
+        region   = _emp_ps_region(consultant)
+        info     = EMPLOYEE_ROLES.get(consultant, {})
+        role     = info.get("role", "Consultant")
+        products = ", ".join(info.get("products", []))
+        learning = "Yes" if info.get("learning") else ""
+        first_val = availability[consultant].get(months[0], ("free", 0, 0))
+        score     = first_val[1] if isinstance(first_val, tuple) else 0
+        proj_cnt  = first_val[2] if isinstance(first_val, tuple) else 0
+        band, _, _ = _whs_band(score)
+        bf = {"low": green_fill, "medium": amber_fill, "high": red_fill}.get(band.lower(), white_fill)
+
+        vals = [consultant, region, role, score, band, proj_cnt, products, learning]
+        for ci, val in enumerate(vals, 1):
+            f = bf if ci == 5 else white_fill
+            write_cell(ws_cd, next_row, ci, val, fill=f, align="center" if ci > 1 else "left")
+        next_row += 1
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return buf
+
 
 # ── UI ─────────────────────────────────────────────────────────────────────────
 def main():
@@ -1774,13 +1973,14 @@ def main():
     # ── Tab 1: Unassigned Projects ─────────────────────────────────────────────
     # ── Export ─────────────────────────────────────────────────────────────────
     st.markdown("---")
-    if st.button("Download Capacity Report (Excel)", type="primary"):
-        excel_buf = build_excel(availability, conflicts, ns_df, months, ss_df)
-        st.download_button(
-            label="Save Excel",
-            data=excel_buf,
-            file_name=f"capacity_outlook_{datetime.today().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+    st.subheader("Generate Report")
+    excel_buf = build_excel(availability, conflicts, ns_df, months, ss_df)
+    fname = f"Capacity_Outlook_{datetime.today().strftime('%Y%m%d')}.xlsx"
+    st.download_button(
+        label="⬇ Download Capacity Outlook Report",
+        data=excel_buf,
+        file_name=fname,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 main()
