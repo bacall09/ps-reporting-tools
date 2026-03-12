@@ -427,27 +427,9 @@ def load_ss(file):
     # Parse start_date
     if "start_date" in df.columns:
         df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
-    # Keep all billing types — both FF and T&M consume consultant capacity
-    # (T&M unassigned demand is handled separately via NS report)
-    # Exclude inactive rows — phase-based OR status-based (mirrors WHS logic)
-    inactive_phases  = {"10. complete/pending final billing", "11. on hold", "12. ps review"}
-    onhold_statuses  = {"on-hold", "on hold", "onhold", "on_hold"}
-    phase_inactive   = df["phase"].isin(inactive_phases) if "phase" in df.columns else pd.Series(False, index=df.index)
-    status_inactive  = df["status"].astype(str).str.strip().str.lower().isin(onhold_statuses) if "status" in df.columns else pd.Series(False, index=df.index)
-    inactive_mask    = phase_inactive | status_inactive
-    dropped_df       = df[inactive_mask].copy()
-    # Tag reason for each dropped row
-    if not dropped_df.empty:
-        def _drop_reason(row):
-            reasons = []
-            if "phase" in row and str(row["phase"]).strip().lower() in inactive_phases:
-                reasons.append(f"phase: {row['phase']}")
-            if "status" in row and str(row["status"]).strip().lower() in onhold_statuses:
-                reasons.append(f"status: {row['status']}")
-            return " | ".join(reasons) if reasons else "unknown"
-        dropped_df["Filter Reason"] = dropped_df.apply(_drop_reason, axis=1)
-    df = df[~inactive_mask]
-    return df, dropped_df
+    # Keep all rows — inactive phase filtering handled downstream in scorer
+    # (mirrors page 2 behaviour where inactive rows are kept but scored as 0)
+    return df, pd.DataFrame()
 
 
 # ── SFDC Closed Won loader ─────────────────────────────────────────────────────
@@ -746,12 +728,16 @@ def project_consultant_availability(ss_df, months):
 
         if consultant not in consultant_projects:
             consultant_projects[consultant] = []
+        on_hold_status = str(row.get("status", "")).strip().lower() in (
+            "on-hold", "on hold", "onhold", "on_hold"
+        )
         consultant_projects[consultant].append({
             "current_phase": current_phase,
             "project_type":  project_type,
             "start_date":    start_date,
             "ch_mult":       ch_mult,
             "risk_mult":     risk_mult,
+            "on_hold":       on_hold_status,
         })
 
     # For each consultant, compute projected WHS score per month
@@ -768,7 +754,10 @@ def project_consultant_availability(ss_df, months):
                     mo,
                 )
                 if proj_phase in complete_phases:
-                    continue  # project complete in this month — no load
+                    continue  # project complete — no load
+                # On-hold status → score 0, don't count as active (matches page 2)
+                if proj.get("on_hold"):
+                    continue
                 weight  = PHASE_WEIGHTS.get(proj_phase, 1.0)
                 monthly_score   += round(weight * proj["ch_mult"] * proj["risk_mult"], 2)
                 active_proj_cnt += 1
@@ -1580,6 +1569,24 @@ def main():
         if not availability:
             st.info("No active project data found. Upload SS DRS to generate heatmap.")
         else:
+            # Pre-compute total projects per consultant from ss_df (FF, non-complete)
+            _total_proj_map = {}
+            _active_proj_map = {}
+            if ss_df is not None and "consultant" in ss_df.columns:
+                _complete_ph = {"10. complete/pending final billing", "12. ps review"}
+                _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
+                _tm_types    = {"t&m", "time & material", "time and material"}
+                for _cons, _grp in ss_df.groupby("consultant"):
+                    _billing = _grp.get("billing_type", pd.Series(dtype=str)).astype(str).str.strip().str.lower()
+                    _phase   = _grp.get("phase",   pd.Series(dtype=str)).astype(str).str.strip().str.lower()
+                    _status  = _grp.get("status",  pd.Series(dtype=str)).astype(str).str.strip().str.lower()
+                    _ff      = ~_billing.isin(_tm_types)
+                    _not_complete = ~_phase.isin(_complete_ph)
+                    _not_onhold   = ~_status.isin(_onhold_st)
+                    _id_col  = "project_id" if "project_id" in _grp.columns else "project_name"
+                    _total_proj_map[str(_cons).strip()]  = int(_grp[_ff & _not_complete][_id_col].nunique())
+                    _active_proj_map[str(_cons).strip()] = int(_grp[_ff & _not_complete & _not_onhold][_id_col].nunique())
+
             heatmap_data = []
             for consultant in sorted(availability.keys()):
                 region = _emp_ps_region(consultant)
@@ -1587,9 +1594,9 @@ def main():
                 # Current month score (first month)
                 first_val = availability[consultant].get(months[0], ("free", 0, 0))
                 score = first_val[1] if isinstance(first_val, tuple) else 0
-                proj_count = first_val[2] if isinstance(first_val, tuple) else 0
-                row_data["WHS Score"] = score
-                row_data["Projects"] = proj_count
+                row_data["WHS Score"]       = score
+                row_data["Total Projects"]  = _total_proj_map.get(consultant, 0)
+                row_data["Active Projects"] = _active_proj_map.get(consultant, 0)
                 for mo, label in zip(months, month_labels):
                     val = availability[consultant].get(mo, ("free", 0, 0))
                     status, sc, _ = val if isinstance(val, tuple) else (val, 0, 0)
@@ -1598,6 +1605,10 @@ def main():
                 heatmap_data.append(row_data)
 
             hm_df = pd.DataFrame(heatmap_data)
+            # Enforce column order: Consultant, Region, WHS Score, Total, Active, then months
+            _fixed_cols = ["Consultant", "Region", "WHS Score", "Total Projects", "Active Projects"]
+            _col_order  = _fixed_cols + [l for l in month_labels if l in hm_df.columns]
+            hm_df = hm_df[[c for c in _col_order if c in hm_df.columns]]
 
             def color_cell(val):
                 v = str(val)
@@ -1626,9 +1637,17 @@ def main():
             projects, free_from = "", "Available Now"
             if ss_df is not None and "consultant" in ss_df.columns:
                 emp_rows = ss_df[ss_df["consultant"].astype(str).str.strip() == name]
+                # Filter to FF only and non-complete phases — matches page 2 total_project logic
                 if not emp_rows.empty:
-                    proj_list = emp_rows["project_name"].dropna().unique() if "project_name" in emp_rows.columns else []
-                    projects = str(len(proj_list))
+                    _billing  = emp_rows.get("billing_type", pd.Series(dtype=str)).astype(str).str.strip().str.lower()
+                    _phase    = emp_rows.get("phase", pd.Series(dtype=str)).astype(str).str.strip().str.lower()
+                    _complete = {"10. complete/pending final billing", "12. ps review"}
+                    _tm       = {"t&m", "time & material", "time and material"}
+                    _ff_mask  = ~_billing.isin(_tm)
+                    _act_mask = ~_phase.isin(_complete)
+                    _id_col   = "project_id" if "project_id" in emp_rows.columns else "project_name"
+                    proj_list = emp_rows[_ff_mask & _act_mask][_id_col].dropna().unique()
+                    projects  = str(len(proj_list))
             # Get WHS score from availability
             whs_score = ""
             if name in availability:
