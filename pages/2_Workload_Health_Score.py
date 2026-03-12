@@ -303,6 +303,9 @@ SS_COL_MAP = {
     "change order":          "change_order",
     "partner name":          "partner_name",
     "on hold reason":        "on_hold_reason",
+    "project manager":       "project_manager",
+    "billing type":          "billing_type",
+    "billing":               "billing_type",
 }
 
 MILESTONE_COLS = [
@@ -421,7 +424,9 @@ def load_ns(file):
     if file.name.endswith(".csv"):
         df = pd.read_csv(file)
     else:
-        df = pd.read_excel(file)
+        # Read first sheet only — NS exports often have multiple tabs
+        xl = pd.ExcelFile(file)
+        df = pd.read_excel(xl, sheet_name=xl.sheet_names[0])
 
     df.columns = df.columns.str.strip()
     rename = {col: NS_COL_MAP[col.lower()] for col in df.columns if col.lower() in NS_COL_MAP}
@@ -464,7 +469,7 @@ def build_stale_projects(ss_df, ns_df):
         .reset_index()
         .rename(columns={ns_join: "project_id", "date": "last_entry"})
     )
-    last_entry["project_id"] = last_entry["project_id"].astype(str).str.strip()
+    last_entry["project_id"] = last_entry["project_id"].astype(str).str.strip().str.split(".").str[0]
 
     # SS active FF projects — exclude complete/on-hold
     _complete_ph = {"10. complete/pending final billing", "12. ps review"}
@@ -474,13 +479,18 @@ def build_stale_projects(ss_df, ns_df):
     _phase = ss_df["phase"].astype(str).str.strip().str.lower() if "phase" in ss_df.columns else pd.Series("", index=ss_df.index)
     _stat  = ss_df["status"].astype(str).str.strip().str.lower() if "status" in ss_df.columns else pd.Series("", index=ss_df.index)
     _bill  = ss_df["billing_type"].astype(str).str.strip().str.lower() if "billing_type" in ss_df.columns else pd.Series("", index=ss_df.index)
+    _type  = ss_df["project_type"].astype(str).str.strip().str.lower() if "project_type" in ss_df.columns else pd.Series("", index=ss_df.index)
+
+    # Exclude complete/on-hold; exclude T&M whether in billing_type or project_type
+    _tm_by_bill = _bill.isin(_tm_types)
+    _tm_by_type = _type.str.contains("t&m|time.*material", na=False, regex=True)
 
     active_ss = ss_df[
         ~_phase.isin(_complete_ph) &
         ~_stat.isin(_onhold_st) &
-        ~_bill.isin(_tm_types)
+        ~(_tm_by_bill | _tm_by_type)
     ].copy()
-    active_ss["project_id"] = active_ss["project_id"].astype(str).str.strip()
+    active_ss["project_id"] = active_ss["project_id"].astype(str).str.strip().str.split(".").str[0]  # strip decimals e.g. "12345.0"
 
     if active_ss.empty:
         return pd.DataFrame()
