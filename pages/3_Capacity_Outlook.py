@@ -774,6 +774,41 @@ def _ns_pt_to_family(project_type):
     return "Other"
 
 
+def _extract_product_keyword(project_type):
+    """Extract core product keyword from any project type string.
+    Handles NS format ('ZoneApp: ZCapture Implementation'),
+    SS format ('za - zcapture implementation'),
+    and SFDC format ('ZoneCapture').
+    Returns a canonical keyword or None if no match.
+    """
+    pt = str(project_type).lower()
+    # Order matters — more specific before general
+    KEYWORDS = [
+        ("capture & e-invoicing", "capture-einvoicing"),
+        ("cc statement",          "cc-statement"),
+        ("e-invoicing",           "e-invoicing"),
+        ("einvoic",               "e-invoicing"),
+        ("sftp",                  "sftp"),
+        ("reconcile psp",         "reconcile-psp"),
+        ("reconcile",             "reconcile"),
+        ("approvals",             "approvals"),
+        ("capture",               "capture"),
+        ("payments",              "payments"),
+        ("payroll",               "payroll"),
+        ("zonepay",               "payroll"),
+        ("zep",                   "payroll"),
+        ("bill",                  "billing"),
+        ("report",                "reporting"),
+        ("rpt",                   "reporting"),
+        ("optimization",          "optimization"),
+        ("optimisation",          "optimization"),
+    ]
+    for fragment, canonical in KEYWORDS:
+        if fragment in pt:
+            return canonical
+    return None
+
+
 def _consultant_handles_family(consultant, family):
     """Return True if consultant's products include the given product family."""
     info = EMPLOYEE_ROLES.get(consultant, {})
@@ -1160,6 +1195,18 @@ def main():
                 _ss_closed_project_names = set(
                     _raw[_ss_closed_mask]["project_name"].astype(str).str.strip().str.lower().unique()
                 ) - {"", "nan", "none"}
+        # Build SS project_name → product keyword lookup (use raw so closed rows included)
+        _ss_project_keyword = {}  # {project_name_lower: canonical_keyword}
+        _raw_pt_col = "project_type" if "project_type" in (ss_raw_df if ss_raw_df is not None else ss_df).columns else None
+        _raw_pn_col = "project_name" if "project_name" in (ss_raw_df if ss_raw_df is not None else ss_df).columns else None
+        if _raw_pt_col and _raw_pn_col:
+            _raw_ref = ss_raw_df if ss_raw_df is not None else ss_df
+            for _, _row in _raw_ref[[_raw_pn_col, _raw_pt_col]].drop_duplicates().iterrows():
+                _pn = str(_row[_raw_pn_col]).strip().lower()
+                _kw = _extract_product_keyword(str(_row[_raw_pt_col]))
+                if _pn and _kw:
+                    _ss_project_keyword[_pn] = _kw
+
         # Customer/account names from SS — extract account prefix from project name
         # SS format: "Account Name - za - ..." or "Account Name zb/zc ..."
         # We want just "account name" for substring matching against SFDC account_name
@@ -1189,18 +1236,25 @@ def main():
 
     # ── SFDC cross-reference and merge ────────────────────────────────────────
     # Build NS lookup sets for SFDC cross-reference
-    _ns_project_names = set()
+    _ns_project_names  = set()
     _ns_customer_names = set()
+    _ns_customer_keyword = {}  # {customer_lower: set of canonical keywords}
     if not _true_unassigned.empty:
         if "project_name" in _true_unassigned.columns:
             _ns_project_names = set(
                 _true_unassigned["project_name"].astype(str).str.strip().str.lower().unique()
             )
-        # Prefer explicit customer col; fall back to project_name (current state)
         _ns_cust_col = "customer" if "customer" in _true_unassigned.columns else "project_name"
         _ns_customer_names = set(
             _true_unassigned[_ns_cust_col].astype(str).str.strip().str.lower().unique()
         ) - {"", "nan", "none"}
+        # Build customer → set of product keywords for type-aware matching
+        if "project_type" in _true_unassigned.columns:
+            for _, _row in _true_unassigned[[_ns_cust_col, "project_type"]].drop_duplicates().iterrows():
+                _cust = str(_row[_ns_cust_col]).strip().lower()
+                _kw   = _extract_product_keyword(str(_row["project_type"]))
+                if _cust and _kw:
+                    _ns_customer_keyword.setdefault(_cust, set()).add(_kw)
 
     _sfdc_rows = []
     if sfdc_df is not None and not sfdc_df.empty:
@@ -1214,35 +1268,46 @@ def main():
             opp_lower = opp_name.lower()
             acct_lower = account_name.lower()
 
+            # Extract SFDC product keyword for type-aware matching
+            sfdc_kw = _extract_product_keyword(str(row.get("project_type", "")))
+
             # Exact exclude: opp name == NS project name OR SS project name
             ns_exact = opp_lower in _ns_project_names
             ss_exact = opp_lower in _ss_project_names if _ss_project_names else False
             exact_match = ns_exact or ss_exact
 
-            # Fuzzy flag:
-            # NS — account name == NS customer column (explicit customer field)
-            ns_fuzzy = (not exact_match and acct_lower and
-                        acct_lower in _ns_customer_names)
-            # SS — account name found as substring within any SS project name
-            # e.g. "3SI Security Systems" in "3SI Security Systems - ZB Optimization T&M"
-            ss_fuzzy = (not exact_match and acct_lower and
-                        any(acct_lower in ss_name for ss_name in _ss_project_names)
-                        ) if _ss_project_names else False
+            # Fuzzy flag — account name match + product keyword match
+            # NS: account name in NS customer set AND keyword matches
+            ns_acct_match = (acct_lower in _ns_customer_names) if acct_lower else False
+            ns_kw_match   = (not sfdc_kw or                        # no SFDC keyword → match on name alone
+                             sfdc_kw in _ns_customer_keyword.get(acct_lower, set()))
+            ns_fuzzy = not exact_match and ns_acct_match and ns_kw_match
+
+            # SS: account name substring in any SS project name AND keyword matches
+            ss_matching_projects = (
+                [ss_name for ss_name in _ss_project_names if acct_lower in ss_name]
+                if acct_lower and _ss_project_names else []
+            )
+            ss_kw_match = (not sfdc_kw or                          # no SFDC keyword → name match alone
+                           any(_ss_project_keyword.get(ss_name) == sfdc_kw
+                               for ss_name in ss_matching_projects))
+            ss_fuzzy = not exact_match and bool(ss_matching_projects) and ss_kw_match
+
             fuzzy_match = ns_fuzzy or ss_fuzzy
 
             if exact_match:
                 continue  # already in NS or SS — skip
 
-            # Check if account name substring-matches a CLOSED/ON-HOLD SS project
-            # Independent of fuzzy_match — catches cases where opp isn't a dup but
-            # the account already has a closed project in SS
-            _closed_names = _ss_closed_project_names if _ss_closed_project_names else set()
-            ss_closed_flag = bool(
-                acct_lower and
-                any(acct_lower in ss_name for ss_name in _closed_names)
+            # ss_closed_flag — reuse ss_fuzzy but check against closed set specifically
+            ss_closed_matching = (
+                [ss_name for ss_name in _ss_closed_project_names if acct_lower in ss_name]
+                if acct_lower and _ss_closed_project_names else []
             )
-            # If it matches a closed project, override fuzzy to True so it surfaces
-            if ss_closed_flag:
+            ss_closed_kw_match = (not sfdc_kw or
+                                  any(_ss_project_keyword.get(ss_name) == sfdc_kw
+                                      for ss_name in ss_closed_matching))
+            ss_closed_flag = bool(ss_closed_matching) and ss_closed_kw_match
+            if ss_closed_flag and not fuzzy_match:
                 fuzzy_match = True
 
             # Derive estimated start date from close date + buffer
@@ -1268,37 +1333,13 @@ def main():
                 "start_date":    est_start,
                 "outreach_date": None,
                 "scoped_hours":  ps_hours,
-                "source":        ("🔒 On Hold / Closed in SS" if ss_closed_flag
-                                 else "⚠️ Dup: SFDC<>SS" if ss_fuzzy
+                "source":        ("⚠️ Dup: SFDC<>SS" if (ss_fuzzy or ss_closed_flag)
                                  else "⚠️ Dup: SFDC<>NS" if ns_fuzzy
                                  else "SFDC"),
             })
 
     # Capture NS count before merge
     _ns_total = len(_true_unassigned) if _true_unassigned is not None else 0
-
-    # ── DEBUG expander — remove once 3SI issue resolved ─────────────────────
-    with st.expander("🔍 Debug: SFDC cross-reference (remove later)"):
-        st.write(f"**_ss_closed_project_names** ({len(_ss_closed_project_names)}):")
-        st.write(sorted(_ss_closed_project_names)[:20])
-        st.write(f"**_ss_project_names** ({len(_ss_project_names)}):")
-        st.write(sorted(_ss_project_names)[:20])
-        st.write(f"**_ss_account_names** ({len(_ss_account_names)}):")
-        st.write(sorted(_ss_account_names)[:20])
-        # Show 3SI specifically
-        _3si_matches = [n for n in _ss_project_names if "3si" in n.lower()]
-        st.write(f"**SS project names containing '3si':** {_3si_matches}")
-        _3si_closed = [n for n in _ss_closed_project_names if "3si" in n.lower()]
-        st.write(f"**Closed SS project names containing '3si':** {_3si_closed}")
-        st.write(f"**_ss_account_names sample (first 10):** {sorted(_ss_account_names)[:10]}")
-        if "phase" in ss_df.columns:
-            st.write(f"**Unique phase values in SS (filtered):** {sorted(ss_df['phase'].astype(str).str.strip().str.lower().unique())[:20]}")
-        _raw_check = ss_raw_df if ss_raw_df is not None else ss_df
-        if "phase" in _raw_check.columns:
-            st.write(f"**Unique phase values in ss_raw_df:** {sorted(_raw_check['phase'].astype(str).str.strip().str.lower().unique())[:20]}")
-        if "project_name" in _raw_check.columns:
-            _3si_raw = [n for n in _raw_check["project_name"].astype(str).str.lower().unique() if "3si" in n]
-            st.write(f"**3SI in ss_raw_df project_name:** {_3si_raw}")
 
     # Tag NS rows with source
     if not _true_unassigned.empty:
@@ -1472,7 +1513,6 @@ def main():
                 v = str(val)
                 if v == "NS":                       return "background-color:#E8F4FD;color:#1A5276"
                 if v == "SFDC":                     return "background-color:#EBF5EB;color:#1E8449"
-                if "On Hold" in v or "Closed" in v: return "background-color:#F2F2F2;color:#666666"
                 if "Dup:" in v:                     return "background-color:#FEFDE0;color:#9C6500"
                 return ""
 
