@@ -1326,7 +1326,7 @@ def main():
                 "project_name":  proj_name,
                 "customer":      account_name,
                 "project_type":  str(row.get("project_type", "")),
-                "billing_type":  "Time & Material",
+                "billing_type":  "T&M",
                 "territory":     str(row.get("territory", "")),
                 "ps_region":     str(row.get("ps_region", "Unknown")),
                 "signed_date":   close_dt,
