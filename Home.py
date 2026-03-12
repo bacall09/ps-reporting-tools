@@ -158,15 +158,18 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Card 3: Coming Soon ───────────────────────────────────────────────────────
+# ── Card 3: Capacity Outlook ─────────────────────────────────────────────────
 st.markdown("""
-<div class='tool-row-soon'>
-    <div class='tool-badge-soon'>Coming Soon</div>
-    <div class='tool-title-soon'>Capacity Outlook</div>
-    <div class='tool-desc-soon'>
-        Three-horizon capacity view combining NetSuite actuals, Salesforce contracts,
-        and pipeline forecast. Joined on Project ID.
+<div class='tool-row'>
+    <div class='tool-badge'>SmartSheets + NetSuite + Salesforce</div>
+    <div class='tool-title'>Capacity Outlook</div>
+    <div class='tool-desc'>
+        Six-month rolling capacity view combining SmartSheets DRS, NetSuite unassigned
+        projects, and Salesforce Closed Won pipeline. Surfaces consultant availability
+        by workload band, flags unassigned and at-risk demand, and suggests best-fit
+        consultants by product, region, and current WHS score.
     </div>
+    <a class='tool-link' href='/Capacity_Outlook'>Open Report →</a>
 </div>
 """, unsafe_allow_html=True)
 
