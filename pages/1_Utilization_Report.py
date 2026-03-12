@@ -1964,6 +1964,138 @@ label="⬇ Download Excel Report",
         st.caption(f"`{filename}` — 6 tabs: Processed Data · By Employee · By Project · "
                    f"Non-Billable · Task Analysis · Skipped Rows")
 
+        st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+        with st.spinner("Building Tableau export..."):
+            tableau_buf = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
+        tableau_filename = f"utilization_tableau_{timestamp}.xlsx"
+        st.download_button(
+            label="⬇ Download Tableau Export",
+            data=tableau_buf,
+            file_name=tableau_filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        st.caption("`" + tableau_filename + "` — 2 flat sheets: fact_utilization · fact_transactions")
+
+
+def build_tableau_excel(df, scope_map, consumed):
+    """
+    Clean flat export for Tableau — no formatting, no merged cells, no dashboard.
+    Two sheets:
+      fact_utilization  — one row per employee per period (summary metrics)
+      fact_transactions — one row per time entry (raw grain)
+    """
+    import io as _io
+    from openpyxl import Workbook as _WB
+
+    wb = _WB()
+    wb.remove(wb.active)
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def _flat_sheet(wb, name, headers, rows):
+        ws = wb.create_sheet(name)
+        ws.append(headers)
+        for r in rows:
+            ws.append(r)
+        return ws
+
+    def _pct(num, denom):
+        try:
+            return round(num / denom, 6) if denom and denom > 0 else None
+        except Exception:
+            return None
+
+    # ── pre-compute summary grain ─────────────────────────────────────────────
+    _skipped = df["credit_tag"] == "SKIPPED" if "credit_tag" in df.columns else df.index == -1
+    _df      = df[~_skipped].copy()
+
+    # admin = internal billing rows
+    _admin = (_df[_df["billing_type"].str.lower() == "internal"]
+              .groupby(["employee","period"])["hours"].sum()
+              .reset_index().rename(columns={"hours":"admin_hrs"}))
+
+    _sum = (_df.groupby(["employee","period"], as_index=False)
+            .agg(hours_logged=("hours","sum"),
+                 credit_hrs=("credit_hrs","sum"),
+                 ff_overrun_hrs=("variance_hrs","sum"))
+            .sort_values(["employee","period"]))
+
+    _sum = _sum.merge(_admin, on=["employee","period"], how="left")
+    _sum["admin_hrs"] = _sum["admin_hrs"].fillna(0)
+
+    # ── Sheet 1: fact_utilization ─────────────────────────────────────────────
+    fu_headers = [
+        "employee", "location", "ps_region", "role", "util_exempt",
+        "period", "hours_capacity", "hours_logged", "credit_hrs",
+        "admin_hrs", "ff_overrun_hrs",
+        "util_pct_vs_logged", "util_pct_vs_capacity",
+        "util_rag",
+    ]
+    fu_rows = []
+    for _, row in _sum.iterrows():
+        emp    = row["employee"]
+        period = row["period"]
+        loc    = df[df["employee"] == emp]["region"].iloc[0] if len(df[df["employee"] == emp]) > 0 else ""
+        ps_reg = df[df["employee"] == emp]["ps_region"].iloc[0] if "ps_region" in df.columns and len(df[df["employee"] == emp]) > 0 else ""
+        info   = EMPLOYEE_ROLES.get(emp, {})
+        role        = info.get("role", "Consultant")
+        util_exempt = 1 if info.get("util_exempt") else 0
+        avail  = get_avail_hours(loc, period) if loc else None
+        u_log  = _pct(row["credit_hrs"], row["hours_logged"])
+        u_cap  = _pct(row["credit_hrs"], avail)
+        # RAG based on util vs capacity (primary metric)
+        if u_cap is None:
+            rag = "Unknown"
+        elif u_cap >= 0.70:
+            rag = "Green"
+        elif u_cap >= 0.60:
+            rag = "Amber"
+        else:
+            rag = "Red"
+
+        fu_rows.append([
+            emp, loc, ps_reg, role, util_exempt,
+            period, avail, round(row["hours_logged"], 2), round(row["credit_hrs"], 2),
+            round(row["admin_hrs"], 2), round(row["ff_overrun_hrs"], 2),
+            u_log, u_cap, rag,
+        ])
+    _flat_sheet(wb, "fact_utilization", fu_headers, fu_rows)
+
+    # ── Sheet 2: fact_transactions ────────────────────────────────────────────
+    ft_headers = [
+        "employee", "location", "ps_region", "customer_region",
+        "project_manager", "project", "project_type", "billing_type",
+        "date", "period", "hours_logged", "credit_hrs", "variance_hrs",
+        "credit_tag", "task", "non_billable", "approval",
+        "project_phase", "start_date", "days_active",
+    ]
+    _col = lambda col: col if col in df.columns else None
+    ft_rows = []
+    for _, row in df.iterrows():
+        def _g(col, default=""):
+            v = row.get(col, default)
+            if v is None or (hasattr(v, "__class__") and v.__class__.__name__ == "float" and str(v) == "nan"):
+                return default
+            return v
+
+        ft_rows.append([
+            _g("employee"), _g("region"), _g("ps_region"), _g("customer_region"),
+            _g("project_manager"), _g("project"), _g("project_type"), _g("billing_type"),
+            str(_g("date"))[:10], _g("period"),
+            round(float(_g("hours", 0) or 0), 2),
+            round(float(_g("credit_hrs", 0) or 0), 2),
+            round(float(_g("variance_hrs", 0) or 0), 2),
+            _g("credit_tag"), _g("task", _g("case_task_event", "")),
+            1 if str(_g("non_billable","")).lower() in ("true","yes","1","x") else 0,
+            _g("approval"),
+            _g("project_phase"), str(_g("start_date",""))[:10], _g("days_active",""),
+        ])
+    _flat_sheet(wb, "fact_transactions", ft_headers, ft_rows)
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
 
 if __name__ == "__main__":
     main()
