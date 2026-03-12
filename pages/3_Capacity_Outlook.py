@@ -458,6 +458,8 @@ SFDC_COL_MAP = {
     "region":             "territory",
     "product":            "product",
     "products":           "product",
+    "project type":       "product",
+    "product family":     "product",
     "ps sow hours":       "ps_hours",
     "ps hours":           "ps_hours",
     "sow hours":          "ps_hours",
@@ -501,6 +503,10 @@ NS_COL_MAP = {
     "project name":        "project_name",
     "name":                "project_name",
     "customer : project":  "project_name",
+    "customer":            "customer",
+    "customer name":       "customer",
+    "account":             "customer",
+    "account name":        "customer",
     "territory":           "territory",
     "billing country":     "billing_country",
     "status":              "status",
@@ -533,7 +539,7 @@ def load_ns_unassigned(file):
                 df = df.rename(columns={_candidate: "project_name"})
                 break
     # Fill NaN in string columns before any string operations
-    for _scol in ["project_name", "project_type", "billing_type", "territory",
+    for _scol in ["project_name", "customer", "project_type", "billing_type", "territory",
                   "billing_country", "status", "project_id"]:
         if _scol in df.columns:
             df[_scol] = df[_scol].fillna("").astype(str).str.strip()
@@ -1130,12 +1136,11 @@ def main():
             _ss_project_names = set(
                 _ss_active["project_name"].astype(str).str.strip().str.lower().unique()
             )
-            # Extract account portion — SS names follow "Account : Project" format
-            _ss_account_names = set(
-                name.split(" : ")[0].strip()
-                for name in _ss_project_names
-                if " : " in name
-            )
+        # Customer/account names from SS — prefer explicit customer col, fallback to project name
+        _ss_customer_col = "customer" if "customer" in ss_df.columns else "project_name"
+        _ss_account_names = set(
+            ss_df[_ss_customer_col].astype(str).str.strip().str.lower().unique()
+        ) - {"", "nan", "none"}
 
     # Filter NS unassigned to true unassigned only
     if ns_df is not None and not ns_df.empty and "project_id" in ns_df.columns:
@@ -1146,12 +1151,19 @@ def main():
         _true_unassigned = ns_df if ns_df is not None else pd.DataFrame()
 
     # ── SFDC cross-reference and merge ────────────────────────────────────────
-    # Build set of NS project names for matching (lowercased)
+    # Build NS lookup sets for SFDC cross-reference
     _ns_project_names = set()
-    if not _true_unassigned.empty and "project_name" in _true_unassigned.columns:
-        _ns_project_names = set(
-            _true_unassigned["project_name"].astype(str).str.strip().str.lower().unique()
-        )
+    _ns_customer_names = set()
+    if not _true_unassigned.empty:
+        if "project_name" in _true_unassigned.columns:
+            _ns_project_names = set(
+                _true_unassigned["project_name"].astype(str).str.strip().str.lower().unique()
+            )
+        # Prefer explicit customer col; fall back to project_name (current state)
+        _ns_cust_col = "customer" if "customer" in _true_unassigned.columns else "project_name"
+        _ns_customer_names = set(
+            _true_unassigned[_ns_cust_col].astype(str).str.strip().str.lower().unique()
+        ) - {"", "nan", "none"}
 
     _sfdc_rows = []
     if sfdc_df is not None and not sfdc_df.empty:
@@ -1165,20 +1177,18 @@ def main():
             opp_lower = opp_name.lower()
             acct_lower = account_name.lower()
 
-            # Check against NS project names
-            ns_exact  = any(opp_lower in ns_name for ns_name in _ns_project_names)
-            ns_fuzzy  = (not ns_exact and acct_lower and
-                         any(acct_lower in ns_name for ns_name in _ns_project_names))
-
-            # Check against SS project names (catches staffed projects not yet in NS unassigned)
-            ss_exact  = (any(opp_lower in ss_name for ss_name in _ss_project_names)
-                         if "_ss_project_names" in dir() else False)
-            ss_fuzzy  = (not ss_exact and acct_lower and
-                         acct_lower in _ss_account_names
-                         if "_ss_account_names" in dir() else False)
-
+            # Exact exclude: opp name == NS project name OR SS project name
+            ns_exact = opp_lower in _ns_project_names
+            ss_exact = opp_lower in _ss_project_names if _ss_project_names else False
             exact_match = ns_exact or ss_exact
-            fuzzy_match = not exact_match and (ns_fuzzy or ss_fuzzy)
+
+            # Fuzzy flag: account name == NS customer OR SS customer (but opp didn't match)
+            # Catches many-SFDC-opps : one-NS/SS-project scenario
+            ns_fuzzy = (not exact_match and acct_lower and
+                        acct_lower in _ns_customer_names)
+            ss_fuzzy = (not exact_match and acct_lower and
+                        acct_lower in _ss_account_names) if _ss_account_names else False
+            fuzzy_match = ns_fuzzy or ss_fuzzy
 
             if exact_match:
                 continue  # already in NS or SS — skip
@@ -1197,6 +1207,7 @@ def main():
 
             _sfdc_rows.append({
                 "project_name":  proj_name,
+                "customer":      account_name,
                 "project_type":  str(row.get("product", "")),
                 "billing_type":  "Time & Material",
                 "territory":     str(row.get("territory", "")),
@@ -1334,12 +1345,13 @@ def main():
             }
             # Explicit column order: Project first, dates in sequence, Urgency, Suggested last
             ordered_cols = [
-                "source", "project_name", "project_type", "billing_type",
+                "source", "customer", "project_name", "project_type", "billing_type",
                 "territory", "ps_region",
                 "signed_date", "start_date", "outreach_date",
                 "scoped_hours",
             ]
-            col_rename["source"] = "Source"
+            col_rename["source"]   = "Source"
+            col_rename["customer"] = "Account / Customer"
             show_cols = (
                 [col for col in ordered_cols if col in display_df.columns]
                 + (["Urgency"] if "Urgency" in display_df.columns else [])
