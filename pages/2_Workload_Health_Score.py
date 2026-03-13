@@ -780,8 +780,7 @@ def build_phase_duration(ss_df, milestone_cols):
         # For each phase with NULL actual data, project forward using benchmarks
         # anchored from the last known milestone date (or start_date if none)
         last_known = start
-        for ps in PHASE_SEQUENCE:
-            end_col = ps["end_col"]
+        for phase_label, start_src, end_col, _buf in PHASE_SEQUENCE:
             if end_col and end_col != "today":
                 ms_date = _resolve(row, end_col)
                 if ms_date is not None:
@@ -791,10 +790,8 @@ def build_phase_duration(ss_df, milestone_cols):
         if proj_cursor is not None:
             # Walk phases forward from last known, projecting dates for NULL phases
             past_last_known = False
-            for ps in PHASE_SEQUENCE:
-                phase_label = ps["phase"]
-                col_key     = f"{phase_label} (days)"
-                end_col     = ps["end_col"]
+            for phase_label, start_src, end_col, buffer in PHASE_SEQUENCE:
+                col_key = f"{phase_label} (days)"
 
                 # Check if this phase already has actual data
                 if end_col and end_col not in ("today", "_hypercare_end", "_hypercare_end_or_cort"):
@@ -804,7 +801,7 @@ def build_phase_duration(ss_df, milestone_cols):
                         continue  # actual data — no projection needed
 
                 # No actual data — project if we're past the last known point
-                if wide_row.get(col_key) is None and ps["end_col"] != "today":
+                if wide_row.get(col_key) is None and end_col != "today":
                     benchmark_days = benchmarks.get(phase_label, 14)
                     proj_end = proj_cursor + pd.Timedelta(days=benchmark_days) if proj_cursor else None
                     if proj_end is not None:
