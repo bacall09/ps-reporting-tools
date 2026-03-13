@@ -311,6 +311,202 @@ MILESTONE_COLS = [
     "Close Out Remaining Tasks", "UAT Signoff", "Transition to Support",
 ]
 
+# ── Milestone → Phase map ─────────────────────────────────────────────────────
+# A date in a milestone column = that milestone is COMPLETE.
+# Each entry defines: the milestone, the phase it ENDS, and the phase that STARTS.
+# Special rules:
+#   - "Intro. Email Sent"         → project start → end of 00. Onboarding
+#   - "Standard Config Start"     → end of 01. Req & Design, start of 02. Config
+#   - "Enablement Session"/"#1"   → end of 02. Config, start of 03. Enablement
+#   - "Session #2"                → within 04. UAT (not a phase boundary)
+#   - "UAT Signoff"               → end of 04. UAT, start of 05. Prep for Go-Live
+#   - "Prod Cutover"              → end of 05. Prep for Go-Live (gap to Hypercare tracked)
+#   - "Hypercare Start"           → START of 06. Go-Live
+#   - "Close Out Remaining Tasks" → START of 08. Ready for Support (+14d buffer)
+#   - "Transition to Support"     → START of 10. Complete
+MILESTONE_PHASE_MAP = [
+    # (milestone_col,              phase_label,                       role,       notes)
+    # role: "end" = ends the phase / "start" = starts the phase / "info" = within-phase marker
+    ("Intro. Email Sent",          "00. Onboarding",                  "end",      ""),
+    ("Standard Config Start",      "01. Requirements and Design",     "end",      ""),
+    ("Enablement Session",         "02. Configuration",               "end",      "use earliest of Enablement Session / Session #1"),
+    ("Session #1",                 "02. Configuration",               "end",      "use earliest of Enablement Session / Session #1"),
+    ("UAT Signoff",                "03. Enablement/Training",         "end",      "Session #2 is within UAT; UAT Signoff ends it"),
+    ("Prod Cutover",               "05. Prep for Go-Live",            "end",      "gap between Prod Cutover and Hypercare Start is tracked"),
+    ("Hypercare Start",            "06. Go-Live",                     "start",    "Hypercare Start begins Go-Live phase"),
+    ("Close Out Remaining Tasks",  "08. Ready for Support Transition","start",    "+14 day buffer before phase officially starts"),
+    ("Transition to Support",      "10. Complete/Pending Final Billing","start",  ""),
+]
+
+# Ordered phase sequence for duration calculations
+# Each tuple: (phase_label, phase_start_source, phase_end_source, buffer_days)
+# start/end source: milestone col name, "start_date", "today", or "prev_end"
+PHASE_SEQUENCE = [
+    # phase                           start_source              end_source                   buffer
+    # buffer: positive = days added to start_source to get phase start
+    #         negative = not used; "end_buffer" handled separately for fixed-duration phases
+    ("00. Onboarding",                "start_date",             "Intro. Email Sent",          0),
+    ("01. Requirements and Design",   "Intro. Email Sent",      "Standard Config Start",      0),
+    ("02. Configuration",             "Standard Config Start",  "Enablement Session",         0),
+    ("03. Enablement/Training",       "Enablement Session",     "Session #1",                 0),
+    ("04. UAT",                       "Session #1",             "UAT Signoff",                0),
+    ("05. Prep for Go-Live",          "UAT Signoff",            "Prod Cutover",               0),
+    # 06. Go-Live = fixed 14-day Hypercare window: Hypercare Start → Hypercare Start + 14d
+    ("06. Go-Live (Hypercare)",       "Hypercare Start",        "_hypercare_end",             0),
+    # 08. Ready for Support = Hypercare Start + 14d AND Close Out Remaining Tasks → Transition to Support
+    ("08. Ready for Support",         "_hypercare_end_or_cort", "Transition to Support",      0),
+    ("10. Complete",                  "Transition to Support",  "today",                      0),
+]
+
+# ── Phase duration benchmarks by product type ────────────────────────────────
+# Derived from PHASE_END_WEEKS (page 3 / capacity outlook).
+# Values are cumulative end-week per phase; converted to per-phase durations here.
+# Used for projecting go-live / close dates when milestone data is NULL.
+# 06. Go-Live (Hypercare) is always 2 weeks (fixed).
+# 00. Onboarding assumed 1 week (no benchmark data available).
+PHASE_BENCHMARKS_DAYS = {
+    # Derived directly from project plan table (source of truth).
+    # All values in days. 06. Go-Live (Hypercare) = 14d fixed across all product types.
+    # 05. Prep for Go-Live = 2–3 days (cutover); shown as 3 days for planning.
+    # 08. Ready for Support = 14 days (close out tasks, 2 weeks per plan).
+    # 10. Complete = 1 day (Transition to Support is a 1-day milestone).
+    "approvals": {
+        "00. Onboarding":                 7,   # week 1: intro email + access + requirements
+        "01. Requirements and Design":    7,   # week 1 (concurrent with onboarding)
+        "02. Configuration":              7,   # week 2
+        "03. Enablement/Training":        7,   # week 3
+        "04. UAT":                        14,  # week 4–6 (sessions #1 + #2 + UAT signoff)
+        "05. Prep for Go-Live":           3,   # 2 days cutover
+        "06. Go-Live (Hypercare)":        14,  # fixed 2 weeks
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer  # 2 weeks close out tasks
+        "10. Complete":                   2,   # 1 day + 1 day buffer   # transition to support = 1 day
+    },
+    "capture": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              7,
+        "03. Enablement/Training":        7,
+        "04. UAT":                        14,  # week 4–6 (15 DQ cases + sessions + signoff)
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    "capture & e-invoicing": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              21,  # weeks 2–4 (ZoneCapture + e-Inv sandbox + registration)
+        "03. Enablement/Training":        7,   # week 3 (config review sessions both products)
+        "04. UAT":                        35,  # weeks 4–9 (ZoneCapture UAT + Basware 30d registration)
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    "payments": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              7,
+        "03. Enablement/Training":        7,   # week 3 (config session + payment profile + automation)
+        "04. UAT":                        35,  # week 4–8 (data migration + 2 working sessions)
+        "05. Prep for Go-Live":           3,   # 3 days cutover
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    "reconcile": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              7,
+        "03. Enablement/Training":        7,   # week 3 (config + bank connectivity + accounts)
+        "04. UAT":                        28,  # week 4–7 (2 working sessions + signoff)
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    "reconcile psp": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              7,
+        "03. Enablement/Training":        7,   # week 3 (config + PSP accounts)
+        "04. UAT":                        28,  # week 4–7
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    "e-invoicing": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              21,  # weeks 2–4 (sandbox + production + registration ticket)
+        "03. Enablement/Training":        7,   # week 3 config review
+        "04. UAT":                        35,  # week 5–9 (Basware 30d + customer prod testing)
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    "sftp connector": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              7,
+        "03. Enablement/Training":        7,   # week 3 (optional data gathering + config session)
+        "04. UAT":                        28,  # week 4–7
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    "cc statement import": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              7,
+        "03. Enablement/Training":        7,   # week 3 (config review + CC account setup)
+        "04. UAT":                        28,  # week 4–7
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+    # Default fallback for unknown product types
+    "default": {
+        "00. Onboarding":                 7,
+        "01. Requirements and Design":    7,
+        "02. Configuration":              7,
+        "03. Enablement/Training":        7,
+        "04. UAT":                        21,
+        "05. Prep for Go-Live":           3,
+        "06. Go-Live (Hypercare)":        14,
+        "08. Ready for Support":          2,   # 1 day + 1 day buffer
+        "10. Complete":                   2,   # 1 day + 1 day buffer
+    },
+}
+
+def _get_benchmarks(project_type):
+    """Fuzzy-match project_type to PHASE_BENCHMARKS_DAYS. Returns default if no match.
+    Strips common product prefixes before matching (ZoneApp:, ZoneBill:, etc.)
+    """
+    pt = str(project_type or "").strip().lower()
+    for prefix in ("zoneapp: ", "zonebill: ", "zonepay: ", "za - ", "zone"):
+        if pt.startswith(prefix):
+            pt = pt[len(prefix):]
+            break
+    # Exact match first
+    if pt in PHASE_BENCHMARKS_DAYS:
+        return PHASE_BENCHMARKS_DAYS[pt]
+    # Fuzzy match — longest key that appears in pt, or pt appears in key
+    best = None
+    best_len = 0
+    for key in PHASE_BENCHMARKS_DAYS:
+        if key == "default":
+            continue
+        if (key in pt or pt in key) and len(key) > best_len:
+            best = key
+            best_len = len(key)
+    return PHASE_BENCHMARKS_DAYS[best] if best else PHASE_BENCHMARKS_DAYS["default"]
+
+
 # NS column map (subset needed for PM join)
 NS_COL_MAP = {
     "employee":        "employee",
@@ -440,6 +636,197 @@ def load_ns(file):
 
     ns_min_date = df["date"].min() if "date" in df.columns else None
     return df, ns_min_date
+
+
+
+def build_phase_duration(ss_df, milestone_cols):
+    """
+    Compute phase durations per project using PHASE_SEQUENCE and milestone completion dates.
+    A date in a milestone column = that milestone is complete.
+
+    Special sources:
+      "_earliest_enablement" = min(Enablement Session, Session #1) — whichever came first
+      "today"                = pd.Timestamp.today() for in-progress phases
+      buffer_days            = added to phase start date (e.g. +14d for Ready for Support)
+
+    Returns:
+      wide_df — one row per project, one column per phase in days
+      long_df — one row per project per phase (Tableau-ready)
+    """
+    today = pd.Timestamp.today().normalize()
+
+    df = ss_df.copy()
+
+    # Parse all date columns
+    date_cols = list(milestone_cols) + ["start_date", "go_live_date"]
+    for col in date_cols:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+
+    def _resolve(row, source, buffer_days=0):
+        """Resolve a phase start/end from source string to a Timestamp or None.
+        Special sources:
+          _hypercare_end          = Hypercare Start + 14 days (fixed Go-Live window end)
+          _hypercare_end_or_cort  = max(Hypercare Start + 14d, Close Out Remaining Tasks)
+                                    i.e. Ready for Support starts after BOTH conditions met
+        """
+        if source == "start_date":
+            val = row.get("start_date")
+        elif source == "today":
+            val = today
+        elif source == "_hypercare_end":
+            hc = row.get("Hypercare Start")
+            val = (hc + pd.Timedelta(days=14)) if pd.notna(hc) else None
+        elif source == "_hypercare_end_or_cort":
+            hc   = row.get("Hypercare Start")
+            cort = row.get("Close Out Remaining Tasks")
+            hc_end = (hc + pd.Timedelta(days=14)) if pd.notna(hc) else None
+            # Ready for Support starts when BOTH the 14d hypercare window AND
+            # Close Out Remaining Tasks are complete — whichever is later
+            candidates = [v for v in [hc_end, cort] if v is not None and pd.notna(v)]
+            val = max(candidates) if candidates else None
+        else:
+            val = row.get(source)
+        if val is not None and pd.notna(val):
+            return val + pd.Timedelta(days=buffer_days)
+        return None
+
+    long_rows = []
+    wide_rows = []
+
+    for _, row in df.iterrows():
+        start      = row.get("start_date")
+        go_live    = row.get("go_live_date")
+        ptype      = row.get("project_type", "")
+        ms_present = any(pd.notna(row.get(m)) for m in milestone_cols if m in df.columns)
+
+        # Data source label for Tableau filtering
+        if ms_present:
+            data_source = "Milestone"
+        elif milestone_cols:
+            data_source = "Projected (new)"        # columns exist but NULL → pending
+        else:
+            data_source = "Projected (historical)" # milestone cols absent from DRS export
+
+        # Benchmark phase durations for this product type
+        benchmarks = _get_benchmarks(ptype)
+
+        # Project weeks_open from start_date to today
+        weeks_open = round((today - start).days / 7, 1) if pd.notna(start) else None
+
+        wide_row = {
+            "project_id":               row.get("project_id", ""),
+            "project_name":             row.get("project_name", ""),
+            "project_manager":          row.get("project_manager", ""),
+            "project_type":             row.get("project_type", ""),
+            "territory":                row.get("territory", ""),
+            "status":                   row.get("status", ""),
+            "current_phase":            row.get("phase", ""),
+            "rag":                      row.get("rag", ""),
+            "start_date":               start.strftime("%Y-%m-%d") if pd.notna(start) else "",
+            "go_live_date":             go_live.strftime("%Y-%m-%d") if pd.notna(go_live) else "",
+            "milestone_data_available": 1 if ms_present else 0,
+        }
+
+        for phase_label, start_src, end_src, buffer in PHASE_SEQUENCE:
+            col_key     = f"{phase_label} (days)"
+            phase_start = _resolve(row, start_src, 0)
+            phase_end   = _resolve(row, end_src, buffer if end_src not in ("today",) else 0)
+
+            # Apply buffer to start (not end) for phases like Ready for Support
+            if buffer > 0 and phase_start is not None:
+                phase_start = phase_start + pd.Timedelta(days=buffer)
+                # Re-resolve without buffer since we applied it to start
+                phase_start_raw = _resolve(row, start_src, 0)
+                phase_start = phase_start_raw + pd.Timedelta(days=buffer) if phase_start_raw else None
+
+            in_progress = False
+            if phase_start is None:
+                wide_row[col_key] = None
+                continue
+
+            if end_src == "today":
+                phase_end   = today
+                in_progress = True
+            elif phase_end is None:
+                # End milestone not yet reached — phase is in progress if start is set
+                phase_end   = today
+                in_progress = True
+
+            days = max(0, (phase_end - phase_start).days)
+            wide_row[col_key] = days
+
+            long_rows.append({
+                "project_id":      row.get("project_id", ""),
+                "project_name":    row.get("project_name", ""),
+                "project_manager": row.get("project_manager", ""),
+                "project_type":    row.get("project_type", ""),
+                "territory":       row.get("territory", ""),
+                "status":          row.get("status", ""),
+                "current_phase":   row.get("phase", ""),
+                "rag":             row.get("rag", ""),
+                "phase":           phase_label,
+                "phase_start":     phase_start.strftime("%Y-%m-%d") if phase_start else "",
+                "phase_end":       phase_end.strftime("%Y-%m-%d") if not in_progress else "",
+                "completed":       0 if in_progress else 1,
+                "in_progress":     1 if in_progress else 0,
+                "days_in_phase":   days,
+                "milestone_data":  1 if ms_present else 0,
+                "data_source":     data_source,
+                "weeks_open":      weeks_open,
+            })
+
+        # ── Projections ───────────────────────────────────────────────────────
+        # For each phase with NULL actual data, project forward using benchmarks
+        # anchored from the last known milestone date (or start_date if none)
+        last_known = start
+        for ps in phase_sequence:
+            end_col = ps["end_col"]
+            if end_col and end_col != "today":
+                ms_date = _resolve(row, end_col)
+                if ms_date is not None:
+                    last_known = ms_date
+
+        proj_cursor = last_known if pd.notna(last_known) else None
+        if proj_cursor is not None:
+            # Walk phases forward from last known, projecting dates for NULL phases
+            past_last_known = False
+            for ps in phase_sequence:
+                phase_label = ps["phase"]
+                col_key     = f"{phase_label} (days)"
+                end_col     = ps["end_col"]
+
+                # Check if this phase already has actual data
+                if end_col and end_col not in ("today", "_hypercare_end", "_hypercare_end_or_cort"):
+                    actual_end = row.get(end_col)
+                    if pd.notna(actual_end):
+                        proj_cursor = actual_end
+                        continue  # actual data — no projection needed
+
+                # No actual data — project if we're past the last known point
+                if wide_row.get(col_key) is None and ps["end_col"] != "today":
+                    benchmark_days = benchmarks.get(phase_label, 14)
+                    proj_end = proj_cursor + pd.Timedelta(days=benchmark_days) if proj_cursor else None
+                    if proj_end is not None:
+                        wide_row[f"{phase_label} (projected days)"] = benchmark_days
+                        wide_row[f"{phase_label} (proj end)"]       = proj_end.strftime("%Y-%m-%d")
+                        proj_cursor = proj_end
+
+        # Projected go-live = projected end of 05. Prep for Go-Live phase
+        _proj_golive = wide_row.get("05. Prep for Go-Live (proj end)", "")
+        _proj_close  = wide_row.get("10. Complete (proj end)", "")
+
+        wide_row["weeks_open"]         = weeks_open
+        wide_row["data_source"]        = data_source
+        wide_row["projected_go_live"]  = _proj_golive if not wide_row.get("05. Prep for Go-Live (days)") else ""
+        wide_row["projected_close"]    = _proj_close  if not wide_row.get("10. Complete (days)") else ""
+        wide_row["milestone_data_available"] = 1 if ms_present else 0
+
+        wide_rows.append(wide_row)
+
+    wide_df = pd.DataFrame(wide_rows) if wide_rows else pd.DataFrame()
+    long_df  = pd.DataFrame(long_rows)  if long_rows  else pd.DataFrame()
+    return wide_df, long_df
 
 
 def build_stale_projects(ss_df, ns_df):
@@ -1259,6 +1646,7 @@ def main():
         return
 
     # ── Process ───────────────────────────────────────────────────────────────
+    milestone_cols = []  # default — populated by load_ss if milestone columns present
     try:
         ss_df, milestone_cols = load_ss(ss_file)
         ns_df, ns_min_date = load_ns(ns_file) if ns_file else (None, None)
@@ -1307,6 +1695,94 @@ def main():
     if missing_pm > 0:
         st.warning(f"{missing_pm} active FF project(s) have no Project Manager assigned in SS DRS.")
 
+    with tab4:
+        st.markdown("#### Phase Duration — Time Spent per Delivery Phase")
+        if not milestone_cols:
+            st.info("No milestone columns detected in your SS DRS export. Milestone columns are added to newer projects — upload a DRS export that includes milestone date columns to enable this view.")
+        else:
+            wide_df, long_df = build_phase_duration(ss_df, milestone_cols)
+
+            if wide_df.empty:
+                st.info("No phase duration data could be calculated. Ensure your SS DRS export includes project start dates and milestone columns.")
+            else:
+                has_data = wide_df["milestone_data_available"].sum() if "milestone_data_available" in wide_df.columns else 0
+                total    = len(wide_df)
+                st.caption(
+                    f"{has_data:,} of {total:,} project(s) have milestone data · "
+                    f"Projects with NULL milestones show projected durations based on product-type benchmarks · "
+                    f"data_source: Milestone | Projected (new) | Projected (historical)"
+                )
+
+                # ── Filters ───────────────────────────────────────────────
+                _pf1, _pf2, _pf3 = st.columns([2, 2, 2])
+                with _pf1:
+                    _pm_opts = sorted(wide_df["project_manager"].dropna().unique()) if "project_manager" in wide_df.columns else []
+                    _pm_filt = st.multiselect("Consultant / PM", _pm_opts, default=_pm_opts, key="pd_pm")
+                with _pf2:
+                    _type_opts = sorted(wide_df["project_type"].dropna().unique()) if "project_type" in wide_df.columns else []
+                    _type_filt = st.multiselect("Project Type", _type_opts, default=_type_opts, key="pd_type")
+                with _pf3:
+                    _status_opts = sorted(wide_df["status"].dropna().unique()) if "status" in wide_df.columns else []
+                    _status_filt = st.multiselect("Status", _status_opts, default=_status_opts, key="pd_status")
+
+                # Apply filters to wide_df
+                _wdf = wide_df.copy()
+                if _pm_filt     and "project_manager" in _wdf.columns: _wdf = _wdf[_wdf["project_manager"].isin(_pm_filt)]
+                if _type_filt   and "project_type"    in _wdf.columns: _wdf = _wdf[_wdf["project_type"].isin(_type_filt)]
+                if _status_filt and "status"          in _wdf.columns: _wdf = _wdf[_wdf["status"].isin(_status_filt)]
+
+                st.caption(f"{len(_wdf):,} project(s) shown")
+
+                # ── Wide view: heatmap-style ───────────────────────────────
+                st.markdown("**By Project — Days in Each Phase**")
+                phase_day_cols = [c for c in _wdf.columns if c.endswith("(days)")]
+                proj_cols      = [c for c in _wdf.columns if "(proj end)" in c or c in ("projected_go_live", "projected_close")]
+                display_cols   = ["project_name", "project_manager", "project_type",
+                                  "current_phase", "status", "start_date",
+                                  "weeks_open", "data_source",
+                                  "projected_go_live", "projected_close"] + phase_day_cols
+                display_cols   = [c for c in display_cols if c in _wdf.columns]
+
+                def _color_days(val):
+                    try:
+                        v = float(val)
+                        if v > 60:  return "background-color:#FFC7CE;color:#9C0006"
+                        if v > 30:  return "background-color:#FFEB9C;color:#9C6500"
+                        if v > 0:   return "background-color:#C6EFCE;color:#276221"
+                    except: pass
+                    return ""
+
+                styled_wide = _wdf[display_cols].rename(columns={
+                    "project_name":    "Project",
+                    "project_manager": "Consultant / PM",
+                    "project_type":    "Type",
+                    "current_phase":   "Current Phase",
+                    "status":          "Status",
+                    "start_date":      "Start Date",
+                })
+                styled_obj = styled_wide.style.applymap(_color_days, subset=[c for c in phase_day_cols if c in styled_wide.columns])
+                st.dataframe(styled_obj, hide_index=True, use_container_width=True)
+
+                # ── Long view: for Tableau export ─────────────────────────
+                with st.expander("Long format (Tableau-ready) — one row per project per phase", expanded=False):
+                    if long_df.empty:
+                        st.info("No long-format data available.")
+                    else:
+                        _ldf = long_df.copy()
+                        if _pm_filt     and "project_manager" in _ldf.columns: _ldf = _ldf[_ldf["project_manager"].isin(_pm_filt)]
+                        if _type_filt   and "project_type"    in _ldf.columns: _ldf = _ldf[_ldf["project_type"].isin(_type_filt)]
+                        if _status_filt and "status"          in _ldf.columns: _ldf = _ldf[_ldf["status"].isin(_status_filt)]
+                        st.dataframe(_ldf, hide_index=True, use_container_width=True)
+
+                # ── Average days per phase (summary) ─────────────────────
+                if phase_day_cols:
+                    st.markdown("**Average Days per Phase — All Filtered Projects**")
+                    avg_data = {col.replace(" (days)", ""): [round(_wdf[col].dropna().mean(), 1)] for col in phase_day_cols if _wdf[col].notna().any()}
+                    if avg_data:
+                        avg_df = pd.DataFrame(avg_data)
+                        st.dataframe(avg_df.style.applymap(_color_days), hide_index=True, use_container_width=True)
+
+
     st.markdown("---")
 
     # ── Metric definitions ────────────────────────────────────────────────────
@@ -1332,7 +1808,7 @@ A project is flagged if no time has been booked within the NS report window:
         """)
 
     # ── Preview tabs ──────────────────────────────────────────────────────────
-    tab1, tab2, tab3 = st.tabs(["By Consultant", "At-Risk", "Stale Projects"])
+    tab1, tab2, tab3, tab4 = st.tabs(["By Consultant", "At-Risk", "Stale Projects", "Phase Duration"])
 
     with tab1:
         display_con = consultant_df.rename(columns={
