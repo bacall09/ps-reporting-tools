@@ -1695,6 +1695,107 @@ def main():
     if missing_pm > 0:
         st.warning(f"{missing_pm} active FF project(s) have no Project Manager assigned in SS DRS.")
 
+    st.markdown("---")
+
+    # ── Metric definitions ────────────────────────────────────────────────────
+    with st.expander("How projects are counted & what's excluded", expanded=False):
+        st.markdown("""
+**Total Projects** — All FF (Fixed Fee) projects assigned to a consultant in the SS DRS that are not in a complete phase
+(`10. Complete/Pending Final Billing` or `12. PS Review`). T&M projects and unassigned projects are excluded.
+
+**Active Projects** — Projects not in On Hold (`On-Hold`, `On Hold`) status in SS DRS.
+
+**Stale Projects** — Active FF projects cross-referenced against NS time entries.
+A project is flagged if no time has been booked within the NS report window:
+- 🟡 **14d+** — No time booked in 14–29 days
+- 🟠 **30d+** — No time booked in 30–59 days
+- 🔴 **60d+** — No time booked in 60+ days
+- ⚫ **No Entry** — No time booked in the NS report period
+
+**Excluded from all counts:**
+- T&M (Time & Material) projects — demand tracked separately via NS
+- Complete / Pending Final Billing projects (phase 10)
+- PS Review projects (phase 12)
+- Projects with no consultant assigned
+        """)
+
+    # ── Preview tabs ──────────────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4 = st.tabs(["By Consultant", "At-Risk", "Stale Projects", "Phase Duration"])
+    with tab1:
+        display_con = consultant_df.rename(columns={
+            "project_manager":      "Consultant",
+            "ps_region":            "PS Region",
+            "active_project_count": "Active Projects",
+            "total_project_count":  "Total Projects",
+            "total_score":          "Weighted Score",
+            "workload_level":       "Workload Level",
+            "stale_count":          "Stale Projects",
+        })
+        _show_cols = ["Consultant", "PS Region", "Total Projects", "Active Projects",
+                      "Weighted Score", "Workload Level"]
+        if not stale_df.empty:
+            _show_cols.append("Stale Projects")
+        st.dataframe(display_con[_show_cols], hide_index=True, use_container_width=True)
+
+    with tab2:
+        at_risk = scored_df[
+            (scored_df["active"]) & (
+                (scored_df.get("risk_level",      pd.Series(dtype=str)).str.lower().str.contains("high",   na=False)) |
+                (scored_df.get("schedule_health", pd.Series(dtype=str)).str.lower().str.contains("behind", na=False)) |
+                (scored_df.get("rag",             pd.Series(dtype=str)).str.lower().str.contains("red",    na=False))
+            )
+        ]
+        if len(at_risk) == 0:
+            st.success("No at-risk projects flagged.")
+        else:
+            risk_cols = ["project_name", "project_manager", "status", "start_date",
+                         "phase", "weighted_score", "risk_level", "schedule_health", "rag"]
+            avail_r   = [_rc for _rc in risk_cols if _rc in at_risk.columns]
+            _at_risk_display = at_risk[avail_r].copy()
+            # Format date columns as YYYY-MM-DD
+            for _dc in ["start_date", "go_live_date"]:
+                if _dc in _at_risk_display.columns:
+                    _at_risk_display[_dc] = pd.to_datetime(_at_risk_display[_dc], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
+            _at_risk_display = _at_risk_display.rename(columns={
+                "project_name":    "Project",
+                "project_manager": "Consultant",
+                "status":          "Status",
+                "start_date":      "Start Date",
+                "phase":           "Phase",
+                "weighted_score":  "WHS Score",
+                "risk_level":      "Risk Level",
+                "schedule_health": "Schedule Health",
+                "rag":             "Overall RAG",
+            })
+            st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+            st.dataframe(_at_risk_display.sort_values("WHS Score", ascending=False),
+                         hide_index=True, use_container_width=True)
+
+    # ── Download ──────────────────────────────────────────────────────────────
+    with tab3:
+        if stale_df.empty:
+            if ns_df is None:
+                st.info("Upload your NS time entries report to enable stale project detection.")
+            else:
+                st.success("No stale projects detected — all active projects have recent time entries.")
+        else:
+            st.markdown("#### Stale Projects — No Recent Time Booked")
+            st.caption(
+                "🟡 14d+ = no time in 14–29 days · "
+                "🟠 30d+ = no time in 30–59 days · "
+                "🔴 60d+ = no time in 60+ days · "
+                "⚫ No Entry = no time booked in the NS report period"
+            )
+            # Summary counts — ordered lightest to most severe, then no entry
+            _counts = stale_df["Staleness"].value_counts()
+            _c1, _c2, _c3, _c4 = st.columns(4)
+            with _c1: st.markdown(metric_card("14d+ No Time",  str(_counts.get("🟡 14d+",     0)), "14–29 days",        "#f39c12"), unsafe_allow_html=True)
+            with _c2: st.markdown(metric_card("30d+ No Time",  str(_counts.get("🟠 30d+",     0)), "30–59 days",        "#e67e22"), unsafe_allow_html=True)
+            with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("🔴 60d+",     0)), "60+ days",          "#e74c3c"), unsafe_allow_html=True)
+            with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("⚫ No Entry", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
+            st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+            st.dataframe(stale_df, hide_index=True, use_container_width=True)
+
     with tab4:
         st.markdown("#### Phase Duration — Time Spent per Delivery Phase")
         if not milestone_cols:
@@ -1783,108 +1884,6 @@ def main():
                         st.dataframe(avg_df.style.applymap(_color_days), hide_index=True, use_container_width=True)
 
 
-    st.markdown("---")
-
-    # ── Metric definitions ────────────────────────────────────────────────────
-    with st.expander("How projects are counted & what's excluded", expanded=False):
-        st.markdown("""
-**Total Projects** — All FF (Fixed Fee) projects assigned to a consultant in the SS DRS that are not in a complete phase
-(`10. Complete/Pending Final Billing` or `12. PS Review`). T&M projects and unassigned projects are excluded.
-
-**Active Projects** — Projects not in On Hold (`On-Hold`, `On Hold`) status in SS DRS.
-
-**Stale Projects** — Active FF projects cross-referenced against NS time entries.
-A project is flagged if no time has been booked within the NS report window:
-- 🟡 **14d+** — No time booked in 14–29 days
-- 🟠 **30d+** — No time booked in 30–59 days
-- 🔴 **60d+** — No time booked in 60+ days
-- ⚫ **No Entry** — No time booked in the NS report period
-
-**Excluded from all counts:**
-- T&M (Time & Material) projects — demand tracked separately via NS
-- Complete / Pending Final Billing projects (phase 10)
-- PS Review projects (phase 12)
-- Projects with no consultant assigned
-        """)
-
-    # ── Preview tabs ──────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs(["By Consultant", "At-Risk", "Stale Projects", "Phase Duration"])
-
-    with tab1:
-        display_con = consultant_df.rename(columns={
-            "project_manager":      "Consultant",
-            "ps_region":            "PS Region",
-            "active_project_count": "Active Projects",
-            "total_project_count":  "Total Projects",
-            "total_score":          "Weighted Score",
-            "workload_level":       "Workload Level",
-            "stale_count":          "Stale Projects",
-        })
-        _show_cols = ["Consultant", "PS Region", "Total Projects", "Active Projects",
-                      "Weighted Score", "Workload Level"]
-        if not stale_df.empty:
-            _show_cols.append("Stale Projects")
-        st.dataframe(display_con[_show_cols], hide_index=True, use_container_width=True)
-
-    with tab3:
-        if stale_df.empty:
-            if ns_df is None:
-                st.info("Upload your NS time entries report to enable stale project detection.")
-            else:
-                st.success("No stale projects detected — all active projects have recent time entries.")
-        else:
-            st.markdown("#### Stale Projects — No Recent Time Booked")
-            st.caption(
-                "🟡 14d+ = no time in 14–29 days · "
-                "🟠 30d+ = no time in 30–59 days · "
-                "🔴 60d+ = no time in 60+ days · "
-                "⚫ No Entry = no time booked in the NS report period"
-            )
-            # Summary counts — ordered lightest to most severe, then no entry
-            _counts = stale_df["Staleness"].value_counts()
-            _c1, _c2, _c3, _c4 = st.columns(4)
-            with _c1: st.markdown(metric_card("14d+ No Time",  str(_counts.get("🟡 14d+",     0)), "14–29 days",        "#f39c12"), unsafe_allow_html=True)
-            with _c2: st.markdown(metric_card("30d+ No Time",  str(_counts.get("🟠 30d+",     0)), "30–59 days",        "#e67e22"), unsafe_allow_html=True)
-            with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("🔴 60d+",     0)), "60+ days",          "#e74c3c"), unsafe_allow_html=True)
-            with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("⚫ No Entry", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
-            st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
-            st.dataframe(stale_df, hide_index=True, use_container_width=True)
-
-    with tab2:
-        at_risk = scored_df[
-            (scored_df["active"]) & (
-                (scored_df.get("risk_level",      pd.Series(dtype=str)).str.lower().str.contains("high",   na=False)) |
-                (scored_df.get("schedule_health", pd.Series(dtype=str)).str.lower().str.contains("behind", na=False)) |
-                (scored_df.get("rag",             pd.Series(dtype=str)).str.lower().str.contains("red",    na=False))
-            )
-        ]
-        if len(at_risk) == 0:
-            st.success("No at-risk projects flagged.")
-        else:
-            risk_cols = ["project_name", "project_manager", "status", "start_date",
-                         "phase", "weighted_score", "risk_level", "schedule_health", "rag"]
-            avail_r   = [_rc for _rc in risk_cols if _rc in at_risk.columns]
-            _at_risk_display = at_risk[avail_r].copy()
-            # Format date columns as YYYY-MM-DD
-            for _dc in ["start_date", "go_live_date"]:
-                if _dc in _at_risk_display.columns:
-                    _at_risk_display[_dc] = pd.to_datetime(_at_risk_display[_dc], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
-            _at_risk_display = _at_risk_display.rename(columns={
-                "project_name":    "Project",
-                "project_manager": "Consultant",
-                "status":          "Status",
-                "start_date":      "Start Date",
-                "phase":           "Phase",
-                "weighted_score":  "WHS Score",
-                "risk_level":      "Risk Level",
-                "schedule_health": "Schedule Health",
-                "rag":             "Overall RAG",
-            })
-            st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
-            st.dataframe(_at_risk_display.sort_values("WHS Score", ascending=False),
-                         hide_index=True, use_container_width=True)
-
-    # ── Download ──────────────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Step 3 — Generate Report")
     excel_buf = build_excel(scored_df, consultant_df, missing_pm, as_of, ns_min_date)
