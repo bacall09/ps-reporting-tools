@@ -1814,13 +1814,13 @@ A project is flagged if no time has been booked within the NS report window:
                 # ── Filters ───────────────────────────────────────────────
                 _pf1, _pf2, _pf3 = st.columns([2, 2, 2])
                 with _pf1:
-                    _pm_opts = sorted(wide_df["project_manager"].dropna().unique()) if "project_manager" in wide_df.columns else []
+                    _pm_opts = sorted(wide_df["project_manager"].dropna().astype(str).unique()) if "project_manager" in wide_df.columns else []
                     _pm_filt = st.multiselect("Consultant / PM", _pm_opts, default=_pm_opts, key="pd_pm")
                 with _pf2:
-                    _type_opts = sorted(wide_df["project_type"].dropna().unique()) if "project_type" in wide_df.columns else []
+                    _type_opts = sorted(wide_df["project_type"].dropna().astype(str).unique()) if "project_type" in wide_df.columns else []
                     _type_filt = st.multiselect("Project Type", _type_opts, default=_type_opts, key="pd_type")
                 with _pf3:
-                    _status_opts = sorted(wide_df["status"].dropna().unique()) if "status" in wide_df.columns else []
+                    _status_opts = sorted(wide_df["status"].dropna().astype(str).unique()) if "status" in wide_df.columns else []
                     _status_filt = st.multiselect("Status", _status_opts, default=_status_opts, key="pd_status")
 
                 # Apply filters to wide_df
