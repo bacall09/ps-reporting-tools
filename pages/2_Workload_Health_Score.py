@@ -712,7 +712,7 @@ def build_phase_duration(ss_df, milestone_cols):
         benchmarks = _get_benchmarks(ptype)
 
         # Project weeks_open from start_date to today
-        weeks_open = round((today - start).days / 7, 1) if pd.notna(start) else None
+        days_open  = int((today - start).days) if pd.notna(start) else None
 
         wide_row = {
             "project_id":               row.get("project_id", ""),
@@ -773,7 +773,7 @@ def build_phase_duration(ss_df, milestone_cols):
                 "days_in_phase":   days,
                 "milestone_data":  1 if ms_present else 0,
                 "data_source":     data_source,
-                "weeks_open":      weeks_open,
+                "days_open":       days_open,
             })
 
         # ── Projections ───────────────────────────────────────────────────────
@@ -813,7 +813,7 @@ def build_phase_duration(ss_df, milestone_cols):
         _proj_golive = wide_row.get("05. Prep for Go-Live (proj end)", "")
         _proj_close  = wide_row.get("10. Complete (proj end)", "")
 
-        wide_row["weeks_open"]         = weeks_open
+        wide_row["days_open"]          = days_open
         wide_row["data_source"]        = data_source
         wide_row["projected_go_live"]  = _proj_golive if not wide_row.get("05. Prep for Go-Live (days)") else ""
         wide_row["projected_close"]    = _proj_close  if not wide_row.get("10. Complete (days)") else ""
@@ -1803,6 +1803,12 @@ A project is flagged if no time has been booked within the NS report window:
             if wide_df.empty:
                 st.info("No phase duration data could be calculated. Ensure your SS DRS export includes project start dates and milestone columns.")
             else:
+                # Coerce all phase (days) columns to nullable int for clean display
+                for _dc in [col for col in wide_df.columns if col.endswith("(days)")]:
+                    wide_df[_dc] = pd.to_numeric(wide_df[_dc], errors="coerce").astype("Int64")
+                if "days_open" in wide_df.columns:
+                    wide_df["days_open"] = pd.to_numeric(wide_df["days_open"], errors="coerce").astype("Int64")
+
                 has_data = wide_df["milestone_data_available"].sum() if "milestone_data_available" in wide_df.columns else 0
                 total    = len(wide_df)
                 st.caption(
@@ -1837,7 +1843,7 @@ A project is flagged if no time has been booked within the NS report window:
                 proj_cols      = [c for c in _wdf.columns if "(proj end)" in c or c in ("projected_go_live", "projected_close")]
                 display_cols   = ["project_name", "project_manager", "project_type",
                                   "current_phase", "status", "start_date",
-                                  "weeks_open", "data_source",
+                                  "days_open", "data_source",
                                   "projected_go_live", "projected_close"] + phase_day_cols
                 display_cols   = [c for c in display_cols if c in _wdf.columns]
 
@@ -1850,15 +1856,25 @@ A project is flagged if no time has been booked within the NS report window:
                     except: pass
                     return ""
 
-                styled_wide = _wdf[display_cols].rename(columns={
-                    "project_name":    "Project",
-                    "project_manager": "Consultant / PM",
-                    "project_type":    "Type",
-                    "current_phase":   "Current Phase",
-                    "status":          "Status",
-                    "start_date":      "Start Date",
-                })
-                styled_obj = styled_wide.style.applymap(_color_days, subset=[c for c in phase_day_cols if c in styled_wide.columns])
+                # Build clean column rename map — phase "(days)" cols stay as-is for now
+                _col_rename = {
+                    "project_name":       "Project",
+                    "project_manager":    "Consultant / PM",
+                    "project_type":       "Type",
+                    "current_phase":      "Current Phase",
+                    "status":             "Status",
+                    "start_date":         "Start Date",
+                    "days_open":          "Days Open",
+                    "data_source":        "Data Source",
+                    "projected_go_live":  "Proj. Go-Live",
+                    "projected_close":    "Proj. Close",
+                }
+                styled_wide = _wdf[display_cols].rename(columns=_col_rename)
+                _style_cols = [_col_rename.get(c, c) for c in phase_day_cols if _col_rename.get(c, c) in styled_wide.columns] +                               ([_col_rename.get(c,c) for c in phase_day_cols if c in styled_wide.columns])
+                _style_cols = list(dict.fromkeys(  # deduplicate
+                    c for c in phase_day_cols if c in styled_wide.columns
+                ))
+                styled_obj = styled_wide.style.applymap(_color_days, subset=_style_cols) if _style_cols else styled_wide.style
                 st.dataframe(styled_obj, hide_index=True, use_container_width=True)
 
                 # ── Long view: for Tableau export ─────────────────────────
@@ -1875,7 +1891,7 @@ A project is flagged if no time has been booked within the NS report window:
                 # ── Average days per phase (summary) ─────────────────────
                 if phase_day_cols:
                     st.markdown("**Average Days per Phase — All Filtered Projects**")
-                    avg_data = {col.replace(" (days)", ""): [round(_wdf[col].dropna().mean(), 1)] for col in phase_day_cols if _wdf[col].notna().any()}
+                    avg_data = {col.replace(" (days)", ""): [int(round(_wdf[col].dropna().mean(), 0))] for col in phase_day_cols if _wdf[col].notna().any()}
                     if avg_data:
                         avg_df = pd.DataFrame(avg_data)
                         st.dataframe(avg_df.style.applymap(_color_days), hide_index=True, use_container_width=True)
