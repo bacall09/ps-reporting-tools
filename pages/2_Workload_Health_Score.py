@@ -780,7 +780,7 @@ def build_phase_duration(ss_df, milestone_cols):
         # For each phase with NULL actual data, project forward using benchmarks
         # anchored from the last known milestone date (or start_date if none)
         last_known = start
-        for ps in phase_sequence:
+        for ps in PHASE_SEQUENCE:
             end_col = ps["end_col"]
             if end_col and end_col != "today":
                 ms_date = _resolve(row, end_col)
@@ -791,7 +791,7 @@ def build_phase_duration(ss_df, milestone_cols):
         if proj_cursor is not None:
             # Walk phases forward from last known, projecting dates for NULL phases
             past_last_known = False
-            for ps in phase_sequence:
+            for ps in PHASE_SEQUENCE:
                 phase_label = ps["phase"]
                 col_key     = f"{phase_label} (days)"
                 end_col     = ps["end_col"]
