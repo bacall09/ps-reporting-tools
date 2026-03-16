@@ -1639,7 +1639,7 @@ def main():
             <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Professional Services Utilization Credit Report</h1>
             <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>
                 Upload your NetSuite time detail export to generate a utilization credit report.
-                &nbsp;|&nbsp; <a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&saverun=T&whence=" style='color:#7da9f0;font-family:Manrope,sans-serif;'>Report Link</a>
+
             </p>
             <p style='color:#8ab0c0;margin:8px 0 0 0;font-size:12px;font-family:Manrope,sans-serif;line-height:1.6;'>This tool calculates <b>Utilization Credits</b> from NetSuite time detail exports. Credits are awarded as follows: <b>T&amp;M</b> projects receive full credit for all hours logged. <b>Fixed Fee</b> projects receive credit up to their scoped hours — hours beyond scope are tracked as overrun and excluded from credits. <b>Internal</b> time is excluded from utilization entirely and tracked separately as Admin Hours. Util&nbsp;% = Utilization Credits &divide; Hours This Period.</p>
         </div>
