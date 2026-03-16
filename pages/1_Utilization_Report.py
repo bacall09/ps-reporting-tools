@@ -1641,7 +1641,6 @@ def main():
                 Upload your NetSuite time detail export to generate a utilization credit report.
 
             </p>
-            <p style='color:#8ab0c0;margin:8px 0 0 0;font-size:12px;font-family:Manrope,sans-serif;line-height:1.6;'>This tool calculates <b>Utilization Credits</b> from NetSuite time detail exports. Credits are awarded as follows: <b>T&amp;M</b> projects receive full credit for all hours logged. <b>Fixed Fee</b> projects receive credit up to their scoped hours — hours beyond scope are tracked as overrun and excluded from credits. <b>Internal</b> time is excluded from utilization entirely and tracked separately as Admin Hours. Util&nbsp;% = Utilization Credits &divide; Hours This Period.</p>
         </div>
     """, unsafe_allow_html=True)
 
