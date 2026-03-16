@@ -1682,7 +1682,7 @@ def main():
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
     # ── Upload ────────────────────────────────────────────────
-    st.subheader("Step 1 — Upload NetSuite Time Detail Export")
+        st.subheader("Step 1 — Upload NetSuite Time Detail Export")
     st.caption("Supported columns: Employee, Region, Project, Project Type, Billing Type, "
                "Hours to Date, Date, Hours, Approval Status, Case/Task/Event, Non-Billable")
 
