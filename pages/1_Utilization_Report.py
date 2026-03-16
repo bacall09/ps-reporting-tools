@@ -1637,10 +1637,7 @@ def main():
         </style>
         <div style='background-color:#1e2c63;padding:24px 32px;border-radius:8px;margin-bottom:24px;font-family:Manrope,sans-serif'>
             <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Professional Services Utilization Credit Report</h1>
-            <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>
-                Upload your NetSuite time detail export to generate a utilization credit report.
-
-            </p>
+            <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>Upload your NetSuite time detail export to generate a utilization credit report.</p>
         </div>
     """, unsafe_allow_html=True)
 
