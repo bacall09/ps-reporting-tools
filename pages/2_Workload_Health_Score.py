@@ -1622,7 +1622,54 @@ def main():
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
     # ── Uploads ───────────────────────────────────────────────────────────────
-    st.subheader("Step 1 — Upload Smartsheets DRS Export")
+    with st.expander("ℹ️ About this report", expanded=False):
+        st.markdown("""
+**Purpose** — Scores each active Fixed Fee project by delivery intensity and aggregates to a per-consultant
+Workload Health Score (WHS). Surfaces at-risk projects, stale time-entry detection, and phase duration analysis.
+
+**Data sources** — SmartSheets DRS (always) · NetSuite Time Detail (Stale Projects tab only).
+
+---
+
+**WHS formula**
+
+> **Weighted Score = Phase Weight × Client Health Multiplier × Risk Multiplier**
+
+Aggregated per consultant across all active FF projects.
+
+**Phase weights**
+
+| Phase | Weight |
+|---|---|
+| 04. UAT · 06. Go-Live | 3.0 |
+| 03. Enablement/Training | 2.5 |
+| 02. Configuration | 2.0 |
+| 00. Onboarding · 01. Req & Design · 05. Prep · 07. Data Migration · 09. Phase 2 | 1.0 |
+| 08. Ready for Support Transition | 0.5 |
+| 11. On Hold · 12. PS Review | 0.25 |
+| 10. Complete/Pending Final Billing | 0.0 |
+
+**Multipliers** — Client Health: 1.0 / 1.15 (negative OR unresponsive) / 1.3 (both) · Risk: 1.0 / 1.1 (Medium) / 1.2 (High)
+
+**Workload bands** — 🟢 Low 1–25 · 🟡 Medium 26–60 · 🔴 High 61+ (flag to Director)
+
+---
+
+**Project counts**
+- **Total** = all FF projects not in phase 10 or 12 (includes On Hold)
+- **Active** = Total minus On Hold status
+- **Stale** = Active FF projects with no NS time entry in 14+ days
+
+**Excluded from scoring** — T&M projects (counted but scored 0) · Phase 10/12 · On Hold status
+
+---
+
+**Phase Duration tab** — uses milestone completion dates from SS DRS to calculate actual days per phase.
+Projects without milestone data show projected durations based on product-type benchmarks.
+`data_source`: Milestone = actuals · Projected (new) = milestones pending · Projected (historical) = pre-milestone DRS
+        """)
+
+        st.subheader("Step 1 — Upload Smartsheets DRS Export")
     st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
     ss_file = st.file_uploader(
         "Drop your file here or click to browse",
