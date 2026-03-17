@@ -1320,14 +1320,6 @@ def main():
 
     # Copy button — plain text version
     st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
-    st.text_area(
-        "Plain text (select all → copy):",
-        value=f"Subject: {subject}\n\n{body}",
-        height=300,
-        key="copy_area",
-        label_visibility="visible"
-    )
-
     # ── mailto link ───────────────────────────────────────────────────────────
     import urllib.parse
     _to_str  = ",".join(to_emails)  if to_emails  else ""
@@ -1338,7 +1330,8 @@ def main():
     if _cc_str:
         _mailto = f"mailto:{_to_str}?cc={urllib.parse.quote(_cc_str)}&subject={_subject}&body={_body}"
 
-    btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 2])
+    st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+    btn_col1, = st.columns([1])
     with btn_col1:
         st.markdown(
             f"<a href='{_mailto}' target='_blank'>"
@@ -1348,6 +1341,7 @@ def main():
             unsafe_allow_html=True
         )
         st.caption("Opens your email client with subject and body pre-filled")
+    btn_col2, btn_col3 = st.columns([2, 2])
     with btn_col2:
         if st.button("📋 Log this outreach", key="log_btn", type="secondary"):
             _tier_label = TEMPLATES.get(selected_template, {}).get("tier", "")
@@ -1366,25 +1360,31 @@ def main():
             st.rerun()
     with btn_col3:
         import json as _json2
+        import streamlit.components.v1 as _components
         _h = _json2.dumps(highlighted)
         _p = _json2.dumps(body)
-        _copy_html = """<div>
-<script id='_hdata' type='application/json'>""" + _h + """</script>
-<script id='_pdata' type='application/json'>""" + _p + """</script>
-<button style='background:#2980B9;color:white;border:none;padding:10px 24px;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;'
-onclick='(function(){
-  var h=JSON.parse(document.getElementById("_hdata").textContent);
-  var p=JSON.parse(document.getElementById("_pdata").textContent);
-  navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([h],{type:"text/html"}),"text/plain":new Blob([p],{type:"text/plain"})})
-  ]).then(function(){
-    document.getElementById("_cst").innerText="✅ Copied!";
-    setTimeout(function(){document.getElementById("_cst").innerText="";},3000);
-  }).catch(function(){document.getElementById("_cst").innerText="⚠️ Use plain text below";});
-})()'>&#128196; Copy Formatted</button>
-<span id='_cst' style='margin-left:10px;font-family:Manrope,sans-serif;font-size:13px;color:#1e2c63;'></span>
-</div>"""
-        st.markdown(_copy_html, unsafe_allow_html=True)
-        st.caption("Paste into Gmail · preserves font & colour in supported browsers")
+        _components.html(f"""
+<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Manrope,sans-serif;">
+<button id="cb" style="background:#2980B9;color:white;border:none;padding:10px 24px;
+border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;
+cursor:pointer;">&#128196; Copy Formatted</button>
+<span id="st" style="margin-left:8px;font-size:13px;"></span>
+<script>
+var h={_h};
+var p={_p};
+document.getElementById("cb").addEventListener("click",function(){{
+  navigator.clipboard.write([new ClipboardItem({{
+    "text/html":new Blob([h],{{type:"text/html"}}),
+    "text/plain":new Blob([p],{{type:"text/plain"}})
+  }})]).then(function(){{
+    document.getElementById("st").innerText="\u2705 Copied!";
+    setTimeout(function(){{document.getElementById("st").innerText=""}},3000);
+  }}).catch(function(){{
+    document.getElementById("st").innerText="\u26a0\ufe0f Not supported — use plain text";
+  }});
+}});
+</script></body></html>""", height=60)
+        st.caption("Paste into Gmail · preserves font & colour in Chrome/Edge")
 
     # ── Merge field reference ─────────────────────────────────────────────────
     with st.expander("📋 Merge field reference — what was filled vs. what still needs updating", expanded=False):
