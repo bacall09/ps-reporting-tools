@@ -157,6 +157,8 @@ st.markdown("""
             padding: 10px 14px;
             border-radius: 4px;
             font-size: 13px;
+            font-family: 'Manrope', sans-serif;
+            color: #1e2c63;
             margin-bottom: 8px;
         }
     </style>
@@ -599,12 +601,13 @@ def main():
 
     with up2:
         st.markdown("**SS DRS Export** — project list & phase")
+        st.markdown("[Download current SS DRS report ↗](#)", help="Link coming soon")
         st.caption("Required: Project Name, Project Phase, Project Type, Billing Type, Status")
         drs_file = st.file_uploader("Drop SS DRS file here", type=["xlsx","xls","csv"], key="drs_outreach")
 
     with up3:
         st.markdown("**NS Time Detail** — objective inactivity signal")
-        st.caption("Same export used on the Utilization Report page")
+        st.markdown("[Download latest NS Time Detail ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=70652&saverun=T&whence=)")
         ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
 
     if not sfdc_file and not drs_file and not ns_file:
@@ -759,14 +762,29 @@ def main():
             days = row.get("Days Inactive", 0)
             try:
                 d = int(days)
-                if d >= 180: return ["background-color:#f0e6ff"] * len(row)
-                if d >= 90:  return ["background-color:#FDECED"] * len(row)
-                if d >= 60:  return ["background-color:#FFEB9C"] * len(row)
-                if d >= 30:  return ["background-color:#EAF9F1"] * len(row)
+                base = "color:#1e2c63;font-family:Manrope,sans-serif;"
+                if d >= 180: return [f"background-color:#f0e6ff;{base}"] * len(row)
+                if d >= 90:  return [f"background-color:#FDECED;{base}"] * len(row)
+                if d >= 60:  return [f"background-color:#FFEB9C;{base}"] * len(row)
+                if d >= 30:  return [f"background-color:#EAF9F1;{base}"] * len(row)
             except: pass
-            return [""] * len(row)
+            return ["color:#1e2c63;font-family:Manrope,sans-serif;"] * len(row)
 
-        styled_overview = overview_df.sort_values("Days Inactive", ascending=False).style.apply(_style_overview, axis=1)
+        styled_overview = overview_df.sort_values("Days Inactive", ascending=False).style.apply(
+            _style_overview, axis=1
+        ).set_properties(**{
+            "color": "#1e2c63",
+            "font-family": "Manrope, sans-serif",
+            "font-size": "13px",
+        }).set_table_styles([{
+            "selector": "th",
+            "props": [
+                ("background-color", "#1e2c63"),
+                ("color", "white"),
+                ("font-family", "Manrope, sans-serif"),
+                ("font-size", "13px"),
+            ]
+        }])
         st.dataframe(styled_overview, hide_index=True, use_container_width=True)
         st.caption("🔔 Eligible for informal follow up = 14–29 days · On Hold projects shown for reference only")
 
