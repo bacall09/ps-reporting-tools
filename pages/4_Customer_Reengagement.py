@@ -1368,16 +1368,21 @@ def main():
         import json as _json2
         _h = _json2.dumps(highlighted)
         _p = _json2.dumps(body)
-        _copy_html = f"""
-<button id="copybtn" onclick="
-var h={_h};var p={_p};
-navigator.clipboard.write([new ClipboardItem({{'text/html':new Blob([h],{{type:'text/html'}}),'text/plain':new Blob([p],{{type:'text/plain'}})}})])
-.then(()=>{{document.getElementById('cst').innerText='✅ Copied!';setTimeout(()=>document.getElementById('cst').innerText='',3000);}})
-.catch(()=>document.getElementById('cst').innerText='⚠️ Use plain text below');
-" style="background:#2980B9;color:white;border:none;padding:10px 24px;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;">
-📄 Copy Formatted</button>
-<span id="cst" style="margin-left:10px;font-family:Manrope,sans-serif;font-size:13px;color:#1e2c63;"></span>
-"""
+        _copy_html = """<div>
+<script id='_hdata' type='application/json'>""" + _h + """</script>
+<script id='_pdata' type='application/json'>""" + _p + """</script>
+<button style='background:#2980B9;color:white;border:none;padding:10px 24px;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;'
+onclick='(function(){
+  var h=JSON.parse(document.getElementById("_hdata").textContent);
+  var p=JSON.parse(document.getElementById("_pdata").textContent);
+  navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([h],{type:"text/html"}),"text/plain":new Blob([p],{type:"text/plain"})})
+  ]).then(function(){
+    document.getElementById("_cst").innerText="✅ Copied!";
+    setTimeout(function(){document.getElementById("_cst").innerText="";},3000);
+  }).catch(function(){document.getElementById("_cst").innerText="⚠️ Use plain text below";});
+})()'>&#128196; Copy Formatted</button>
+<span id='_cst' style='margin-left:10px;font-family:Manrope,sans-serif;font-size:13px;color:#1e2c63;'></span>
+</div>"""
         st.markdown(_copy_html, unsafe_allow_html=True)
         st.caption("Paste into Gmail · preserves font & colour in supported browsers")
 
