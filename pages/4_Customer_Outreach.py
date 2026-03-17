@@ -371,10 +371,16 @@ def load_drs(file):
 
 
 def suggest_tier_from_days(days):
-    for name, tmpl in TEMPLATES.items():
-        if tmpl["days_min"] <= int(days) <= tmpl["days_max"]:
-            return name
-    return list(TEMPLATES.keys())[-1]
+    try:
+        d = int(days)
+        if d < 0:   return None   # unknown inactivity
+        if d < 30:  return None   # follow-up flag only, no template
+        for name, tmpl in TEMPLATES.items():
+            if tmpl["days_min"] <= d <= tmpl["days_max"]:
+                return name
+    except:
+        pass
+    return None
 
 
 NS_COL_MAP_OUT = {
@@ -519,11 +525,6 @@ def main():
     if drs_file:
         try:
             df_drs = load_drs(drs_file)
-            # Show what mapped — helps debug missing columns
-            _mapped   = [col for col in ["last_updated","client_responsiveness","project_manager","project_id"] if col in df_drs.columns]
-            _unmapped = [col for col in ["last_updated","client_responsiveness","project_manager","project_id"] if col not in df_drs.columns]
-            if _unmapped:
-                st.warning(f"DRS: These expected columns did not map: {_unmapped} — check column names in your export match exactly.")
             # Filter DRS to selected user
             if "project_manager" in df_drs.columns:
                 df_drs = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
@@ -642,11 +643,13 @@ def main():
             def _tier_label(days):
                 try:
                     d = int(days)
-                    if d < 0: return "Unknown"
+                    if d < 0:   return "Unknown"
+                    if d < 14:  return "—"
+                    if d < 30:  return "🔔 Follow Up"
                     for name, t in TEMPLATES.items():
                         if t["days_min"] <= d <= t["days_max"]:
                             return f"Tier {t['tier']}"
-                    return "< 30 days"
+                    return "Tier 4"
                 except: return "—"
             overview_df["Suggested Tier"] = overview_df["Days Inactive"].apply(_tier_label)
             overview_df["Days Inactive"]  = overview_df["Days Inactive"].apply(
@@ -671,16 +674,9 @@ def main():
 
         styled_overview = overview_df.sort_values("Days Inactive", ascending=False).style.apply(_style_overview, axis=1)
         st.dataframe(styled_overview, hide_index=True, use_container_width=True)
-        st.caption("🟢 30d+ · 🟡 60d+ · 🔴 90d+ · 🟣 180d+ · Dropdown below shows only projects ≥ 14 days inactive")
+        st.caption("🔔 Follow Up = 14–29 days · On Hold projects shown for reference only")
 
-        # Debug expander — shows what DRS columns were detected
-        with st.expander("🔍 DRS column detection — click if Days Inactive shows Unknown", expanded=False):
-            detected = [col for col in df_drs.columns if not col.startswith("_")]
-            st.caption("Columns detected in your DRS export:")
-            st.write(detected)
-            st.caption("For inactivity to work from DRS, the export needs a column named: `Modified`, `Last Updated`, or `Modified Date`. If yours is named differently let us know and we'll add it to the map.")
-            if df_ns is not None:
-                st.success("✅ NS Time Detail uploaded — inactivity will be calculated from last time entry.")
+
     else:
         st.info("Upload SS DRS to see your project overview.")
 
@@ -731,26 +727,25 @@ def main():
         proj_options_filtered = [
             p for p in proj_options_all
             if not _oh_map.get(label_to_opp.get(p,""), False)  # exclude On Hold
-            and (days_map.get(label_to_opp.get(p,""), 0) >= 14
-                 or days_map.get(label_to_opp.get(p,""), 0) == -1)
+            and days_map.get(label_to_opp.get(p,""), 0) >= 30  # 30+ days only
         ]
 
         if not proj_options_filtered:
-            st.info("No projects with 14+ days inactivity found. All projects are up to date.")
+            st.success("✅ No projects requiring re-engagement (30+ days inactive). Check the table above for any 🔔 Follow Up flags.")
             return
 
         def _label_with_tier_clean(label):
-            opp   = label_to_opp.get(label, "")
-            days  = days_map.get(opp, 0)
+            opp       = label_to_opp.get(label, "")
+            days      = days_map.get(opp, 0)
             suggested = suggest_tier_from_days(days)
-            t_num = TEMPLATES[suggested]["tier"]
-            days_str = "Unknown inactivity" if int(days) < 0 else f"{int(days)} days inactive"
-            return f"Tier {t_num}  ·  {days_str}  —  {label}"
+            days_str  = f"{int(days)} days inactive"
+            tier_str  = f"Tier {TEMPLATES[suggested]['tier']}" if suggested else "No Tier"
+            return f"{tier_str}  ·  {days_str}  —  {label}"
 
         proj_options_display = [_label_with_tier_clean(p) for p in proj_options_filtered]
         display_to_label     = dict(zip(proj_options_display, proj_options_filtered))
         selected_display     = st.selectbox(
-            f"Select project ({len(proj_options_filtered)} with 14+ days inactive)",
+            f"Select project ({len(proj_options_filtered)} requiring re-engagement · 30+ days inactive)",
             proj_options_display,
             key="proj_select"
         )
@@ -928,7 +923,7 @@ def main():
     st.markdown("---")
     st.subheader("Step 6 — Template")
 
-    suggested = suggest_tier(int(days_inactive))
+    suggested = suggest_tier(int(days_inactive)) or list(TEMPLATES.keys())[0]
     tier_names = list(TEMPLATES.keys())
     suggested_idx = tier_names.index(suggested) if suggested in tier_names else 0
 
