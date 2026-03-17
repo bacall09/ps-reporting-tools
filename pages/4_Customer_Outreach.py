@@ -275,60 +275,216 @@ def extract_placeholders(text):
     return re.findall(r'\{([A-Z _]+)\}', text)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+# ── SS DRS column map ────────────────────────────────────────────────────────
+SS_COL_MAP_OUT = {
+    "project name":          "project_name",
+    "project id":            "project_id",
+    "project phase":         "phase",
+    "project type":          "project_type",
+    "status":                "status",
+    "start date":            "start_date",
+    "go live date":          "go_live_date",
+    "territory":             "territory",
+    "billing type":          "billing_type",
+    "billing":               "billing_type",
+    "project manager":       "project_manager",
+    "consultant":            "project_manager",
+    "overall rag":           "rag",
+    "schedule health":       "schedule_health",
+    "risk level":            "risk_level",
+    "last updated":          "last_updated",
+    "modified":              "last_updated",
+    "account name":          "account",
+    "customer":              "account",
+}
+
+INACTIVE_PHASES_OUT = {
+    "10. complete/pending final billing",
+    "11. on hold",
+    "12. ps review",
+}
+
+def load_drs(file):
+    """Load SS DRS export and identify stale/unresponsive projects."""
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+    df.columns = df.columns.str.strip()
+    rename = {c: SS_COL_MAP_OUT[c.lower()] for c in df.columns if c.lower() in SS_COL_MAP_OUT}
+    df = df.rename(columns=rename)
+
+    if "start_date" in df.columns:
+        df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+    if "go_live_date" in df.columns:
+        df["go_live_date"] = pd.to_datetime(df["go_live_date"], errors="coerce")
+    if "last_updated" in df.columns:
+        df["last_updated"] = pd.to_datetime(df["last_updated"], errors="coerce")
+
+    # Filter to active FF projects only
+    today = pd.Timestamp.today().normalize()
+    if "phase" in df.columns:
+        df = df[~df["phase"].str.strip().str.lower().isin(INACTIVE_PHASES_OUT)]
+    if "billing_type" in df.columns:
+        df = df[~df["billing_type"].str.strip().str.lower().isin({"t&m","time & material","time and material"})]
+    if "status" in df.columns:
+        df = df[~df["status"].str.strip().str.lower().isin({"on-hold","on hold","onhold","on_hold"})]
+
+    # Calculate days since start as proxy for inactivity (if no last_updated col)
+    if "last_updated" in df.columns:
+        df["days_inactive"] = (today - df["last_updated"]).dt.days.clip(lower=0)
+    elif "start_date" in df.columns:
+        df["days_inactive"] = (today - df["start_date"]).dt.days.clip(lower=0)
+    else:
+        df["days_inactive"] = 0
+
+    return df
+
+
+def suggest_tier_from_days(days):
+    for name, tmpl in TEMPLATES.items():
+        if tmpl["days_min"] <= int(days) <= tmpl["days_max"]:
+            return name
+    return list(TEMPLATES.keys())[-1]
+
+
 def main():
 
-    st.subheader("Step 1 — Upload SFDC Contacts Export")
-    st.caption("Required columns: First Name, Last Name, Email, Account Name, Opportunity Name · Optional: Close Date, Opportunity Owner")
 
-    sfdc_file = st.file_uploader(
-        "Drop your SFDC contacts report here",
-        type=["xlsx", "xls", "csv"],
-        key="sfdc_outreach"
-    )
+    st.subheader("Step 1 — Upload Report")
 
-    if not sfdc_file:
-        st.info("Upload your Salesforce contacts export to get started. The report should include one row per contact per opportunity.")
-        return
+    src_col1, src_col2 = st.columns([3, 3])
+    with src_col1:
+        data_source = st.radio(
+            "Data source",
+            ["SFDC Contacts Export", "SS DRS Export"],
+            horizontal=True,
+            key="data_source"
+        )
 
-    try:
-        df = load_sfdc(sfdc_file)
-    except Exception as e:
-        st.error(f"Could not load file: {e}")
-        return
+    # ── SFDC path ──────────────────────────────────────────────────────────
+    if data_source == "SFDC Contacts Export":
+        st.caption("Required: First Name, Last Name, Email, Account Name, Opportunity Name · Optional: Close Date, Opportunity Owner, Implementation Contact, Contact Roles, Partner Contact")
+        sfdc_file = st.file_uploader("Drop your SFDC contacts report here", type=["xlsx","xls","csv"], key="sfdc_outreach")
+        if not sfdc_file:
+            st.info("Upload your Salesforce contacts export — one row per contact per opportunity.")
+            return
+        try:
+            df = load_sfdc(sfdc_file)
+        except Exception as e:
+            st.error(f"Could not load file: {e}")
+            return
+        mode = "sfdc"
+        st.success(f"Loaded {len(df):,} rows · {df['account'].nunique() if 'account' in df.columns else '?'} accounts · {df['opportunity'].nunique() if 'opportunity' in df.columns else '?'} opportunities")
 
-    st.success(f"Loaded {len(df):,} rows · {df['account'].nunique() if 'account' in df.columns else '?'} accounts · {df['opportunity'].nunique() if 'opportunity' in df.columns else '?'} opportunities")
+    # ── SS DRS path ────────────────────────────────────────────────────────
+    else:
+        st.caption("Required: Project Name, Project Phase, Project Type, Billing Type, Status · Optional: Project Manager, Account Name, Start Date, Last Updated")
+        drs_file = st.file_uploader("Drop your SS DRS export here", type=["xlsx","xls","csv"], key="drs_outreach")
+        if not drs_file:
+            st.info("Upload your SmartSheets DRS export — the tool will surface active projects and calculate days open.")
+            return
+        try:
+            df = load_drs(drs_file)
+        except Exception as e:
+            st.error(f"Could not load file: {e}")
+            return
+        mode = "drs"
+
+        # ── Consultant filter for ICs / Managers ──────────────────────────
+        if "project_manager" in df.columns:
+            all_consultants = sorted(df["project_manager"].dropna().astype(str).unique())
+            selected_consultant = st.selectbox(
+                "Filter by Consultant (ICs: select your name · Managers: select any)",
+                ["All"] + all_consultants,
+                key="drs_consultant"
+            )
+            if selected_consultant != "All":
+                df = df[df["project_manager"].astype(str) == selected_consultant]
+
+        # Show stale project summary
+        tier_counts = {}
+        for name, tmpl in TEMPLATES.items():
+            n = len(df[(df["days_inactive"] >= tmpl["days_min"]) & (df["days_inactive"] <= tmpl["days_max"])])
+            if n > 0:
+                tier_counts[name] = n
+
+        if tier_counts:
+            cols = st.columns(len(tier_counts))
+            for i, (tier, n) in enumerate(tier_counts.items()):
+                t_num = TEMPLATES[tier]["tier"]
+                bg = [TIER_COLORS[t_num]]
+                with cols[i]:
+                    st.markdown(f"<div style='background:{TIER_COLORS[t_num]};color:{TIER_TEXT[t_num]};padding:8px 12px;border-radius:6px;font-size:13px;font-weight:700'>{tier}<br><span style='font-size:20px'>{n}</span> project(s)</div>", unsafe_allow_html=True)
+        else:
+            st.success("No projects meeting re-engagement thresholds (30+ days).")
+
+        st.success(f"Loaded {len(df):,} active FF projects")
 
     st.markdown("---")
     st.subheader("Step 2 — Select a Project")
 
-    # Group by opportunity
-    opp_col = "opportunity" if "opportunity" in df.columns else df.columns[0]
-    acc_col  = "account"     if "account"     in df.columns else None
-    prod_col = "product"     if "product"     in df.columns else None
+    # ── Column resolution — works for both SFDC and DRS modes ─────────────
+    if mode == "sfdc":
+        opp_col  = "opportunity"      if "opportunity"      in df.columns else df.columns[0]
+        acc_col  = "account"          if "account"          in df.columns else None
+        prod_col = "product"          if "product"          in df.columns else None
+        name_key = opp_col
+    else:
+        opp_col  = "project_name"     if "project_name"     in df.columns else df.columns[0]
+        acc_col  = "account"          if "account"          in df.columns else None
+        prod_col = "project_type"     if "project_type"     in df.columns else None
+        name_key = opp_col
 
-    # Build project list — concat Account : Opportunity for clarity
-    if acc_col:
+    # Build project list — concat Account : Project for clarity
+    if acc_col and acc_col in df.columns:
         df["_proj_label"] = (
             df[acc_col].fillna("").astype(str).str.strip()
             + "  —  "
             + df[opp_col].fillna("").astype(str).str.strip()
         )
-        label_to_opp = df[["_proj_label", opp_col]].drop_duplicates().set_index("_proj_label")[opp_col].to_dict()
+    else:
+        df["_proj_label"] = df[opp_col].fillna("").astype(str).str.strip()
+
+    label_to_opp  = df[["_proj_label", opp_col]].drop_duplicates().set_index("_proj_label")[opp_col].to_dict()
+
+    # For DRS: show tier badge next to each project in dropdown
+    if mode == "drs" and "days_inactive" in df.columns:
+        days_map = df.set_index(opp_col)["days_inactive"].to_dict()
+        def _label_with_tier(label):
+            opp = label_to_opp.get(label, "")
+            days = days_map.get(opp, 0)
+            suggested = suggest_tier_from_days(days)
+            t_num = TEMPLATES[suggested]["tier"]
+            tier_short = {1:"T1",2:"T2",3:"T3",4:"T4"}.get(t_num,"")
+            return f"[{tier_short} · {int(days)}d]  {label}"
+        proj_options = sorted(label_to_opp.keys(), key=lambda x: -days_map.get(label_to_opp.get(x,""), 0))
+        proj_options_display = [_label_with_tier(p) for p in proj_options]
+        display_to_label = dict(zip(proj_options_display, proj_options))
+        selected_display = st.selectbox("Project — sorted by most days inactive", proj_options_display, key="proj_select")
+        selected_label   = display_to_label[selected_display]
+        selected_proj    = label_to_opp[selected_label]
+    else:
         proj_options  = sorted(label_to_opp.keys())
         selected_label = st.selectbox("Project / Opportunity", proj_options, key="proj_select")
         selected_proj  = label_to_opp[selected_label]
-    else:
-        proj_options  = sorted(df[opp_col].dropna().astype(str).unique())
-        selected_proj = st.selectbox("Project / Opportunity", proj_options, key="proj_select")
 
     proj_rows = df[df[opp_col].astype(str) == selected_proj]
 
     # Project metadata
-    account  = proj_rows[acc_col].iloc[0]  if acc_col  and not proj_rows.empty else ""
-    product  = proj_rows[prod_col].iloc[0] if prod_col and not proj_rows.empty else ""
-    am_col   = "account_manager" if "account_manager" in df.columns else None
-    am       = proj_rows[am_col].iloc[0] if am_col and not proj_rows.empty else ""
+    account  = proj_rows[acc_col].iloc[0]  if acc_col and acc_col in proj_rows.columns and not proj_rows.empty else ""
+    product  = proj_rows[prod_col].iloc[0] if prod_col and prod_col in proj_rows.columns and not proj_rows.empty else ""
+    am_col   = "account_manager"           if "account_manager" in df.columns else None
+    am       = proj_rows[am_col].iloc[0]   if am_col and not proj_rows.empty else ""
     close_dt = proj_rows["close_date"].iloc[0] if "close_date" in proj_rows.columns and not proj_rows.empty else None
+
+    # For DRS mode — pre-set days inactive and phase from data
+    if mode == "drs" and "days_inactive" in proj_rows.columns:
+        _drs_days  = int(proj_rows["days_inactive"].iloc[0]) if not proj_rows.empty else 30
+        _drs_phase = str(proj_rows["phase"].iloc[0]).strip() if "phase" in proj_rows.columns and not proj_rows.empty else ""
+    else:
+        _drs_days  = 30
+        _drs_phase = ""
 
     # Days inactive input
     st.markdown("---")
@@ -348,12 +504,17 @@ def main():
 
     col1, col2, col3 = st.columns([2, 2, 2])
     with col1:
-        days_inactive = st.number_input("Days since last customer contact", min_value=0, value=30, step=1, key="days_in")
+        days_inactive = st.number_input("Days since last customer contact", min_value=0, value=_drs_days, step=1, key="days_in")
     with col2:
         current_phase = st.selectbox(
             "Current project phase",
             ['00. Onboarding', '01. Requirements and Design', '02. Configuration', '03. Enablement/Training', '04. UAT', '05. Prep for Go-Live', '06. Go-Live (Hypercare)', '08. Ready for Support Transition', '09. Phase 2 Scoping', '10. Complete/Pending Final Billing', '11. On Hold'],
-            index=2,
+            index=next((i for i, p in enumerate([
+                "00. Onboarding","01. Requirements and Design","02. Configuration",
+                "03. Enablement/Training","04. UAT","05. Prep for Go-Live",
+                "06. Go-Live (Hypercare)","08. Ready for Support Transition",
+                "09. Phase 2 Scoping","10. Complete/Pending Final Billing","11. On Hold",
+            ]) if _drs_phase.lower().startswith(p[:6].lower())), 2),
             key="phase_in"
         )
     with col3:
@@ -382,7 +543,14 @@ def main():
     st.markdown("---")
     st.subheader("Step 4 — Select Recipients")
 
-    email_col   = "email"             if "email"             in proj_rows.columns else None
+    if mode == "drs":
+        st.info("SS DRS does not include customer contact details. To/CC fields are left blank — paste your contacts manually or switch to SFDC mode for contact lookup.")
+        to_emails  = []
+        cc_emails  = []
+        primary_contact_first = ""
+    
+    if mode == "sfdc":
+      email_col   = "email"             if "email"             in proj_rows.columns else None
     name_col    = "contact_name"      if "contact_name"      in proj_rows.columns else None
     roles_col   = "contact_roles"     if "contact_roles"     in proj_rows.columns else None
     flag_col    = "impl_contact_flag" if "impl_contact_flag" in proj_rows.columns else None
@@ -452,9 +620,10 @@ def main():
         st.warning("Email and/or contact name columns not detected. Check your export headers.")
         to_emails = []
         cc_emails = []
-    # Primary contact first name — use first To: recipient if available
-    primary_contact_first = ""
-    if name_col and not proj_rows.empty:
+    # Primary contact first name — use first To: recipient if available (SFDC mode only)
+    if mode == "sfdc":
+     primary_contact_first = ""
+     if name_col and not proj_rows.empty:
         if email_col and to_emails:
             to_row = proj_rows[proj_rows[email_col].astype(str) == to_emails[0]]
             full_name = str(to_row[name_col].iloc[0]) if not to_row.empty else str(proj_rows[name_col].iloc[0])
