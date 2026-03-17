@@ -123,7 +123,7 @@ st.markdown("""
         html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
         h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
         .email-box {
-            background: transparent;
+            background: var(--background-color, white);
             border: 1px solid #d0dff5;
             border-radius: 8px;
             padding: 20px 24px;
@@ -131,7 +131,7 @@ st.markdown("""
             font-size: 14px;
             line-height: 1.7;
             white-space: pre-wrap;
-            color: #1e2c63;
+            color: var(--text-color, #1e2c63);
         }
         .placeholder-missing {
             background: #fff3cd;
