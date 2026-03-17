@@ -869,6 +869,13 @@ def main():
 
     proj_rows = df[df[opp_col].astype(str) == selected_proj]
 
+    # Clear days widget from session state when project changes so value resets
+    if st.session_state.get("_last_proj") != selected_proj:
+        st.session_state["_last_proj"] = selected_proj
+        for _k in list(st.session_state.keys()):
+            if _k.startswith("days_in_"):
+                del st.session_state[_k]
+
     # Project metadata
     account  = proj_rows[acc_col].iloc[0]  if acc_col and acc_col in proj_rows.columns and not proj_rows.empty else ""
     product  = proj_rows[prod_col].iloc[0] if prod_col and prod_col in proj_rows.columns and not proj_rows.empty else ""
@@ -928,7 +935,7 @@ def main():
         if _drs_days == -1:
             _days_label += " (could not be calculated — please enter manually)"
             _drs_days = 30
-        days_inactive = st.number_input(_days_label, min_value=0, value=_drs_days, step=1, key="days_in")
+        days_inactive = st.number_input(_days_label, min_value=0, value=_drs_days, step=1, key=f"days_in_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}")
         if _drs_days != days_inactive:
             st.caption(f"✏️ Overridden — using {int(days_inactive)} days instead of calculated value")
     with col2:
@@ -941,10 +948,10 @@ def main():
                 "06. Go-Live (Hypercare)","08. Ready for Support Transition",
                 "09. Phase 2 Scoping","10. Complete/Pending Final Billing","11. On Hold",
             ]) if _drs_phase.lower().startswith(p[:6].lower())), 2),
-            key=f"phase_in_{hash(selected_proj)}"
+            key=f"phase_in_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}"
         )
     with col3:
-        last_activity = st.date_input("Date of last activity", value=date.today(), key=f"last_act_{hash(selected_proj)}")
+        last_activity = st.date_input("Date of last activity", value=date.today(), key=f"last_act_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}")
 
     col4, col5 = st.columns([3, 3])
     with col4:
@@ -1055,7 +1062,8 @@ def main():
             st.caption(f"To: auto-selected via — {to_source}")
 
             # Build CC suggestions: partner contact + AM email (Tier 2+)
-            tier_num     = TEMPLATES.get(selected_template, {}).get("tier", 1)
+            _suggested_t = suggest_tier_from_days(int(days_inactive)) if "days_inactive" in dir() else None
+            tier_num     = TEMPLATES[_suggested_t]["tier"] if _suggested_t else 1
             _am_cc       = [am_email] if am_email and tier_num >= 2 else []
             suggested_cc = list(dict.fromkeys(
                 [e for e in partner_emails if e not in to_emails] + _am_cc
