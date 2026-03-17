@@ -507,6 +507,12 @@ NS_COL_MAP_OUT = {
     "project":              "project",
     "project name":         "project",
     "project id":           "project_id",
+    "project id ":          "project_id",   # trailing space variant
+    " project id":          "project_id",   # leading space variant
+    "project_id":           "project_id",
+    "projectid":            "project_id",
+    "project internal id":  "project_id",
+    "job":                  "project_id",
     "billing type":         "billing_type",
     "project manager":      "project_manager",
     "date":                 "date",
@@ -523,7 +529,7 @@ def load_ns_time(file):
     else:
         df = pd.read_excel(file)
     df.columns = df.columns.str.strip()
-    rename = {col: NS_COL_MAP_OUT[col.lower()] for col in df.columns if col.lower() in NS_COL_MAP_OUT}
+    rename = {col: NS_COL_MAP_OUT[col.strip().lower()] for col in df.columns if col.strip().lower() in NS_COL_MAP_OUT}
     df = df.rename(columns=rename)
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -658,6 +664,12 @@ def main():
             # Filter NS to selected user
             if "employee" in df_ns.columns:
                 df_ns = df_ns[df_ns["employee"].astype(str).str.strip() == selected_user]
+            # Show what ID column was found for join debugging
+            _ns_id_col = "project_id" if "project_id" in df_ns.columns else "project" if "project" in df_ns.columns else None
+            if _ns_id_col:
+                st.caption(f"NS loaded · {len(df_ns):,} rows · joining on '{_ns_id_col}'")
+            else:
+                st.warning("NS Time Detail: no project ID or project name column found — inactivity join will not work. Check column headers.")
         except Exception as e:
             st.error(f"Could not load NS file: {e}")
 
@@ -842,12 +854,11 @@ def main():
 
         proj_options_filtered = [
             p for p in proj_options_all
-            if not _oh_map.get(label_to_opp.get(p,""), False)  # exclude On Hold
-            and days_map.get(label_to_opp.get(p,""), 0) >= 30  # 30+ days only
+            if not _oh_map.get(label_to_opp.get(p,""), False)  # exclude On Hold only
         ]
 
         if not proj_options_filtered:
-            st.success("✅ No projects requiring re-engagement (30+ days inactive). Check the table above for any 🔔 Eligible for informal follow up flags.")
+            st.info("No active projects found.")
             return
 
         def _label_with_tier_clean(label):
@@ -861,7 +872,7 @@ def main():
         proj_options_display = [_label_with_tier_clean(p) for p in proj_options_filtered]
         display_to_label     = dict(zip(proj_options_display, proj_options_filtered))
         selected_display     = st.selectbox(
-            f"Select project ({len(proj_options_filtered)} requiring re-engagement · 30+ days inactive)",
+            f"Select project ({len(proj_options_filtered)} active projects)",
             proj_options_display,
             key="proj_select"
         )
