@@ -491,6 +491,36 @@ def load_drs(file):
     return df
 
 
+def normalise_product_name(raw):
+    """Convert internal DRS project type labels to customer-facing product names."""
+    if not raw or str(raw).strip().lower() in ("nan", "none", ""):
+        return ""
+    s = str(raw).strip()
+
+    # Explicit mappings — checked first (case-insensitive key match)
+    EXPLICIT = {
+        "zoneapp: cc":           "CC Import",
+        "zoneapp: psp":          "PSP",
+        "zoneapp: sftp":         "SFTP",
+        "zoneapp: e-invoicing":  "e-Invoicing",
+        "zoneapp: einvoicing":   "e-Invoicing",
+        "zoneapp: approvals":    "ZoneApprovals",
+        "zoneapp: capture":      "ZoneCapture",
+        "zoneapp: reconcile":    "ZoneReconcile",
+        "zoneapp: payments":     "ZonePayments",
+        "zoneapp: reconcile 2.0":"ZoneReconcile",
+        "zoneapp: premium":      "Premium",
+        "zoneapp: capture and e-invoicing": "ZoneCapture + e-Invoicing",
+    }
+    if s.lower() in EXPLICIT:
+        return EXPLICIT[s.lower()]
+
+    # Generic fallback: strip "ZoneApp: " prefix and add Zone
+    import re as _re
+    s = _re.sub(r"(?i)^zoneapp:\s*", "Zone", s)
+    return s
+
+
 def suggest_tier_from_days(days):
     try:
         d = int(days)
@@ -676,10 +706,6 @@ def main():
                 df_ns = df_ns[df_ns["employee"].astype(str).str.strip() == selected_user]
             # Show what ID column was found for join debugging
             _ns_id_col = "project_id" if "project_id" in df_ns.columns else "project" if "project" in df_ns.columns else None
-            if _ns_id_col:
-                st.caption(f"NS loaded · {len(df_ns):,} rows · joining on '{_ns_id_col}'")
-            else:
-                st.warning("NS Time Detail: no project ID or project name column found — inactivity join will not work. Check column headers.")
         except Exception as e:
             st.error(f"Could not load NS file: {e}")
 
@@ -939,7 +965,7 @@ def main():
     st.subheader("Step 4 — Set Context")
 
     # Try to derive product from SFDC data, allow manual override
-    _sfdc_product = str(product).strip() if product and str(product).lower() not in ("nan", "") else ""
+    _sfdc_product = normalise_product_name(product) if product else ""
 
     col0, = st.columns([1])
     with col0:
