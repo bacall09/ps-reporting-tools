@@ -658,14 +658,8 @@ def main():
         # Tier summary from DRS
         tier_counts = {name: len(df_drs[(df_drs["days_inactive"] >= t["days_min"]) & (df_drs["days_inactive"] <= t["days_max"])]) for name, t in TEMPLATES.items()}
         tier_counts = {k: v for k, v in tier_counts.items() if v > 0}
-        if tier_counts:
-            cols = st.columns(len(tier_counts))
-            for i, (tier, n) in enumerate(tier_counts.items()):
-                t_num = TEMPLATES[tier]["tier"]
-                with cols[i]:
-                    st.markdown(f"<div style='background:{TIER_COLORS[t_num]};color:{TIER_TEXT[t_num]};padding:8px 12px;border-radius:6px;font-size:13px;font-weight:700'>{tier}<br><span style='font-size:20px'>{n}</span> project(s)</div>", unsafe_allow_html=True)
-    if msg_parts:
-        st.success(" · ".join(msg_parts))
+
+
 
     # ── Set mode based on what's loaded ───────────────────────────────────
     if df_drs is not None:
