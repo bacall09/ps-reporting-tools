@@ -402,7 +402,7 @@ def load_ns_time(file):
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
     if "project_id" in df.columns:
-        df["project_id"] = df["project_id"].astype(str).str.strip().str.split(".").str[0]
+        df["project_id"] = df["project_id"].apply(lambda x: str(int(float(str(x)))) if str(x) not in ("nan","None","") else "")
     # Store original cols for debug
     df.attrs["original_cols"] = list(df.columns)
     return df
