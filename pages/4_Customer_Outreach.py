@@ -383,8 +383,6 @@ NS_COL_MAP_OUT = {
     "project":              "project",
     "project name":         "project",
     "project id":           "project_id",
-    "internal id":          "project_id",
-    "id":                   "project_id",
     "billing type":         "billing_type",
     "project manager":      "project_manager",
     "date":                 "date",
@@ -418,10 +416,16 @@ def calc_days_inactive(df_drs, df_ns):
     if df_ns is None or "date" not in df_ns.columns:
         return df_drs
 
+    def _clean_id(series):
+        """Safely convert project_id series to clean string."""
+        return series.fillna("").astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+
     # Try join on project_id first, fall back to project name
     if "project_id" in df_ns.columns and "project_id" in df_drs.columns:
-        df_ns["project_id"]  = df_ns["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
-        df_drs["project_id"] = df_drs["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+        df_ns  = df_ns.copy()
+        df_drs = df_drs.copy()
+        df_ns["project_id"]  = _clean_id(df_ns["project_id"])
+        df_drs["project_id"] = _clean_id(df_drs["project_id"])
         last_entry = (
             df_ns[df_ns["date"].notna()]
             .groupby("project_id")["date"].max()
@@ -439,16 +443,12 @@ def calc_days_inactive(df_drs, df_ns):
         df_drs = df_drs.merge(last_entry, on="project_name", how="left")
 
     if "last_ns_entry" in df_drs.columns:
-        # Override days_inactive with NS-based calculation where available
         ns_days = (today - df_drs["last_ns_entry"]).dt.days.clip(lower=0)
-        df_drs["days_inactive"] = ns_days.where(
-            df_drs["last_ns_entry"].notna(),
-            df_drs["days_inactive"]  # keep DRS modified date value as fallback
-        ).fillna(-1).astype(int)
-        _fallback_source = df_drs["_inactivity_source"].iloc[0] if "_inactivity_source" in df_drs.columns else "Unknown"
-        df_drs["_inactivity_source"] = df_drs["last_ns_entry"].apply(
-            lambda x: "NS Time Entry" if pd.notna(x) else _fallback_source
-        )
+        fallback = df_drs["days_inactive"] if "days_inactive" in df_drs.columns else pd.Series(-1, index=df_drs.index)
+        df_drs["days_inactive"] = ns_days.where(df_drs["last_ns_entry"].notna(), fallback).fillna(-1).astype(int)
+        _fallback_src = str(df_drs["_inactivity_source"].iloc[0]) if "_inactivity_source" in df_drs.columns else "SS DRS Modified"
+        df_drs["_inactivity_source"] = ["NS Time Entry" if pd.notna(x) else _fallback_src
+                                         for x in df_drs["last_ns_entry"]]
     return df_drs
 
 
@@ -541,9 +541,12 @@ def main():
         except Exception as e:
             st.error(f"Could not load NS file: {e}")
 
-    # ── Merge NS inactivity into DRS ───────────────────────────────────────
+    # ── Merge NS inactivity into DRS (outside try/except so errors are visible) ─
     if df_drs is not None and df_ns is not None:
-        df_drs = calc_days_inactive(df_drs, df_ns)
+        try:
+            df_drs = calc_days_inactive(df_drs, df_ns)
+        except Exception as e:
+            st.warning(f"Could not calculate inactivity from NS data: {e}")
 
     # ── Summary metrics ───────────────────────────────────────────────────
     msg_parts = []
