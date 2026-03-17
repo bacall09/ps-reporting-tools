@@ -5,6 +5,20 @@ import re
 
 st.set_page_config(page_title="Customer Outreach", page_icon=None, layout="wide")
 
+# ── Active employee list (sourced from EMPLOYEE_ROLES — leavers excluded) ────
+ACTIVE_EMPLOYEES = [
+    "Arestarkhov, Yaroslav", "Barrio, Nairobi", "Bell, Stuart", "Cadelina",
+    "Carpen, Anamaria", "Centinaje, Rhodechild", "Church, Jason G", "Cooke, Ellen",
+    "Cruz, Daniel", "DiMarco, Nicole R", "Dolha, Madalina", "Dunn, Steven",
+    "Finalle-Newton, Jesse", "Gardner, Cheryll L", "Hopkins, Chris", "Hughes, Madalyn",
+    "Ickler, Georganne", "Isberg, Eric", "Jordanova, Marija", "Lappin, Thomas",
+    "Law, Brandon", "Longalong, Santiago", "Mohammad, Manaan", "Morris, Lisa",
+    "Murphy, Conor", "NAQVI, SYED", "Olson, Austin D", "Pallone, Daniel",
+    "Porangada, Suraj", "Quiambao, Generalyn", "Raykova, Silvia",
+    "Selvakumar, Sajithan", "Snee, Stefanie J", "Swanson, Patti",
+    "Tuazon, Carol", "Zoric, Ivan",
+]
+
 # ── Styling ───────────────────────────────────────────────────────────────────
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
@@ -348,102 +362,175 @@ def suggest_tier_from_days(days):
     return list(TEMPLATES.keys())[-1]
 
 
+NS_COL_MAP_OUT = {
+    "employee":        "employee",
+    "name":            "employee",
+    "project":         "project",
+    "project name":    "project",
+    "project id":      "project_id",
+    "billing type":    "billing_type",
+    "project manager": "project_manager",
+    "date":            "date",
+    "hours":           "hours",
+    "quantity":        "hours",
+}
+
+def load_ns_time(file):
+    """Load NS Time Detail — derive last time entry per project for inactivity."""
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+    df.columns = df.columns.str.strip()
+    rename = {col: NS_COL_MAP_OUT[col.lower()] for col in df.columns if col.lower() in NS_COL_MAP_OUT}
+    df = df.rename(columns=rename)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    if "project_id" in df.columns:
+        df["project_id"] = df["project_id"].astype(str).str.strip()
+    return df
+
+
+def calc_days_inactive(df_drs, df_ns):
+    """Merge NS last time entry onto DRS projects to get objective inactivity days."""
+    today = pd.Timestamp.today().normalize()
+    if df_ns is None or "date" not in df_ns.columns:
+        return df_drs
+    join_col = "project_id" if "project_id" in df_ns.columns else "project"
+    last_entry = (
+        df_ns[df_ns["date"].notna()]
+        .groupby(join_col)["date"].max()
+        .reset_index()
+        .rename(columns={"date": "last_ns_entry"})
+    )
+    if "project_id" in df_drs.columns and join_col == "project_id":
+        df_drs = df_drs.merge(last_entry, on="project_id", how="left")
+    elif "project_name" in df_drs.columns:
+        last_entry = last_entry.rename(columns={join_col: "project_name"})
+        df_drs = df_drs.merge(last_entry, on="project_name", how="left")
+    if "last_ns_entry" in df_drs.columns:
+        df_drs["days_inactive"] = (today - df_drs["last_ns_entry"]).dt.days.clip(lower=0).fillna(
+            df_drs.get("days_inactive", 0)
+        ).astype(int)
+    return df_drs
+
+
 def main():
 
 
-    st.subheader("Step 1 — Upload Report")
+    # ── Who is using this tool? ───────────────────────────────────────────
+    st.subheader("Step 1 — Who are you?")
+    selected_user = st.selectbox(
+        "Select your name",
+        ["— Select —"] + ACTIVE_EMPLOYEES,
+        key="selected_user"
+    )
+    if selected_user == "— Select —":
+        st.info("Select your name to filter projects to your portfolio.")
+        return
 
-    src_col1, src_col2 = st.columns([3, 3])
-    with src_col1:
-        data_source = st.radio(
-            "Data source",
-            ["SFDC Contacts Export", "SS DRS Export"],
-            horizontal=True,
-            key="data_source"
-        )
+    st.markdown("---")
+    st.subheader("Step 2 — Upload Reports")
+    st.caption("Upload one or more reports — more reports = better inactivity detection.")
 
-    # ── SFDC path ──────────────────────────────────────────────────────────
-    if data_source == "SFDC Contacts Export":
-        st.caption("Required: First Name, Last Name, Email, Account Name, Opportunity Name · Optional: Close Date, Opportunity Owner, Implementation Contact, Contact Roles, Partner Contact")
+    up1, up2, up3 = st.columns([3, 3, 3])
+    with up1:
+        st.markdown("**SFDC Contacts Export** — for contact lookup")
         st.markdown(
-            "📁 [Download latest SFDC Contacts List from shared Drive folder ↗]"
-            "(https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m)",
-            unsafe_allow_html=False
+            "📁 [Download latest from shared Drive ↗]"
+            "(https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m)"
         )
-        sfdc_file = st.file_uploader("Drop your SFDC contacts report here", type=["xlsx","xls","csv"], key="sfdc_outreach")
-        if not sfdc_file:
-            st.info("Download the latest file from the shared Drive folder above, then upload it here.")
-            return
-        # ── Detect file date from naming convention SFDC Contacts List_YYYYMMDD ──
-        import re as _re
-        _date_match = _re.search(r'(\d{8})', sfdc_file.name)
-        if _date_match:
-            _raw = _date_match.group(1)
-            try:
-                _file_date = datetime.strptime(_raw, "%Y%m%d")
-                _age_days  = (datetime.today() - _file_date).days
-                if _age_days == 0:
-                    st.success(f"📅 File dated today — data is current.")
-                elif _age_days <= 7:
-                    st.info(f"📅 File dated {_file_date.strftime('%B %d, %Y')} — {_age_days} day(s) old.")
-                else:
-                    st.warning(f"📅 File dated {_file_date.strftime('%B %d, %Y')} — {_age_days} days old. Consider asking for a refresh.")
-            except:
-                pass
+        st.caption("Required: First Name, Last Name, Email, Account Name, Opportunity Name")
+        sfdc_file = st.file_uploader("Drop SFDC Contacts file here", type=["xlsx","xls","csv"], key="sfdc_outreach")
+        if sfdc_file:
+            import re as _re
+            _dm = _re.search(r'(\d{8})', sfdc_file.name)
+            if _dm:
+                try:
+                    _fd   = datetime.strptime(_dm.group(1), "%Y%m%d")
+                    _age  = (datetime.today() - _fd).days
+                    if _age == 0:       st.success(f"📅 File dated today — current.")
+                    elif _age <= 7:     st.info(f"📅 {_fd.strftime('%b %d, %Y')} — {_age}d old.")
+                    else:               st.warning(f"📅 {_fd.strftime('%b %d, %Y')} — {_age}d old. Consider refreshing.")
+                except: pass
+
+    with up2:
+        st.markdown("**SS DRS Export** — project list & phase")
+        st.caption("Required: Project Name, Project Phase, Project Type, Billing Type, Status")
+        drs_file = st.file_uploader("Drop SS DRS file here", type=["xlsx","xls","csv"], key="drs_outreach")
+
+    with up3:
+        st.markdown("**NS Time Detail** — objective inactivity signal")
+        st.caption("Same export used on the Utilization Report page")
+        ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
+
+    if not sfdc_file and not drs_file and not ns_file:
+        st.info("Upload at least one report. All three together give the most accurate inactivity detection.")
+        return
+
+    # ── Load whichever files were uploaded ────────────────────────────────
+    df_sfdc = None
+    df_drs  = None
+    df_ns   = None
+
+    if sfdc_file:
         try:
-            df = load_sfdc(sfdc_file)
+            df_sfdc = load_sfdc(sfdc_file)
         except Exception as e:
-            st.error(f"Could not load file: {e}")
-            return
-        mode = "sfdc"
-        st.success(f"Loaded {len(df):,} rows · {df['account'].nunique() if 'account' in df.columns else '?'} accounts · {df['opportunity'].nunique() if 'opportunity' in df.columns else '?'} opportunities")
+            st.error(f"Could not load SFDC file: {e}")
 
-    # ── SS DRS path ────────────────────────────────────────────────────────
-    else:
-        st.caption("Required: Project Name, Project Phase, Project Type, Billing Type, Status · Optional: Project Manager, Account Name, Start Date, Last Updated")
-        drs_file = st.file_uploader("Drop your SS DRS export here", type=["xlsx","xls","csv"], key="drs_outreach")
-        if not drs_file:
-            st.info("Upload your SmartSheets DRS export — the tool will surface active projects and calculate days open.")
-            return
+    if drs_file:
         try:
-            df = load_drs(drs_file)
+            df_drs = load_drs(drs_file)
+            # Filter DRS to selected user
+            if "project_manager" in df_drs.columns:
+                df_drs = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
+                if df_drs.empty:
+                    st.warning(f"No active FF projects found for {selected_user} in the DRS export.")
         except Exception as e:
-            st.error(f"Could not load file: {e}")
-            return
-        mode = "drs"
+            st.error(f"Could not load DRS file: {e}")
 
-        # ── Consultant filter for ICs / Managers ──────────────────────────
-        if "project_manager" in df.columns:
-            all_consultants = sorted(df["project_manager"].dropna().astype(str).unique())
-            selected_consultant = st.selectbox(
-                "Filter by Consultant (ICs: select your name · Managers: select any)",
-                ["All"] + all_consultants,
-                key="drs_consultant"
-            )
-            if selected_consultant != "All":
-                df = df[df["project_manager"].astype(str) == selected_consultant]
+    if ns_file:
+        try:
+            df_ns = load_ns_time(ns_file)
+            # Filter NS to selected user
+            if "employee" in df_ns.columns:
+                df_ns = df_ns[df_ns["employee"].astype(str).str.strip() == selected_user]
+        except Exception as e:
+            st.error(f"Could not load NS file: {e}")
 
-        # Show stale project summary
-        tier_counts = {}
-        for name, tmpl in TEMPLATES.items():
-            n = len(df[(df["days_inactive"] >= tmpl["days_min"]) & (df["days_inactive"] <= tmpl["days_max"])])
-            if n > 0:
-                tier_counts[name] = n
+    # ── Merge NS inactivity into DRS ───────────────────────────────────────
+    if df_drs is not None and df_ns is not None:
+        df_drs = calc_days_inactive(df_drs, df_ns)
 
+    # ── Summary metrics ───────────────────────────────────────────────────
+    msg_parts = []
+    if df_sfdc is not None:
+        msg_parts.append(f"SFDC: {df_sfdc['account'].nunique() if 'account' in df_sfdc.columns else '?'} accounts · {df_sfdc['opportunity'].nunique() if 'opportunity' in df_sfdc.columns else '?'} opportunities")
+    if df_drs is not None:
+        msg_parts.append(f"DRS: {len(df_drs):,} active FF projects")
+        # Tier summary from DRS
+        tier_counts = {name: len(df_drs[(df_drs["days_inactive"] >= t["days_min"]) & (df_drs["days_inactive"] <= t["days_max"])]) for name, t in TEMPLATES.items()}
+        tier_counts = {k: v for k, v in tier_counts.items() if v > 0}
         if tier_counts:
             cols = st.columns(len(tier_counts))
             for i, (tier, n) in enumerate(tier_counts.items()):
                 t_num = TEMPLATES[tier]["tier"]
-                bg = [TIER_COLORS[t_num]]
                 with cols[i]:
                     st.markdown(f"<div style='background:{TIER_COLORS[t_num]};color:{TIER_TEXT[t_num]};padding:8px 12px;border-radius:6px;font-size:13px;font-weight:700'>{tier}<br><span style='font-size:20px'>{n}</span> project(s)</div>", unsafe_allow_html=True)
-        else:
-            st.success("No projects meeting re-engagement thresholds (30+ days).")
+    if msg_parts:
+        st.success(" · ".join(msg_parts))
 
-        st.success(f"Loaded {len(df):,} active FF projects")
-
+    # ── Set mode based on what's loaded ───────────────────────────────────
+    # Use DRS as primary project list if available, else SFDC
+    if df_drs is not None:
+        df   = df_drs
+        mode = "drs"
+    else:
+        df   = df_sfdc
+        mode = "sfdc"
     st.markdown("---")
-    st.subheader("Step 2 — Select a Project")
+    st.subheader("Step 3 — Select a Project")
 
     # ── Column resolution — works for both SFDC and DRS modes ─────────────
     if mode == "sfdc":
@@ -509,7 +596,7 @@ def main():
 
     # Days inactive input
     st.markdown("---")
-    st.subheader("Step 3 — Set Inactivity & Context")
+    st.subheader("Step 4 — Set Context")
 
     # Try to derive product from SFDC data, allow manual override
     _sfdc_product = str(product).strip() if product and str(product).lower() not in ("nan", "") else ""
@@ -543,7 +630,7 @@ def main():
 
     col4, col5 = st.columns([3, 3])
     with col4:
-        consultant_name = st.text_input("Your name (Implementation Consultant)", placeholder="e.g. Jane Smith", key="ic_name")
+        consultant_name = st.text_input("Your name (Implementation Consultant)", value=selected_user, key="ic_name")
     with col5:
         if int(days_inactive) >= 180:
             remaining_sessions = st.text_input("Remaining sessions", placeholder="e.g. 3", key="rem_sess")
@@ -562,7 +649,7 @@ def main():
 
     # ── Contacts ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Step 4 — Select Recipients")
+    st.subheader("Step 5 — Select Recipients")
 
     if mode == "drs":
         st.info("SS DRS does not include customer contact details. To/CC fields are left blank — add contacts manually or use the mailto link after composing.")
@@ -646,7 +733,7 @@ def main():
 
     # ── Template selection ────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Step 5 — Template")
+    st.subheader("Step 6 — Template")
 
     suggested = suggest_tier(int(days_inactive))
     tier_names = list(TEMPLATES.keys())
@@ -691,7 +778,7 @@ def main():
 
     # ── Preview ───────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Step 6 — Review & Copy")
+    st.subheader("Step 7 — Review & Send")
 
     # Remaining placeholders
     remaining = extract_placeholders(body) + extract_placeholders(subject)
