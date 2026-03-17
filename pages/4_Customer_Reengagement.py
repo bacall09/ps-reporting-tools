@@ -641,34 +641,29 @@ LOG_PATH = "/tmp/ps_outreach_log.json"
 _LOG_KEY  = "_outreach_log"
 
 def _load_log():
-    import streamlit as _st
-    # Try session state first (fastest)
-    if _LOG_KEY in _st.session_state:
-        return list(_st.session_state[_LOG_KEY])
-    # Fall back to file
+    if _LOG_KEY in st.session_state:
+        return list(st.session_state[_LOG_KEY])
     try:
         if os.path.exists(LOG_PATH):
             with open(LOG_PATH) as f:
                 entries = _json.load(f)
-                _st.session_state[_LOG_KEY] = entries
+                st.session_state[_LOG_KEY] = entries
                 return entries
     except: pass
     return []
 
 def _save_log(entries):
-    import streamlit as _st
     entries = entries[-500:]
-    _st.session_state[_LOG_KEY] = entries
+    st.session_state[_LOG_KEY] = entries
     try:
         with open(LOG_PATH, "w") as f:
             _json.dump(entries, f)
     except: pass
 
 def _log_outreach(consultant, customer, project, tier_label, days_inactive, template):
-    from datetime import datetime as _dt
     entries = _load_log()
     entries.append({
-        "date":          _dt.today().strftime("%Y-%m-%d"),
+        "date":          datetime.today().strftime("%Y-%m-%d"),
         "consultant":    str(consultant),
         "customer":      str(customer),
         "project":       str(project),
