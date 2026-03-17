@@ -173,20 +173,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Card 4: Phase Duration ───────────────────────────────────────────────────
-st.markdown("""
-<div class='tool-row'>
-    <div class='tool-badge'>SmartSheets DRS</div>
-    <div class='tool-title'>Phase Duration</div>
-    <div class='tool-desc'>
-        Tracks how long Fixed Fee projects spend in each delivery phase using
-        SS DRS milestone dates. Flags projects exceeding phase thresholds,
-        shows average duration by phase, and exports a Tableau-ready flat file.
-    </div>
-    <a class='tool-link' href='/Phase_Duration'>Open Report →</a>
-</div>
-""", unsafe_allow_html=True)
-
 # ── Card 4: Customer Outreach ────────────────────────────────────────────────
 st.markdown("""
 <div class='tool-row'>
