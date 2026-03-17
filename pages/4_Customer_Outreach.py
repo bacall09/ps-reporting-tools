@@ -306,9 +306,20 @@ def main():
     acc_col  = "account"     if "account"     in df.columns else None
     prod_col = "product"     if "product"     in df.columns else None
 
-    # Build project list
-    proj_options = sorted(df[opp_col].dropna().astype(str).unique())
-    selected_proj = st.selectbox("Project / Opportunity", proj_options, key="proj_select")
+    # Build project list — concat Account : Opportunity for clarity
+    if acc_col:
+        df["_proj_label"] = (
+            df[acc_col].fillna("").astype(str).str.strip()
+            + "  —  "
+            + df[opp_col].fillna("").astype(str).str.strip()
+        )
+        label_to_opp = df[["_proj_label", opp_col]].drop_duplicates().set_index("_proj_label")[opp_col].to_dict()
+        proj_options  = sorted(label_to_opp.keys())
+        selected_label = st.selectbox("Project / Opportunity", proj_options, key="proj_select")
+        selected_proj  = label_to_opp[selected_label]
+    else:
+        proj_options  = sorted(df[opp_col].dropna().astype(str).unique())
+        selected_proj = st.selectbox("Project / Opportunity", proj_options, key="proj_select")
 
     proj_rows = df[df[opp_col].astype(str) == selected_proj]
 
