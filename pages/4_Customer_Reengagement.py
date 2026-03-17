@@ -683,8 +683,10 @@ def main():
             _ns_matched = df_drs["last_ns_entry"].notna().sum() if "last_ns_entry" in df_drs.columns else 0
             _ns_total   = len(df_drs)
             if _ns_matched == 0:
-                _ns_cols = [c for c in df_ns.columns] if df_ns is not None else []
-                st.warning(f"NS Time Detail uploaded but no projects matched ({_ns_total} DRS projects, 0 NS matches). NS columns detected: {_ns_cols}")
+                # Show sample IDs from both sides to diagnose mismatch
+                _drs_ids = df_drs["project_id"].dropna().astype(str).unique()[:5].tolist() if "project_id" in df_drs.columns else []
+                _ns_ids  = df_ns["project_id"].dropna().astype(str).unique()[:5].tolist()  if "project_id" in df_ns.columns  else []
+                st.warning(f"NS Time Detail: 0 projects matched. Sample DRS project IDs: {_drs_ids} · Sample NS project IDs: {_ns_ids}")
             else:
                 st.caption(f"✅ NS Time Detail matched {_ns_matched}/{_ns_total} projects")
         except Exception as e:
