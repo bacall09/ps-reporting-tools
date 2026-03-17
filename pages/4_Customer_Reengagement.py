@@ -740,13 +740,13 @@ def main():
             def _tier_label(days):
                 try:
                     d = int(days)
-                    if d < 0:   return "❓ Unknown"
+                    if d < 0:   return "Unknown"
                     if d < 14:  return "—"
-                    if d < 30:  return "🔔 Eligible for informal follow up"
-                    if d < 60:  return "🟢 Tier 1"
-                    if d < 90:  return "🟡 Tier 2"
-                    if d < 180: return "🔴 Tier 3"
-                    return "🟣 Tier 4"
+                    if d < 30:  return "Eligible for informal follow up"
+                    if d < 60:  return "Tier 1"
+                    if d < 90:  return "Tier 2"
+                    if d < 180: return "Tier 3"
+                    return "Tier 4"
                 except: return "—"
             overview_df["Suggested Tier"] = overview_df["Days Inactive"].apply(_tier_label)
             overview_df["Days Inactive"]  = overview_df["Days Inactive"].apply(
@@ -755,13 +755,25 @@ def main():
             # Mark On Hold projects in table
             if "_on_hold" in df_drs.columns:
                 on_hold_mask = df_drs["_on_hold"].values[:len(overview_df)]
-                overview_df.loc[on_hold_mask, "Suggested Tier"] = "⏸ On Hold"
+                overview_df.loc[on_hold_mask, "Suggested Tier"] = "On Hold"
 
         # Colour-code rows by tier
-        # Use native st.dataframe — handles light/dark mode automatically
-        # Tier column gets emoji prefix for colour coding without background colours
-        sorted_df = overview_df.sort_values("Days Inactive", ascending=False).copy()
-        st.dataframe(sorted_df, hide_index=True, use_container_width=True)
+        def _style_overview_row(row):
+            days = row.get("Days Inactive", 0)
+            try:
+                d = int(days)
+                if d >= 180: bg, fg = "#e8d5ff", "#4a235a"   # purple
+                elif d >= 90:  bg, fg = "#FDECED", "#9C0006"  # red
+                elif d >= 60:  bg, fg = "#FFEB9C", "#9C6500"  # amber
+                elif d >= 30:  bg, fg = "#C6EFCE", "#276221"  # green
+                else:          return [""] * len(row)
+                return [f"background-color:{bg};color:{fg}"] * len(row)
+            except:
+                return [""] * len(row)
+
+        sorted_df    = overview_df.sort_values("Days Inactive", ascending=False).copy()
+        styled_overview = sorted_df.style.apply(_style_overview_row, axis=1)
+        st.dataframe(styled_overview, hide_index=True, use_container_width=True)
         st.caption("🔔 Eligible for informal follow up = 14–29 days · On Hold projects shown for reference only")
 
 
@@ -955,9 +967,8 @@ def main():
             primary_contact_first = ""
     elif mode == "drs":
         st.info("Upload your SFDC Contacts file alongside the DRS to enable contact lookup.")
-        to_emails             = []
-        cc_emails             = []
-        primary_contact_first = ""
+
+    if mode == "sfdc":
         email_col   = "email"             if "email"             in proj_rows.columns else None
         name_col    = "contact_name"      if "contact_name"      in proj_rows.columns else None
         roles_col   = "contact_roles"     if "contact_roles"     in proj_rows.columns else None
@@ -1030,7 +1041,6 @@ def main():
             else:
                 full_name = str(proj_rows[name_col].iloc[0])
             primary_contact_first = full_name.split()[0] if full_name and full_name.lower() not in ("nan","") else ""
-
     # ── Template selection ────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Step 6 — Template")
