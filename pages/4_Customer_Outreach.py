@@ -402,7 +402,7 @@ def load_ns_time(file):
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
     if "project_id" in df.columns:
-        df["project_id"] = df["project_id"].apply(lambda x: str(int(float(str(x)))) if str(x) not in ("nan","None","") else "")
+        df["project_id"] = df["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     # Store original cols for debug
     df.attrs["original_cols"] = list(df.columns)
     return df
@@ -416,8 +416,8 @@ def calc_days_inactive(df_drs, df_ns):
 
     # Try join on project_id first, fall back to project name
     if "project_id" in df_ns.columns and "project_id" in df_drs.columns:
-        df_ns["project_id"] = df_ns["project_id"].astype(str).str.strip().str.split(".").str[0]
-        df_drs["project_id"] = df_drs["project_id"].astype(str).str.strip().str.split(".").str[0]
+        df_ns["project_id"]  = df_ns["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+        df_drs["project_id"] = df_drs["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
         last_entry = (
             df_ns[df_ns["date"].notna()]
             .groupby("project_id")["date"].max()
@@ -571,6 +571,25 @@ def main():
     st.subheader("Your Projects")
     if df_drs is not None and not df_drs.empty:
         today_ts = pd.Timestamp.today().normalize()
+
+        # ── Metric cards ──────────────────────────────────────────────────
+        _total    = len(df_drs)
+        _onhold   = len(df_drs[df_drs.get("status", pd.Series(dtype=str)).astype(str).str.strip().str.lower().isin(
+            {"on-hold","on hold","onhold","on_hold"})]) if "status" in df_drs.columns else 0
+        _active   = _total - _onhold
+        _inactive = len(df_drs[df_drs["days_inactive"] >= 30]) if "days_inactive" in df_drs.columns else 0
+
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        with mc1:
+            st.metric("Total Projects", _total)
+        with mc2:
+            st.metric("Active Projects", _active)
+        with mc3:
+            st.metric("On Hold", _onhold)
+        with mc4:
+            st.metric("Requiring Follow-Up", _inactive, help="Projects with 30+ days inactivity")
+
+        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
         overview_cols = {
             "account":                "Customer",
             "project_name":           "Project",
