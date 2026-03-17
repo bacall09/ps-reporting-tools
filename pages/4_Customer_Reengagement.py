@@ -1508,7 +1508,15 @@ document.getElementById("cb").addEventListener("click",function(){{
     # ── Full outreach log ────────────────────────────────────────────────────
     st.markdown("---")
     with st.expander("📊 Full Outreach Log", expanded=False):
-        _all_log = _load_log()
+        # Read directly from session state — most reliable
+        _all_log = list(st.session_state.get(_LOG_KEY, []))
+        if not _all_log:
+            # Try file fallback
+            try:
+                if os.path.exists(LOG_PATH):
+                    with open(LOG_PATH) as _f:
+                        _all_log = _json.load(_f)
+            except: pass
         if _all_log:
             _log_df = pd.DataFrame(_all_log).sort_values("date", ascending=False)
             # Filter to current user if selected
