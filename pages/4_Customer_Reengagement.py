@@ -510,8 +510,8 @@ NS_COL_MAP_OUT = {
     "project":              "project",
     "project name":         "project",
     "project id":           "project_id",
-    "project id ":          "project_id",   # trailing space variant
-    " project id":          "project_id",   # leading space variant
+    "project id ":          "project_id",
+    " project id":          "project_id",
     "project_id":           "project_id",
     "projectid":            "project_id",
     "project internal id":  "project_id",
@@ -550,8 +550,15 @@ def calc_days_inactive(df_drs, df_ns):
         return df_drs
 
     def _clean_id(series):
-        """Safely convert project_id series to clean string."""
-        return series.fillna("").astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+        """Safely convert project_id series to clean integer string."""
+        def _to_id(v):
+            try:
+                s = str(v).strip()
+                if s in ("", "nan", "None", "NaN"): return ""
+                # Handle float like 367986.0 → 367986
+                return str(int(float(s)))
+            except: return str(v).strip()
+        return series.apply(_to_id)
 
     # Try join on project_id first, fall back to project name
     if "project_id" in df_ns.columns and "project_id" in df_drs.columns:
