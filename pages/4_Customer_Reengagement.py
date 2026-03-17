@@ -872,16 +872,24 @@ def main():
     # Project metadata
     account  = proj_rows[acc_col].iloc[0]  if acc_col and acc_col in proj_rows.columns and not proj_rows.empty else ""
     product  = proj_rows[prod_col].iloc[0] if prod_col and prod_col in proj_rows.columns and not proj_rows.empty else ""
-    # Account manager — check SFDC first (DRS doesn't have this column)
-    am_col   = "account_manager" if "account_manager" in proj_rows.columns else                "account_manager" if df_sfdc is not None and "account_manager" in df_sfdc.columns else None
-    am       = str(proj_rows[am_col].iloc[0]).strip() if am_col and am_col in proj_rows.columns and not proj_rows.empty else ""
-    if not am or am.lower() in ("nan", "none", ""):
-        # Try pulling from df_sfdc directly by matching opportunity
-        if df_sfdc is not None and "account_manager" in df_sfdc.columns and "opportunity" in df_sfdc.columns:
-            _opp_nm = str(proj_rows["project_name"].iloc[0]) if "project_name" in proj_rows.columns and not proj_rows.empty else ""
-            _sfdc_am_rows = df_sfdc[df_sfdc["opportunity"].astype(str).str.strip().str.lower() == _opp_nm.lower()]
-            if not _sfdc_am_rows.empty:
-                am = str(_sfdc_am_rows["account_manager"].iloc[0]).strip()
+    # Account manager name (→ email body) and email (→ suggested CC)
+    def _get_am_row():
+        """Return first SFDC row for this project — best source for AM details."""
+        if "account_manager" in proj_rows.columns and not proj_rows.empty:
+            return proj_rows.iloc[0]
+        if df_sfdc is not None and "account_manager" in df_sfdc.columns:
+            if "opportunity" in df_sfdc.columns and "project_name" in proj_rows.columns and not proj_rows.empty:
+                _nm = str(proj_rows["project_name"].iloc[0]).strip().lower()
+                _match = df_sfdc[df_sfdc["opportunity"].astype(str).str.strip().str.lower() == _nm]
+                if not _match.empty:
+                    return _match.iloc[0]
+            # Fall back to first row in full SFDC (all rows share same opp owner)
+            return df_sfdc.iloc[0] if not df_sfdc.empty else None
+        return None
+
+    _am_row    = _get_am_row()
+    am         = str(_am_row["account_manager"]).strip()       if _am_row is not None and "account_manager"       in _am_row.index and str(_am_row["account_manager"]).strip().lower()       not in ("nan","none","") else ""
+    am_email   = str(_am_row["account_manager_email"]).strip() if _am_row is not None and "account_manager_email" in _am_row.index and str(_am_row["account_manager_email"]).strip().lower() not in ("nan","none","") else ""
     close_dt = proj_rows["close_date"].iloc[0] if "close_date" in proj_rows.columns and not proj_rows.empty else None
 
     # For DRS mode — pre-set days inactive and phase from data
@@ -933,10 +941,10 @@ def main():
                 "06. Go-Live (Hypercare)","08. Ready for Support Transition",
                 "09. Phase 2 Scoping","10. Complete/Pending Final Billing","11. On Hold",
             ]) if _drs_phase.lower().startswith(p[:6].lower())), 2),
-            key="phase_in"
+            key=f"phase_in_{hash(selected_proj)}"
         )
     with col3:
-        last_activity = st.date_input("Date of last activity", value=date.today(), key="last_act")
+        last_activity = st.date_input("Date of last activity", value=date.today(), key=f"last_act_{hash(selected_proj)}")
 
     col4, col5 = st.columns([3, 3])
     with col4:
@@ -1046,12 +1054,20 @@ def main():
             to_emails = st.multiselect("To:", all_emails, default=[e for e in suggested_to if e in all_emails], key="to_emails")
             st.caption(f"To: auto-selected via — {to_source}")
 
-            suggested_cc = [e for e in partner_emails if e not in to_emails]
-            cc_pool  = list(set(all_emails + partner_emails))
-            cc_label = "CC:" + (" — Partner contact pre-suggested" if suggested_cc else "")
+            # Build CC suggestions: partner contact + AM email (Tier 2+)
+            tier_num     = TEMPLATES.get(selected_template, {}).get("tier", 1)
+            _am_cc       = [am_email] if am_email and tier_num >= 2 else []
+            suggested_cc = list(dict.fromkeys(
+                [e for e in partner_emails if e not in to_emails] + _am_cc
+            ))
+            cc_pool  = list(dict.fromkeys(all_emails + partner_emails + ([am_email] if am_email else [])))
+            _cc_hints = []
+            if [e for e in partner_emails if e not in to_emails]: _cc_hints.append("partner contact")
+            if am_email and tier_num >= 2: _cc_hints.append(f"AM ({am}) pre-suggested for Tier {tier_num}+")
+            cc_label  = "CC:" + (f" — {', '.join(_cc_hints)}" if _cc_hints else "")
             cc_emails = st.multiselect(cc_label, cc_pool, default=suggested_cc, key="cc_emails")
-            if suggested_cc:
-                st.caption("CC: Partner contact pre-suggested — review before sending")
+            if _cc_hints:
+                st.caption("CC pre-suggestions — review before sending")
         else:
             st.warning("Email and/or contact name columns not detected. Check your export headers.")
             to_emails = []
