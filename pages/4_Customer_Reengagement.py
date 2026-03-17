@@ -687,15 +687,7 @@ def main():
     if df_drs is not None and df_ns is not None:
         try:
             df_drs = calc_days_inactive(df_drs, df_ns)
-            _ns_matched = df_drs["last_ns_entry"].notna().sum() if "last_ns_entry" in df_drs.columns else 0
-            _ns_total   = len(df_drs)
-            if _ns_matched == 0:
-                # Show sample IDs from both sides to diagnose mismatch
-                _drs_ids = df_drs["project_id"].dropna().astype(str).unique()[:5].tolist() if "project_id" in df_drs.columns else []
-                _ns_ids  = df_ns["project_id"].dropna().astype(str).unique()[:5].tolist()  if "project_id" in df_ns.columns  else []
-                st.warning(f"NS Time Detail: 0 projects matched. Sample DRS project IDs: {_drs_ids} · Sample NS project IDs: {_ns_ids}")
-            else:
-                st.caption(f"✅ NS Time Detail matched {_ns_matched}/{_ns_total} projects")
+
         except Exception as e:
             st.warning(f"Could not calculate inactivity from NS data: {e}")
 
