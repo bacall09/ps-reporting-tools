@@ -123,7 +123,7 @@ st.markdown("""
         html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
         h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
         .email-box {
-            background: #f8faff;
+            background: transparent;
             border: 1px solid #d0dff5;
             border-radius: 8px;
             padding: 20px 24px;
