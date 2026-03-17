@@ -291,25 +291,29 @@ def extract_placeholders(text):
 # ── Main ──────────────────────────────────────────────────────────────────────
 # ── SS DRS column map ────────────────────────────────────────────────────────
 SS_COL_MAP_OUT = {
-    "project name":          "project_name",
-    "project id":            "project_id",
-    "project phase":         "phase",
-    "project type":          "project_type",
-    "status":                "status",
-    "start date":            "start_date",
-    "go live date":          "go_live_date",
-    "territory":             "territory",
-    "billing type":          "billing_type",
-    "billing":               "billing_type",
-    "project manager":       "project_manager",
-    "consultant":            "project_manager",
-    "overall rag":           "rag",
-    "schedule health":       "schedule_health",
-    "risk level":            "risk_level",
-    "last updated":          "last_updated",
-    "modified":              "last_updated",
-    "account name":          "account",
-    "customer":              "account",
+    "project name":           "project_name",
+    "project id":             "project_id",
+    "project phase":          "phase",
+    "project type":           "project_type",
+    "status":                 "status",
+    "start date":             "start_date",
+    "go live date":           "go_live_date",
+    "territory":              "territory",
+    "billing type":           "billing_type",
+    "billing":                "billing_type",
+    "project manager":        "project_manager",
+    "consultant":             "project_manager",
+    "overall rag":            "rag",
+    "schedule health":        "schedule_health",
+    "risk level":             "risk_level",
+    "client responsiveness":  "client_responsiveness",
+    "last updated":           "last_updated",
+    "modified":               "last_updated",
+    "modified date":          "last_updated",
+    "last modified":          "last_updated",
+    "date modified":          "last_updated",
+    "account name":           "account",
+    "customer":               "account",
 }
 
 INACTIVE_PHASES_OUT = {
@@ -325,7 +329,7 @@ def load_drs(file):
     else:
         df = pd.read_excel(file)
     df.columns = df.columns.str.strip()
-    rename = {c: SS_COL_MAP_OUT[c.lower()] for c in df.columns if c.lower() in SS_COL_MAP_OUT}
+    rename = {col: SS_COL_MAP_OUT[col.lower()] for col in df.columns if col.lower() in SS_COL_MAP_OUT}
     df = df.rename(columns=rename)
 
     if "start_date" in df.columns:
@@ -370,16 +374,20 @@ def suggest_tier_from_days(days):
 
 
 NS_COL_MAP_OUT = {
-    "employee":        "employee",
-    "name":            "employee",
-    "project":         "project",
-    "project name":    "project",
-    "project id":      "project_id",
-    "billing type":    "billing_type",
-    "project manager": "project_manager",
-    "date":            "date",
-    "hours":           "hours",
-    "quantity":        "hours",
+    "employee":             "employee",
+    "name":                 "employee",
+    "project":              "project",
+    "project name":         "project",
+    "project id":           "project_id",
+    "internal id":          "project_id",
+    "id":                   "project_id",
+    "billing type":         "billing_type",
+    "project manager":      "project_manager",
+    "date":                 "date",
+    "transaction date":     "date",
+    "hours":                "hours",
+    "quantity":             "hours",
+    "hours/quantity":       "hours",
 }
 
 def load_ns_time(file):
@@ -394,7 +402,9 @@ def load_ns_time(file):
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
     if "project_id" in df.columns:
-        df["project_id"] = df["project_id"].astype(str).str.strip()
+        df["project_id"] = df["project_id"].astype(str).str.strip().str.split(".").str[0]
+    # Store original cols for debug
+    df.attrs["original_cols"] = list(df.columns)
     return df
 
 
@@ -403,22 +413,37 @@ def calc_days_inactive(df_drs, df_ns):
     today = pd.Timestamp.today().normalize()
     if df_ns is None or "date" not in df_ns.columns:
         return df_drs
-    join_col = "project_id" if "project_id" in df_ns.columns else "project"
-    last_entry = (
-        df_ns[df_ns["date"].notna()]
-        .groupby(join_col)["date"].max()
-        .reset_index()
-        .rename(columns={"date": "last_ns_entry"})
-    )
-    if "project_id" in df_drs.columns and join_col == "project_id":
+
+    # Try join on project_id first, fall back to project name
+    if "project_id" in df_ns.columns and "project_id" in df_drs.columns:
+        df_ns["project_id"] = df_ns["project_id"].astype(str).str.strip().str.split(".").str[0]
+        df_drs["project_id"] = df_drs["project_id"].astype(str).str.strip().str.split(".").str[0]
+        last_entry = (
+            df_ns[df_ns["date"].notna()]
+            .groupby("project_id")["date"].max()
+            .reset_index()
+            .rename(columns={"date": "last_ns_entry"})
+        )
         df_drs = df_drs.merge(last_entry, on="project_id", how="left")
-    elif "project_name" in df_drs.columns:
-        last_entry = last_entry.rename(columns={join_col: "project_name"})
+    elif "project" in df_ns.columns and "project_name" in df_drs.columns:
+        last_entry = (
+            df_ns[df_ns["date"].notna()]
+            .groupby("project")["date"].max()
+            .reset_index()
+            .rename(columns={"project": "project_name", "date": "last_ns_entry"})
+        )
         df_drs = df_drs.merge(last_entry, on="project_name", how="left")
+
     if "last_ns_entry" in df_drs.columns:
-        df_drs["days_inactive"] = (today - df_drs["last_ns_entry"]).dt.days.clip(lower=0).fillna(
-            df_drs.get("days_inactive", 0)
-        ).astype(int)
+        # Override days_inactive with NS-based calculation where available
+        ns_days = (today - df_drs["last_ns_entry"]).dt.days.clip(lower=0)
+        df_drs["days_inactive"] = ns_days.where(
+            df_drs["last_ns_entry"].notna(),
+            df_drs["days_inactive"]  # keep DRS modified date value as fallback
+        ).fillna(-1).astype(int)
+        df_drs["_inactivity_source"] = df_drs["last_ns_entry"].apply(
+            lambda x: "NS Time Entry" if pd.notna(x) else df_drs["_inactivity_source"].iloc[0] if "_inactivity_source" in df_drs.columns else "Unknown"
+        )
     return df_drs
 
 
@@ -489,6 +514,11 @@ def main():
     if drs_file:
         try:
             df_drs = load_drs(drs_file)
+            # Show what mapped — helps debug missing columns
+            _mapped   = [col for col in ["last_updated","client_responsiveness","project_manager","project_id"] if col in df_drs.columns]
+            _unmapped = [col for col in ["last_updated","client_responsiveness","project_manager","project_id"] if col not in df_drs.columns]
+            if _unmapped:
+                st.warning(f"DRS: These expected columns did not map: {_unmapped} — check column names in your export match exactly.")
             # Filter DRS to selected user
             if "project_manager" in df_drs.columns:
                 df_drs = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
@@ -542,26 +572,38 @@ def main():
     if df_drs is not None and not df_drs.empty:
         today_ts = pd.Timestamp.today().normalize()
         overview_cols = {
-            "account":        "Customer",
-            "project_name":   "Project",
-            "project_type":   "Project Type",
-            "start_date":     "Start Date",
-            "status":         "Status",
-            "phase":          "Current Phase",
-            "days_inactive":  "Days Inactive",
-            "rag":            "RAG",
+            "account":                "Customer",
+            "project_name":           "Project",
+            "project_type":           "Project Type",
+            "start_date":             "Start Date",
+            "status":                 "Status",
+            "phase":                  "Current Phase",
+            "client_responsiveness":  "Client Responsiveness",
+            "days_inactive":          "Days Inactive",
+            "rag":                    "RAG",
         }
-        # Add last activity source column
+        # Last Time Entry — from NS if available, else DRS Modified date
         if "last_ns_entry" in df_drs.columns:
-            df_drs["last_activity"]        = df_drs["last_ns_entry"].dt.strftime("%Y-%m-%d").fillna("—")
-            df_drs["last_activity_source"] = df_drs["last_ns_entry"].apply(lambda x: "NS Time Entry" if pd.notna(x) else "—")
-            overview_cols["last_activity"]        = "Last Activity"
-            overview_cols["last_activity_source"] = "Source"
+            df_drs["last_time_entry"] = df_drs["last_ns_entry"].dt.strftime("%Y-%m-%d").fillna("—")
+            df_drs["entry_source"]    = df_drs["last_ns_entry"].apply(
+                lambda x: "NS Time Entry" if pd.notna(x) else
+                          ("SS DRS Modified" if "last_updated" in df_drs.columns else "—")
+            )
+            # For rows with no NS entry, show DRS modified date instead
+            if "last_updated" in df_drs.columns:
+                mask = df_drs["last_ns_entry"].isna()
+                df_drs.loc[mask, "last_time_entry"] = pd.to_datetime(
+                    df_drs.loc[mask, "last_updated"], errors="coerce"
+                ).dt.strftime("%Y-%m-%d").fillna("—")
+            overview_cols["last_time_entry"] = "Last Time Entry"
+            overview_cols["entry_source"]    = "Source"
         elif "last_updated" in df_drs.columns:
-            df_drs["last_activity"]        = pd.to_datetime(df_drs["last_updated"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
-            df_drs["last_activity_source"] = "SS DRS Modified"
-            overview_cols["last_activity"]        = "Last Activity"
-            overview_cols["last_activity_source"] = "Source"
+            df_drs["last_time_entry"] = pd.to_datetime(
+                df_drs["last_updated"], errors="coerce"
+            ).dt.strftime("%Y-%m-%d").fillna("—")
+            df_drs["entry_source"]    = "SS DRS Modified"
+            overview_cols["last_time_entry"] = "Last Time Entry"
+            overview_cols["entry_source"]    = "Source"
 
         avail_cols = [c for c in overview_cols if c in df_drs.columns]
         overview_df = df_drs[avail_cols].rename(columns=overview_cols).copy()
