@@ -365,10 +365,31 @@ def main():
     # ── SFDC path ──────────────────────────────────────────────────────────
     if data_source == "SFDC Contacts Export":
         st.caption("Required: First Name, Last Name, Email, Account Name, Opportunity Name · Optional: Close Date, Opportunity Owner, Implementation Contact, Contact Roles, Partner Contact")
+        st.markdown(
+            "📁 [Download latest SFDC Contacts List from shared Drive folder ↗]"
+            "(https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m)",
+            unsafe_allow_html=False
+        )
         sfdc_file = st.file_uploader("Drop your SFDC contacts report here", type=["xlsx","xls","csv"], key="sfdc_outreach")
         if not sfdc_file:
-            st.info("Upload your Salesforce contacts export — one row per contact per opportunity.")
+            st.info("Download the latest file from the shared Drive folder above, then upload it here.")
             return
+        # ── Detect file date from naming convention SFDC Contacts List_YYYYMMDD ──
+        import re as _re
+        _date_match = _re.search(r'(\d{8})', sfdc_file.name)
+        if _date_match:
+            _raw = _date_match.group(1)
+            try:
+                _file_date = datetime.strptime(_raw, "%Y%m%d")
+                _age_days  = (datetime.today() - _file_date).days
+                if _age_days == 0:
+                    st.success(f"📅 File dated today — data is current.")
+                elif _age_days <= 7:
+                    st.info(f"📅 File dated {_file_date.strftime('%B %d, %Y')} — {_age_days} day(s) old.")
+                else:
+                    st.warning(f"📅 File dated {_file_date.strftime('%B %d, %Y')} — {_age_days} days old. Consider asking for a refresh.")
+            except:
+                pass
         try:
             df = load_sfdc(sfdc_file)
         except Exception as e:
@@ -544,92 +565,84 @@ def main():
     st.subheader("Step 4 — Select Recipients")
 
     if mode == "drs":
-        st.info("SS DRS does not include customer contact details. To/CC fields are left blank — paste your contacts manually or switch to SFDC mode for contact lookup.")
-        to_emails  = []
-        cc_emails  = []
+        st.info("SS DRS does not include customer contact details. To/CC fields are left blank — add contacts manually or use the mailto link after composing.")
+        to_emails             = []
+        cc_emails             = []
         primary_contact_first = ""
-    
-    if mode == "sfdc":
-      email_col   = "email"             if "email"             in proj_rows.columns else None
-    name_col    = "contact_name"      if "contact_name"      in proj_rows.columns else None
-    roles_col   = "contact_roles"     if "contact_roles"     in proj_rows.columns else None
-    flag_col    = "impl_contact_flag" if "impl_contact_flag" in proj_rows.columns else None
-    partner_col = "partner_contact"   if "partner_contact"   in proj_rows.columns else None
-    count_col   = "role_count"        if "role_count"        in proj_rows.columns else None
 
-    # ── Contact role count warning ─────────────────────────────────────────
-    if count_col and not proj_rows.empty:
-        expected = pd.to_numeric(proj_rows[count_col].iloc[0], errors="coerce")
-        actual   = len(proj_rows)
-        if pd.notna(expected) and actual < int(expected):
-            st.warning(f"⚠️ SFDC shows {int(expected)} contacts for this opportunity but only {actual} row(s) loaded — export may be missing contacts.")
+    elif mode == "sfdc":
+        email_col   = "email"             if "email"             in proj_rows.columns else None
+        name_col    = "contact_name"      if "contact_name"      in proj_rows.columns else None
+        roles_col   = "contact_roles"     if "contact_roles"     in proj_rows.columns else None
+        flag_col    = "impl_contact_flag" if "impl_contact_flag" in proj_rows.columns else None
+        partner_col = "partner_contact"   if "partner_contact"   in proj_rows.columns else None
+        count_col   = "role_count"        if "role_count"        in proj_rows.columns else None
 
-    if email_col and name_col:
-        display_cols = [col for col in [name_col, email_col, roles_col, "title", flag_col] if col and col in proj_rows.columns]
-        contacts_display = proj_rows[display_cols].drop_duplicates().reset_index(drop=True)
-        col_rename = {
-            "contact_name": "Name", "email": "Email", "contact_roles": "Contact Roles",
-            "title": "Title", "impl_contact_flag": "Impl. Contact ✓"
-        }
-        contacts_display = contacts_display.rename(columns={k: v for k, v in col_rename.items() if k in contacts_display.columns})
-        st.dataframe(contacts_display, hide_index=True, use_container_width=True)
+        if count_col and not proj_rows.empty:
+            expected = pd.to_numeric(proj_rows[count_col].iloc[0], errors="coerce")
+            actual   = len(proj_rows)
+            if pd.notna(expected) and actual < int(expected):
+                st.warning(f"⚠️ SFDC shows {int(expected)} contacts for this opportunity but only {actual} row(s) loaded — export may be missing contacts.")
 
-        all_emails = proj_rows[email_col].dropna().astype(str).tolist()
+        if email_col and name_col:
+            display_cols = [col for col in [name_col, email_col, roles_col, "title", flag_col] if col and col in proj_rows.columns]
+            contacts_display = proj_rows[display_cols].drop_duplicates().reset_index(drop=True)
+            col_rename = {
+                "contact_name": "Name", "email": "Email", "contact_roles": "Contact Roles",
+                "title": "Title", "impl_contact_flag": "Impl. Contact ✓"
+            }
+            contacts_display = contacts_display.rename(columns={k: v for k, v in col_rename.items() if k in contacts_display.columns})
+            st.dataframe(contacts_display, hide_index=True, use_container_width=True)
 
-        # ── Priority logic for To: field ───────────────────────────────────
-        # 1. impl_contact_flag = True
-        # 2. contact_roles contains "Implementation Contact"
-        # 3. contact_roles contains "Primary"
-        # 4. First contact (fallback)
-        to_source = "First contact (fallback)"
-        suggested_to = all_emails[:1]
+            all_emails = proj_rows[email_col].dropna().astype(str).tolist()
 
-        if flag_col:
-            flagged = proj_rows[proj_rows[flag_col] == True]
-            if not flagged.empty:
-                suggested_to = flagged[email_col].dropna().astype(str).tolist()
-                to_source = "Implementation Contact checkbox"
-        if to_source == "First contact (fallback)" and roles_col:
-            impl_r = proj_rows[proj_rows[roles_col].str.contains("Implementation Contact", case=False, na=False)]
-            if not impl_r.empty:
-                suggested_to = impl_r[email_col].dropna().astype(str).tolist()
-                to_source = "Contact Roles: Implementation Contact"
-            else:
-                prim_r = proj_rows[proj_rows[roles_col].str.contains("Primary", case=False, na=False)]
-                if not prim_r.empty:
-                    suggested_to = prim_r[email_col].dropna().astype(str).tolist()
-                    to_source = "Contact Roles: Primary"
+            # Priority: 1. impl_contact_flag  2. Implementation Contact role  3. Primary role  4. First contact
+            to_source    = "First contact (fallback)"
+            suggested_to = all_emails[:1]
+            if flag_col:
+                flagged = proj_rows[proj_rows[flag_col] == True]
+                if not flagged.empty:
+                    suggested_to = flagged[email_col].dropna().astype(str).tolist()
+                    to_source    = "Implementation Contact checkbox"
+            if to_source == "First contact (fallback)" and roles_col:
+                impl_r = proj_rows[proj_rows[roles_col].str.contains("Implementation Contact", case=False, na=False)]
+                if not impl_r.empty:
+                    suggested_to = impl_r[email_col].dropna().astype(str).tolist()
+                    to_source    = "Contact Roles: Implementation Contact"
+                else:
+                    prim_r = proj_rows[proj_rows[roles_col].str.contains("Primary", case=False, na=False)]
+                    if not prim_r.empty:
+                        suggested_to = prim_r[email_col].dropna().astype(str).tolist()
+                        to_source    = "Contact Roles: Primary"
 
-        # ── Partner contact → suggest as CC ────────────────────────────────
-        partner_emails = []
-        if partner_col:
-            partner_vals = proj_rows[partner_col].dropna().astype(str)
-            partner_emails = [v.strip() for v in partner_vals if v.strip() and v.strip().lower() not in ("nan","none","")]
+            partner_emails = []
+            if partner_col:
+                partner_vals   = proj_rows[partner_col].dropna().astype(str)
+                partner_emails = [v.strip() for v in partner_vals if v.strip() and v.strip().lower() not in ("nan","none","")]
 
-        to_emails = st.multiselect("To:", all_emails, default=[e for e in suggested_to if e in all_emails], key="to_emails")
-        st.caption(f"To: auto-selected via — {to_source}")
+            to_emails = st.multiselect("To:", all_emails, default=[e for e in suggested_to if e in all_emails], key="to_emails")
+            st.caption(f"To: auto-selected via — {to_source}")
 
-        suggested_cc = [e for e in partner_emails if e not in to_emails]
-        cc_label = "CC:" + (" — Partner contact pre-suggested" if suggested_cc else "")
-        cc_pool  = list(set(all_emails + partner_emails))
-        cc_emails = st.multiselect(cc_label, cc_pool, default=suggested_cc, key="cc_emails")
-        if suggested_cc:
-            st.caption("CC: Partner contact pre-suggested — review before sending")
-
-    else:
-        st.warning("Email and/or contact name columns not detected. Check your export headers.")
-        to_emails = []
-        cc_emails = []
-    # Primary contact first name — use first To: recipient if available (SFDC mode only)
-    if mode == "sfdc":
-     primary_contact_first = ""
-     if name_col and not proj_rows.empty:
-        if email_col and to_emails:
-            to_row = proj_rows[proj_rows[email_col].astype(str) == to_emails[0]]
-            full_name = str(to_row[name_col].iloc[0]) if not to_row.empty else str(proj_rows[name_col].iloc[0])
+            suggested_cc = [e for e in partner_emails if e not in to_emails]
+            cc_pool  = list(set(all_emails + partner_emails))
+            cc_label = "CC:" + (" — Partner contact pre-suggested" if suggested_cc else "")
+            cc_emails = st.multiselect(cc_label, cc_pool, default=suggested_cc, key="cc_emails")
+            if suggested_cc:
+                st.caption("CC: Partner contact pre-suggested — review before sending")
         else:
-            full_name = str(proj_rows[name_col].iloc[0])
-        primary_contact_first = full_name.split()[0] if full_name and full_name.lower() not in ("nan","") else ""
+            st.warning("Email and/or contact name columns not detected. Check your export headers.")
+            to_emails = []
+            cc_emails = []
+
+        # Primary contact first name from To: recipient
+        primary_contact_first = ""
+        if name_col and not proj_rows.empty:
+            if email_col and to_emails:
+                to_row    = proj_rows[proj_rows[email_col].astype(str) == to_emails[0]]
+                full_name = str(to_row[name_col].iloc[0]) if not to_row.empty else str(proj_rows[name_col].iloc[0])
+            else:
+                full_name = str(proj_rows[name_col].iloc[0])
+            primary_contact_first = full_name.split()[0] if full_name and full_name.lower() not in ("nan","") else ""
 
     # ── Template selection ────────────────────────────────────────────────────
     st.markdown("---")
@@ -708,6 +721,25 @@ def main():
         key="copy_area",
         label_visibility="visible"
     )
+
+    # ── mailto link ───────────────────────────────────────────────────────────
+    import urllib.parse
+    _to_str  = ",".join(to_emails)  if to_emails  else ""
+    _cc_str  = ",".join(cc_emails)  if cc_emails  else ""
+    _subject = urllib.parse.quote(subject)
+    _body    = urllib.parse.quote(body)
+    _mailto  = f"mailto:{_to_str}?subject={_subject}&body={_body}"
+    if _cc_str:
+        _mailto = f"mailto:{_to_str}?cc={urllib.parse.quote(_cc_str)}&subject={_subject}&body={_body}"
+
+    st.markdown(
+        f"<a href='{_mailto}' target='_blank'>"
+        f"<button style='background:#1e2c63;color:white;border:none;padding:10px 24px;"
+        f"border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;"
+        f"cursor:pointer;margin-top:8px;'>✉️ Open in Email Client</button></a>",
+        unsafe_allow_html=True
+    )
+    st.caption("Opens your default email client (Gmail, Outlook, etc.) with subject and body pre-filled · Review placeholders before sending")
 
     # ── Merge field reference ─────────────────────────────────────────────────
     with st.expander("📋 Merge field reference — what was filled vs. what still needs updating", expanded=False):
