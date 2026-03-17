@@ -332,7 +332,7 @@ SFDC_COL_MAP = {
     "owner email":              "account_manager_email",
     "opp contact role count":   "role_count",
     "partner contact":          "partner_contact",
-    "primary":                  "title",
+    "primary":                  "is_primary",
     "title":                    "title",
 }
 
@@ -364,6 +364,11 @@ def load_sfdc(file):
     # Normalise impl_contact_flag — checkbox may come as TRUE/FALSE, Yes/No, 1/0
     if "impl_contact_flag" in df.columns:
         df["impl_contact_flag"] = df["impl_contact_flag"].astype(str).str.strip().str.lower().isin(
+            ["true", "yes", "1", "checked", "x"]
+        )
+    # Normalise is_primary flag
+    if "is_primary" in df.columns:
+        df["is_primary"] = df["is_primary"].astype(str).str.strip().str.lower().isin(
             ["true", "yes", "1", "checked", "x"]
         )
     # Normalise contact_roles to lowercase string for matching
@@ -1021,11 +1026,14 @@ def main():
             _dcols_raw = [name_col, email_col, roles_col, flag_col]
             if "title" in proj_rows.columns and "title" not in _dcols_raw:
                 _dcols_raw.append("title")
+            if "is_primary" in proj_rows.columns and "is_primary" not in _dcols_raw:
+                _dcols_raw.append("is_primary")
             display_cols = list(dict.fromkeys([c for c in _dcols_raw if c and c in proj_rows.columns]))
             contacts_display = proj_rows[display_cols].drop_duplicates().reset_index(drop=True)
             col_rename = {
                 "contact_name": "Name", "email": "Email", "contact_roles": "Contact Roles",
-                "title": "Title", "impl_contact_flag": "Impl. Contact ✓"
+                "title": "Title", "impl_contact_flag": "Impl. Contact ✓",
+                "is_primary": "Primary ✓"
             }
             contacts_display = contacts_display.rename(columns={k: v for k, v in col_rename.items() if k in contacts_display.columns})
             # Final dedup of column names after rename
@@ -1034,9 +1042,17 @@ def main():
 
             all_emails = proj_rows[email_col].dropna().astype(str).tolist()
 
-            # Priority: 1. impl_contact_flag  2. Implementation Contact role  3. Primary role  4. First contact
+            # Priority:
+            # 1. Implementation Contact checkbox (impl_contact_flag)
+            # 2. Contact Roles contains "Implementation Contact"
+            # 3. Primary checkbox (is_primary)
+            # 4. Contact Roles contains "Primary"
+            # 5. First contact (fallback)
             to_source    = "First contact (fallback)"
             suggested_to = all_emails[:1]
+
+            primary_col = "is_primary" if "is_primary" in proj_rows.columns else None
+
             if flag_col:
                 flagged = proj_rows[proj_rows[flag_col] == True]
                 if not flagged.empty:
@@ -1047,11 +1063,16 @@ def main():
                 if not impl_r.empty:
                     suggested_to = impl_r[email_col].dropna().astype(str).tolist()
                     to_source    = "Contact Roles: Implementation Contact"
-                else:
-                    prim_r = proj_rows[proj_rows[roles_col].str.contains("Primary", case=False, na=False)]
-                    if not prim_r.empty:
-                        suggested_to = prim_r[email_col].dropna().astype(str).tolist()
-                        to_source    = "Contact Roles: Primary"
+            if to_source == "First contact (fallback)" and primary_col:
+                prim_flag = proj_rows[proj_rows[primary_col] == True]
+                if not prim_flag.empty:
+                    suggested_to = prim_flag[email_col].dropna().astype(str).tolist()
+                    to_source    = "Primary contact checkbox"
+            if to_source == "First contact (fallback)" and roles_col:
+                prim_r = proj_rows[proj_rows[roles_col].str.contains("Primary", case=False, na=False)]
+                if not prim_r.empty:
+                    suggested_to = prim_r[email_col].dropna().astype(str).tolist()
+                    to_source    = "Contact Roles: Primary"
 
             partner_emails = []
             if partner_col:
