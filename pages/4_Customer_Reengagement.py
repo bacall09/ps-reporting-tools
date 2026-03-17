@@ -983,13 +983,19 @@ def main():
                 st.warning(f"⚠️ SFDC shows {int(expected)} contacts for this opportunity but only {actual} row(s) loaded — export may be missing contacts.")
 
         if email_col and name_col:
-            display_cols = [col for col in [name_col, email_col, roles_col, "title", flag_col] if col and col in proj_rows.columns]
+            # Build display cols — deduplicate to avoid Arrow errors
+            _dcols_raw = [name_col, email_col, roles_col, flag_col]
+            if "title" in proj_rows.columns and "title" not in _dcols_raw:
+                _dcols_raw.append("title")
+            display_cols = list(dict.fromkeys([c for c in _dcols_raw if c and c in proj_rows.columns]))
             contacts_display = proj_rows[display_cols].drop_duplicates().reset_index(drop=True)
             col_rename = {
                 "contact_name": "Name", "email": "Email", "contact_roles": "Contact Roles",
                 "title": "Title", "impl_contact_flag": "Impl. Contact ✓"
             }
             contacts_display = contacts_display.rename(columns={k: v for k, v in col_rename.items() if k in contacts_display.columns})
+            # Final dedup of column names after rename
+            contacts_display = contacts_display.loc[:, ~contacts_display.columns.duplicated()]
             st.dataframe(contacts_display, hide_index=True, use_container_width=True)
 
             all_emails = proj_rows[email_col].dropna().astype(str).tolist()
