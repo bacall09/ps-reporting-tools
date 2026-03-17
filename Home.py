@@ -173,5 +173,34 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# ── Card 4: Phase Duration ───────────────────────────────────────────────────
+st.markdown("""
+<div class='tool-row'>
+    <div class='tool-badge'>SmartSheets DRS</div>
+    <div class='tool-title'>Phase Duration</div>
+    <div class='tool-desc'>
+        Tracks how long Fixed Fee projects spend in each delivery phase using
+        SS DRS milestone dates. Flags projects exceeding phase thresholds,
+        shows average duration by phase, and exports a Tableau-ready flat file.
+    </div>
+    <a class='tool-link' href='/Phase_Duration'>Open Report →</a>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Card 4: Customer Outreach ────────────────────────────────────────────────
+st.markdown("""
+<div class='tool-row'>
+    <div class='tool-badge'>Salesforce</div>
+    <div class='tool-title'>Customer Outreach</div>
+    <div class='tool-desc'>
+        Re-engagement communications for unresponsive customers. Upload your SFDC contacts
+        export, select a project, and get an auto-suggested email template pre-filled with
+        customer and project details. Covers 4 escalation tiers from 30-day check-in through
+        6-month service term notification.
+    </div>
+    <a class='tool-link' href='/Customer_Outreach'>Open Tool →</a>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown("---")
 st.caption("PS Reporting Tools · Internal use only")
