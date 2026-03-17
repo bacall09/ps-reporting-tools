@@ -635,28 +635,40 @@ def calc_days_inactive(df_drs, df_ns):
     return df_drs
 
 
-# ── Outreach Log (JSON file — persists across sessions on Streamlit Cloud) ────
+# ── Outreach Log — session_state + /tmp file for cross-session persistence ────
 import os, json as _json
-LOG_PATH = "/tmp/outreach_log.json"
+LOG_PATH = "/tmp/ps_outreach_log.json"
+_LOG_KEY  = "_outreach_log"
 
 def _load_log():
+    import streamlit as _st
+    # Try session state first (fastest)
+    if _LOG_KEY in _st.session_state:
+        return list(_st.session_state[_LOG_KEY])
+    # Fall back to file
     try:
         if os.path.exists(LOG_PATH):
             with open(LOG_PATH) as f:
-                return _json.load(f)
+                entries = _json.load(f)
+                _st.session_state[_LOG_KEY] = entries
+                return entries
     except: pass
     return []
 
 def _save_log(entries):
+    import streamlit as _st
+    entries = entries[-500:]
+    _st.session_state[_LOG_KEY] = entries
     try:
         with open(LOG_PATH, "w") as f:
-            _json.dump(entries[-500:], f)
+            _json.dump(entries, f)
     except: pass
 
 def _log_outreach(consultant, customer, project, tier_label, days_inactive, template):
+    from datetime import datetime as _dt
     entries = _load_log()
     entries.append({
-        "date":          datetime.today().strftime("%Y-%m-%d"),
+        "date":          _dt.today().strftime("%Y-%m-%d"),
         "consultant":    str(consultant),
         "customer":      str(customer),
         "project":       str(project),
@@ -809,6 +821,93 @@ def main():
             st.metric("Requiring Follow-Up", _inactive, help="Projects with 30+ days inactivity")
 
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+        # ── Weekly Action List ────────────────────────────────────────────
+        st.subheader("This Week's Re-Engagement Actions")
+
+        # Projects needing action: 30+ days inactive, not on hold, not recently logged
+        _logged_projects = {e.get("project") for e in _load_log()
+                           if e.get("consultant") == selected_user
+                           and (datetime.today() - datetime.strptime(e.get("date","2000-01-01"), "%Y-%m-%d")).days <= 29}
+
+        _action_cols = [c for c in ["account","project_name","project_type","phase",
+                                     "client_responsiveness","days_inactive","_on_hold",
+                                     opp_col if "opp_col" in dir() else "project_name"]
+                        if c in df_drs.columns]
+
+        _action_df = df_drs[
+            (df_drs["days_inactive"] >= 30) &
+            (~df_drs.get("_on_hold", pd.Series(False, index=df_drs.index)))
+        ].copy() if "days_inactive" in df_drs.columns else pd.DataFrame()
+
+        if not _action_df.empty:
+            # Add tier and last logged
+            def _tier_short(d):
+                try:
+                    d = int(d)
+                    if d < 60:  return "Tier 1"
+                    if d < 90:  return "Tier 2"
+                    if d < 180: return "Tier 3"
+                    return "Tier 4"
+                except: return "—"
+
+            _action_df["Suggested Tier"] = _action_df["days_inactive"].apply(_tier_short)
+            _action_df["Last Logged"]    = _action_df["project_name"].apply(
+                lambda p: next((e["date"] for e in sorted(_load_log(), key=lambda x: x.get("date",""), reverse=True)
+                               if e.get("project") == str(p)), "—")
+            ) if "project_name" in _action_df.columns else "—"
+            _action_df["⚠️ Recent"] = _action_df["project_name"].isin(_logged_projects)
+
+            # Sort: Tier 4 → 3 → 2 → 1, then by days desc
+            _tier_order = {"Tier 4": 0, "Tier 3": 1, "Tier 2": 2, "Tier 1": 3}
+            _action_df["_tier_sort"] = _action_df["Suggested Tier"].map(_tier_order).fillna(4)
+            _action_df = _action_df.sort_values(["_tier_sort", "days_inactive"], ascending=[True, False])
+
+            # Display columns
+            _disp_cols = {
+                "account":               "Customer",
+                "project_name":          "Project",
+                "phase":                 "Phase",
+                "days_inactive":         "Days Inactive",
+                "client_responsiveness": "Responsiveness",
+                "Suggested Tier":        "Suggested Tier",
+                "Last Logged":           "Last Logged",
+            }
+            _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Logged"]]
+            _show  = _action_df[[c for c in _avail if c in _action_df.columns]].rename(columns=_disp_cols)
+
+            # Colour by tier
+            def _style_action(row):
+                t = row.get("Suggested Tier","")
+                if t == "Tier 4": bg, fg = "#e8d5ff","#4a235a"
+                elif t == "Tier 3": bg, fg = "#FDECED","#9C0006"
+                elif t == "Tier 2": bg, fg = "#FFEB9C","#9C6500"
+                elif t == "Tier 1": bg, fg = "#C6EFCE","#276221"
+                else: return [""] * len(row)
+                return [f"background-color:{bg};color:{fg}"] * len(row)
+
+            st.dataframe(
+                _show.style.apply(_style_action, axis=1),
+                hide_index=True, use_container_width=True
+            )
+            st.caption(f"{len(_action_df)} project(s) requiring re-engagement · sorted by urgency")
+
+            # Per-row compose buttons
+            st.markdown("**Compose email for:**")
+            _btn_cols = st.columns(min(len(_action_df), 4))
+            for _i, (_idx, _row) in enumerate(_action_df.head(8).iterrows()):
+                _proj_id   = str(_row.get("project_name", ""))
+                _proj_label = f"{_row.get('account', _proj_id)[:20]} · {_row.get('Suggested Tier','')}"
+                with _btn_cols[_i % 4]:
+                    if st.button(_proj_label, key=f"action_btn_{_i}", use_container_width=True):
+                        st.session_state["_jump_to_proj"] = _proj_id
+                        st.rerun()
+        else:
+            st.success("✅ No projects requiring re-engagement this week.")
+
+        st.markdown("---")
+        st.subheader("All Projects")
+
         overview_cols = {
             "account":                "Customer",
             "project_name":           "Project",
@@ -957,9 +1056,19 @@ def main():
 
         proj_options_display = [_label_with_tier_clean(p) for p in proj_options_filtered]
         display_to_label     = dict(zip(proj_options_display, proj_options_filtered))
+        # Handle jump from action list button
+        _jump = st.session_state.pop("_jump_to_proj", None)
+        _jump_display = None
+        if _jump:
+            for _d, _l in display_to_label.items():
+                if label_to_opp.get(_l,"") == _jump or _l == _jump:
+                    _jump_display = _d
+                    break
+
         selected_display     = st.selectbox(
             f"Select project ({len(proj_options_filtered)} active projects)",
             proj_options_display,
+            index=proj_options_display.index(_jump_display) if _jump_display and _jump_display in proj_options_display else 0,
             key="proj_select"
         )
         selected_label = display_to_label[selected_display]
@@ -1337,12 +1446,12 @@ def main():
             f"<a href='{_mailto}' target='_blank'>"
             f"<button style='background:#1e2c63;color:white;border:none;padding:10px 24px;"
             f"border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;"
-            f"cursor:pointer;margin-top:8px;'>✉️ Open in Email Client</button></a>",
+            f"cursor:pointer;width:100%;margin-top:4px;'>✉️ Open in Email Client</button></a>",
             unsafe_allow_html=True
         )
-        st.caption("Opens your email client with subject and body pre-filled")
+    st.markdown("<div style='margin-top:6px'></div>", unsafe_allow_html=True)
     btn_col2, btn_col3 = st.columns([2, 2])
-    with btn_col2:
+    with btn_col3:
         if st.button("📋 Log this outreach", key="log_btn", type="secondary"):
             _tier_label = TEMPLATES.get(selected_template, {}).get("tier", "")
             _tier_str   = f"Tier {_tier_label}" if _tier_label else selected_template
@@ -1358,10 +1467,15 @@ def main():
             )
             st.success(f"✅ Logged — {_tier_str} for {_log_customer} on {datetime.today().strftime('%Y-%m-%d')}")
             st.rerun()
-    with btn_col3:
+    with btn_col2:
         import json as _json2
         import streamlit.components.v1 as _components
-        _h = _json2.dumps(highlighted)
+        _html_wrapped = (
+            "<div style='font-family:Manrope,Arial,sans-serif;font-size:14px;"
+            "line-height:1.7;color:#1e2c63;'>"
+            + highlighted + "</div>"
+        )
+        _h = _json2.dumps(_html_wrapped)
         _p = _json2.dumps(body)
         _components.html(f"""
 <!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Manrope,sans-serif;">
@@ -1384,7 +1498,7 @@ document.getElementById("cb").addEventListener("click",function(){{
   }});
 }});
 </script></body></html>""", height=60)
-        st.caption("Paste into Gmail · preserves font & colour in Chrome/Edge")
+
 
     # ── Merge field reference ─────────────────────────────────────────────────
     with st.expander("📋 Merge field reference — what was filled vs. what still needs updating", expanded=False):
