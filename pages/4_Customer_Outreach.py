@@ -933,6 +933,11 @@ def main():
     st.markdown("---")
     st.subheader("Step 5 — Select Recipients")
 
+    # Safe defaults — overridden below if contacts are found
+    to_emails             = []
+    cc_emails             = []
+    primary_contact_first = ""
+
     if mode == "drs" and df_sfdc is not None:
         _proj_nm   = str(proj_rows["project_name"].iloc[0]).strip() if not proj_rows.empty and "project_name" in proj_rows.columns else ""
         # Use account if available, otherwise fall back to project_name for account matching
