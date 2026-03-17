@@ -344,13 +344,20 @@ def load_drs(file):
     if "status" in df.columns:
         df = df[~df["status"].str.strip().str.lower().isin({"on-hold","on hold","onhold","on_hold"})]
 
-    # Calculate days since start as proxy for inactivity (if no last_updated col)
+    # Calculate days inactive
+    # Only use last_updated if it mapped — do NOT fall back to start_date
+    # (start_date is not an inactivity signal)
     if "last_updated" in df.columns:
-        df["days_inactive"] = (today - df["last_updated"]).dt.days.clip(lower=0)
-    elif "start_date" in df.columns:
-        df["days_inactive"] = (today - df["start_date"]).dt.days.clip(lower=0)
+        df["days_inactive"]        = (today - df["last_updated"]).dt.days.clip(lower=0).fillna(-1).astype(int)
+        df["_inactivity_source"]   = "SS DRS Modified"
     else:
-        df["days_inactive"] = 0
+        # No reliable inactivity signal from DRS alone — set to -1 (Unknown)
+        # Will be overridden by NS Time Detail if uploaded
+        df["days_inactive"]        = -1
+        df["_inactivity_source"]   = "Unknown — upload NS Time Detail"
+
+    # Store unmapped columns for debug
+    df.attrs["unmapped_cols"] = [c for c in df.columns if c not in SS_COL_MAP_OUT.values()]
 
     return df
 
@@ -568,12 +575,16 @@ def main():
             def _tier_label(days):
                 try:
                     d = int(days)
+                    if d < 0: return "Unknown"
                     for name, t in TEMPLATES.items():
                         if t["days_min"] <= d <= t["days_max"]:
                             return f"Tier {t['tier']}"
-                    return "—"
+                    return "< 30 days"
                 except: return "—"
             overview_df["Suggested Tier"] = overview_df["Days Inactive"].apply(_tier_label)
+            overview_df["Days Inactive"]  = overview_df["Days Inactive"].apply(
+                lambda x: "Unknown" if int(x) < 0 else int(x)
+            )
 
         # Colour-code rows by tier
         def _style_overview(row):
@@ -590,6 +601,15 @@ def main():
         styled_overview = overview_df.sort_values("Days Inactive", ascending=False).style.apply(_style_overview, axis=1)
         st.dataframe(styled_overview, hide_index=True, use_container_width=True)
         st.caption("🟢 30d+ · 🟡 60d+ · 🔴 90d+ · 🟣 180d+ · Dropdown below shows only projects ≥ 14 days inactive")
+
+        # Debug expander — shows what DRS columns were detected
+        with st.expander("🔍 DRS column detection — click if Days Inactive shows Unknown", expanded=False):
+            detected = [col for col in df_drs.columns if not col.startswith("_")]
+            st.caption("Columns detected in your DRS export:")
+            st.write(detected)
+            st.caption("For inactivity to work from DRS, the export needs a column named: `Modified`, `Last Updated`, or `Modified Date`. If yours is named differently let us know and we'll add it to the map.")
+            if df_ns is not None:
+                st.success("✅ NS Time Detail uploaded — inactivity will be calculated from last time entry.")
     else:
         st.info("Upload SS DRS to see your project overview.")
 
@@ -632,7 +652,8 @@ def main():
             return f"[{tier_short} · {int(days)}d]  {label}"
         # Only show projects ≥ 14 days inactive in dropdown (all shown in table above)
         proj_options_all = sorted(label_to_opp.keys(), key=lambda x: -days_map.get(label_to_opp.get(x,""), 0))
-        proj_options_filtered = [p for p in proj_options_all if days_map.get(label_to_opp.get(p,""), 0) >= 14]
+        proj_options_filtered = [p for p in proj_options_all if days_map.get(label_to_opp.get(p,""), 0) >= 14
+                                  or days_map.get(label_to_opp.get(p,""), 0) == -1]
 
         if not proj_options_filtered:
             st.info("No projects with 14+ days inactivity found. All projects are up to date.")
@@ -643,7 +664,8 @@ def main():
             days  = days_map.get(opp, 0)
             suggested = suggest_tier_from_days(days)
             t_num = TEMPLATES[suggested]["tier"]
-            return f"Tier {t_num}  ·  {int(days)} days inactive  —  {label}"
+            days_str = "Unknown inactivity" if int(days) < 0 else f"{int(days)} days inactive"
+            return f"Tier {t_num}  ·  {days_str}  —  {label}"
 
         proj_options_display = [_label_with_tier_clean(p) for p in proj_options_filtered]
         display_to_label     = dict(zip(proj_options_display, proj_options_filtered))
