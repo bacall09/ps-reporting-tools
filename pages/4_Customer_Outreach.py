@@ -345,8 +345,12 @@ def load_drs(file):
         df = df[~df["phase"].str.strip().str.lower().isin(INACTIVE_PHASES_OUT)]
     if "billing_type" in df.columns:
         df = df[~df["billing_type"].str.strip().str.lower().isin({"t&m","time & material","time and material"})]
+    # Tag On Hold but keep in df — excluded from dropdown, shown in table
+    ON_HOLD_VALS = {"on-hold","on hold","onhold","on_hold"}
     if "status" in df.columns:
-        df = df[~df["status"].str.strip().str.lower().isin({"on-hold","on hold","onhold","on_hold"})]
+        df["_on_hold"] = df["status"].str.strip().str.lower().isin(ON_HOLD_VALS)
+    else:
+        df["_on_hold"] = False
 
     # Calculate days inactive
     # Only use last_updated if it mapped — do NOT fall back to start_date
@@ -441,8 +445,9 @@ def calc_days_inactive(df_drs, df_ns):
             df_drs["last_ns_entry"].notna(),
             df_drs["days_inactive"]  # keep DRS modified date value as fallback
         ).fillna(-1).astype(int)
+        _fallback_source = df_drs["_inactivity_source"].iloc[0] if "_inactivity_source" in df_drs.columns else "Unknown"
         df_drs["_inactivity_source"] = df_drs["last_ns_entry"].apply(
-            lambda x: "NS Time Entry" if pd.notna(x) else df_drs["_inactivity_source"].iloc[0] if "_inactivity_source" in df_drs.columns else "Unknown"
+            lambda x: "NS Time Entry" if pd.notna(x) else _fallback_source
         )
     return df_drs
 
@@ -574,10 +579,9 @@ def main():
 
         # ── Metric cards ──────────────────────────────────────────────────
         _total    = len(df_drs)
-        _onhold   = len(df_drs[df_drs.get("status", pd.Series(dtype=str)).astype(str).str.strip().str.lower().isin(
-            {"on-hold","on hold","onhold","on_hold"})]) if "status" in df_drs.columns else 0
+        _onhold   = int(df_drs["_on_hold"].sum()) if "_on_hold" in df_drs.columns else 0
         _active   = _total - _onhold
-        _inactive = len(df_drs[df_drs["days_inactive"] >= 30]) if "days_inactive" in df_drs.columns else 0
+        _inactive = int((df_drs["days_inactive"] >= 30).sum()) if "days_inactive" in df_drs.columns else 0
 
         mc1, mc2, mc3, mc4 = st.columns(4)
         with mc1:
@@ -599,7 +603,6 @@ def main():
             "phase":                  "Current Phase",
             "client_responsiveness":  "Client Responsiveness",
             "days_inactive":          "Days Inactive",
-            "rag":                    "RAG",
         }
         # Last Time Entry — from NS if available, else DRS Modified date
         if "last_ns_entry" in df_drs.columns:
@@ -646,6 +649,10 @@ def main():
             overview_df["Days Inactive"]  = overview_df["Days Inactive"].apply(
                 lambda x: "Unknown" if int(x) < 0 else int(x)
             )
+            # Mark On Hold projects in table
+            if "_on_hold" in df_drs.columns:
+                on_hold_mask = df_drs["_on_hold"].values[:len(overview_df)]
+                overview_df.loc[on_hold_mask, "Suggested Tier"] = "On Hold"
 
         # Colour-code rows by tier
         def _style_overview(row):
@@ -713,8 +720,17 @@ def main():
             return f"[{tier_short} · {int(days)}d]  {label}"
         # Only show projects ≥ 14 days inactive in dropdown (all shown in table above)
         proj_options_all = sorted(label_to_opp.keys(), key=lambda x: -days_map.get(label_to_opp.get(x,""), 0))
-        proj_options_filtered = [p for p in proj_options_all if days_map.get(label_to_opp.get(p,""), 0) >= 14
-                                  or days_map.get(label_to_opp.get(p,""), 0) == -1]
+        # Build on_hold lookup from df
+        _oh_map = {}
+        if "_on_hold" in df.columns:
+            _oh_map = dict(zip(df[opp_col].astype(str), df["_on_hold"]))
+
+        proj_options_filtered = [
+            p for p in proj_options_all
+            if not _oh_map.get(label_to_opp.get(p,""), False)  # exclude On Hold
+            and (days_map.get(label_to_opp.get(p,""), 0) >= 14
+                 or days_map.get(label_to_opp.get(p,""), 0) == -1)
+        ]
 
         if not proj_options_filtered:
             st.info("No projects with 14+ days inactivity found. All projects are up to date.")
@@ -777,7 +793,13 @@ def main():
 
     col1, col2, col3 = st.columns([2, 2, 2])
     with col1:
-        days_inactive = st.number_input("Days since last customer contact", min_value=0, value=_drs_days, step=1, key="days_in")
+        _days_label = "Days since last customer contact"
+        if _drs_days == -1:
+            _days_label += " (could not be calculated — please enter manually)"
+            _drs_days = 30
+        days_inactive = st.number_input(_days_label, min_value=0, value=_drs_days, step=1, key="days_in")
+        if _drs_days != days_inactive:
+            st.caption(f"✏️ Overridden — using {int(days_inactive)} days instead of calculated value")
     with col2:
         current_phase = st.selectbox(
             "Current project phase",
