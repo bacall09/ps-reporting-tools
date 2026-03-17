@@ -334,6 +334,18 @@ def main():
     st.markdown("---")
     st.subheader("Step 3 — Set Inactivity & Context")
 
+    # Try to derive product from SFDC data, allow manual override
+    _sfdc_product = str(product).strip() if product and str(product).lower() not in ("nan", "") else ""
+
+    col0, = st.columns([1])
+    with col0:
+        product_name = st.text_input(
+            "Product(s) being implemented",
+            value=_sfdc_product,
+            placeholder="e.g. ZoneCapture, ZoneApprovals",
+            key="product_name"
+        )
+
     col1, col2, col3 = st.columns([2, 2, 2])
     with col1:
         days_inactive = st.number_input("Days since last customer contact", min_value=0, value=30, step=1, key="days_in")
@@ -479,10 +491,13 @@ def main():
         st.warning("Account Manager name not found in SFDC data — you'll need to fill {ACCOUNT MANAGER} manually.")
 
     # ── Build filled template ─────────────────────────────────────────────────
+    # Strip numeric prefix from phase for clean template insertion (e.g. "02. Configuration" → "Configuration")
+    _phase_clean = re.sub(r'^\d+\.\s*', '', current_phase).strip()
+
     fields = {
         "CUSTOMER CONTACT NAME":  primary_contact_first,
-        "PRODUCT NAME":           str(product) if product else "",
-        "CURRENT PHASE":          current_phase,
+        "PRODUCT NAME":           product_name,
+        "CURRENT PHASE":          _phase_clean,
         "LAST ACTIVITY DATE":     last_activity.strftime("%B %d, %Y"),
         "IMPLEMENTATION CONSULTANT": consultant_name,
         "ACCOUNT MANAGER":        str(am) if am else "",
