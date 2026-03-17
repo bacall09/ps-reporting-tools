@@ -2,8 +2,94 @@ import streamlit as st
 import pandas as pd
 from datetime import date, datetime
 import re
+from rapidfuzz import fuzz
 
 st.set_page_config(page_title="Customer Outreach", page_icon=None, layout="wide")
+
+# ── Product keywords for fuzzy matching ──────────────────────────────────────
+PRODUCT_KEYWORDS = [
+    "Capture", "Approvals", "Reconcile", "PSP", "Payments", "SFTP",
+    "E-Invoicing", "eInvoicing", "CC", "Premium", "ZoneCapture",
+    "ZoneApprovals", "ZoneReconcile", "ZonePayments", "ZCapture",
+    "ZApprovals", "ZReconcile",
+]
+
+def _extract_product_hints(text):
+    """Return set of product keywords found in a string."""
+    t = str(text).lower()
+    return {kw for kw in PRODUCT_KEYWORDS if kw.lower() in t}
+
+def _clean_account(text):
+    """Normalise account name for fuzzy comparison — strip legal suffixes, punctuation."""
+    t = str(text).lower()
+    for stop in ["ltd","limited","inc","llc","plc","gmbh","the ","abf ","- za -","& co","co."]:
+        t = t.replace(stop, " ")
+    return re.sub(r"[^a-z0-9 ]", " ", t).split()
+
+def fuzzy_match_sfdc(df_sfdc, project_name, account_name):
+    """
+    Find best SFDC row(s) for a DRS project using:
+    1. Exact opportunity name match
+    2. Fuzzy account name + product keyword overlap
+    Returns matching rows and a confidence label.
+    """
+    if df_sfdc is None or df_sfdc.empty:
+        return pd.DataFrame(), None
+
+    # ── Exact opp name match ───────────────────────────────────────────────
+    if "opportunity" in df_sfdc.columns:
+        exact = df_sfdc[df_sfdc["opportunity"].astype(str).str.strip().str.lower()
+                        == str(project_name).strip().lower()]
+        if not exact.empty:
+            return exact, "Exact match"
+
+    # ── Fuzzy account + product keyword match ─────────────────────────────
+    drs_words    = set(_clean_account(account_name))
+    drs_products = _extract_product_hints(project_name)
+
+    best_score = 0
+    best_rows  = pd.DataFrame()
+    best_label = None
+
+    for _, row in df_sfdc.iterrows():
+        sfdc_account  = str(row.get("account",  ""))
+        sfdc_opp      = str(row.get("opportunity", ""))
+
+        # Account fuzzy score
+        sfdc_words    = set(_clean_account(sfdc_account))
+        common        = drs_words & sfdc_words
+        acct_score    = len(common) / max(len(drs_words), 1) * 100
+
+        # Product keyword overlap
+        sfdc_products = _extract_product_hints(sfdc_opp)
+        prod_match    = bool(drs_products & sfdc_products)
+
+        # Combined score — account similarity weighted, product match bonus
+        score = acct_score + (30 if prod_match else 0)
+
+        if score > best_score:
+            best_score = score
+            best_rows  = df_sfdc[df_sfdc.index == row.name]
+            best_label = (
+                f"Fuzzy match ({int(acct_score)}% account · {'✅ product match' if prod_match else '⚠️ no product match'})"
+            )
+
+    # Only return if confident enough (account similarity > 40% and some product signal)
+    if best_score >= 60 and not best_rows.empty:
+        return best_rows, best_label
+
+    # ── Last resort: account name only, high threshold ────────────────────
+    if "account" in df_sfdc.columns and account_name:
+        df_sfdc["_acct_score"] = df_sfdc["account"].apply(
+            lambda x: fuzz.token_set_ratio(str(account_name).lower(), str(x).lower())
+        )
+        top = df_sfdc[df_sfdc["_acct_score"] >= 75].sort_values("_acct_score", ascending=False)
+        df_sfdc.drop(columns=["_acct_score"], inplace=True)
+        if not top.empty:
+            return top, f"Account name match ({top.iloc[0].get('_acct_score', '?')}% similarity)"
+
+    return pd.DataFrame(), None
+
 
 # ── Active employee list (sourced from EMPLOYEE_ROLES — leavers excluded) ────
 ACTIVE_EMPLOYEES = [
@@ -839,13 +925,23 @@ def main():
     st.markdown("---")
     st.subheader("Step 5 — Select Recipients")
 
-    if mode == "drs":
-        st.info("SS DRS does not include customer contact details. To/CC fields are left blank — add contacts manually or use the mailto link after composing.")
+    if mode == "drs" and df_sfdc is not None:
+        _proj_nm = str(proj_rows["project_name"].iloc[0]).strip() if not proj_rows.empty and "project_name" in proj_rows.columns else ""
+        _sfdc_match, _match_label = fuzzy_match_sfdc(df_sfdc, _proj_nm, str(account))
+        if not _sfdc_match.empty:
+            proj_rows = _sfdc_match
+            mode      = "sfdc"
+            st.caption(f"✅ SFDC contacts matched — {len(_sfdc_match)} contact(s) · {_match_label}")
+        else:
+            st.info("No SFDC contacts matched for this project. Account name or product may not overlap — add contacts manually.")
+            to_emails             = []
+            cc_emails             = []
+            primary_contact_first = ""
+    elif mode == "drs":
+        st.info("Upload your SFDC Contacts file alongside the DRS to enable contact lookup.")
         to_emails             = []
         cc_emails             = []
         primary_contact_first = ""
-
-    elif mode == "sfdc":
         email_col   = "email"             if "email"             in proj_rows.columns else None
         name_col    = "contact_name"      if "contact_name"      in proj_rows.columns else None
         roles_col   = "contact_roles"     if "contact_roles"     in proj_rows.columns else None
