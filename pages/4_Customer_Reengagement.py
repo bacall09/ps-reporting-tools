@@ -328,6 +328,8 @@ SFDC_COL_MAP = {
     "implementation contact":   "impl_contact_flag",
     "implementation contact exists": "impl_contact_flag",
     "contact roles":            "contact_roles",
+    "opportunity owner email":  "account_manager_email",
+    "owner email":              "account_manager_email",
     "opp contact role count":   "role_count",
     "partner contact":          "partner_contact",
     "primary":                  "title",
@@ -861,8 +863,16 @@ def main():
     # Project metadata
     account  = proj_rows[acc_col].iloc[0]  if acc_col and acc_col in proj_rows.columns and not proj_rows.empty else ""
     product  = proj_rows[prod_col].iloc[0] if prod_col and prod_col in proj_rows.columns and not proj_rows.empty else ""
-    am_col   = "account_manager"           if "account_manager" in df.columns else None
-    am       = proj_rows[am_col].iloc[0]   if am_col and not proj_rows.empty else ""
+    # Account manager — check SFDC first (DRS doesn't have this column)
+    am_col   = "account_manager" if "account_manager" in proj_rows.columns else                "account_manager" if df_sfdc is not None and "account_manager" in df_sfdc.columns else None
+    am       = str(proj_rows[am_col].iloc[0]).strip() if am_col and am_col in proj_rows.columns and not proj_rows.empty else ""
+    if not am or am.lower() in ("nan", "none", ""):
+        # Try pulling from df_sfdc directly by matching opportunity
+        if df_sfdc is not None and "account_manager" in df_sfdc.columns and "opportunity" in df_sfdc.columns:
+            _opp_nm = str(proj_rows["project_name"].iloc[0]) if "project_name" in proj_rows.columns and not proj_rows.empty else ""
+            _sfdc_am_rows = df_sfdc[df_sfdc["opportunity"].astype(str).str.strip().str.lower() == _opp_nm.lower()]
+            if not _sfdc_am_rows.empty:
+                am = str(_sfdc_am_rows["account_manager"].iloc[0]).strip()
     close_dt = proj_rows["close_date"].iloc[0] if "close_date" in proj_rows.columns and not proj_rows.empty else None
 
     # For DRS mode — pre-set days inactive and phase from data
