@@ -333,6 +333,8 @@ SFDC_COL_MAP = {
     "opp contact role count":   "role_count",
     "partner contact":          "partner_contact",
     "primary":                  "is_primary",
+    "primary contact":          "is_primary",
+    "is primary":               "is_primary",
     "title":                    "title",
 }
 
@@ -366,11 +368,12 @@ def load_sfdc(file):
         df["impl_contact_flag"] = df["impl_contact_flag"].astype(str).str.strip().str.lower().isin(
             ["true", "yes", "1", "checked", "x"]
         )
-    # Normalise is_primary flag
+    # Normalise is_primary flag — store as readable string to avoid date rendering
     if "is_primary" in df.columns:
-        df["is_primary"] = df["is_primary"].astype(str).str.strip().str.lower().isin(
+        _prim_bool = df["is_primary"].astype(str).str.strip().str.lower().isin(
             ["true", "yes", "1", "checked", "x"]
         )
+        df["is_primary"] = _prim_bool.map({True: "✓", False: ""})
     # Normalise contact_roles to lowercase string for matching
     if "contact_roles" in df.columns:
         df["contact_roles"] = df["contact_roles"].fillna("").astype(str).str.strip()
@@ -677,6 +680,13 @@ def main():
     if df_drs is not None and df_ns is not None:
         try:
             df_drs = calc_days_inactive(df_drs, df_ns)
+            _ns_matched = df_drs["last_ns_entry"].notna().sum() if "last_ns_entry" in df_drs.columns else 0
+            _ns_total   = len(df_drs)
+            if _ns_matched == 0:
+                _ns_cols = [c for c in df_ns.columns] if df_ns is not None else []
+                st.warning(f"NS Time Detail uploaded but no projects matched ({_ns_total} DRS projects, 0 NS matches). NS columns detected: {_ns_cols}")
+            else:
+                st.caption(f"✅ NS Time Detail matched {_ns_matched}/{_ns_total} projects")
         except Exception as e:
             st.warning(f"Could not calculate inactivity from NS data: {e}")
 
@@ -1075,7 +1085,7 @@ def main():
                     suggested_to = impl_r[email_col].dropna().astype(str).tolist()
                     to_source    = "Contact Roles: Implementation Contact"
             if to_source == "First contact (fallback)" and primary_col:
-                prim_flag = proj_rows[proj_rows[primary_col] == True]
+                prim_flag = proj_rows[proj_rows[primary_col] == "✓"]
                 if not prim_flag.empty:
                     suggested_to = prim_flag[email_col].dropna().astype(str).tolist()
                     to_source    = "Primary contact checkbox"
