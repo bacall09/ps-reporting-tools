@@ -338,7 +338,12 @@ def main():
     with col1:
         days_inactive = st.number_input("Days since last customer contact", min_value=0, value=30, step=1, key="days_in")
     with col2:
-        current_phase = st.text_input("Current project phase", value="", placeholder="e.g. Configuration", key="phase_in")
+        current_phase = st.selectbox(
+            "Current project phase",
+            ['00. Onboarding', '01. Requirements and Design', '02. Configuration', '03. Enablement/Training', '04. UAT', '05. Prep for Go-Live', '06. Go-Live (Hypercare)', '08. Ready for Support Transition', '09. Phase 2 Scoping', '10. Complete/Pending Final Billing', '11. On Hold'],
+            index=2,
+            key="phase_in"
+        )
     with col3:
         last_activity = st.date_input("Date of last activity", value=date.today(), key="last_act")
 
@@ -346,14 +351,20 @@ def main():
     with col4:
         consultant_name = st.text_input("Your name (Implementation Consultant)", placeholder="e.g. Jane Smith", key="ic_name")
     with col5:
-        remaining_sessions = st.text_input("Remaining sessions (Tier 4 only)", placeholder="e.g. 3", key="rem_sess")
+        if int(days_inactive) >= 180:
+            remaining_sessions = st.text_input("Remaining sessions", placeholder="e.g. 3", key="rem_sess")
+        else:
+            remaining_sessions = ""
 
-    # Service term expiry (Tier 4)
-    if close_dt and pd.notna(close_dt):
-        expiry_default = (pd.Timestamp(close_dt) + pd.DateOffset(months=12)).date()
+    # Service term expiry — only shown for Tier 4
+    if int(days_inactive) >= 180:
+        if close_dt and pd.notna(close_dt):
+            expiry_default = (pd.Timestamp(close_dt) + pd.DateOffset(months=12)).date()
+        else:
+            expiry_default = date.today()
+        service_expiry = st.date_input("Service term expiry date", value=expiry_default, key="svc_exp")
     else:
-        expiry_default = date.today()
-    service_expiry = st.date_input("Service term expiry date (Tier 4 only)", value=expiry_default, key="svc_exp")
+        service_expiry = (pd.Timestamp(close_dt) + pd.DateOffset(months=12)).date() if close_dt and pd.notna(close_dt) else date.today()
 
     # ── Contacts ──────────────────────────────────────────────────────────────
     st.markdown("---")
