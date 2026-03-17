@@ -1451,7 +1451,6 @@ def main():
             _tier_label = TEMPLATES.get(selected_template, {}).get("tier", "")
             _tier_str   = f"Tier {_tier_label}" if _tier_label else selected_template
             _log_customer = str(account) if account and str(account).lower() not in ("nan","") else selected_proj
-            _log_project  = str(proj_rows["project_name"].iloc[0]) if "project_name" in proj_rows.columns and not proj_rows.empty else selected_proj
             _log_outreach(
                 consultant    = consultant_name,
                 customer      = _log_customer,
@@ -1460,8 +1459,10 @@ def main():
                 days_inactive = days_inactive,
                 template      = selected_template,
             )
-            st.success(f"✅ Logged — {_tier_str} for {_log_customer} on {datetime.today().strftime('%Y-%m-%d')}")
-            st.rerun()
+            st.session_state["_log_success_msg"] = f"✅ Logged — {_tier_str} for {_log_customer} on {datetime.today().strftime('%Y-%m-%d')}"
+
+        if st.session_state.get("_log_success_msg"):
+            st.success(st.session_state["_log_success_msg"])
     with btn_col2:
         import json as _json2
         import streamlit.components.v1 as _components
@@ -1525,7 +1526,7 @@ document.getElementById("cb").addEventListener("click",function(){{
                 _all    = _load_log()
                 _kept   = [e for e in _all if e.get("consultant") != selected_user]
                 _save_log(_kept)
-                st.rerun()
+                st.session_state["_log_success_msg"] = "✅ Your log entries cleared."
         else:
             st.info("No outreach logged yet. Click '📋 Log this outreach' after composing an email.")
 
