@@ -944,9 +944,13 @@ def main():
         _acct_hint = str(account).strip() if account and str(account).strip() not in ("", "nan") else _proj_nm
         _sfdc_match, _match_label = fuzzy_match_sfdc(df_sfdc, _proj_nm, _acct_hint)
         if not _sfdc_match.empty:
-            proj_rows = _sfdc_match
+            proj_rows = _sfdc_match.copy()
             mode      = "sfdc"
             st.caption(f"✅ SFDC contacts matched — {len(_sfdc_match)} contact(s) · {_match_label}")
+            # Debug — remove once confirmed working
+            with st.expander("🔍 Matched contact columns", expanded=False):
+                st.write(list(proj_rows.columns))
+                st.dataframe(proj_rows.head(2))
         else:
             st.info("No SFDC contacts matched for this project. Account name or product may not overlap — add contacts manually.")
             to_emails             = []
