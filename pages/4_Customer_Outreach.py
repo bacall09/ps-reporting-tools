@@ -47,9 +47,11 @@ def fuzzy_match_sfdc(df_sfdc, project_name, account_name):
     drs_words    = set(_clean_account(account_name))
     drs_products = _extract_product_hints(project_name)
 
-    best_score = 0
-    best_rows  = pd.DataFrame()
-    best_label = None
+    best_score  = 0
+    best_rows   = pd.DataFrame()
+    best_label  = None
+    best_opp_id = None
+    best_opp_nm = None
 
     for _, row in df_sfdc.iterrows():
         sfdc_account  = str(row.get("account",  ""))
@@ -70,15 +72,22 @@ def fuzzy_match_sfdc(df_sfdc, project_name, account_name):
         score = acct_score + (30 if prod_match else 0)
 
         if score > best_score:
-            best_score = score
-            best_rows  = df_sfdc[df_sfdc.index == row.name]
-            best_label = (
+            best_score   = score
+            best_opp_id  = row.get("opportunity_id", None)
+            best_opp_nm  = row.get("opportunity",    None)
+            best_label   = (
                 f"Fuzzy match ({int(acct_score)}% account · {'✅ product match' if prod_match else '⚠️ no product match'})"
             )
 
-    # Only return if confident enough (account similarity > 40% and some product signal)
-    if best_score >= 60 and not best_rows.empty:
-        return best_rows, best_label
+    # Only return if confident enough
+    if best_score >= 60:
+        # Return ALL contacts for the matched opportunity (not just the best-scoring row)
+        if best_opp_id and "opportunity_id" in df_sfdc.columns:
+            best_rows = df_sfdc[df_sfdc["opportunity_id"] == best_opp_id]
+        elif best_opp_nm and "opportunity" in df_sfdc.columns:
+            best_rows = df_sfdc[df_sfdc["opportunity"] == best_opp_nm]
+        if not best_rows.empty:
+            return best_rows, best_label
 
     # ── Last resort: account name only, high threshold ────────────────────
     if "account" in df_sfdc.columns and account_name:
@@ -315,9 +324,12 @@ SFDC_COL_MAP = {
     "owner":                    "account_manager",
     # New columns
     "implementation contact":   "impl_contact_flag",
+    "implementation contact exists": "impl_contact_flag",
     "contact roles":            "contact_roles",
     "opp contact role count":   "role_count",
     "partner contact":          "partner_contact",
+    "primary":                  "title",
+    "title":                    "title",
 }
 
 def load_sfdc(file):
@@ -947,10 +959,7 @@ def main():
             proj_rows = _sfdc_match.copy()
             mode      = "sfdc"
             st.caption(f"✅ SFDC contacts matched — {len(_sfdc_match)} contact(s) · {_match_label}")
-            # Debug — remove once confirmed working
-            with st.expander("🔍 Matched contact columns", expanded=False):
-                st.write(list(proj_rows.columns))
-                st.dataframe(proj_rows.head(2))
+
         else:
             st.info("No SFDC contacts matched for this project. Account name or product may not overlap — add contacts manually.")
             to_emails             = []
