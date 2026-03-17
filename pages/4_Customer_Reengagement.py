@@ -338,7 +338,16 @@ SFDC_COL_MAP = {
 
 def load_sfdc(file):
     if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
+        for enc in ["utf-8", "utf-8-sig", "windows-1252", "latin-1", "cp1252"]:
+            try:
+                file.seek(0)
+                df = pd.read_csv(file, encoding=enc)
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+        else:
+            file.seek(0)
+            df = pd.read_csv(file, encoding="latin-1")  # last resort
     else:
         df = pd.read_excel(file)
     df.columns = df.columns.str.strip()
