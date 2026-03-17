@@ -55,10 +55,12 @@ def fuzzy_match_sfdc(df_sfdc, project_name, account_name):
         sfdc_account  = str(row.get("account",  ""))
         sfdc_opp      = str(row.get("opportunity", ""))
 
-        # Account fuzzy score
+        # Account fuzzy score — word overlap + token set ratio for partial name matches
         sfdc_words    = set(_clean_account(sfdc_account))
         common        = drs_words & sfdc_words
-        acct_score    = len(common) / max(len(drs_words), 1) * 100
+        word_score    = len(common) / max(len(drs_words), 1) * 100
+        fuzz_score    = fuzz.token_set_ratio(" ".join(drs_words), " ".join(sfdc_words))
+        acct_score    = max(word_score, fuzz_score * 0.7)  # blend both signals
 
         # Product keyword overlap
         sfdc_products = _extract_product_hints(sfdc_opp)
@@ -116,11 +118,11 @@ st.markdown("""
             border: 1px solid #d0dff5;
             border-radius: 8px;
             padding: 20px 24px;
-            font-family: Arial, sans-serif;
+            font-family: 'Manrope', sans-serif;
             font-size: 14px;
             line-height: 1.7;
             white-space: pre-wrap;
-            color: #1a1a1a;
+            color: #1e2c63;
         }
         .placeholder-missing {
             background: #fff3cd;
@@ -731,7 +733,7 @@ def main():
                     d = int(days)
                     if d < 0:   return "Unknown"
                     if d < 14:  return "—"
-                    if d < 30:  return "🔔 Follow Up"
+                    if d < 30:  return "🔔 Eligible for informal follow up"
                     for name, t in TEMPLATES.items():
                         if t["days_min"] <= d <= t["days_max"]:
                             return f"Tier {t['tier']}"
@@ -760,7 +762,7 @@ def main():
 
         styled_overview = overview_df.sort_values("Days Inactive", ascending=False).style.apply(_style_overview, axis=1)
         st.dataframe(styled_overview, hide_index=True, use_container_width=True)
-        st.caption("🔔 Follow Up = 14–29 days · On Hold projects shown for reference only")
+        st.caption("🔔 Eligible for informal follow up = 14–29 days · On Hold projects shown for reference only")
 
 
     else:
@@ -817,7 +819,7 @@ def main():
         ]
 
         if not proj_options_filtered:
-            st.success("✅ No projects requiring re-engagement (30+ days inactive). Check the table above for any 🔔 Follow Up flags.")
+            st.success("✅ No projects requiring re-engagement (30+ days inactive). Check the table above for any 🔔 Eligible for informal follow up flags.")
             return
 
         def _label_with_tier_clean(label):
@@ -868,12 +870,18 @@ def main():
 
     col0, = st.columns([1])
     with col0:
+        # Key includes selected_proj so widget resets when project changes
+        _prod_key = f"product_name_{hash(selected_proj) if 'selected_proj' in dir() else 0}"
         product_name = st.text_input(
-            "Product(s) being implemented",
+            "Product(s) being implemented *",
             value=_sfdc_product,
             placeholder="e.g. ZoneCapture, ZoneApprovals",
-            key="product_name"
+            key=_prod_key
         )
+
+    if not product_name or product_name.strip() == "":
+        st.warning("⚠️ Please enter the product(s) being implemented before continuing.")
+        return
 
     col1, col2, col3 = st.columns([2, 2, 2])
     with col1:
@@ -926,8 +934,10 @@ def main():
     st.subheader("Step 5 — Select Recipients")
 
     if mode == "drs" and df_sfdc is not None:
-        _proj_nm = str(proj_rows["project_name"].iloc[0]).strip() if not proj_rows.empty and "project_name" in proj_rows.columns else ""
-        _sfdc_match, _match_label = fuzzy_match_sfdc(df_sfdc, _proj_nm, str(account))
+        _proj_nm   = str(proj_rows["project_name"].iloc[0]).strip() if not proj_rows.empty and "project_name" in proj_rows.columns else ""
+        # Use account if available, otherwise fall back to project_name for account matching
+        _acct_hint = str(account).strip() if account and str(account).strip() not in ("", "nan") else _proj_nm
+        _sfdc_match, _match_label = fuzzy_match_sfdc(df_sfdc, _proj_nm, _acct_hint)
         if not _sfdc_match.empty:
             proj_rows = _sfdc_match
             mode      = "sfdc"
