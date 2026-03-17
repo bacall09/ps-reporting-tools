@@ -173,18 +173,18 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Card 4: Customer Outreach ────────────────────────────────────────────────
+# ── Card 4: Customer Re-Engagement ────────────────────────────────────────────────
 st.markdown("""
 <div class='tool-row'>
-    <div class='tool-badge'>Salesforce</div>
-    <div class='tool-title'>Customer Outreach</div>
+    <div class='tool-badge'>SmartSheets + NetSuite + Salesforce</div>
+    <div class='tool-title'>Customer Re-Engagement</div>
     <div class='tool-desc'>
         Re-engagement communications for unresponsive customers. Upload your SFDC contacts
         export, select a project, and get an auto-suggested email template pre-filled with
         customer and project details. Covers 4 escalation tiers from 30-day check-in through
         6-month service term notification.
     </div>
-    <a class='tool-link' href='/Customer_Outreach'>Open Tool →</a>
+    <a class='tool-link' href='/Customer_Reengagement'>Open Tool →</a>
 </div>
 """, unsafe_allow_html=True)
 
