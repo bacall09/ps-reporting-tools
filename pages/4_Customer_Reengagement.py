@@ -635,7 +635,43 @@ def calc_days_inactive(df_drs, df_ns):
     return df_drs
 
 
+# ── Outreach Log (JSON file — persists across sessions on Streamlit Cloud) ────
+import os, json as _json
+LOG_PATH = "/tmp/outreach_log.json"
+
+def _load_log():
+    try:
+        if os.path.exists(LOG_PATH):
+            with open(LOG_PATH) as f:
+                return _json.load(f)
+    except: pass
+    return []
+
+def _save_log(entries):
+    try:
+        with open(LOG_PATH, "w") as f:
+            _json.dump(entries[-500:], f)
+    except: pass
+
+def _log_outreach(consultant, customer, project, tier_label, days_inactive, template):
+    entries = _load_log()
+    entries.append({
+        "date":          datetime.today().strftime("%Y-%m-%d"),
+        "consultant":    str(consultant),
+        "customer":      str(customer),
+        "project":       str(project),
+        "tier":          str(tier_label),
+        "days_inactive": int(days_inactive) if days_inactive else 0,
+        "template":      str(template),
+    })
+    _save_log(entries)
+
+def _get_project_log(project):
+    return [e for e in _load_log() if e.get("project") == str(project)]
+
+
 def main():
+
 
 
     # ── Who is using this tool? ───────────────────────────────────────────
@@ -1027,12 +1063,22 @@ def main():
         consultant_name = st.text_input("Your name (Implementation Consultant)", value=_display_name, key="ic_name")
     with col5:
         if int(days_inactive) >= 180:
-            # Pre-fill from DRS milestone calculation if available
+            # Pre-fill from DRS milestone calculation — use df_drs directly
+            # (proj_rows may have been reassigned to SFDC rows losing DRS columns)
             _drs_remaining = ""
-            if df_drs is not None and "remaining_sessions" in df_drs.columns and not proj_rows.empty:
-                _rs_val = proj_rows["remaining_sessions"].iloc[0] if "remaining_sessions" in proj_rows.columns else None
-                if _rs_val is not None and str(_rs_val) not in ("nan","None",""):
-                    _drs_remaining = str(int(_rs_val))
+            if df_drs is not None and "remaining_sessions" in df_drs.columns:
+                # Match by project_id or project_name
+                _drs_proj = None
+                if "project_id" in df_drs.columns and "project_id" in df.columns:
+                    _pid = str(df[df[opp_col].astype(str) == str(selected_proj)]["project_id"].iloc[0]) if not df[df[opp_col].astype(str) == str(selected_proj)].empty else None
+                    if _pid:
+                        _drs_proj = df_drs[df_drs["project_id"].astype(str) == _pid]
+                if (_drs_proj is None or _drs_proj.empty) and "project_name" in df_drs.columns:
+                    _drs_proj = df_drs[df_drs["project_name"].astype(str) == str(selected_proj)]
+                if _drs_proj is not None and not _drs_proj.empty:
+                    _rs_val = _drs_proj["remaining_sessions"].iloc[0]
+                    if _rs_val is not None and str(_rs_val) not in ("nan","None",""):
+                        _drs_remaining = str(int(_rs_val))
             remaining_sessions = st.text_input(
                 "Remaining sessions",
                 value=_drs_remaining,
@@ -1186,6 +1232,26 @@ def main():
             primary_contact_first = full_name.split()[0] if full_name and full_name.lower() not in ("nan","") else ""
     # ── Template selection ────────────────────────────────────────────────────
     st.markdown("---")
+
+    # ── Prior outreach indicator ──────────────────────────────────────────
+    _prior = _get_project_log(selected_proj)
+    if _prior:
+        _prior_df = pd.DataFrame(_prior).sort_values("date", ascending=False)
+        with st.expander(f"📋 Prior outreach logged — {len(_prior)} email(s) sent", expanded=True):
+            st.dataframe(_prior_df[["date","consultant","tier","days_inactive","template"]].rename(columns={
+                "date": "Date", "consultant": "Sent By", "tier": "Tier",
+                "days_inactive": "Days Inactive", "template": "Template Used"
+            }), hide_index=True, use_container_width=True)
+        # Tier sequencing guard
+        _logged_tiers = {e.get("tier","") for e in _prior}
+        _tier1_sent   = any("Tier 1" in t for t in _logged_tiers)
+        _tier2_sent   = any("Tier 2" in t for t in _logged_tiers)
+        _tier3_sent   = any("Tier 3" in t for t in _logged_tiers)
+    else:
+        _tier1_sent = _tier2_sent = _tier3_sent = False
+        if int(days_inactive) >= 60:
+            st.warning("⚠️ No prior outreach logged for this project. Per sequencing rules, start with Tier 1 before escalating — unless Tier 1 was sent outside this tool.")
+
     st.subheader("Step 6 — Template")
 
     suggested = suggest_tier(int(days_inactive)) or list(TEMPLATES.keys())[0]
@@ -1272,14 +1338,48 @@ def main():
     if _cc_str:
         _mailto = f"mailto:{_to_str}?cc={urllib.parse.quote(_cc_str)}&subject={_subject}&body={_body}"
 
-    st.markdown(
-        f"<a href='{_mailto}' target='_blank'>"
-        f"<button style='background:#1e2c63;color:white;border:none;padding:10px 24px;"
-        f"border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;"
-        f"cursor:pointer;margin-top:8px;'>✉️ Open in Email Client</button></a>",
-        unsafe_allow_html=True
-    )
-    st.caption("Opens your default email client (Gmail, Outlook, etc.) with subject and body pre-filled · Review placeholders before sending")
+    btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 2])
+    with btn_col1:
+        st.markdown(
+            f"<a href='{_mailto}' target='_blank'>"
+            f"<button style='background:#1e2c63;color:white;border:none;padding:10px 24px;"
+            f"border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;"
+            f"cursor:pointer;margin-top:8px;'>✉️ Open in Email Client</button></a>",
+            unsafe_allow_html=True
+        )
+        st.caption("Opens your email client with subject and body pre-filled")
+    with btn_col2:
+        if st.button("📋 Log this outreach", key="log_btn", type="secondary"):
+            _tier_label = TEMPLATES.get(selected_template, {}).get("tier", "")
+            _tier_str   = f"Tier {_tier_label}" if _tier_label else selected_template
+            _log_customer = str(account) if account and str(account).lower() not in ("nan","") else selected_proj
+            _log_project  = str(proj_rows["project_name"].iloc[0]) if "project_name" in proj_rows.columns and not proj_rows.empty else selected_proj
+            _log_outreach(
+                consultant    = consultant_name,
+                customer      = _log_customer,
+                project       = selected_proj,
+                tier_label    = _tier_str,
+                days_inactive = days_inactive,
+                template      = selected_template,
+            )
+            st.success(f"✅ Logged — {_tier_str} for {_log_customer} on {datetime.today().strftime('%Y-%m-%d')}")
+            st.rerun()
+    with btn_col3:
+        import json as _json2
+        _h = _json2.dumps(highlighted)
+        _p = _json2.dumps(body)
+        _copy_html = f"""
+<button id="copybtn" onclick="
+var h={_h};var p={_p};
+navigator.clipboard.write([new ClipboardItem({{'text/html':new Blob([h],{{type:'text/html'}}),'text/plain':new Blob([p],{{type:'text/plain'}})}})])
+.then(()=>{{document.getElementById('cst').innerText='✅ Copied!';setTimeout(()=>document.getElementById('cst').innerText='',3000);}})
+.catch(()=>document.getElementById('cst').innerText='⚠️ Use plain text below');
+" style="background:#2980B9;color:white;border:none;padding:10px 24px;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;">
+📄 Copy Formatted</button>
+<span id="cst" style="margin-left:10px;font-family:Manrope,sans-serif;font-size:13px;color:#1e2c63;"></span>
+"""
+        st.markdown(_copy_html, unsafe_allow_html=True)
+        st.caption("Paste into Gmail · preserves font & colour in supported browsers")
 
     # ── Merge field reference ─────────────────────────────────────────────────
     with st.expander("📋 Merge field reference — what was filled vs. what still needs updating", expanded=False):
@@ -1290,6 +1390,31 @@ def main():
         st.dataframe(pd.DataFrame(ref_rows), hide_index=True, use_container_width=True)
 
     # ── Tier guidance ─────────────────────────────────────────────────────────
+    # ── Full outreach log ────────────────────────────────────────────────────
+    st.markdown("---")
+    with st.expander("📊 Full Outreach Log", expanded=False):
+        _all_log = _load_log()
+        if _all_log:
+            _log_df = pd.DataFrame(_all_log).sort_values("date", ascending=False)
+            # Filter to current user if selected
+            if selected_user and selected_user != "— Select —":
+                _log_df = _log_df[_log_df["consultant"] == selected_user]
+            st.dataframe(
+                _log_df[["date","consultant","customer","project","tier","days_inactive","template"]].rename(columns={
+                    "date": "Date", "consultant": "Consultant", "customer": "Customer",
+                    "project": "Project", "tier": "Tier",
+                    "days_inactive": "Days Inactive", "template": "Template"
+                }),
+                hide_index=True, use_container_width=True
+            )
+            if st.button("🗑 Clear my log entries", key="clear_log"):
+                _all    = _load_log()
+                _kept   = [e for e in _all if e.get("consultant") != selected_user]
+                _save_log(_kept)
+                st.rerun()
+        else:
+            st.info("No outreach logged yet. Click '📋 Log this outreach' after composing an email.")
+
     with st.expander("ℹ️ Tier guidance & usage notes", expanded=False):
         st.markdown("""
 **Tier 1 (~30 days)** — Keep it short and conversational. No contractual language. Goal is simply to prompt a reply.
