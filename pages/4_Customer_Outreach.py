@@ -522,13 +522,77 @@ def main():
         st.success(" · ".join(msg_parts))
 
     # ── Set mode based on what's loaded ───────────────────────────────────
-    # Use DRS as primary project list if available, else SFDC
     if df_drs is not None:
         df   = df_drs
         mode = "drs"
     else:
         df   = df_sfdc
         mode = "sfdc"
+
+    # ── Project overview table ─────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("Your Projects")
+    if df_drs is not None and not df_drs.empty:
+        today_ts = pd.Timestamp.today().normalize()
+        overview_cols = {
+            "account":        "Customer",
+            "project_name":   "Project",
+            "project_type":   "Project Type",
+            "start_date":     "Start Date",
+            "status":         "Status",
+            "phase":          "Current Phase",
+            "days_inactive":  "Days Inactive",
+            "rag":            "RAG",
+        }
+        # Add last activity source column
+        if "last_ns_entry" in df_drs.columns:
+            df_drs["last_activity"]        = df_drs["last_ns_entry"].dt.strftime("%Y-%m-%d").fillna("—")
+            df_drs["last_activity_source"] = df_drs["last_ns_entry"].apply(lambda x: "NS Time Entry" if pd.notna(x) else "—")
+            overview_cols["last_activity"]        = "Last Activity"
+            overview_cols["last_activity_source"] = "Source"
+        elif "last_updated" in df_drs.columns:
+            df_drs["last_activity"]        = pd.to_datetime(df_drs["last_updated"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
+            df_drs["last_activity_source"] = "SS DRS Modified"
+            overview_cols["last_activity"]        = "Last Activity"
+            overview_cols["last_activity_source"] = "Source"
+
+        avail_cols = [c for c in overview_cols if c in df_drs.columns]
+        overview_df = df_drs[avail_cols].rename(columns=overview_cols).copy()
+
+        # Format start date
+        if "Start Date" in overview_df.columns:
+            overview_df["Start Date"] = pd.to_datetime(overview_df["Start Date"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
+
+        # Add Suggested Tier column
+        if "Days Inactive" in overview_df.columns:
+            def _tier_label(days):
+                try:
+                    d = int(days)
+                    for name, t in TEMPLATES.items():
+                        if t["days_min"] <= d <= t["days_max"]:
+                            return f"Tier {t['tier']}"
+                    return "—"
+                except: return "—"
+            overview_df["Suggested Tier"] = overview_df["Days Inactive"].apply(_tier_label)
+
+        # Colour-code rows by tier
+        def _style_overview(row):
+            days = row.get("Days Inactive", 0)
+            try:
+                d = int(days)
+                if d >= 180: return ["background-color:#f0e6ff"] * len(row)
+                if d >= 90:  return ["background-color:#FDECED"] * len(row)
+                if d >= 60:  return ["background-color:#FFEB9C"] * len(row)
+                if d >= 30:  return ["background-color:#EAF9F1"] * len(row)
+            except: pass
+            return [""] * len(row)
+
+        styled_overview = overview_df.sort_values("Days Inactive", ascending=False).style.apply(_style_overview, axis=1)
+        st.dataframe(styled_overview, hide_index=True, use_container_width=True)
+        st.caption("🟢 30d+ · 🟡 60d+ · 🔴 90d+ · 🟣 180d+ · Dropdown below shows only projects ≥ 14 days inactive")
+    else:
+        st.info("Upload SS DRS to see your project overview.")
+
     st.markdown("---")
     st.subheader("Step 3 — Select a Project")
 
@@ -566,12 +630,30 @@ def main():
             t_num = TEMPLATES[suggested]["tier"]
             tier_short = {1:"T1",2:"T2",3:"T3",4:"T4"}.get(t_num,"")
             return f"[{tier_short} · {int(days)}d]  {label}"
-        proj_options = sorted(label_to_opp.keys(), key=lambda x: -days_map.get(label_to_opp.get(x,""), 0))
-        proj_options_display = [_label_with_tier(p) for p in proj_options]
-        display_to_label = dict(zip(proj_options_display, proj_options))
-        selected_display = st.selectbox("Project — sorted by most days inactive", proj_options_display, key="proj_select")
-        selected_label   = display_to_label[selected_display]
-        selected_proj    = label_to_opp[selected_label]
+        # Only show projects ≥ 14 days inactive in dropdown (all shown in table above)
+        proj_options_all = sorted(label_to_opp.keys(), key=lambda x: -days_map.get(label_to_opp.get(x,""), 0))
+        proj_options_filtered = [p for p in proj_options_all if days_map.get(label_to_opp.get(p,""), 0) >= 14]
+
+        if not proj_options_filtered:
+            st.info("No projects with 14+ days inactivity found. All projects are up to date.")
+            return
+
+        def _label_with_tier_clean(label):
+            opp   = label_to_opp.get(label, "")
+            days  = days_map.get(opp, 0)
+            suggested = suggest_tier_from_days(days)
+            t_num = TEMPLATES[suggested]["tier"]
+            return f"Tier {t_num}  ·  {int(days)} days inactive  —  {label}"
+
+        proj_options_display = [_label_with_tier_clean(p) for p in proj_options_filtered]
+        display_to_label     = dict(zip(proj_options_display, proj_options_filtered))
+        selected_display     = st.selectbox(
+            f"Select project ({len(proj_options_filtered)} with 14+ days inactive)",
+            proj_options_display,
+            key="proj_select"
+        )
+        selected_label = display_to_label[selected_display]
+        selected_proj  = label_to_opp[selected_label]
     else:
         proj_options  = sorted(label_to_opp.keys())
         selected_label = st.selectbox("Project / Opportunity", proj_options, key="proj_select")
@@ -630,7 +712,10 @@ def main():
 
     col4, col5 = st.columns([3, 3])
     with col4:
-        consultant_name = st.text_input("Your name (Implementation Consultant)", value=selected_user, key="ic_name")
+        # Flip "Last, First" → "First Last" for email signature
+        _parts = selected_user.split(",", 1)
+        _display_name = f"{_parts[1].strip()} {_parts[0].strip()}" if len(_parts) == 2 else selected_user
+        consultant_name = st.text_input("Your name (Implementation Consultant)", value=_display_name, key="ic_name")
     with col5:
         if int(days_inactive) >= 180:
             remaining_sessions = st.text_input("Remaining sessions", placeholder="e.g. 3", key="rem_sess")
