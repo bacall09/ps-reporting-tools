@@ -435,6 +435,9 @@ SS_COL_MAP_OUT = {
     "date modified":          "last_updated",
     "account name":           "account",
     "customer":               "account",
+    "enablement session":     "ms_enablement",
+    "session #1":             "ms_session1",
+    "session #2":             "ms_session2",
 }
 
 INACTIVE_PHASES_OUT = {
@@ -466,6 +469,16 @@ def load_drs(file):
         df = df[~df["phase"].str.strip().str.lower().isin(INACTIVE_PHASES_OUT)]
     if "billing_type" in df.columns:
         df = df[~df["billing_type"].str.strip().str.lower().isin({"t&m","time & material","time and material"})]
+    # Calculate remaining sessions from milestone columns
+    SESSION_MILESTONE_COLS = ["ms_enablement", "ms_session1", "ms_session2"]
+    _present = [col for col in SESSION_MILESTONE_COLS if col in df.columns]
+    if _present:
+        def _count_remaining(row):
+            return sum(1 for col in _present if pd.isna(row[col]) or str(row[col]).strip() in ("", "nan", "None"))
+        df["remaining_sessions"] = df.apply(_count_remaining, axis=1)
+    else:
+        df["remaining_sessions"] = None
+
     # Tag On Hold but keep in df — excluded from dropdown, shown in table
     ON_HOLD_VALS = {"on-hold","on hold","onhold","on_hold"}
     if "status" in df.columns:
@@ -1014,7 +1027,19 @@ def main():
         consultant_name = st.text_input("Your name (Implementation Consultant)", value=_display_name, key="ic_name")
     with col5:
         if int(days_inactive) >= 180:
-            remaining_sessions = st.text_input("Remaining sessions", placeholder="e.g. 3", key="rem_sess")
+            # Pre-fill from DRS milestone calculation if available
+            _drs_remaining = ""
+            if df_drs is not None and "remaining_sessions" in df_drs.columns and not proj_rows.empty:
+                _rs_val = proj_rows["remaining_sessions"].iloc[0] if "remaining_sessions" in proj_rows.columns else None
+                if _rs_val is not None and str(_rs_val) not in ("nan","None",""):
+                    _drs_remaining = str(int(_rs_val))
+            remaining_sessions = st.text_input(
+                "Remaining sessions",
+                value=_drs_remaining,
+                placeholder="e.g. 3",
+                help="Calculated from SS DRS milestone columns (Enablement Session, Session #1, Session #2)",
+                key=f"rem_sess_{str(selected_proj)[:20]}"
+            )
         else:
             remaining_sessions = ""
 
