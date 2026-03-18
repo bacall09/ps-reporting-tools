@@ -914,7 +914,7 @@ def main():
             st.metric("Requiring Follow-Up", _inactive, help="Projects with 30+ days inactivity")
 
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-        with st.expander("ℹ️ How is 'Days Inactive' calculated?", expanded=False):
+        with st.expander("How is 'Days Inactive' calculated?", expanded=False):
             st.markdown("""
 **Priority 1 — NS Time Entry** *(most accurate)*
 Days since the last time entry booked to this project in NetSuite. Requires NS Time Detail upload.
@@ -985,21 +985,21 @@ Used when no NS entries and no milestones are present.
 
             # Display columns
             _disp_cols = {
-                "account":               "Customer",
                 "project_name":          "Project",
                 "status":                "Status",
                 "phase":                 "Phase",
                 "start_date":            "Start Date",
                 "days_inactive":         "Days Inactive",
                 "last_milestone":        "Last Milestone",
+                "_inactivity_source":    "Inactivity Source",
                 "client_responsiveness": "Responsiveness",
                 "risk_level":            "Risk Level",
                 "risk_detail":           "Risk Detail",
                 "Suggested Tier":        "Suggested Tier",
                 "Last Follow Up":        "Last Follow Up",
-                "⚠️ Risk":              "⚠️ Risk",
+                "⚠️ Risk":              "Risk Flag",
             }
-            _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up","⚠️ Risk"]]
+            _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up","⚠️ Risk","_inactivity_source"]]
             _show  = _action_df[[col for col in _avail if col in _action_df.columns]].rename(columns=_disp_cols).reset_index(drop=True)
             _show.columns = [str(col) for col in _show.columns]
             for _sc in _show.columns:
@@ -1029,7 +1029,6 @@ Used when no NS entries and no milestones are present.
                     _esc_names = ", ".join(_escalated["project_name"].astype(str).tolist()[:3])
                     st.warning(f"⚠️ **{len(_escalated)} project(s) marked as Escalated** — check with CS before sending: {_esc_names}")
 
-            st.caption("👆 Select a project from the dropdown in Step 3 to compose an email.")
         else:
             st.success("✅ No projects requiring re-engagement this week.")
 
@@ -1037,22 +1036,23 @@ Used when no NS entries and no milestones are present.
         st.subheader("All Projects")
 
         overview_cols = {
-            "account":                "Customer",
             "project_name":           "Project",
-            "project_type":           "Project Type",
-            "start_date":             "Start Date",
             "status":                 "Status",
-            "phase":                  "Current Phase",
-            "last_milestone":         "Last Milestone",
-            "client_responsiveness":  "Client Responsiveness",
+            "phase":                  "Phase",
+            "start_date":             "Start Date",
             "days_inactive":          "Days Inactive",
+            "last_milestone":         "Last Milestone",
+            "entry_source":           "Inactivity Source",
+            "client_responsiveness":  "Responsiveness",
+            "last_time_entry":        "Last NS Entry",
+            "Suggested Tier":         "Suggested Tier",
         }
         # Last Time Entry — from NS if available, else DRS Modified date
         if "last_ns_entry" in df_drs.columns:
             df_drs["last_time_entry"] = df_drs["last_ns_entry"].dt.strftime("%Y-%m-%d").fillna("—")
-            df_drs["entry_source"]    = df_drs["_inactivity_source"] if "_inactivity_source" in df_drs.columns else "—"
-            overview_cols["last_time_entry"] = "Last NS Entry"
-            overview_cols["entry_source"]    = "Inactivity Source"
+        else:
+            df_drs["last_time_entry"] = "—"
+        df_drs["entry_source"] = df_drs["_inactivity_source"] if "_inactivity_source" in df_drs.columns else "—"
 
         avail_cols = [c for c in overview_cols if c in df_drs.columns]
         overview_df = df_drs[avail_cols].rename(columns=overview_cols).copy()
@@ -1062,6 +1062,18 @@ Used when no NS entries and no milestones are present.
             overview_df["Start Date"] = pd.to_datetime(overview_df["Start Date"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
 
         # Add Suggested Tier column
+        if "days_inactive" in df_drs.columns:
+            df_drs["Suggested Tier"] = df_drs["days_inactive"].apply(
+                lambda d: (
+                    "Unknown" if int(d) < 0 else
+                    "—" if int(d) < 14 else
+                    "Eligible for informal follow up" if int(d) < 30 else
+                    "Tier 1" if int(d) < 60 else
+                    "Tier 2" if int(d) < 90 else
+                    "Tier 3" if int(d) < 180 else
+                    "Tier 4"
+                ) if str(d).lstrip('-').isdigit() else "—"
+            )
         if "Days Inactive" in overview_df.columns:
             def _tier_label(days):
                 try:
