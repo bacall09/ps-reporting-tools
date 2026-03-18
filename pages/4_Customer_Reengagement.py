@@ -435,6 +435,10 @@ SS_COL_MAP_OUT = {
     "date modified":          "last_updated",
     "account name":           "account",
     "customer":               "account",
+    "risk detail":            "risk_detail",
+    "risk owner":             "risk_owner",
+    "responsible for delay":  "responsible_delay",
+    "delay summary":          "delay_summary",
     "enablement session":     "ms_enablement",
     "session #1":             "ms_session1",
     "session #2":             "ms_session2",
@@ -847,11 +851,19 @@ def main():
                 except: return "—"
 
             _action_df["Suggested Tier"] = _action_df["days_inactive"].apply(_tier_short)
-            _action_df["Last Follow Up"]    = _action_df["project_name"].apply(
-                lambda p: next((e["date"] for e in sorted(_load_log(), key=lambda x: x.get("date",""), reverse=True)
-                               if e.get("project") == str(p)), "—")
-            ) if "project_name" in _action_df.columns else "—"
+            _all_log_entries = _load_log()
+            def _last_followup(proj):
+                matches = [e for e in _all_log_entries if e.get("project") == str(proj)]
+                if not matches: return "—"
+                latest = max(matches, key=lambda x: x.get("date",""))
+                return f"{latest.get('date','—')} · {latest.get('tier','—')}"
+            _action_df["Last Follow Up"] = _action_df["project_name"].apply(_last_followup) if "project_name" in _action_df.columns else "—"
             _action_df["⚠️ Recent"] = _action_df["project_name"].isin(_logged_projects)
+            # Flag escalated projects
+            if "risk_level" in _action_df.columns:
+                _action_df["⚠️ Risk"] = _action_df["risk_level"].astype(str).str.strip().str.lower().apply(
+                    lambda r: "⚠️ Escalated" if "escalat" in r else ("🔴 High" if "high" in r else "")
+                )
 
             # Sort: Tier 4 → 3 → 2 → 1, then by days desc
             _tier_order = {"Tier 4": 0, "Tier 3": 1, "Tier 2": 2, "Tier 1": 3}
@@ -862,11 +874,15 @@ def main():
             _disp_cols = {
                 "account":               "Customer",
                 "project_name":          "Project",
+                "status":                "Status",
                 "phase":                 "Phase",
                 "days_inactive":         "Days Inactive",
                 "client_responsiveness": "Responsiveness",
+                "risk_level":            "Risk Level",
+                "risk_detail":           "Risk Detail",
                 "Suggested Tier":        "Suggested Tier",
-                "Last Follow Up":           "Last Follow Up",
+                "Last Follow Up":        "Last Follow Up",
+                "⚠️ Risk":              "⚠️ Risk",
             }
             _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up"]]
             _show  = _action_df[[c for c in _avail if c in _action_df.columns]].rename(columns=_disp_cols)
@@ -886,6 +902,13 @@ def main():
                 hide_index=True, use_container_width=True
             )
             st.caption(f"{len(_action_df)} project(s) requiring re-engagement · sorted by urgency")
+
+            # Warn about escalated projects
+            if "⚠️ Risk" in _action_df.columns:
+                _escalated = _action_df[_action_df["⚠️ Risk"].str.contains("Escalat", na=False)]
+                if not _escalated.empty:
+                    _esc_names = ", ".join(_escalated["project_name"].astype(str).tolist()[:3])
+                    st.warning(f"⚠️ **{len(_escalated)} project(s) marked as Escalated** — check with CS before sending: {_esc_names}")
 
             # Per-row compose buttons
             st.markdown("**Compose email for:**")
