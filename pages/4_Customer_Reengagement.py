@@ -439,9 +439,16 @@ SS_COL_MAP_OUT = {
     "risk owner":             "risk_owner",
     "responsible for delay":  "responsible_delay",
     "delay summary":          "delay_summary",
-    "enablement session":     "ms_enablement",
-    "session #1":             "ms_session1",
-    "session #2":             "ms_session2",
+    "intro. email sent":           "ms_intro_email",
+    "standard config start":       "ms_config_start",
+    "enablement session":          "ms_enablement",
+    "session #1":                  "ms_session1",
+    "session #2":                  "ms_session2",
+    "uat signoff":                 "ms_uat_signoff",
+    "prod cutover":                "ms_prod_cutover",
+    "hypercare start":             "ms_hypercare_start",
+    "close out remaining tasks":   "ms_close_out",
+    "transition to support":       "ms_transition",
 }
 
 INACTIVE_PHASES_OUT = {
@@ -466,6 +473,10 @@ def load_drs(file):
         df["go_live_date"] = pd.to_datetime(df["go_live_date"], errors="coerce")
     if "last_updated" in df.columns:
         df["last_updated"] = pd.to_datetime(df["last_updated"], errors="coerce")
+    # Parse all milestone date columns
+    for _ms_col in MILESTONE_COLS_MAP.keys():
+        if _ms_col in df.columns:
+            df[_ms_col] = pd.to_datetime(df[_ms_col], errors="coerce")
 
     # Filter to active FF projects only
     today = pd.Timestamp.today().normalize()
@@ -482,6 +493,9 @@ def load_drs(file):
         df["remaining_sessions"] = df.apply(_count_remaining, axis=1)
     else:
         df["remaining_sessions"] = None
+
+    # Calculate last milestone (name + date of most recently completed milestone)
+    df["last_milestone"] = df.apply(calc_last_milestone, axis=1)
 
     # Tag On Hold but keep in df — excluded from dropdown, shown in table
     ON_HOLD_VALS = {"on-hold","on hold","onhold","on_hold"}
@@ -536,6 +550,39 @@ def normalise_product_name(raw):
     import re as _re
     s = _re.sub(r"(?i)^zoneapp:\s*", "Zone", s)
     return s
+
+
+# Milestone columns in delivery order — mapped internal name : display name
+MILESTONE_COLS_MAP = {
+    "ms_intro_email":    "Intro. Email Sent",
+    "ms_config_start":   "Standard Config Start",
+    "ms_enablement":     "Enablement Session",
+    "ms_session1":       "Session #1",
+    "ms_session2":       "Session #2",
+    "ms_uat_signoff":    "UAT Signoff",
+    "ms_prod_cutover":   "Prod Cutover",
+    "ms_hypercare_start":"Hypercare Start",
+    "ms_close_out":      "Close Out Remaining Tasks",
+    "ms_transition":     "Transition to Support",
+}
+
+def calc_last_milestone(row):
+    """Return 'Milestone Name · YYYY-MM-DD' for the latest completed milestone."""
+    best_date = None
+    best_name = None
+    for col, label in MILESTONE_COLS_MAP.items():
+        if col in row.index:
+            val = row[col]
+            try:
+                dt = pd.to_datetime(val, errors="coerce")
+                if pd.notna(dt):
+                    if best_date is None or dt > best_date:
+                        best_date = dt
+                        best_name = label
+            except: pass
+    if best_name and best_date:
+        return f"{best_name} · {best_date.strftime('%Y-%m-%d')}"
+    return "—"
 
 
 def suggest_tier_from_days(days):
@@ -869,6 +916,9 @@ def main():
             _tier_order = {"Tier 4": 0, "Tier 3": 1, "Tier 2": 2, "Tier 1": 3}
             _action_df["_tier_sort"] = _action_df["Suggested Tier"].map(_tier_order).fillna(4)
             _action_df = _action_df.sort_values(["_tier_sort", "days_inactive"], ascending=[True, False])
+            # Format start_date for display
+            if "start_date" in _action_df.columns:
+                _action_df["start_date"] = pd.to_datetime(_action_df["start_date"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
 
             # Display columns
             _disp_cols = {
@@ -876,7 +926,9 @@ def main():
                 "project_name":          "Project",
                 "status":                "Status",
                 "phase":                 "Phase",
+                "start_date":            "Start Date",
                 "days_inactive":         "Days Inactive",
+                "last_milestone":        "Last Milestone",
                 "client_responsiveness": "Responsiveness",
                 "risk_level":            "Risk Level",
                 "risk_detail":           "Risk Detail",
@@ -933,6 +985,7 @@ def main():
             "start_date":             "Start Date",
             "status":                 "Status",
             "phase":                  "Current Phase",
+            "last_milestone":         "Last Milestone",
             "client_responsiveness":  "Client Responsiveness",
             "days_inactive":          "Days Inactive",
         }
