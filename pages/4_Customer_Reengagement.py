@@ -1642,7 +1642,7 @@ document.getElementById("cb").addEventListener("click",function(){{
                 _all    = _load_log()
                 _kept   = [e for e in _all if e.get("consultant") != selected_user]
                 _save_log(_kept)
-                st.session_state["_log_success_msg"] = "✅ Your log entries cleared."
+                st.rerun()
         else:
             st.info("No outreach logged yet. Click '📋 Log this outreach' after composing an email.")
 
