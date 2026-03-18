@@ -936,8 +936,12 @@ def main():
                 "Last Follow Up":        "Last Follow Up",
                 "⚠️ Risk":              "⚠️ Risk",
             }
-            _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up"]]
-            _show  = _action_df[[c for c in _avail if c in _action_df.columns]].rename(columns=_disp_cols)
+            _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up","⚠️ Risk"]]
+            _show  = _action_df[[col for col in _avail if col in _action_df.columns]].rename(columns=_disp_cols).reset_index(drop=True)
+            _show.columns = [str(col) for col in _show.columns]
+            for _sc in _show.columns:
+                if _show[_sc].dtype == object:
+                    _show[_sc] = _show[_sc].fillna("—").astype(str)
 
             # Colour by tier
             def _style_action(row):
@@ -1056,6 +1060,12 @@ def main():
                 return [""] * len(row)
 
         sorted_df    = overview_df.sort_values("Days Inactive", ascending=False).copy()
+        # Ensure all columns are clean strings to avoid Arrow errors
+        sorted_df = sorted_df.reset_index(drop=True)
+        sorted_df.columns = [str(col) for col in sorted_df.columns]
+        for _col in sorted_df.columns:
+            if sorted_df[_col].dtype == object:
+                sorted_df[_col] = sorted_df[_col].fillna("—").astype(str)
         styled_overview = sorted_df.style.apply(_style_overview_row, axis=1)
         st.dataframe(styled_overview, hide_index=True, use_container_width=True)
         st.caption("🔔 Eligible for informal follow up = 14–29 days · On Hold projects shown for reference only")
