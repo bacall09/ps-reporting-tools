@@ -505,17 +505,38 @@ def load_drs(file):
     else:
         df["_on_hold"] = False
 
-    # Calculate days inactive
-    # Only use last_updated if it mapped — do NOT fall back to start_date
-    # (start_date is not an inactivity signal)
-    if "last_updated" in df.columns:
-        df["days_inactive"]        = (today - df["last_updated"]).dt.days.clip(lower=0).fillna(-1).astype(int)
-        df["_inactivity_source"]   = "SS DRS Modified"
-    else:
-        # No reliable inactivity signal from DRS alone — set to -1 (Unknown)
-        # Will be overridden by NS Time Detail if uploaded
-        df["days_inactive"]        = -1
-        df["_inactivity_source"]   = "Unknown — upload NS Time Detail"
+    # ── Inactivity signal hierarchy (DRS-only baseline, NS overrides in calc_days_inactive) ──
+    # 1. Last Milestone date — days since most recently completed milestone
+    # 2. Phase vs Start Date benchmark — days open minus expected phase duration
+    # 3. Unknown (-1) — NS Time Entry will override when uploaded
+    _PHASE_BENCH = {
+        "00. onboarding": 7, "01. requirements and design": 14,
+        "02. configuration": 21, "03. enablement/training": 14,
+        "04. uat": 28, "05. prep for go-live": 7,
+        "06. go-live (hypercare)": 14, "08. ready for support transition": 5,
+        "09. phase 2 scoping": 14,
+    }
+
+    def _calc_inactivity_drs(row):
+        # 1. Last milestone
+        for _ms_col in reversed(list(MILESTONE_COLS_MAP.keys())):
+            if _ms_col in row.index and pd.notna(row[_ms_col]):
+                try:
+                    return int((today - pd.Timestamp(row[_ms_col])).days), "Last Milestone"
+                except: pass
+        # 2. Phase vs start date
+        if "start_date" in row.index and pd.notna(row["start_date"]):
+            try:
+                days_open    = int((today - pd.Timestamp(row["start_date"])).days)
+                bench        = _PHASE_BENCH.get(str(row.get("phase","")).strip().lower(), 14)
+                days_stalled = max(0, days_open - bench)
+                return days_stalled, "Phase vs Start Date"
+            except: pass
+        return -1, "Unknown"
+
+    _results = df.apply(_calc_inactivity_drs, axis=1)
+    df["days_inactive"]      = _results.apply(lambda x: x[0]).astype(int)
+    df["_inactivity_source"] = _results.apply(lambda x: x[1])
 
     # Store unmapped columns for debug
     df.attrs["unmapped_cols"] = [c for c in df.columns if c not in SS_COL_MAP_OUT.values()]
@@ -681,9 +702,11 @@ def calc_days_inactive(df_drs, df_ns):
         ns_days = (today - df_drs["last_ns_entry"]).dt.days.clip(lower=0)
         fallback = df_drs["days_inactive"] if "days_inactive" in df_drs.columns else pd.Series(-1, index=df_drs.index)
         df_drs["days_inactive"] = ns_days.where(df_drs["last_ns_entry"].notna(), fallback).fillna(-1).astype(int)
-        _fallback_src = str(df_drs["_inactivity_source"].iloc[0]) if "_inactivity_source" in df_drs.columns else "SS DRS Modified"
-        df_drs["_inactivity_source"] = ["NS Time Entry" if pd.notna(x) else _fallback_src
-                                         for x in df_drs["last_ns_entry"]]
+        _existing_src = df_drs["_inactivity_source"].tolist() if "_inactivity_source" in df_drs.columns else ["Unknown"] * len(df_drs)
+        df_drs["_inactivity_source"] = [
+            "NS Time Entry" if pd.notna(x) else _existing_src[i]
+            for i, x in enumerate(df_drs["last_ns_entry"])
+        ]
     return df_drs
 
 
@@ -714,6 +737,17 @@ def _save_log(entries):
 
 def _log_outreach(consultant, customer, project, tier_label, days_inactive, template):
     entries = _load_log()
+    today_str = datetime.today().strftime("%Y-%m-%d")
+    # Dedup — don't log the same project+consultant+tier on the same day more than once
+    _already = any(
+        e.get("project") == str(project) and
+        e.get("consultant") == str(consultant) and
+        e.get("date") == today_str and
+        e.get("tier") == str(tier_label)
+        for e in entries
+    )
+    if _already:
+        return
     entries.append({
         "date":          datetime.today().strftime("%Y-%m-%d"),
         "consultant":    str(consultant),
@@ -997,25 +1031,9 @@ def main():
         # Last Time Entry — from NS if available, else DRS Modified date
         if "last_ns_entry" in df_drs.columns:
             df_drs["last_time_entry"] = df_drs["last_ns_entry"].dt.strftime("%Y-%m-%d").fillna("—")
-            df_drs["entry_source"]    = df_drs["last_ns_entry"].apply(
-                lambda x: "NS Time Entry" if pd.notna(x) else
-                          ("SS DRS Modified" if "last_updated" in df_drs.columns else "—")
-            )
-            # For rows with no NS entry, show DRS modified date instead
-            if "last_updated" in df_drs.columns:
-                mask = df_drs["last_ns_entry"].isna()
-                df_drs.loc[mask, "last_time_entry"] = pd.to_datetime(
-                    df_drs.loc[mask, "last_updated"], errors="coerce"
-                ).dt.strftime("%Y-%m-%d").fillna("—")
-            overview_cols["last_time_entry"] = "Last Time Entry"
-            overview_cols["entry_source"]    = "Source"
-        elif "last_updated" in df_drs.columns:
-            df_drs["last_time_entry"] = pd.to_datetime(
-                df_drs["last_updated"], errors="coerce"
-            ).dt.strftime("%Y-%m-%d").fillna("—")
-            df_drs["entry_source"]    = "SS DRS Modified"
-            overview_cols["last_time_entry"] = "Last Time Entry"
-            overview_cols["entry_source"]    = "Source"
+            df_drs["entry_source"]    = df_drs["_inactivity_source"] if "_inactivity_source" in df_drs.columns else "—"
+            overview_cols["last_time_entry"] = "Last NS Entry"
+            overview_cols["entry_source"]    = "Inactivity Source"
 
         avail_cols = [c for c in overview_cols if c in df_drs.columns]
         overview_df = df_drs[avail_cols].rename(columns=overview_cols).copy()
@@ -1595,12 +1613,6 @@ document.getElementById("cb").addEventListener("click",function(){{
     # ── Full outreach log ────────────────────────────────────────────────────
     st.markdown("---")
     with st.expander("📊 Full Outreach Log", expanded=False):
-        # Debug — show raw session state keys and log content
-        st.caption(f"Session state keys: {[k for k in st.session_state.keys()]}")
-        st.caption(f"LOG_KEY ({_LOG_KEY}) in session_state: {_LOG_KEY in st.session_state}")
-        st.caption(f"Raw log value: {st.session_state.get(_LOG_KEY, 'NOT FOUND')}")
-        st.caption(f"File exists: {os.path.exists(LOG_PATH)}")
-
         _all_log = list(st.session_state.get(_LOG_KEY, []))
         if not _all_log:
             try:
