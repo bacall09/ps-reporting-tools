@@ -1545,25 +1545,12 @@ def main():
     with btn_col1:
         st.markdown(
             f"<a href='{_mailto}' target='_blank'>"
-            f"<button style='background:#2980B9;color:white;border:none;padding:10px 0;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;width:100%;'>✉️ Open in Email</button></a>",
+            f"<button style='background:#1e2c63;color:white;border:none;padding:10px 0;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;width:100%;'>✉️ Open in Email</button></a>",
             unsafe_allow_html=True
         )
     with btn_col3:
-        st.markdown(f"""
-<style>
-div[data-testid="stButton"] button[kind="secondary"]{{
-    background:#e74c3c !important;
-    color:white !important;
-    border:none !important;
-    padding:10px 0 !important;
-    width:100% !important;
-    font-family:Manrope,sans-serif !important;
-    font-size:14px !important;
-    font-weight:600 !important;
-}}
-</style>""", unsafe_allow_html=True)
-        if st.button("📋 Log this outreach", key="log_btn",
-                     help="Record this outreach in the shared log"):
+        if st.button("📋 Log this outreach", key="log_btn", type="primary",
+                     use_container_width=True):
             _tier_label = TEMPLATES.get(selected_template, {}).get("tier", "")
             _tier_str   = f"Tier {_tier_label}" if _tier_label else selected_template
             _log_customer = str(account) if account and str(account).lower() not in ("nan","") else selected_proj
@@ -1591,7 +1578,7 @@ div[data-testid="stButton"] button[kind="secondary"]{{
         _p = _json2.dumps(body)
         _components.html(f"""
 <!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Manrope,sans-serif;">
-<button id="cb" style="background:#2980B9;color:white;border:none;padding:10px 0;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;width:100%;">&#128196; Copy Email Content (Formatted)</button>
+<button id="cb" style="background:#1e2c63;color:white;border:none;padding:10px 0;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;width:100%;">&#128196; Copy Email Content (Formatted)</button>
 <span id="st" style="margin-left:8px;font-size:13px;"></span>
 <script>
 var h={_h};
@@ -1647,12 +1634,11 @@ document.getElementById("cb").addEventListener("click",function(){{
                 }),
                 hide_index=True, use_container_width=True
             )
-            if st.button("🗑 Clear my log entries", key="clear_log"):
-                # Operate directly on session state — bypass _load_log to avoid stale reads
-                _current = list(st.session_state.get(_LOG_KEY, []))
-                _kept    = [e for e in _current if e.get("consultant") != selected_user]
+            if st.button("🗑 Clear my log entries", key="clear_log",
+                         type="primary", use_container_width=False):
+                _kept = [e for e in st.session_state.get(_LOG_KEY, [])
+                         if e.get("consultant") != selected_user]
                 st.session_state[_LOG_KEY] = _kept
-                # Also update file
                 try:
                     with open(LOG_PATH, "w") as _lf:
                         _json.dump(_kept, _lf)
