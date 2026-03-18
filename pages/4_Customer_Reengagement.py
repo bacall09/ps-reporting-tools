@@ -1639,8 +1639,10 @@ document.getElementById("cb").addEventListener("click",function(){{
                 hide_index=True, use_container_width=True
             )
             if st.button("🗑 Clear my log entries", key="clear_log"):
-                _all    = _load_log()
-                _kept   = [e for e in _all if e.get("consultant") != selected_user]
+                _all  = _load_log()
+                _kept = [e for e in _all if e.get("consultant") != selected_user]
+                # Clear session state first so rerun reads fresh data
+                st.session_state[_LOG_KEY] = _kept
                 _save_log(_kept)
                 st.rerun()
         else:
