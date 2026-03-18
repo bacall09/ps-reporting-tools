@@ -1540,19 +1540,30 @@ def main():
         _mailto = f"mailto:{_to_str}?cc={urllib.parse.quote(_cc_str)}&subject={_subject}&body={_body}"
 
     st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
-    btn_col1, = st.columns([1])
+    st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+    btn_col1, btn_col2, btn_col3 = st.columns([3, 3, 3])
     with btn_col1:
         st.markdown(
             f"<a href='{_mailto}' target='_blank'>"
-            f"<button style='background:#1e2c63;color:white;border:none;padding:10px 24px;"
-            f"border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;"
-            f"cursor:pointer;width:100%;margin-top:4px;'>✉️ Open in Email Client</button></a>",
+            f"<button style='background:#2980B9;color:white;border:none;padding:10px 0;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;width:100%;'>✉️ Open in Email</button></a>",
             unsafe_allow_html=True
         )
-    st.markdown("<div style='margin-top:6px'></div>", unsafe_allow_html=True)
-    btn_col2, btn_col3 = st.columns([2, 2])
     with btn_col3:
-        if st.button("📋 Log this outreach", key="log_btn", type="secondary"):
+        st.markdown(f"""
+<style>
+div[data-testid="stButton"] button[kind="secondary"]{{
+    background:#e74c3c !important;
+    color:white !important;
+    border:none !important;
+    padding:10px 0 !important;
+    width:100% !important;
+    font-family:Manrope,sans-serif !important;
+    font-size:14px !important;
+    font-weight:600 !important;
+}}
+</style>""", unsafe_allow_html=True)
+        if st.button("📋 Log this outreach", key="log_btn",
+                     help="Record this outreach in the shared log"):
             _tier_label = TEMPLATES.get(selected_template, {}).get("tier", "")
             _tier_str   = f"Tier {_tier_label}" if _tier_label else selected_template
             _log_customer = str(account) if account and str(account).lower() not in ("nan","") else selected_proj
@@ -1580,9 +1591,7 @@ def main():
         _p = _json2.dumps(body)
         _components.html(f"""
 <!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Manrope,sans-serif;">
-<button id="cb" style="background:#2980B9;color:white;border:none;padding:10px 24px;
-border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;
-cursor:pointer;">&#128196; Copy Formatted</button>
+<button id="cb" style="background:#2980B9;color:white;border:none;padding:10px 0;border-radius:6px;font-family:Manrope,sans-serif;font-size:14px;font-weight:600;cursor:pointer;width:100%;">&#128196; Copy Email Content (Formatted)</button>
 <span id="st" style="margin-left:8px;font-size:13px;"></span>
 <script>
 var h={_h};
@@ -1639,11 +1648,15 @@ document.getElementById("cb").addEventListener("click",function(){{
                 hide_index=True, use_container_width=True
             )
             if st.button("🗑 Clear my log entries", key="clear_log"):
-                _all  = _load_log()
-                _kept = [e for e in _all if e.get("consultant") != selected_user]
-                # Clear session state first so rerun reads fresh data
+                # Operate directly on session state — bypass _load_log to avoid stale reads
+                _current = list(st.session_state.get(_LOG_KEY, []))
+                _kept    = [e for e in _current if e.get("consultant") != selected_user]
                 st.session_state[_LOG_KEY] = _kept
-                _save_log(_kept)
+                # Also update file
+                try:
+                    with open(LOG_PATH, "w") as _lf:
+                        _json.dump(_kept, _lf)
+                except: pass
                 st.rerun()
         else:
             st.info("No outreach logged yet. Click '📋 Log this outreach' after composing an email.")
