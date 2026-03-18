@@ -769,13 +769,23 @@ def main():
 
     # ── Who is using this tool? ───────────────────────────────────────────
     st.subheader("Step 1 — Who are you?")
-    selected_user = st.selectbox(
-        "Select your name",
-        ["— Select —"] + ACTIVE_EMPLOYEES,
-        key="selected_user"
-    )
+    _u_col, _r_col = st.columns([3, 2])
+    with _u_col:
+        selected_user = st.selectbox(
+            "Select your name",
+            ["— Select —"] + ACTIVE_EMPLOYEES,
+            key="selected_user"
+        )
+    with _r_col:
+        user_role = st.radio(
+            "Role",
+            ["IC — my projects only", "Manager / Admin — all projects"],
+            key="user_role",
+            horizontal=False
+        )
+    is_manager = user_role.startswith("Manager")
     if selected_user == "— Select —":
-        st.info("Select your name to filter projects to your portfolio.")
+        st.info("Select your name to get started.")
         return
 
     st.markdown("---")
@@ -832,11 +842,13 @@ def main():
     if drs_file:
         try:
             df_drs = load_drs(drs_file)
-            # Filter DRS to selected user
-            if "project_manager" in df_drs.columns:
-                df_drs = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
-                if df_drs.empty:
-                    st.warning(f"No active FF projects found for {selected_user} in the DRS export.")
+            # Filter DRS — IC mode filters by PM column if present, else assume all are theirs
+            if not is_manager:
+                if "project_manager" in df_drs.columns:
+                    _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
+                    df_drs = _filtered if not _filtered.empty else df_drs  # if no PM col match, show all
+                # else: no PM column — IC mode assumes all projects in file are theirs
+            # Manager mode: keep all projects, filter by consultant in dropdown
         except Exception as e:
             st.error(f"Could not load DRS file: {e}")
 
@@ -902,6 +914,22 @@ def main():
             st.metric("Requiring Follow-Up", _inactive, help="Projects with 30+ days inactivity")
 
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+        with st.expander("ℹ️ How is 'Days Inactive' calculated?", expanded=False):
+            st.markdown("""
+**Priority 1 — NS Time Entry** *(most accurate)*
+Days since the last time entry booked to this project in NetSuite. Requires NS Time Detail upload.
+
+**Priority 2 — Last Milestone**
+Days since the most recently completed milestone in the SS DRS (e.g. Enablement Session, UAT Signoff).
+Used when no NS time entries are available.
+
+**Priority 3 — Phase vs Start Date**
+Days the project has been open, minus the expected benchmark duration for its current phase.
+For example: a project in Onboarding (benchmark: 7 days) that's been open 204 days = 197 days stalled.
+Used when no NS entries and no milestones are present.
+
+**Unknown (-1)** — shown when none of the above signals are available.
+            """)
 
         # ── Weekly Action List ────────────────────────────────────────────
         st.subheader("This Week's Re-Engagement Actions")
@@ -1001,16 +1029,7 @@ def main():
                     _esc_names = ", ".join(_escalated["project_name"].astype(str).tolist()[:3])
                     st.warning(f"⚠️ **{len(_escalated)} project(s) marked as Escalated** — check with CS before sending: {_esc_names}")
 
-            # Per-row compose buttons
-            st.markdown("**Compose email for:**")
-            _btn_cols = st.columns(min(len(_action_df), 4))
-            for _i, (_idx, _row) in enumerate(_action_df.head(8).iterrows()):
-                _proj_id   = str(_row.get("project_name", ""))
-                _proj_label = f"{_row.get('account', _proj_id)[:20]} · {_row.get('Suggested Tier','')}"
-                with _btn_cols[_i % 4]:
-                    if st.button(_proj_label, key=f"action_btn_{_i}", use_container_width=True):
-                        st.session_state["_jump_to_proj"] = _proj_id
-                        st.rerun()
+            st.caption("👆 Select a project from the dropdown in Step 3 to compose an email.")
         else:
             st.success("✅ No projects requiring re-engagement this week.")
 
@@ -1634,16 +1653,26 @@ document.getElementById("cb").addEventListener("click",function(){{
                 }),
                 hide_index=True, use_container_width=True
             )
-            if st.button("🗑 Clear my log entries", key="clear_log",
-                         type="primary", use_container_width=False):
-                _kept = [e for e in st.session_state.get(_LOG_KEY, [])
-                         if e.get("consultant") != selected_user]
-                st.session_state[_LOG_KEY] = _kept
-                try:
-                    with open(LOG_PATH, "w") as _lf:
-                        _json.dump(_kept, _lf)
-                except: pass
-                st.rerun()
+            _cl1, _cl2 = st.columns([2, 2])
+            with _cl1:
+                if st.button("🗑 Clear my entries", key="clear_log", use_container_width=True):
+                    _kept = [e for e in st.session_state.get(_LOG_KEY, [])
+                             if e.get("consultant") != selected_user]
+                    st.session_state[_LOG_KEY] = _kept
+                    try:
+                        with open(LOG_PATH, "w") as _lf:
+                            _json.dump(_kept, _lf)
+                    except: pass
+                    st.rerun()
+            with _cl2:
+                if is_manager and st.button("🗑 Clear ALL entries", key="clear_all_log",
+                                             use_container_width=True, type="primary"):
+                    st.session_state[_LOG_KEY] = []
+                    try:
+                        with open(LOG_PATH, "w") as _lf:
+                            _json.dump([], _lf)
+                    except: pass
+                    st.rerun()
         else:
             st.info("No outreach logged yet. Click '📋 Log this outreach' after composing an email.")
 
