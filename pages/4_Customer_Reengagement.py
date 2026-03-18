@@ -418,6 +418,7 @@ SS_COL_MAP_OUT = {
     "project type":           "project_type",
     "status":                 "status",
     "start date":             "start_date",
+    "start date (subscription)": "subscription_start_date",  # kept separate — not project start
     "go live date":           "go_live_date",
     "territory":              "territory",
     "billing type":           "billing_type",
