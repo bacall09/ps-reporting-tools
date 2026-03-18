@@ -1557,7 +1557,7 @@ def main():
             _tier_str   = f"Tier {_tier_label}" if _tier_label else selected_template
             _log_customer = str(account) if account and str(account).lower() not in ("nan","") else selected_proj
             _log_outreach(
-                consultant    = consultant_name,
+                consultant    = selected_user,   # store as "Last, First" for consistent filtering
                 customer      = _log_customer,
                 project       = selected_proj,
                 tier_label    = _tier_str,
@@ -1622,9 +1622,14 @@ document.getElementById("cb").addEventListener("click",function(){{
             except: pass
         if _all_log:
             _log_df = pd.DataFrame(_all_log).sort_values("date", ascending=False)
-            # Filter to current user if selected
+            # Filter to current user — match both "First Last" and "Last, First" formats
             if selected_user and selected_user != "— Select —":
-                _log_df = _log_df[_log_df["consultant"] == selected_user]
+                _parts = selected_user.split(",", 1)
+                _display = f"{_parts[1].strip()} {_parts[0].strip()}" if len(_parts) == 2 else selected_user
+                _log_df = _log_df[
+                    (_log_df["consultant"] == selected_user) |
+                    (_log_df["consultant"] == _display)
+                ]
             st.dataframe(
                 _log_df[["date","consultant","customer","project","tier","days_inactive","template"]].rename(columns={
                     "date": "Date", "consultant": "Consultant", "customer": "Customer",
