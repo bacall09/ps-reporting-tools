@@ -847,7 +847,7 @@ def main():
                 except: return "—"
 
             _action_df["Suggested Tier"] = _action_df["days_inactive"].apply(_tier_short)
-            _action_df["Last Logged"]    = _action_df["project_name"].apply(
+            _action_df["Last Follow Up"]    = _action_df["project_name"].apply(
                 lambda p: next((e["date"] for e in sorted(_load_log(), key=lambda x: x.get("date",""), reverse=True)
                                if e.get("project") == str(p)), "—")
             ) if "project_name" in _action_df.columns else "—"
@@ -866,9 +866,9 @@ def main():
                 "days_inactive":         "Days Inactive",
                 "client_responsiveness": "Responsiveness",
                 "Suggested Tier":        "Suggested Tier",
-                "Last Logged":           "Last Logged",
+                "Last Follow Up":           "Last Follow Up",
             }
-            _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Logged"]]
+            _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up"]]
             _show  = _action_df[[c for c in _avail if c in _action_df.columns]].rename(columns=_disp_cols)
 
             # Colour by tier
@@ -1508,10 +1508,14 @@ document.getElementById("cb").addEventListener("click",function(){{
     # ── Full outreach log ────────────────────────────────────────────────────
     st.markdown("---")
     with st.expander("📊 Full Outreach Log", expanded=False):
-        # Read directly from session state — most reliable
+        # Debug — show raw session state keys and log content
+        st.caption(f"Session state keys: {[k for k in st.session_state.keys()]}")
+        st.caption(f"LOG_KEY ({_LOG_KEY}) in session_state: {_LOG_KEY in st.session_state}")
+        st.caption(f"Raw log value: {st.session_state.get(_LOG_KEY, 'NOT FOUND')}")
+        st.caption(f"File exists: {os.path.exists(LOG_PATH)}")
+
         _all_log = list(st.session_state.get(_LOG_KEY, []))
         if not _all_log:
-            # Try file fallback
             try:
                 if os.path.exists(LOG_PATH):
                     with open(LOG_PATH) as _f:
