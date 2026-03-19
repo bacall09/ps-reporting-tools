@@ -486,12 +486,12 @@ def load_drs(file):
     if "billing_type" in df.columns:
         df = df[~df["billing_type"].str.strip().str.lower().isin({"t&m","time & material","time and material"})]
     # Calculate remaining sessions from milestone columns
-    SESSION_MILESTONE_COLS = ["ms_enablement", "ms_session1", "ms_session2"]
-    _present = [col for col in SESSION_MILESTONE_COLS if col in df.columns]
-    if _present:
+    _session_ms_cols = ["ms_enablement", "ms_session1", "ms_session2"]
+    _present_ms = [col for col in _session_ms_cols if col in df.columns]
+    if _present_ms:
         def _count_remaining(row):
-            return sum(1 for col in _present if pd.isna(row[col]) or str(row[col]).strip() in ("", "nan", "None"))
-        df["remaining_sessions"] = df.apply(_count_remaining, axis=1)
+            return sum(1 for col in _present_ms if pd.isna(row[col]) or str(row[col]).strip() in ("", "nan", "None", "NaT"))
+        df["remaining_sessions"] = df.apply(_count_remaining, axis=1).astype(int)
     else:
         df["remaining_sessions"] = None
 
@@ -961,13 +961,7 @@ Used when no NS entries and no milestones are present.
                 except: return "—"
 
             _action_df["Suggested Tier"] = _action_df["days_inactive"].apply(_tier_short)
-            _all_log_entries = _load_log()
-            def _last_followup(proj):
-                matches = [e for e in _all_log_entries if e.get("project") == str(proj)]
-                if not matches: return "—"
-                latest = max(matches, key=lambda x: x.get("date",""))
-                return f"{latest.get('date','—')} · {latest.get('tier','—')}"
-            _action_df["Last Follow Up"] = _action_df["project_name"].apply(_last_followup) if "project_name" in _action_df.columns else "—"
+            _all_log_entries = _load_log()  # still used for prior outreach indicator
             _action_df["⚠️ Recent"] = _action_df["project_name"].isin(_logged_projects)
             # Flag escalated projects
             if "risk_level" in _action_df.columns:
@@ -996,7 +990,6 @@ Used when no NS entries and no milestones are present.
                 "risk_level":            "Risk Level",
                 "risk_detail":           "Risk Detail",
                 "Suggested Tier":        "Suggested Tier",
-                "Last Follow Up":        "Last Follow Up",
                 "⚠️ Risk":              "Risk Flag",
             }
             _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up","⚠️ Risk","_inactivity_source"]]
@@ -1293,7 +1286,16 @@ Used when no NS entries and no milestones are present.
             key=f"phase_in_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}"
         )
     with col3:
-        last_activity = st.date_input("Date of last activity", value=date.today(), key=f"last_act_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}")
+        last_activity_val = st.date_input(
+            "Date of last activity *",
+            value=None,
+            key=f"last_act_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}",
+            help="Date you last heard from or engaged with the customer"
+        )
+        if last_activity_val is None:
+            st.warning("⚠️ Please enter the date of last customer activity before continuing.")
+            return
+        last_activity = last_activity_val
 
     col4, col5 = st.columns([3, 3])
     with col4:
@@ -1331,13 +1333,26 @@ Used when no NS entries and no milestones are present.
 
     # Service term expiry — only shown for Tier 4
     if int(days_inactive) >= 180:
-        if close_dt and pd.notna(close_dt):
-            expiry_default = (pd.Timestamp(close_dt) + pd.DateOffset(months=12)).date()
-        else:
-            expiry_default = date.today()
-        service_expiry = st.date_input("Service term expiry date", value=expiry_default, key="svc_exp")
+        # Use subscription_start_date + 12m if available, else blank (mandatory)
+        _sub_start = None
+        if df_drs is not None and "subscription_start_date" in df_drs.columns:
+            _sub_row = df_drs[df_drs[opp_col].astype(str) == str(selected_proj)] if opp_col in df_drs.columns else pd.DataFrame()
+            if not _sub_row.empty:
+                _sv = pd.to_datetime(_sub_row["subscription_start_date"].iloc[0], errors="coerce")
+                if pd.notna(_sv):
+                    _sub_start = (_sv + pd.DateOffset(months=12)).date()
+        expiry_val = st.date_input(
+            "Service term expiry date *",
+            value=_sub_start,
+            key="svc_exp",
+            help="12 months from contract/subscription start date"
+        )
+        if expiry_val is None:
+            st.warning("⚠️ Please enter the service term expiry date.")
+            return
+        service_expiry = expiry_val
     else:
-        service_expiry = (pd.Timestamp(close_dt) + pd.DateOffset(months=12)).date() if close_dt and pd.notna(close_dt) else date.today()
+        service_expiry = date.today()
 
     # ── Contacts ──────────────────────────────────────────────────────────────
     st.markdown("---")
@@ -1440,6 +1455,9 @@ Used when no NS entries and no milestones are present.
 
             to_emails = st.multiselect("To:", all_emails, default=[e for e in suggested_to if e in all_emails], key="to_emails")
             st.caption(f"To: auto-selected via — {to_source}")
+            _extra_to = st.text_input("Add additional To: address", placeholder="name@example.com", key="extra_to")
+            if _extra_to and "@" in _extra_to and _extra_to not in to_emails:
+                to_emails = to_emails + [_extra_to.strip()]
 
             # Build CC suggestions: partner contact + AM email (Tier 2+)
             _suggested_t = suggest_tier_from_days(int(days_inactive)) if "days_inactive" in dir() else None
@@ -1456,6 +1474,9 @@ Used when no NS entries and no milestones are present.
             cc_emails = st.multiselect(cc_label, cc_pool, default=suggested_cc, key="cc_emails")
             if _cc_hints:
                 st.caption("CC pre-suggestions — review before sending")
+            _extra_cc = st.text_input("Add additional CC: address", placeholder="name@example.com", key="extra_cc")
+            if _extra_cc and "@" in _extra_cc and _extra_cc not in cc_emails:
+                cc_emails = cc_emails + [_extra_cc.strip()]
         else:
             st.warning("Email and/or contact name columns not detected. Check your export headers.")
             to_emails = []
@@ -1505,7 +1526,8 @@ Used when no NS entries and no milestones are present.
         st.markdown(f"<span class='tier-badge-{tier_num}'>{suggested}</span>", unsafe_allow_html=True)
     with t2:
         selected_template = st.selectbox("Override template if needed:", tier_names,
-                                          index=suggested_idx, key="tmpl_select",
+                                          index=suggested_idx,
+                                          key=f"tmpl_select_{str(selected_proj)[:30].replace(chr(32),'_')}",
                                           label_visibility="visible")
 
     tmpl_info = TEMPLATES[selected_template]
@@ -1640,6 +1662,7 @@ document.getElementById("cb").addEventListener("click",function(){{
     # ── Full outreach log ────────────────────────────────────────────────────
     st.markdown("---")
     with st.expander("📊 Full Outreach Log", expanded=False):
+        st.caption("⚠️ Log entries are session-only and do not persist between logins. Download and record in your SmartSheet project tracker after each session.")
         _all_log = list(st.session_state.get(_LOG_KEY, []))
         if not _all_log:
             try:
