@@ -990,7 +990,6 @@ Used when no NS entries and no milestones are present.
                 "risk_level":            "Risk Level",
                 "risk_detail":           "Risk Detail",
                 "Suggested Tier":        "Suggested Tier",
-                "⚠️ Risk":              "Risk Flag",
             }
             _avail = [k for k in _disp_cols if k in _action_df.columns or k in ["Suggested Tier","Last Follow Up","⚠️ Risk","_inactivity_source"]]
             _show  = _action_df[[col for col in _avail if col in _action_df.columns]].rename(columns=_disp_cols).reset_index(drop=True)
@@ -1286,10 +1285,13 @@ Used when no NS entries and no milestones are present.
             key=f"phase_in_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}"
         )
     with col3:
+        _last_act_key = f"last_act_{str(selected_proj)[:40].replace(' ','_').replace(chr(39),'')}"
+        if _last_act_key not in st.session_state:
+            st.session_state[_last_act_key] = None
         last_activity_val = st.date_input(
             "Date of last activity *",
-            value=None,
-            key=f"last_act_{str(selected_proj)[:40].replace(chr(32),'_').replace(chr(39),'')}",
+            value=st.session_state.get(_last_act_key),
+            key=_last_act_key,
             help="Date you last heard from or engaged with the customer"
         )
         if last_activity_val is None:
@@ -1341,10 +1343,13 @@ Used when no NS entries and no milestones are present.
                 _sv = pd.to_datetime(_sub_row["subscription_start_date"].iloc[0], errors="coerce")
                 if pd.notna(_sv):
                     _sub_start = (_sv + pd.DateOffset(months=12)).date()
+        _svc_key = f"svc_exp_{str(selected_proj)[:30].replace(' ','_')}"
+        if _svc_key not in st.session_state:
+            st.session_state[_svc_key] = _sub_start  # None if no subscription date
         expiry_val = st.date_input(
             "Service term expiry date *",
-            value=_sub_start,
-            key="svc_exp",
+            value=st.session_state.get(_svc_key),
+            key=_svc_key,
             help="12 months from contract/subscription start date"
         )
         if expiry_val is None:
