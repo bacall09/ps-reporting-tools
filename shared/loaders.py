@@ -11,15 +11,10 @@ from rapidfuzz import fuzz
 from shared.constants import PRODUCT_KEYWORDS, MILESTONE_COLS_MAP, PHASE_BENCHMARKS, SS_COL_MAP
 from shared.config import DEFAULT_SCOPE
 
-# Alias so load_drs can reference it — constants uses SS_COL_MAP, loaders used _OUT suffix
-SS_COL_MAP_OUT = SS_COL_MAP
-
-# Phases considered closed/inactive — excluded from DRS active project list
-INACTIVE_PHASES_OUT = {
-    "closed", "complete", "completed", "cancelled", "canceled",
-    "transitioned to support", "transition to support", "closed - won",
-    "closed - lost", "10. closed", "11. cancelled",
-}
+# Import the authoritative full column map and inactive phase set from template_utils.
+# These are richer than the short SS_COL_MAP in constants — they include milestone cols,
+# last_updated aliases, account columns, etc.
+from shared.template_utils import SS_COL_MAP_OUT, INACTIVE_PHASES_OUT
 
 
 def _extract_product_hints(text):
