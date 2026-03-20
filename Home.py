@@ -4,7 +4,7 @@ Upload once. Everything loads here and stays available for the whole session.
 """
 import streamlit as st
 import pandas as pd
-from datetime import date
+from datetime import date, datetime
 
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
@@ -27,36 +27,36 @@ st.markdown("""
     <style>
         html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
         h1,h2,h3,h4,p,div,label,button { font-family: 'Manrope', sans-serif !important; }
-        .brief-header  { font-size: 24px; font-weight: 700; color: #1e2c63; margin-bottom: 4px; }
-        .brief-sub     { font-size: 13px; color: #718096; margin-bottom: 20px; }
+        /* Use inherit so Streamlit theme controls text colour in both light and dark */
+        .brief-header  { font-size: 24px; font-weight: 700; color: inherit;
+                         margin-bottom: 4px; }
+        .brief-sub     { font-size: 13px; margin-bottom: 20px; opacity: 0.6; }
         .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
                          letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
-        .metric-card   { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-                         padding: 16px 20px; margin-bottom: 12px; }
-        .metric-val    { font-size: 26px; font-weight: 700; color: #1e2c63; }
-        .metric-lbl    { font-size: 12px; color: #718096; margin-top: 2px; }
-        .proj-card     { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
-                         padding: 14px 18px; margin-bottom: 8px; }
-        .proj-name     { font-size: 14px; font-weight: 700; color: #1e2c63; margin-bottom: 4px; }
-        .proj-meta     { font-size: 12px; color: #718096; }
+        /* Transparent cards — border adapts to theme */
+        .metric-card   { background: transparent;
+                         border: 1px solid rgba(128,128,128,0.2);
+                         border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+        .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
+        .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+        .proj-card     { background: transparent;
+                         border: 1px solid rgba(128,128,128,0.15);
+                         border-radius: 8px; padding: 14px 18px; margin-bottom: 8px; }
+        .proj-name     { font-size: 14px; font-weight: 700; color: inherit; margin-bottom: 4px; }
+        .proj-meta     { font-size: 12px; opacity: 0.6; }
         .rag-R{display:inline-block;width:10px;height:10px;border-radius:50%;background:#E74C3C;margin-right:6px;}
         .rag-A{display:inline-block;width:10px;height:10px;border-radius:50%;background:#F39C12;margin-right:6px;}
         .rag-G{display:inline-block;width:10px;height:10px;border-radius:50%;background:#27AE60;margin-right:6px;}
-        .rag- {display:inline-block;width:10px;height:10px;border-radius:50%;background:#BDC3C7;margin-right:6px;}
+        .rag- {display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(128,128,128,0.4);margin-right:6px;}
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
-        .badge-red   {background:#FDECED;color:#C0392B;}
-        .badge-amber {background:#FEF9E7;color:#D68910;}
-        .badge-blue  {background:#EBF0FB;color:#2E4DA7;}
-        .badge-gray  {background:#F2F2F2;color:#5D6D7E;}
-        .badge-green {background:#EAF9F1;color:#1E8449;}
-        .divider{border:none;border-top:1px solid #e2e8f0;margin:20px 0;}
+        .badge-red   {background:rgba(231,76,60,0.15);color:#E74C3C;}
+        .badge-amber {background:rgba(243,156,18,0.15);color:#D68910;}
+        .badge-blue  {background:rgba(68,114,196,0.15);color:#4472C4;}
+        .badge-gray  {background:rgba(128,128,128,0.12);color:inherit;opacity:0.7;}
+        .badge-green {background:rgba(39,174,96,0.15);color:#27AE60;}
+        .divider{border:none;border-top:1px solid rgba(128,128,128,0.2);margin:20px 0;}
         .data-ok  {font-size:12px;color:#27AE60;padding:3px 0;}
-        .data-miss{font-size:12px;color:#a0aec0;padding:3px 0;}
-        @media(prefers-color-scheme:dark){
-            .brief-header{color:#c5d0f0;} .metric-card{background:#1e1e2e;border-color:#2d2d44;}
-            .metric-val{color:#c5d0f0;} .proj-card{background:#1e1e2e;border-color:#2d2d44;}
-            .proj-name{color:#c5d0f0;}
-        }
+        .data-miss{font-size:12px;opacity:0.35;padding:3px 0;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -222,7 +222,13 @@ emp_products = emp_info.get("products", [])
 
 ch, cm = st.columns([3, 1])
 with ch:
-    st.markdown(f'<div class="brief-header">Good morning, {display_name}{note}</div>', unsafe_allow_html=True)
+    _hour = datetime.now().hour
+    _greeting = (
+        "Good morning" if _hour < 12
+        else "Good afternoon" if _hour < 17
+        else "Good evening"
+    )
+    st.markdown(f'<div class="brief-header">{_greeting}, {display_name}{note}</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="brief-sub">{emp_role} · '
         f'{", ".join(emp_products) if emp_products else "All Products"} · '
@@ -358,7 +364,7 @@ else:
                         if st.button("Draft outreach →", key=f"draft_{proj_name}", type="primary"):
                             st.session_state["_jump_to_proj"] = proj_name
                             st.session_state["_jump_tier"]    = tier
-                            st.switch_page("pages/4_Customer_Reengagement.py")
+                            st.switch_page("pages/2_Customer_Reengagement.py")
                     else:
                         st.markdown("No template matched for this inactivity window.")
 
