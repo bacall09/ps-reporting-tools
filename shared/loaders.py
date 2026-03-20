@@ -8,7 +8,7 @@ import streamlit as st
 from datetime import date, datetime
 from rapidfuzz import fuzz
 
-from shared.constants import PRODUCT_KEYWORDS, MILESTONE_COLS_MAP, PHASE_BENCHMARKS, SS_COL_MAP
+from shared.constants import PRODUCT_KEYWORDS, MILESTONE_COLS_MAP, PHASE_BENCHMARKS, SS_COL_MAP, SFDC_COL_MAP
 from shared.config import DEFAULT_SCOPE
 
 # Import the authoritative full column map and inactive phase set from template_utils.
