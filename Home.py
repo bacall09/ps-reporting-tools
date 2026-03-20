@@ -341,14 +341,6 @@ else:
     else:
         st.markdown(f"**{len(stale)} project(s)** need re-engagement outreach")
 
-        # Handle navigation outside the expander loop — switch_page inside
-        # an expander can fail on some Streamlit Cloud versions
-        if st.session_state.get("_pending_jump"):
-            st.session_state["_jump_to_proj"] = st.session_state.pop("_pending_jump_proj", None)
-            st.session_state["_jump_tier"]    = st.session_state.pop("_pending_jump_tier", None)
-            st.session_state.pop("_pending_jump")
-            st.switch_page("pages/2_Customer_Reengagement.py")
-
         for _, row in stale.iterrows():
             proj_name  = row.get("project_name", "—")
             days_inac  = int(row.get("days_inactive", 0))
@@ -370,11 +362,17 @@ else:
                         tmpl = TEMPLATES[tier]
                         st.markdown(f"**Suggested template:** {tier}")
                         st.markdown(f"*Subject:* {tmpl.get('subject','')}")
-                        if st.button("Draft outreach →", key=f"draft_{proj_name}", type="primary"):
-                            st.session_state["_pending_jump"]      = True
-                            st.session_state["_pending_jump_proj"] = proj_name
-                            st.session_state["_pending_jump_tier"] = tier
-                            st.rerun()
+                        # Store project + tier so Re-Engagement page auto-selects them
+                        if st.button("Go to Re-Engagement →", key=f"draft_{proj_name}", type="primary"):
+                            st.session_state["_jump_to_proj"] = proj_name
+                            st.session_state["_jump_tier"]    = tier
+                        # Show link after button press — st.page_link works on Streamlit Cloud
+                        if st.session_state.get("_jump_to_proj") == proj_name:
+                            st.success(f"Project saved — click below to open Re-Engagement")
+                            st.page_link(
+                                "pages/2_Customer_Reengagement.py",
+                                label="Open Re-Engagement page →",
+                            )
                     else:
                         st.markdown("No template matched for this inactivity window.")
 
