@@ -8,8 +8,18 @@ import streamlit as st
 from datetime import date, datetime
 from rapidfuzz import fuzz
 
-from shared.constants import PRODUCT_KEYWORDS, MILESTONE_COLS_MAP, PHASE_BENCHMARKS
+from shared.constants import PRODUCT_KEYWORDS, MILESTONE_COLS_MAP, PHASE_BENCHMARKS, SS_COL_MAP
 from shared.config import DEFAULT_SCOPE
+
+# Alias so load_drs can reference it — constants uses SS_COL_MAP, loaders used _OUT suffix
+SS_COL_MAP_OUT = SS_COL_MAP
+
+# Phases considered closed/inactive — excluded from DRS active project list
+INACTIVE_PHASES_OUT = {
+    "closed", "complete", "completed", "cancelled", "canceled",
+    "transitioned to support", "transition to support", "closed - won",
+    "closed - lost", "10. closed", "11. cancelled",
+}
 
 
 def _extract_product_hints(text):

@@ -1623,6 +1623,17 @@ def main():
 
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
+    # ── Session state data from Home page ────────────────────────────────────
+    _ss_from_session = st.session_state.get("df_drs")
+    _ns_from_session = st.session_state.get("df_ns")
+    if _ss_from_session is not None or _ns_from_session is not None:
+        st.info(
+            f"✓ Using data loaded from Home page"
+            f"{' (DRS)' if _ss_from_session is not None else ''}"
+            f"{' (NS Time)' if _ns_from_session is not None else ''}. "
+            "Upload below to override for this page only."
+        )
+
     # ── Uploads ───────────────────────────────────────────────────────────────
     st.subheader("Step 1 — Upload Smartsheets DRS Export")
     st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
@@ -1640,15 +1651,15 @@ def main():
         key="ns_upload"
     )
 
-    if not ss_file:
-        st.info(" Upload your Smartsheets DRS export to continue.")
+    if not ss_file and _ss_from_session is None:
+        st.info(" Upload your Smartsheets DRS export (or load it on the Home page) to continue.")
         return
 
     # ── Process ───────────────────────────────────────────────────────────────
-    milestone_cols = []  # default — populated by load_ss if milestone columns present
+    milestone_cols = []
     try:
-        ss_df, milestone_cols = load_ss(ss_file)
-        ns_df, ns_min_date = load_ns(ns_file) if ns_file else (None, None)
+        ss_df, milestone_cols = load_ss(ss_file) if ss_file else (_ss_from_session, [])
+        ns_df, ns_min_date = load_ns(ns_file) if ns_file else ((_ns_from_session, None) if _ns_from_session is not None else (None, None))
         scored_df = score_projects(ss_df, ns_df)
         consultant_df, missing_pm = build_consultant_summary(scored_df, ss_df=ss_df)
         stale_df = build_stale_projects(ss_df, ns_df) if ns_df is not None else pd.DataFrame()

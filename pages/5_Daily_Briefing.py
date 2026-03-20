@@ -162,8 +162,17 @@ if df_drs is not None and not df_drs.empty:
     pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(
         lambda v: _match_consultant(str(v))
     )
-    # Also check territory / resource cols if available
     my_projects = df_drs[pm_mask].copy()
+
+    # ── Consultant fallback: if no PM match and user is not a manager,
+    # assume all rows in their DRS export belong to them (SS DRS exports
+    # for individual consultants drop the Project Manager column).
+    if my_projects.empty and not is_manager(view_name):
+        my_projects = df_drs.copy()
+        st.caption(
+            "ℹ️ No 'Project Manager' column matched your name — showing all projects "
+            "in this DRS file. If this is your personal SS DRS export that's expected."
+        )
 
 # Filter NS time to this consultant's hours
 my_ns = pd.DataFrame()
@@ -206,33 +215,83 @@ if location_key and month_key in AVAIL_HOURS.get(location_key, {}):
 if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
     month_ns = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
-    # Exclude non-billable / PTO from utilization numerator
-    billable_ns = month_ns[
-        ~month_ns.get("project", pd.Series(dtype=str)).str.lower().str.contains(
-            "vacation|pto|sick|non-billable|admin", na=False
-        )
-    ]
-    hours_logged  = round(billable_ns["hours"].sum(), 1)
-    hours_total   = round(month_ns["hours"].sum(), 1)
-    util_pct      = round((hours_logged / avail * 100), 1) if avail else None
+
+    # ── Categorise hours by billing type ─────────────────────────────────
+    # Internal  → admin/non-billable
+    # Fixed Fee → split at scope: credited up to scope, overrun beyond
+    # T&M       → fully credited
+    total_hrs   = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 1)
+    bt_col      = "billing_type" if "billing_type" in month_ns.columns else None
+
+    if bt_col:
+        _bt = month_ns[bt_col].fillna("").str.strip().str.lower()
+        admin_hrs   = round(month_ns[_bt == "internal"]["hours"].sum(), 1)
+        tm_hrs      = round(month_ns[_bt == "t&m"]["hours"].sum(), 1)
+        ff_rows     = month_ns[_bt == "fixed fee"].copy()
+    else:
+        # No billing_type column — treat everything non-internal as billable
+        admin_hrs = 0.0
+        tm_hrs    = total_hrs
+        ff_rows   = pd.DataFrame()
+
+    # For Fixed Fee: tally credited vs overrun using consumed-hours logic
+    ff_credit  = 0.0
+    ff_overrun = 0.0
+    if not ff_rows.empty and "project" in ff_rows.columns:
+        ff_rows = ff_rows.sort_values("date")
+        _consumed: dict = {}
+        for _, _r in ff_rows.iterrows():
+            _proj  = str(_r.get("project", "")).strip()
+            _ptype = str(_r.get("project_type", "")).strip()
+            _hrs   = float(_r.get("hours", 0) or 0)
+            if _hrs <= 0:
+                continue
+            # Look up scope
+            _matches = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                        if k.strip().lower() in _ptype.lower()]
+            _scope = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
+            if _scope is None:
+                ff_credit += _hrs   # unconfigured → treat as credited for display
+                continue
+            _used      = _consumed.get(_proj, 0.0)
+            _remaining = _scope - _used
+            if _remaining <= 0:
+                ff_overrun += _hrs
+            elif _hrs <= _remaining:
+                ff_credit  += _hrs
+                _consumed[_proj] = _used + _hrs
+            else:
+                ff_credit  += _remaining
+                ff_overrun += _hrs - _remaining
+                _consumed[_proj] = _scope
+
+    credit_hrs  = round(tm_hrs + ff_credit, 1)
+    overrun_hrs = round(ff_overrun, 1)
+    admin_hrs   = round(admin_hrs, 1)
+
+    credit_pct  = round(credit_hrs  / avail * 100, 1) if avail else None
+    overrun_pct = round(overrun_hrs / avail * 100, 1) if avail else None
+    admin_pct   = round(admin_hrs   / avail * 100, 1) if avail else None
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{hours_logged}h</div><div class="metric-lbl">Billable hours logged</div></div>', unsafe_allow_html=True)
+        avail_disp = f"{avail}h" if avail else "—"
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{avail_disp}</div><div class="metric-lbl">Available this month</div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{hours_total}h</div><div class="metric-lbl">Total hours logged</div></div>', unsafe_allow_html=True)
+        if credit_pct is not None:
+            color = "#27AE60" if credit_pct >= 70 else ("#F39C12" if credit_pct >= 60 else "#E74C3C")
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{color}">{credit_pct}%</div><div class="metric-lbl">Utilization credit % &nbsp;·&nbsp; {credit_hrs}h credited</div></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Utilization credit % (location not mapped)</div></div>', unsafe_allow_html=True)
     with c3:
-        if avail:
-            remaining = round(avail - hours_total, 1)
-            st.markdown(f'<div class="metric-card"><div class="metric-val">{avail}h</div><div class="metric-lbl">Available this month</div></div>', unsafe_allow_html=True)
+        if overrun_pct is not None:
+            color = "#E74C3C" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{color}">{overrun_pct}%</div><div class="metric-lbl">FF project overrun % &nbsp;·&nbsp; {overrun_hrs}h over budget</div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Available hours (location not mapped)</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF project overrun %</div></div>', unsafe_allow_html=True)
     with c4:
-        if util_pct is not None:
-            color = "#27AE60" if util_pct >= 75 else ("#F39C12" if util_pct >= 50 else "#E74C3C")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{color}">{util_pct}%</div><div class="metric-lbl">Utilization</div></div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Utilization</div></div>', unsafe_allow_html=True)
+        admin_disp = f"{admin_pct}%" if admin_pct is not None else "—"
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{admin_disp}</div><div class="metric-lbl">Internal / admin % &nbsp;·&nbsp; {admin_hrs}h</div></div>', unsafe_allow_html=True)
 else:
     if not ns_file:
         st.info("Upload NS Time Detail to see your utilization snapshot.")
@@ -388,9 +447,11 @@ else:
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4 — AI Summary (Claude-powered)
+# SECTION 4 — AI Summary (Claude-powered) — FUTURE STATE, currently hidden
+# To re-enable: change `if False:` back to `if True:` or remove the wrapper
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">AI Briefing Summary</div>', unsafe_allow_html=True)
+if False:  # noqa: SIM210  — intentionally disabled until Claude API key is wired in
+    st.markdown('<div class="section-label">AI Briefing Summary</div>', unsafe_allow_html=True)
 
 has_data = (not my_projects.empty) or (not my_ns.empty)
 

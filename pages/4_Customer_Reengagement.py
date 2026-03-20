@@ -805,6 +805,20 @@ def main():
     st.subheader("Step 2 — Upload Reports")
     st.caption("Upload one or more reports — more reports = better inactivity detection.")
 
+    # ── Pull from session state (uploaded on Home) — local upload as fallback ──
+    _from_session = {
+        "df_sfdc": st.session_state.get("df_sfdc"),
+        "df_drs":  st.session_state.get("df_drs"),
+        "df_ns":   st.session_state.get("df_ns"),
+    }
+    _session_loaded = [k for k, v in _from_session.items() if v is not None]
+    if _session_loaded:
+        st.info(
+            f"✓ Using data loaded from Home page: "
+            f"{', '.join(k.replace('df_','').upper() for k in _session_loaded)}. "
+            f"Upload below to override for this page only."
+        )
+
     up1, up2, up3 = st.columns([3, 3, 3])
     with up1:
         st.markdown("**SFDC Contacts Export** — for contact lookup")
@@ -837,11 +851,12 @@ def main():
         st.markdown("[Download latest NS Time Detail ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=70652&saverun=T&whence=)")
         ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
 
-    if not sfdc_file and not drs_file and not ns_file:
-        st.info("Upload at least one report. All three together give the most accurate inactivity detection.")
+    # Require at least one source — session state counts
+    if not sfdc_file and not drs_file and not ns_file and not _session_loaded:
+        st.info("Upload at least one report — or go to the Home page to load data once for all pages.")
         return
 
-    # ── Load whichever files were uploaded ────────────────────────────────
+    # ── Load: local upload takes priority over session state ──────────────────
     df_sfdc = None
     df_drs  = None
     df_ns   = None
@@ -851,30 +866,31 @@ def main():
             df_sfdc = load_sfdc(sfdc_file)
         except Exception as e:
             st.error(f"Could not load SFDC file: {e}")
+    else:
+        df_sfdc = _from_session.get("df_sfdc")
 
     if drs_file:
         try:
             df_drs = load_drs(drs_file)
-            # Filter DRS — IC mode filters by PM column if present, else assume all are theirs
             if not is_manager:
                 if "project_manager" in df_drs.columns:
                     _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
-                    df_drs = _filtered if not _filtered.empty else df_drs  # if no PM col match, show all
-                # else: no PM column — IC mode assumes all projects in file are theirs
-            # Manager mode: keep all projects, filter by consultant in dropdown
+                    df_drs = _filtered if not _filtered.empty else df_drs
         except Exception as e:
             st.error(f"Could not load DRS file: {e}")
+    else:
+        df_drs = _from_session.get("df_drs")
 
     if ns_file:
         try:
             df_ns = load_ns_time(ns_file)
-            # Filter NS to selected user
             if "employee" in df_ns.columns:
                 df_ns = df_ns[df_ns["employee"].astype(str).str.strip() == selected_user]
-            # Show what ID column was found for join debugging
             _ns_id_col = "project_id" if "project_id" in df_ns.columns else "project" if "project" in df_ns.columns else None
         except Exception as e:
             st.error(f"Could not load NS file: {e}")
+    else:
+        df_ns = _from_session.get("df_ns")
 
     # ── Merge NS inactivity into DRS (outside try/except so errors are visible) ─
     if df_drs is not None and df_ns is not None:
