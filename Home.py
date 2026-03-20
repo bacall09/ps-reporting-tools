@@ -288,9 +288,9 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             else:
                 ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
 
-    credit_hrs  = round(tm_hrs + ff_credit, 1)
-    overrun_hrs = round(ff_overrun, 1)
-    admin_hrs   = round(admin_hrs, 1)
+    credit_hrs  = round(tm_hrs + ff_credit, 2)
+    overrun_hrs = round(ff_overrun, 2)
+    admin_hrs   = round(admin_hrs, 2)
     credit_pct  = round(credit_hrs  / avail * 100, 2) if avail else None
     overrun_pct = round(overrun_hrs / avail * 100, 2) if avail else None
     admin_pct   = round(admin_hrs   / avail * 100, 2) if avail else None
