@@ -295,24 +295,28 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     overrun_pct = round(overrun_hrs / avail * 100, 1) if avail else None
     admin_pct   = round(admin_hrs   / avail * 100, 1) if avail else None
 
-    c1, c2, c3, c4 = st.columns(4)
+    total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 1)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         v = f"{avail}h" if avail else "—"
         lbl = "Available this month" if avail else "Available hrs (location not mapped)"
         st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}</div></div>', unsafe_allow_html=True)
     with c2:
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{total_booked}h</div><div class="metric-lbl">Hours booked this month</div></div>', unsafe_allow_html=True)
+    with c3:
         if credit_pct is not None:
             col = "#27AE60" if credit_pct >= 70 else ("#F39C12" if credit_pct >= 60 else "#E74C3C")
             st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{credit_pct}%</div><div class="metric-lbl">Utilization credit &nbsp;·&nbsp; {credit_hrs}h credited</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Utilization credit %</div></div>', unsafe_allow_html=True)
-    with c3:
+    with c4:
         if overrun_pct is not None:
             col = "#E74C3C" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
             st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun &nbsp;·&nbsp; {overrun_hrs}h over budget</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF project overrun %</div></div>', unsafe_allow_html=True)
-    with c4:
+    with c5:
         v = f"{admin_pct}%" if admin_pct is not None else "—"
         st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">Internal / admin &nbsp;·&nbsp; {admin_hrs}h</div></div>', unsafe_allow_html=True)
 else:
@@ -368,10 +372,10 @@ else:
                             st.session_state["_jump_tier"]    = tier
                         # Show link after button press — st.page_link works on Streamlit Cloud
                         if st.session_state.get("_jump_to_proj") == proj_name:
-                            st.success(f"Project saved — click below to open Re-Engagement")
-                            st.page_link(
-                                "pages/2_Customer_Reengagement.py",
-                                label="Open Re-Engagement page →",
+                            st.success("Project and template saved.")
+                            st.markdown(
+                                "**[→ Go to Customer Re-Engagement](/Customer_Reengagement)**",
+                                unsafe_allow_html=False,
                             )
                     else:
                         st.markdown("No template matched for this inactivity window.")
@@ -379,71 +383,16 @@ else:
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3 — Active projects
+# SECTION 3 — Welcome email actions (placeholder)
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">My Active Projects</div>', unsafe_allow_html=True)
-
-if df_drs is None:
-    st.info("Upload SS DRS Export in the sidebar to see your projects.")
-elif my_projects.empty:
-    st.warning(f"No projects found for **{view_name}** in the DRS file.")
-else:
-    rag_order = {"R":0,"A":1,"G":2,"":3}
-    my_projects["_rag_sort"] = my_projects.get("rag", pd.Series(dtype=str)).fillna("").map(
-        lambda x: rag_order.get(str(x).strip().upper()[:1], 3))
-    sort_cols = ["_rag_sort","days_inactive"] if "days_inactive" in my_projects.columns else ["_rag_sort"]
-    my_projects = my_projects.sort_values(sort_cols, ascending=True)
-
-    st.markdown(f"**{len(my_projects)} project(s)**")
-
-    for _, row in my_projects.iterrows():
-        proj_name = row.get("project_name","—")
-        rag       = str(row.get("rag","")).strip().upper()[:1]
-        phase     = row.get("phase","—")
-        pct       = row.get("pct_complete", None)
-        go_live   = row.get("go_live_date", None)
-        actual_h  = row.get("actual_hours", None)
-        budget_h  = row.get("budgeted_hours", None)
-        days_inac = row.get("days_inactive", None)
-
-        burn_badge = ""
-        if actual_h and budget_h:
-            try:
-                burn = round(float(actual_h)/float(budget_h)*100)
-                bcls = "badge-red" if burn>=90 else ("badge-amber" if burn>=75 else "badge-blue")
-                burn_badge = f'<span class="action-badge {bcls}">{burn}% burn</span>'
-            except Exception: pass
-
-        inac_badge = ""
-        if days_inac is not None and days_inac >= 0:
-            if days_inac >= 30:
-                inac_badge = f'<span class="action-badge badge-red">{days_inac}d inactive</span>'
-            elif days_inac >= 14:
-                inac_badge = f'<span class="action-badge badge-amber">{days_inac}d inactive</span>'
-
-        phase_badge = f'<span class="action-badge badge-gray">{phase}</span>' if phase and phase != "—" else ""
-
-        go_live_str = ""
-        if go_live:
-            try:
-                gl = pd.to_datetime(go_live); dtgl = (gl.date()-today).days
-                gl_fmt = gl.strftime("%-d %b %Y")
-                if dtgl < 0:
-                    go_live_str = f"Go-live: {gl_fmt} <span style='color:#E74C3C'>({abs(dtgl)}d overdue)</span>"
-                elif dtgl <= 14:
-                    go_live_str = f"Go-live: {gl_fmt} <span style='color:#F39C12'>({dtgl}d away)</span>"
-                else:
-                    go_live_str = f"Go-live: {gl_fmt} ({dtgl}d)"
-            except Exception: pass
-
-        pct_str = f"{int(float(pct))}% complete · " if pct else ""
-
-        st.markdown(f"""
-        <div class="proj-card">
-            <div class="proj-name"><span class="rag-{rag}"></span>{proj_name}</div>
-            <div class="proj-meta">{pct_str}{go_live_str}</div>
-            <div style="margin-top:8px">{phase_badge}{burn_badge}{inac_badge}</div>
-        </div>""", unsafe_allow_html=True)
+st.markdown('<div class="section-label">Welcome Email Actions</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div style="border:1px dashed rgba(128,128,128,0.3);border-radius:8px;padding:16px 20px;opacity:0.6">' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Coming soon</div>' +
+    '<div style="font-size:12px">Newly assigned projects that haven\'t had a welcome / intro email sent yet will surface here, with a pre-filled template ready to send.</div>' +
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")
