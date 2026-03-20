@@ -3,6 +3,19 @@ import pandas as pd
 from datetime import date, datetime
 import re
 from rapidfuzz import fuzz
+from shared.constants import (
+    EMPLOYEE_ROLES, ACTIVE_EMPLOYEES, PRODUCT_KEYWORDS,
+    MILESTONE_COLS_MAP, SS_COL_MAP, NS_COL_MAP, SFDC_COL_MAP,
+)
+from shared.loaders import (
+    load_drs, load_sfdc, load_ns_time,
+    calc_days_inactive, calc_last_milestone,
+    fuzzy_match_sfdc, normalise_product_name, suggest_tier_from_days,
+)
+from shared.template_utils import (
+    TEMPLATES, suggest_tier, fill_template,
+    highlight_placeholders, extract_placeholders,
+)
 
 st.set_page_config(page_title="Customer Re-Engagement", page_icon=None, layout="wide")
 

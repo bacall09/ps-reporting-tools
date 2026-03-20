@@ -12,6 +12,15 @@ import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from shared.constants import (
+    EMPLOYEE_ROLES, ACTIVE_EMPLOYEES, SS_COL_MAP, NS_COL_MAP,
+    get_role, is_manager, is_consultant,
+)
+from shared.config import (
+    NAVY, WHITE, LTGRAY, AVAIL_HOURS,
+    EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
+)
+from shared.loaders import load_drs, load_ns_time
 
 st.set_page_config(page_title="Capacity Outlook", page_icon=None, layout="wide")
 

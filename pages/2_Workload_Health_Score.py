@@ -10,6 +10,8 @@ from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from shared.constants import EMPLOYEE_ROLES, SS_COL_MAP, NS_COL_MAP, PHASE_BENCHMARKS, ACTIVE_EMPLOYEES
+from shared.config import NAVY, TEAL, WHITE, LTGRAY, AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="FF Workload Score", page_icon=None, layout="wide")

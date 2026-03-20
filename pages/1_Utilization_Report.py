@@ -642,11 +642,13 @@ def build_excel(df, scope_map, consumed):
     eh = ["Employee","Location","PS Region","Period",
           "Avail Hrs (Capacity)","Hours This Period","Utilization Credits",
           "FF Project Overrun Hrs","Admin Hrs",
-          "Util % (vs Hours Logged)","Util % (vs Capacity)","Projected Full Month Util %"]
-    ew = [22,16,14,12,16,15,18,18,14,20,20,22]
+          "Util % (vs Hours Logged)","Util % (vs Capacity)",
+          "Project Util %","Gap (pts)",
+          "Projected Full Month Util %"]
+    ew = [22,16,14,12,16,15,18,18,14,20,20,16,12,22]
     write_title(ws2, "SUMMARY — Utilization by Employee", len(eh))
     style_header(ws2, 2, eh, TEAL)
-    ws2.auto_filter.ref = "A2:J2"
+    ws2.auto_filter.ref = "A2:L2"
 
     for i, w in enumerate(ew, 1):
         ws2.column_dimensions[get_column_letter(i)].width = w
@@ -719,6 +721,10 @@ def build_excel(df, scope_map, consumed):
             if len(df[df["employee"]==emp]) > 0 else ""
         # Capacity util: credits / available hours in period
         cap_util = row["credit_hrs"] / avail if avail and avail > 0 else None
+        # Project util: (credits + ff overrun) / available hours
+        proj_util_pct = (row["credit_hrs"] + row["ff_overrun_hrs"]) / avail if avail and avail > 0 else None
+        # Gap: project util - capacity util (percentage points)
+        gap_pts = (proj_util_pct - cap_util) if proj_util_pct is not None and cap_util is not None else None
         # Partial month projection
         proj_util = None
         if _period_days is not None and _total_period_days is not None and _period_days < _total_period_days:
@@ -730,14 +736,22 @@ def build_excel(df, scope_map, consumed):
                 row["ff_overrun_hrs"], row.get("admin_hrs", 0),
                 util if row["hours_this_period"] > 0 else "—",
                 cap_util if cap_util is not None else "—",
+                proj_util_pct if proj_util_pct is not None else "—",
+                gap_pts if gap_pts is not None else "—",
                 proj_util if proj_util is not None else "—"]
-        fmts = [None,None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%","0.0%","0.0%"]
+        fmts = [None,None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%","0.0%","0.0%","+0.0%;-0.0%;-","0.0%"]
 
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
             cell = ws2.cell(row=r_idx, column=c_idx, value=val)
             is_util_col = c_idx in (10, 11, 12)
-            style_cell(cell, util_bg if is_util_col else bg, fmt=fmt,
-                       align="right" if c_idx > 4 else "center" if c_idx == 4 else "left")
+            # Highlight Gap (pts) col 13 — amber if gap > 0.10, red if > 0.20
+            if c_idx == 13 and isinstance(val, float):
+                gap_bg = ("FCE4D6" if val >= 0.20 else "FFF2CC" if val >= 0.10 else bg)
+                style_cell(cell, gap_bg, fmt=fmt, bold=(val >= 0.10),
+                           align="right")
+            else:
+                style_cell(cell, util_bg if is_util_col else bg, fmt=fmt,
+                           align="right" if c_idx > 4 else "center" if c_idx == 4 else "left")
 
     # ── 3. PROJECT SUMMARY ────────────────────────────────────
     ws3 = wb.create_sheet("FF By Project Utilization")
@@ -850,7 +864,120 @@ def build_excel(df, scope_map, consumed):
                        fmt=fmt, bold=(c_idx == 12),
                        align="right" if c_idx in (5,6,7,8,9,10,11) else "center" if c_idx == 12 else "left")
 
-    # ── 4. ZCO NON-BILLABLE BREAKDOWN ─────────────────────────
+    # ── 4. FF OVERRUN BY PROJECT TYPE ────────────────────────
+    ws_ot = wb.create_sheet("FF Overrun by Project Type")
+    ws_ot.sheet_properties.tabColor = "8E44AD"
+    ws_ot.freeze_panes = "A3"
+
+    oth = ["Project Type","# Projects","# Over Budget","% Over Budget",
+           "Total Overrun Hrs","Avg Scoped Hrs","Avg Actual Hrs","Avg +/− vs Scope"]
+    otw = [28,11,14,14,17,14,14,17]
+    write_title(ws_ot, "FIXED FEE OVERRUN BY PROJECT TYPE", len(oth))
+    style_header(ws_ot, 2, oth, TEAL)
+    ws_ot.auto_filter.ref = "A2:H2"
+    for i, w in enumerate(otw, 1):
+        ws_ot.column_dimensions[get_column_letter(i)].width = w
+
+    # Build from FF projects with configured scopes only
+    _ot_ff = df[
+        (df["credit_tag"] != "SKIPPED") &
+        (df.get("billing_type", pd.Series(dtype=str)).str.lower() == "fixed fee")
+    ].copy() if "billing_type" in df.columns else df[df["credit_tag"] != "SKIPPED"].copy()
+
+    # Compute per-project totals for over-budget detection
+    _ot_proj = _ot_ff.groupby(["project","project_type"], as_index=False).agg(
+        hours_total=("hours","sum"),
+        overrun_hrs=("variance_hrs","sum"),
+    )
+    # Attach scoped hours
+    def _ot_scope(ptype):
+        _m = [(k, float(v)) for k, v in scope_map.items()
+              if k.strip().lower() in str(ptype).strip().lower()]
+        return max(_m, key=lambda x: len(x[0]))[1] if _m else None
+    _ot_proj["scoped_hrs"] = _ot_proj["project_type"].apply(_ot_scope)
+    # Only include projects where scope is configured
+    _ot_proj = _ot_proj[_ot_proj["scoped_hrs"].notna()].copy()
+    _ot_proj["over_under"] = _ot_proj["hours_total"] - _ot_proj["scoped_hrs"]
+    _ot_proj["is_over"] = (_ot_proj["over_under"] > 0).astype(int)
+
+    _ot_type = _ot_proj.groupby("project_type", as_index=False).agg(
+        total_projects=("project","count"),
+        over_count=("is_over","sum"),
+        total_overrun_hrs=("overrun_hrs","sum"),
+        avg_scoped=("scoped_hrs","mean"),
+        avg_actual=("hours_total","mean"),
+        avg_over_under=("over_under","mean"),
+    ).sort_values("total_overrun_hrs", ascending=False)
+
+    _ot_type["over_pct"] = _ot_type["over_count"] / _ot_type["total_projects"]
+
+    _ot_totals_proj   = int(_ot_type["total_projects"].sum())
+    _ot_totals_over   = int(_ot_type["over_count"].sum())
+    _ot_totals_ovhrs  = float(_ot_type["total_overrun_hrs"].sum())
+
+    for r_idx_ot, (_, row_ot) in enumerate(_ot_type.iterrows(), 3):
+        bg_ot = GROUP_COLORS[r_idx_ot % 2]
+        avg_ou = float(row_ot["avg_over_under"])
+        over_pct = float(row_ot["over_pct"])
+
+        vals_ot = [
+            row_ot["project_type"],
+            int(row_ot["total_projects"]),
+            int(row_ot["over_count"]),
+            over_pct,
+            float(row_ot["total_overrun_hrs"]),
+            float(row_ot["avg_scoped"]),
+            float(row_ot["avg_actual"]),
+            avg_ou,
+        ]
+        fmts_ot = [None,"#,##0","#,##0","0.0%","#,##0.0","0.0","0.0","+0.0;-0.0;\"-\""]
+
+        for c_idx_ot, (val_ot, fmt_ot) in enumerate(zip(vals_ot, fmts_ot), 1):
+            cell_ot = ws_ot.cell(row=r_idx_ot, column=c_idx_ot, value=val_ot)
+            # % Over Budget colouring: red ≥40%, amber 25–39%
+            if c_idx_ot == 4:
+                if over_pct >= 0.40:
+                    style_cell(cell_ot, "FCE4D6", fmt=fmt_ot, bold=True, align="right")
+                    cell_ot.font = Font(name="Manrope", size=10, bold=True, color="9C2A00")
+                elif over_pct >= 0.25:
+                    style_cell(cell_ot, "FFF2CC", fmt=fmt_ot, bold=True, align="right")
+                    cell_ot.font = Font(name="Manrope", size=10, bold=True, color="7F4F00")
+                else:
+                    style_cell(cell_ot, bg_ot, fmt=fmt_ot, align="right")
+            # Avg +/− colouring: red if positive (running over on average), grey if negative
+            elif c_idx_ot == 8:
+                style_cell(cell_ot, bg_ot, fmt=fmt_ot, bold=(avg_ou > 0),
+                           align="right")
+                if avg_ou > 0:
+                    cell_ot.font = Font(name="Manrope", size=10, bold=True, color="9C2A00")
+                else:
+                    cell_ot.font = Font(name="Manrope", size=10, color="595959")
+            # Total overrun hrs — bold red if ≥ 500
+            elif c_idx_ot == 5 and float(row_ot["total_overrun_hrs"]) >= 500:
+                style_cell(cell_ot, bg_ot, fmt=fmt_ot, bold=True, align="right")
+                cell_ot.font = Font(name="Manrope", size=10, bold=True, color="9C2A00")
+            else:
+                style_cell(cell_ot, bg_ot, fmt=fmt_ot,
+                           align="left" if c_idx_ot == 1 else "right")
+        ws_ot.row_dimensions[r_idx_ot].height = 15
+
+    # Totals row
+    _ot_tr = 3 + len(_ot_type)
+    for c_idx_ot, (val_ot, fmt_ot) in enumerate(zip(
+        ["Total", _ot_totals_proj, _ot_totals_over, None, _ot_totals_ovhrs, None, None, None],
+        [None, "#,##0", "#,##0", None, "#,##0.0", None, None, None]
+    ), 1):
+        cell_ot = ws_ot.cell(row=_ot_tr, column=c_idx_ot, value=val_ot)
+        cell_ot.font  = Font(name="Manrope", size=10, bold=True, color="FFFFFF")
+        cell_ot.fill  = PatternFill("solid", fgColor=NAVY)
+        cell_ot.border = thin_border()
+        cell_ot.alignment = Alignment(
+            horizontal="left" if c_idx_ot == 1 else "right", vertical="center")
+        if fmt_ot and val_ot is not None:
+            cell_ot.number_format = fmt_ot
+    ws_ot.row_dimensions[_ot_tr].height = 18
+
+    # ── 5. ZCO NON-BILLABLE BREAKDOWN ─────────────────────────
     ws5 = wb.create_sheet("Non-Billable")
     ws5.sheet_properties.tabColor = "95A5A6"
     ws5.freeze_panes = "A3"
@@ -1594,6 +1721,7 @@ def build_excel(df, scope_map, consumed):
         "Project Count",
         "SUMMARY - By Employee",
         "FF By Project Utilization",
+        "FF Overrun by Project Type",
         "By Customer Region (WIP)",
         "By PS Region",
         "Watch List",
@@ -2018,7 +2146,7 @@ label="⬇ Download Excel Report",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
         )
-        st.caption("`" + tableau_filename + "` — 2 flat sheets: fact_utilization · fact_processed_time_entries")
+        st.caption("`" + tableau_filename + "` — 3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
 
 
 def build_tableau_excel(df, scope_map, consumed):
@@ -2072,6 +2200,7 @@ def build_tableau_excel(df, scope_map, consumed):
         "period", "hours_capacity", "hours_logged", "credit_hrs",
         "admin_hrs", "ff_overrun_hrs",
         "util_pct_vs_logged", "util_pct_vs_capacity",
+        "project_util_pct", "gap_pts",
         "util_rag",
     ]
     fu_rows = []
@@ -2086,6 +2215,8 @@ def build_tableau_excel(df, scope_map, consumed):
         avail  = get_avail_hours(loc, period) if loc else None
         u_log  = _pct(row["credit_hrs"], row["hours_logged"])
         u_cap  = _pct(row["credit_hrs"], avail)
+        u_proj = _pct(row["credit_hrs"] + row["ff_overrun_hrs"], avail)
+        gap    = round(u_proj - u_cap, 6) if u_proj is not None and u_cap is not None else None
         # RAG based on util vs capacity (primary metric)
         if u_cap is None:
             rag = "Unknown"
@@ -2100,7 +2231,7 @@ def build_tableau_excel(df, scope_map, consumed):
             emp, loc, ps_reg, role,
             period, avail, round(row["hours_logged"], 2), round(row["credit_hrs"], 2),
             round(row["admin_hrs"], 2), round(row["ff_overrun_hrs"], 2),
-            u_log, u_cap, rag,
+            u_log, u_cap, u_proj, gap, rag,
         ])
     _flat_sheet(wb, "fact_utilization", fu_headers, fu_rows)
 
@@ -2157,6 +2288,73 @@ def build_tableau_excel(df, scope_map, consumed):
             _tbl_vflag(_tag, _scoped),
         ])
     _flat_sheet(wb, "fact_processed_time_entries", ft_headers, ft_rows)
+
+    # ── Sheet 3: fact_ff_overrun_by_type ─────────────────────────────────────
+    # One row per project type — aggregated FF overrun metrics.
+    # Grain: project_type (join key to fact_utilization via project_type on
+    # fact_processed_time_entries, or use as a standalone dimension in Tableau).
+    fot_headers = [
+        "project_type",
+        "scoped_hrs",          # configured scope for this type (from scope_map)
+        "total_projects",      # distinct FF projects of this type
+        "projects_over_budget",
+        "pct_over_budget",     # projects_over_budget / total_projects (0–1)
+        "total_overrun_hrs",   # sum of variance_hrs across all overrun/partial rows
+        "avg_scoped_hrs",      # mean scoped hrs per project
+        "avg_actual_hrs",      # mean actual hours per project
+        "avg_over_under_hrs",  # mean of (actual - scoped) — negative = typically under
+    ]
+
+    # Build from FF rows with configured scopes only
+    _fot_ff = _df[
+        _df.get("billing_type", pd.Series(dtype=str)).str.lower() == "fixed fee"
+    ].copy() if "billing_type" in _df.columns else _df.copy()
+
+    def _fot_scope(ptype):
+        _m = [(k, float(v)) for k, v in scope_map.items()
+              if k.strip().lower() in str(ptype).strip().lower()]
+        return max(_m, key=lambda x: len(x[0]))[1] if _m else None
+
+    # Per-project totals
+    _fot_proj = _fot_ff.groupby(["project", "project_type"], as_index=False).agg(
+        hours_total=("hours", "sum"),
+        overrun_hrs=("variance_hrs", "sum"),
+    )
+    _fot_proj["scoped_hrs"] = _fot_proj["project_type"].apply(_fot_scope)
+    _fot_proj = _fot_proj[_fot_proj["scoped_hrs"].notna()].copy()
+    _fot_proj["over_under"] = _fot_proj["hours_total"] - _fot_proj["scoped_hrs"]
+    _fot_proj["is_over"]    = (_fot_proj["over_under"] > 0).astype(int)
+
+    # Aggregate to project-type grain
+    _fot_type = _fot_proj.groupby("project_type", as_index=False).agg(
+        scoped_hrs=("scoped_hrs", "mean"),       # same value for all rows of a type
+        total_projects=("project", "count"),
+        projects_over_budget=("is_over", "sum"),
+        total_overrun_hrs=("overrun_hrs", "sum"),
+        avg_scoped_hrs=("scoped_hrs", "mean"),
+        avg_actual_hrs=("hours_total", "mean"),
+        avg_over_under_hrs=("over_under", "mean"),
+    ).sort_values("total_overrun_hrs", ascending=False)
+
+    _fot_type["pct_over_budget"] = _fot_type.apply(
+        lambda r: round(r["projects_over_budget"] / r["total_projects"], 6)
+        if r["total_projects"] > 0 else None, axis=1
+    )
+
+    fot_rows = []
+    for _, r in _fot_type.iterrows():
+        fot_rows.append([
+            r["project_type"],
+            round(float(r["scoped_hrs"]), 2),
+            int(r["total_projects"]),
+            int(r["projects_over_budget"]),
+            r["pct_over_budget"],
+            round(float(r["total_overrun_hrs"]), 2),
+            round(float(r["avg_scoped_hrs"]), 2),
+            round(float(r["avg_actual_hrs"]), 2),
+            round(float(r["avg_over_under_hrs"]), 2),
+        ])
+    _flat_sheet(wb, "fact_ff_overrun_by_type", fot_headers, fot_rows)
 
     buf = _io.BytesIO()
     wb.save(buf)
