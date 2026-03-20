@@ -291,9 +291,9 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     credit_hrs  = round(tm_hrs + ff_credit, 1)
     overrun_hrs = round(ff_overrun, 1)
     admin_hrs   = round(admin_hrs, 1)
-    credit_pct  = round(credit_hrs  / avail * 100, 1) if avail else None
-    overrun_pct = round(overrun_hrs / avail * 100, 1) if avail else None
-    admin_pct   = round(admin_hrs   / avail * 100, 1) if avail else None
+    credit_pct  = round(credit_hrs  / avail * 100, 2) if avail else None
+    overrun_pct = round(overrun_hrs / avail * 100, 2) if avail else None
+    admin_pct   = round(admin_hrs   / avail * 100, 2) if avail else None
 
     total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 1)
 
