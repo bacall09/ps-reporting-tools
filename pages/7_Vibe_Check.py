@@ -40,19 +40,33 @@ MOOD_RESPONSES = {
 DEFAULT_RESPONSE = "Wherever you're at — you showed up today. That counts. ✨"
 
 MOOD_GIF_TERMS = {
-    "happy":       "celebrating happy dance",
-    "stressed":    "its fine everything is fine",
-    "tired":       "sleepy tired coffee",
-    "excited":     "lets go excited pumped",
-    "overwhelmed": "deep breath you got this",
-    "frustrated":  "keep going push through",
-    "motivated":   "champion winner trophy",
-    "bored":       "waiting bored tapping fingers",
-    "anxious":     "nervous but okay",
-    "grateful":    "thank you grateful wholesome",
+    "happy":       "happy celebration office",
+    "stressed":    "deep breath relax calm",
+    "tired":       "tired sleepy office worker",
+    "excited":     "excited pumped lets go",
+    "overwhelmed": "you got this team support",
+    "frustrated":  "persistence keep going determination",
+    "motivated":   "motivated champion success",
+    "bored":       "waiting patiently office",
+    "anxious":     "its going to be okay reassuring",
+    "grateful":    "thank you appreciation wholesome",
 }
 
-DEFAULT_GIF_TERM = "you got this motivational"
+DEFAULT_GIF_TERM = "you got this keep going"
+
+# Words that should never appear in a GIF title or slug on a professional site
+BLOCK_TERMS = [
+    "sexy", "hot", "bikini", "drunk", "beer", "wine", "alcohol", "party",
+    "fight", "angry", "rage", "cry", "crying", "sad", "fail", "failure",
+    "wtf", "omg", "damn", "hell", "ass", "rude", "kiss", "love", "flirt",
+]
+
+def _is_safe(gif: dict) -> bool:
+    """Return True if GIF title and slug contain no blocked terms."""
+    title = gif.get("title", "").lower()
+    slug  = gif.get("slug", "").lower()
+    combined = title + " " + slug
+    return not any(term in combined for term in BLOCK_TERMS)
 
 def get_gif(search_term, seed=0):
     try:
@@ -61,15 +75,24 @@ def get_gif(search_term, seed=0):
             return None
         r = requests.get(
             "https://api.giphy.com/v1/gifs/search",
-            params={"api_key": api_key, "q": search_term,
-                    "limit": 25, "rating": "pg", "lang": "en"},
+            params={
+                "api_key": api_key,
+                "q": search_term,
+                "limit": 50,        # fetch more so filtering still leaves good options
+                "rating": "g",      # strictest Giphy rating — general audiences only
+                "lang": "en",
+            },
             timeout=5,
         )
         data = r.json().get("data", [])
-        if not data:
+        # Filter to safe GIFs only
+        safe = [g for g in data if _is_safe(g)]
+        if not safe:
+            safe = data  # fallback to unfiltered if nothing passes (shouldn't happen)
+        if not safe:
             return None
         rng = random.Random(seed)
-        return rng.choice(data)["images"]["downsized_large"]["url"]
+        return rng.choice(safe)["images"]["downsized_large"]["url"]
     except Exception:
         return None
 
