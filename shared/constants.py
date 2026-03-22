@@ -147,15 +147,35 @@ NS_COL_MAP = {
 }
 
 SFDC_COL_MAP = {
-    "opportunity name": "opportunity",
-    "opportunity":      "opportunity",
-    "account name":     "account",
-    "account":          "account",
-    "stage":            "stage",
-    "close date":       "close_date",
-    "amount":           "amount",
-    "product":          "product",
-    "owner":            "owner",
+    # Exact headers from SFDC contacts export template
+    "18 digit opportunity id":   "opportunity_id",
+    "first name":                "first_name",
+    "last name":                 "last_name",
+    "primary":                   "is_primary",
+    "title":                     "title",
+    "email":                     "email",
+    "opportunity owner":         "account_manager",
+    "implementation contact exists": "impl_contact_flag",
+    "contact roles":             "contact_roles",
+    "opp contact role count":    "role_count",
+    "partner contact":           "partner_contact",
+    "opportunity owner email":   "account_manager_email",
+    "account name":              "account",
+    "opportunity name":          "opportunity",
+    "close date":                "close_date",
+    # Fallback aliases
+    "opportunity":               "opportunity",
+    "account":                   "account",
+    "stage":                     "stage",
+    "amount":                    "amount",
+    "product":                   "product",
+    "owner":                     "account_manager",
+    "closed date":               "close_date",
+    "territory":                 "territory",
+    "primary title":             "title",
+    "contact name":              "contact_name",
+    "contact email":             "email",
+    "owner email":               "account_manager_email",
 }
 
 # ── WHS phase benchmarks (days) ───────────────────────────────────────────────
