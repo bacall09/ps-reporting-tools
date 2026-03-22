@@ -9,7 +9,7 @@ from datetime import date, datetime
 
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
-    MILESTONE_COLS_MAP, get_role, is_manager,
+    MILESTONE_COLS_MAP, get_role, is_manager, LEAVER_EXIT_DATES,
 )
 from shared.config import (
     AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP, DEFAULT_SCOPE,
@@ -693,50 +693,73 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
     _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
 
-    # Build per-consultant rows
-    _rows = []
-    _scope_names = _region_names if _view_name_set else CONSULTANT_DROPDOWN
+    _scope_names  = _region_names if _view_name_set else CONSULTANT_DROPDOWN
+    _region_key   = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
 
-    for _cn in _scope_names:
-        # Match this consultant's rows
-        _parts = [p.strip() for p in _cn.split(",")]
-        _variants = {_cn.lower(), _parts[0].lower()}
+    # Find leavers who were active in this month and belong to this region
+    _month_start = pd.to_datetime(f"{month_key}-01")
+    _month_end   = _month_start + pd.offsets.MonthEnd(0)
+    _days_in_month = _month_end.day
+
+    _leaver_scope = []
+    for _ln, _exit_str in LEAVER_EXIT_DATES.items():
+        if _exit_str is None: continue
+        _exit_dt = pd.to_datetime(_exit_str)
+        if _exit_dt < _month_start: continue          # left before this month
+        if _region_key and _gr(_ln) != _region_key: continue  # wrong region
+        _leaver_scope.append((_ln, _exit_dt))
+
+    def _build_row(cn, is_leaver=False, exit_dt=None):
+        _parts = [p.strip() for p in cn.split(",")]
+        _variants = {cn.lower(), _parts[0].lower()}
         if len(_parts) == 2:
             _variants.add(f"{_parts[1]} {_parts[0]}".lower())
 
         _emp_mask = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
-            lambda v: v in _variants or any(v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
+            lambda v: v in _variants or any(
+                v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
         )
         _emp_rows = _month_ns_all[_emp_mask]
 
         if _emp_rows.empty:
             _total = 0.0; _ff = 0.0; _tm = 0.0; _admin = 0.0
         else:
-            _bt = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+            _bt    = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
             _total = round(_emp_rows["hours"].sum(), 2)
             _ff    = round(_emp_rows[_bt == "fixed fee"]["hours"].sum(), 2)
             _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
             _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
 
-        # Avail hours for this person
-        _cl = EMPLOYEE_LOCATION.get(_cn, "")
-        _cr = PS_REGION_OVERRIDE.get(_cn, PS_REGION_MAP.get(_cl, ""))
-        _avail_cn = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
-        if isinstance(_avail_cn, tuple): _avail_cn = _avail_cn[0]
-        _avail_cn = float(_avail_cn) if _avail_cn else None
+        _cl = EMPLOYEE_LOCATION.get(cn, "")
+        _cr = PS_REGION_OVERRIDE.get(cn, PS_REGION_MAP.get(_cl, ""))
+        _avail_full = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
+        if isinstance(_avail_full, tuple): _avail_full = _avail_full[0]
+        _avail_full = float(_avail_full) if _avail_full else None
+
+        # Prorate if leaver
+        if is_leaver and exit_dt is not None and _avail_full:
+            _days_worked = min(exit_dt.day, _days_in_month)
+            _avail_cn = round(_avail_full * _days_worked / _days_in_month, 2)
+        else:
+            _avail_cn = _avail_full
 
         _util_pct = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
+        _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
+        if is_leaver and exit_dt:
+            _display += f" * (left {exit_dt.strftime('%-d %b %Y')})"
 
-        _display_cn = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else _cn
-        _rows.append({
-            "Consultant":    _display_cn,
-            "Available h":   _avail_cn or "—",
-            "Total booked":  _total or "—",
-            "FF":            _ff or "—",
-            "T&M":           _tm or "—",
-            "Internal":      _admin or "—",
-            "Util %":        f"{_util_pct}%" if _util_pct is not None else "—",
-        })
+        return {
+            "Consultant":   _display,
+            "Available h":  _avail_cn or "—",
+            "Total booked": _total or "—",
+            "FF":           _ff or "—",
+            "T&M":          _tm or "—",
+            "Internal":     _admin or "—",
+            "Util %":       f"{_util_pct}%" if _util_pct is not None else "—",
+        }
+
+    _rows = [_build_row(cn) for cn in _scope_names]
+    _rows += [_build_row(ln, is_leaver=True, exit_dt=ex) for ln, ex in _leaver_scope]
 
     if _rows:
         _tbl = pd.DataFrame(_rows)
@@ -754,6 +777,8 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                 "Util %":       st.column_config.TextColumn("Util %", width="small"),
             }
         )
+        if _leaver_scope:
+            st.caption("* Prorated available hours based on last working day in the month.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — Re-engagement actions
