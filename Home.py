@@ -481,6 +481,26 @@ def _match_project_type(val):
 
 # Filter DRS — by PM name first, then refine by project_type if product filter active
 _is_group_view = view_name in ("ALL", "ALL_MANAGERS") or view_name.startswith("REGION:")
+
+# Build project scope lookup from full DRS — used for FF overrun in both metrics and table
+_proj_scope: dict = {}
+if df_drs is not None and not df_drs.empty:
+    for _, _dr in df_drs.iterrows():
+        _pn  = str(_dr.get("project_name","")).strip()
+        _pid = str(_dr.get("project_id","")).strip()
+        _pt  = str(_dr.get("project_type","")).strip()
+        _bgt = _dr.get("budgeted_hours", None)
+        _co  = _dr.get("change_order", 0) or 0
+        try:
+            _explicit = float(_bgt) + float(_co) if _bgt else None
+        except (TypeError, ValueError):
+            _explicit = None
+        _m = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+              if k.strip().lower() in _pt.lower()]
+        _type_sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+        _sc = _explicit or _type_sc
+        if _sc and _pn:  _proj_scope[_pn.lower()]  = _sc
+        if _sc and _pid: _proj_scope[_pid.lower()]  = _sc
 my_projects = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
     if _is_group_view:
@@ -625,29 +645,6 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     ff_credit = 0.0; ff_overrun = 0.0
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values("date")
-
-        # Build project → scope lookup from DRS (more reliable than NS project_type)
-        _proj_scope: dict = {}
-        if df_drs is not None and not df_drs.empty:
-            for _, _dr in df_drs.iterrows():
-                _pn   = str(_dr.get("project_name","")).strip()
-                _pid  = str(_dr.get("project_id","")).strip()
-                _pt   = str(_dr.get("project_type","")).strip()
-                _bgt  = _dr.get("budgeted_hours", None)
-                _co   = _dr.get("change_order", 0) or 0
-                # Prefer explicit budget from DRS
-                try:
-                    _explicit = float(_bgt) + float(_co) if _bgt else None
-                except (TypeError, ValueError):
-                    _explicit = None
-                # Fallback: derive from project_type via DEFAULT_SCOPE
-                _m = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
-                      if k.strip().lower() in _pt.lower()]
-                _type_sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
-                _sc = _explicit or _type_sc
-                if _sc and _pn:  _proj_scope[_pn.lower()]  = _sc
-                if _sc and _pid: _proj_scope[_pid.lower()]  = _sc
-
         _con: dict = {}
         for _, _r in ff_rows.iterrows():
             _proj  = str(_r.get("project","")).strip()
@@ -655,17 +652,12 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             _ptype = str(_r.get("project_type","")).strip()
             _hrs   = float(_r.get("hours",0) or 0)
             if _hrs <= 0: continue
-
-            # Scope: DRS lookup first, then NS project_type, then DEFAULT_SCOPE keyword
-            _sc = (_proj_scope.get(_proj.lower()) or
-                   _proj_scope.get(_pid.lower()))
+            _sc = (_proj_scope.get(_proj.lower()) or _proj_scope.get(_pid.lower()))
             if _sc is None and _ptype:
                 _m = [(k,float(v)) for k,v in DEFAULT_SCOPE.items() if k.strip().lower() in _ptype.lower()]
                 _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
-
             if _sc is None:
                 ff_credit += _hrs; continue
-
             _used = _con.get(_proj, 0.0); _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
@@ -761,12 +753,34 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
 
         if _emp_rows.empty:
             _total = 0.0; _ff = 0.0; _tm = 0.0; _admin = 0.0
+            _ff_util = 0.0; _ff_over = 0.0
         else:
             _bt    = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
             _total = round(_emp_rows["hours"].sum(), 2)
             _ff    = round(_emp_rows[_bt == "fixed fee"]["hours"].sum(), 2)
             _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
             _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
+
+            # Per-consultant FF credit/overrun split using module-level _proj_scope
+            _ff_rows_cn = _emp_rows[_bt == "fixed fee"].sort_values("date")
+            _ff_util = 0.0; _ff_over = 0.0; _con_cn: dict = {}
+            for _, _fr in _ff_rows_cn.iterrows():
+                _fp  = str(_fr.get("project","")).strip()
+                _fid = str(_fr.get("project_id","")).strip()
+                _fh  = float(_fr.get("hours",0) or 0)
+                if _fh <= 0: continue
+                _fsc = _proj_scope.get(_fp.lower()) or _proj_scope.get(_fid.lower())
+                if _fsc is None:
+                    _ff_util += _fh; continue
+                _fused = _con_cn.get(_fp, 0.0); _frem = _fsc - _fused
+                if _frem <= 0:
+                    _ff_over += _fh
+                elif _fh <= _frem:
+                    _ff_util += _fh; _con_cn[_fp] = _fused + _fh
+                else:
+                    _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fp] = _fsc
+            _ff_util = round(_ff_util, 2)
+            _ff_over = round(_ff_over, 2)
 
         _cl = EMPLOYEE_LOCATION.get(cn, "")
         _cr = PS_REGION_OVERRIDE.get(cn, PS_REGION_MAP.get(_cl, ""))
@@ -781,25 +795,25 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
         else:
             _avail_cn = _avail_full
 
-        _ff_total    = round(_ff, 2)
-        _util_hrs_cn = round(_ff + _tm, 2)  # will be refined with credit logic below
-        _util_pct_cn = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
-        _ff_pct_cn   = round(_ff / _avail_cn * 100, 1) if _avail_cn and _ff > 0 else None
-        _int_pct_cn  = round(_admin / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
+        _util_h_cn   = round(_ff_util + _tm, 2)
+        _util_pct_cn = round(_util_h_cn / _avail_cn * 100, 1) if _avail_cn and _util_h_cn > 0 else None
+        _over_pct_cn = round(_ff_over   / _avail_cn * 100, 1) if _avail_cn and _ff_over > 0 else None
+        _int_pct_cn  = round(_admin     / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
 
         _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
         if is_leaver and exit_dt:
             _display += " *"
 
         return {
-            "Consultant":  _display,
-            "Avail h":     _avail_cn or "—",
-            "FF h":        _ff or "—",
-            "T&M h":       _tm or "—",
-            "Internal h":  _admin or "—",
-            "Util %":      f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
-            "FF %":        f"{_ff_pct_cn}%" if _ff_pct_cn is not None else "—",
-            "Internal %":  f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
+            "Consultant":    _display,
+            "Avail h":       _avail_cn or "—",
+            "FF Util h":     _ff_util or "—",
+            "FF Overrun h":  _ff_over or "—",
+            "T&M h":         _tm or "—",
+            "Internal h":    _admin or "—",
+            "Util %":        f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
+            "FF Overrun %":  f"{_over_pct_cn}%" if _over_pct_cn is not None else "—",
+            "Internal %":    f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
         }
 
     _rows = [_build_row(cn) for cn in _scope_names]
@@ -812,14 +826,15 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Consultant":  st.column_config.TextColumn("Consultant", width="medium"),
-                "Avail h":     st.column_config.TextColumn("Avail h",    width="small"),
-                "FF h":        st.column_config.TextColumn("FF h",       width="small"),
-                "T&M h":       st.column_config.TextColumn("T&M h",      width="small"),
-                "Internal h":  st.column_config.TextColumn("Internal h", width="small"),
-                "Util %":      st.column_config.TextColumn("Util %",     width="small"),
-                "FF %":        st.column_config.TextColumn("FF %",       width="small"),
-                "Internal %":  st.column_config.TextColumn("Internal %", width="small"),
+                "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
+                "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
+                "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
+                "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
+                "T&M h":        st.column_config.TextColumn("T&M h",        width="small"),
+                "Internal h":   st.column_config.TextColumn("Internal h",   width="small"),
+                "Util %":       st.column_config.TextColumn("Util %",       width="small"),
+                "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
+                "Internal %":   st.column_config.TextColumn("Internal %",   width="small"),
             }
         )
         if _leaver_scope:
