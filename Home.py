@@ -74,50 +74,51 @@ if not st.session_state.get("authentication_status"):
         <p style='color:#a0aec0;margin:10px 0 0;font-size:13px'>Sign in to continue.</p>
     </div>""", unsafe_allow_html=True)
 
-    with st.form("login_form", clear_on_submit=False):
-        _col = st.columns([1, 2, 1])[1]
-        with _col:
-            _sel  = st.selectbox("Select your name", ["— Select —"] + _display_names)
-            _pw   = st.text_input("Password", type="password", placeholder="Enter your password")
-            _btn  = st.form_submit_button("Sign in →", use_container_width=True, type="primary")
-            if _btn:
-                if _sel == "— Select —":
-                    st.warning("Please select your name.")
-                elif not _pw:
-                    st.warning("Please enter your password.")
+    # Plain widgets (no st.form — st.switch_page cannot fire inside a form)
+    _col = st.columns([1, 2, 1])[1]
+    with _col:
+        _sel = st.selectbox("Select your name", ["— Select —"] + _display_names,
+                            key="login_name")
+        _pw  = st.text_input("Password", type="password",
+                             placeholder="Enter your password", key="login_pw")
+        if st.button("Sign in →", use_container_width=True, type="primary", key="login_btn"):
+            if _sel == "— Select —":
+                st.warning("Please select your name.")
+            elif not _pw:
+                st.warning("Please enter your password.")
+            else:
+                import bcrypt as _bc
+                _uname = _user_options[_sel]
+                _hash  = _creds["usernames"][_uname].get("password", "")
+                try:    _ok = _bc.checkpw(_pw.encode(), _hash.encode())
+                except: _ok = False
+                if _ok:
+                    _r = _creds["usernames"][_uname].get("full_roster_name", "")
+                    st.session_state["authentication_status"] = True
+                    st.session_state["username"]              = _uname
+                    st.session_state["name"]                  = _sel
+                    if _r: st.session_state["consultant_name"] = _r
+                    st.rerun()  # re-run Home — auth passes → switch_page fires below
                 else:
-                    import bcrypt as _bc
-                    _uname = _user_options[_sel]
-                    _hash  = _creds["usernames"][_uname].get("password", "")
-                    try:    _ok = _bc.checkpw(_pw.encode(), _hash.encode())
-                    except: _ok = False
-                    if _ok:
-                        _r = _creds["usernames"][_uname].get("full_roster_name", "")
-                        st.session_state["authentication_status"] = True
-                        st.session_state["username"]              = _uname
-                        st.session_state["name"]                  = _sel
-                        if _r: st.session_state["consultant_name"] = _r
-                        st.switch_page("pages/1_Daily_Briefing.py")
-                    else:
-                        st.error("Incorrect password. Default: Zone{LastName}! e.g. ZoneSwanson!")
+                    st.error("Incorrect password. Default: Zone{LastName}! e.g. ZoneSwanson!")
 
     with st.expander("🔑 Need to reset your password?"):
         st.caption("Generate a new hash and send it to your admin to update in Streamlit secrets.")
-        with st.form("reset_form"):
-            _rc = st.columns([1, 2, 1])[1]
-            with _rc:
-                _rn  = st.selectbox("Your name", ["— Select —"] + _display_names, key="reset_name")
-                _rp1 = st.text_input("New password", type="password", key="reset_pw1")
-                _rp2 = st.text_input("Confirm password", type="password", key="reset_pw2")
-                if st.form_submit_button("Generate new hash", use_container_width=True):
-                    if _rn == "— Select —": st.warning("Select your name.")
-                    elif len(_rp1) < 8:     st.warning("Password must be at least 8 characters.")
-                    elif _rp1 != _rp2:      st.error("Passwords don't match.")
-                    else:
-                        import bcrypt as _bc
-                        _nh = _bc.hashpw(_rp1.encode(), _bc.gensalt()).decode()
-                        st.success("Hash generated! Send the below to your admin:")
-                        st.code(f'[credentials.usernames.{_user_options[_rn]}]\npassword = "{_nh}"', language="toml")
+        _rc = st.columns([1, 2, 1])[1]
+        with _rc:
+            _rn  = st.selectbox("Your name", ["— Select —"] + _display_names, key="reset_name")
+            _rp1 = st.text_input("New password", type="password", key="reset_pw1")
+            _rp2 = st.text_input("Confirm password", type="password", key="reset_pw2")
+            if st.button("Generate new hash", use_container_width=True, key="reset_btn"):
+                if _rn == "— Select —": st.warning("Select your name.")
+                elif len(_rp1) < 8:     st.warning("Password must be at least 8 characters.")
+                elif _rp1 != _rp2:      st.error("Passwords don't match.")
+                else:
+                    import bcrypt as _bc
+                    _nh = _bc.hashpw(_rp1.encode(), _bc.gensalt()).decode()
+                    st.success("Hash generated! Send the below to your admin:")
+                    st.code(f'[credentials.usernames.{_user_options[_rn]}]\npassword = "{_nh}"',
+                            language="toml")
     st.stop()
 
 # ── Authenticated ─────────────────────────────────────────────────────────────
