@@ -111,6 +111,20 @@ _LEAVERS = {
     "Eyong, Eyong", "Hamilton, Julie C", "Hernandez, Camila",
     "Rushbrook, Emma C", "Strauss, John W",
 }
+
+# Leaver exit dates — used for prorated available hours in team breakdown
+# Format: "Name": "YYYY-MM-DD"
+LEAVER_EXIT_DATES = {
+    "Centinaje, Rhodechild": "2026-03-16",
+    "Cloete, Bronwyn":       "2026-02-23",
+    "Alam, Laisa":           None,   # date unknown
+    "Chan, Joven":           None,
+    "Eyong, Eyong":          None,
+    "Hamilton, Julie C":     None,
+    "Hernandez, Camila":     None,
+    "Rushbrook, Emma C":     None,
+    "Strauss, John W":       None,
+}
 ACTIVE_EMPLOYEES = [k for k in EMPLOYEE_ROLES if k not in NO_ACCESS and k not in _LEAVERS]
 
 # Dropdown: consultants + manager-consultants (alphabetical)
