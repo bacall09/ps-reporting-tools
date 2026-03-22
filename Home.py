@@ -22,6 +22,43 @@ from shared.template_utils import TEMPLATES, suggest_tier
 
 st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
 
+# ── Role-aware page navigation ────────────────────────────────────────────────
+# Build page groups based on logged-in user's role.
+# This replaces the default auto-discovery sidebar with grouped navigation.
+def _build_navigation():
+    _name = st.session_state.get("consultant_name", "")
+    _role = get_role(_name) if _name and _name != "— Select —" else None
+
+    _home = st.Page("Home.py", title="Home", default=True)
+
+    _consultant_pages = [
+        st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
+        st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
+        st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
+        st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
+        st.Page("pages/7_Vibe_Check.py",            title="Vibe Check ✨"),
+    ]
+
+    _manager_pages = [
+        st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook"),
+    ]
+
+    if _role in ("manager", "manager_only"):
+        nav = st.navigation({
+            "": [_home],
+            "My Tools": _consultant_pages,
+            "Management": _manager_pages,
+        })
+    else:
+        nav = st.navigation({
+            "": [_home],
+            "My Tools": _consultant_pages,
+        })
+
+    nav.run()
+
+_build_navigation()
+
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -104,10 +141,20 @@ with st.sidebar:
     ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
     sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
 
+    # NS Unassigned — managers only
+    ns_unassigned_file = None
+    if role in ("manager", "manager_only") and selected != "— Select —":
+        ns_unassigned_file = st.file_uploader(
+            "NS Unassigned Projects",
+            type=["xlsx","csv"],
+            key="hub_ns_unassigned",
+            help="Required for Capacity Outlook — different export from NS Time Detail"
+        )
+
     for label, key, loader, file in [
-        ("SS DRS",         "df_drs",  load_drs,      drs_file),
-        ("NS Time",        "df_ns",   load_ns_time,  ns_file),
-        ("SFDC Contacts",  "df_sfdc", load_sfdc,     sfdc_file),
+        ("SS DRS",         "df_drs",          load_drs,      drs_file),
+        ("NS Time",        "df_ns",           load_ns_time,  ns_file),
+        ("SFDC Contacts",  "df_sfdc",         load_sfdc,     sfdc_file),
     ]:
         if file and key not in st.session_state:
             try:
@@ -115,10 +162,25 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"{label}: {e}")
 
+    # NS Unassigned — load raw (Capacity Outlook has its own loader)
+    if ns_unassigned_file and "df_ns_unassigned" not in st.session_state:
+        try:
+            import pandas as _pd
+            st.session_state["df_ns_unassigned"] = (
+                _pd.read_excel(ns_unassigned_file)
+                if not ns_unassigned_file.name.endswith(".csv")
+                else _pd.read_csv(ns_unassigned_file)
+            )
+        except Exception as e:
+            st.error(f"NS Unassigned: {e}")
+
     # ── Status indicator ──────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("**Session data**")
-    for label, key in [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]:
+    _status_items = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
+    if role in ("manager","manager_only") and selected != "— Select —":
+        _status_items.append(("NS Unassigned","df_ns_unassigned"))
+    for label, key in _status_items:
         loaded = key in st.session_state
         st.markdown(
             f'<div class="{"data-ok" if loaded else "data-miss"}">'
@@ -126,10 +188,11 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
-    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc"]):
+    _all_keys = ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]
+    if any(k in st.session_state for k in _all_keys):
         st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
         if st.button("Clear loaded data", use_container_width=True):
-            for k in ["df_drs","df_ns","df_sfdc"]:
+            for k in _all_keys:
                 st.session_state.pop(k, None)
             st.rerun()
 
@@ -141,29 +204,11 @@ if selected == "— Select —":
     <div style='background:#1e2c63;padding:32px 40px 28px;border-radius:10px;margin-bottom:32px'>
         <div style='font-size:11px;color:#a0aec0;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px'>Professional Services</div>
         <h1 style='color:#fff;margin:0;font-size:30px;font-weight:700'>PS Reporting Tools</h1>
-        <p style='color:#a0aec0;margin:10px 0 0;font-size:14px'>Select your name in the sidebar, upload your files once, and all pages load automatically.</p>
+        <p style='color:#a0aec0;margin:10px 0 0;font-size:14px'>Select your name in the sidebar to get started.</p>
     </div>
     """, unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-    tools = [
-        ("Utilization Report",     "NS Export",         "Credit hours vs FF overruns — NS time export"),
-        ("FF Workload Score",       "SS + NS",           "Weighted project workload across active FF projects"),
-        ("Capacity Outlook",        "SS + NS + SFDC",    "Six-month rolling capacity and pipeline view"),
-        ("Customer Re-Engagement",  "SS + NS + SFDC",    "Tier-based outreach templates for stale projects"),
-    ]
-    for i, (title, badge, desc) in enumerate(tools):
-        with (c1 if i % 2 == 0 else c2):
-            st.markdown(f"""
-            <div style='border:1px solid #e2e8f0;border-radius:10px;padding:20px 24px;
-                        margin-bottom:14px;background:#fff'>
-                <div style='font-size:11px;font-weight:600;color:#4472C4;background:#EBF0FB;
-                            display:inline-block;border-radius:4px;padding:2px 8px;
-                            margin-bottom:8px'>{badge}</div>
-                <div style='font-weight:700;font-size:15px;color:#1e2c63;margin-bottom:4px'>{title}</div>
-                <div style='font-size:13px;color:#4a5568'>{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    st.warning("👆 Please select your name in the sidebar to continue.", icon=None)
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
