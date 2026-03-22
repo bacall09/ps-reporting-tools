@@ -4,10 +4,11 @@ Upload once. Everything loads here and stays available for the whole session.
 """
 import streamlit as st
 import pandas as pd
+import streamlit_authenticator as stauth
 from datetime import date, datetime
 
 from shared.constants import (
-    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
+    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
     MILESTONE_COLS_MAP, get_role, is_manager,
 )
 from shared.config import (
@@ -21,6 +22,56 @@ from shared.loaders import (
 from shared.template_utils import TEMPLATES, suggest_tier
 
 st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION
+# ══════════════════════════════════════════════════════════════════════════════
+# Credentials are stored in Streamlit secrets (never in the repo).
+# Each user entry has: name, email, password (bcrypt hash), full_roster_name
+_creds = dict(st.secrets.get("credentials", {}))
+_cookie = dict(st.secrets.get("cookie", {
+    "name": "ps_tools_auth",
+    "key": "fallback_key_change_me",
+    "expiry_days": 30,
+}))
+
+authenticator = stauth.Authenticate(
+    credentials   = _creds,
+    cookie_name   = _cookie.get("name", "ps_tools_auth"),
+    cookie_key    = _cookie.get("key", "fallback_key"),
+    cookie_expiry_days = int(_cookie.get("expiry_days", 30)),
+)
+
+authenticator.login(location="main")
+
+_auth_status = st.session_state.get("authentication_status")
+_auth_name   = st.session_state.get("name", "")
+_auth_user   = st.session_state.get("username", "")
+
+if _auth_status is False:
+    st.error("Incorrect username or password.")
+    st.stop()
+
+if _auth_status is None:
+    st.markdown("""
+    <div style="max-width:420px;margin:80px auto;text-align:center">
+        <div style="background:#1e2c63;padding:32px 40px;border-radius:10px;margin-bottom:24px">
+            <div style="font-size:11px;color:#a0aec0;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Professional Services</div>
+            <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700">PS Reporting Tools</h1>
+            <p style="color:#a0aec0;margin:10px 0 0;font-size:13px">Enter your credentials above to continue.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+# ── Authenticated — resolve full roster name from secrets ────────────────────
+# Each credentials entry has a full_roster_name matching EMPLOYEE_ROLES keys
+_user_creds = _creds.get("usernames", {}).get(_auth_user, {})
+_roster_name = _user_creds.get("full_roster_name", "")
+
+# Auto-set consultant_name in session state from login
+if _roster_name and st.session_state.get("consultant_name") != _roster_name:
+    st.session_state["consultant_name"] = _roster_name
 
 # ── Role-aware page navigation ────────────────────────────────────────────────
 # NOTE: Home.py must NOT be included as a st.Page — nav.run() re-executes the
@@ -93,23 +144,14 @@ st.markdown("""
 # SIDEBAR — identity + upload hub
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("#### My Briefing")
+    # ── Identity (from login) ─────────────────────────────────────────────────
+    _display_first = _roster_name.split(",")[1].strip() if "," in _roster_name else _roster_name
+    st.markdown(f"#### {_display_first}")
+    st.caption(f"Signed in as **{_auth_name}**")
+    authenticator.logout("Sign out", location="sidebar", key="sidebar_logout")
+    st.markdown("---")
 
-    all_names = sorted(CONSULTANT_DROPDOWN)
-    prev_name = st.session_state.get("consultant_name")
-    selected  = st.selectbox(
-        "Select your name",
-        options=["— Select —"] + all_names,
-        index=0 if not prev_name
-              else (["— Select —"] + all_names).index(prev_name)
-              if prev_name in all_names else 0,
-        key="home_name_select",
-    )
-    if selected != "— Select —":
-        if st.session_state.get("consultant_name") != selected:
-            for k in ["df_drs","df_ns","df_sfdc"]:
-                st.session_state.pop(k, None)
-        st.session_state["consultant_name"] = selected
+    selected = _roster_name  # identity comes from login, not a selectbox
 
     role = get_role(selected) if selected != "— Select —" else None
     view_as = selected
@@ -252,42 +294,7 @@ with st.sidebar:
                 st.session_state.pop(k, None)
             st.rerun()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# GUARD — name required
-# ══════════════════════════════════════════════════════════════════════════════
-if selected == "— Select —":
-    st.markdown("""
-    <div style='background:#1e2c63;padding:32px 40px 28px;border-radius:10px;margin-bottom:32px'>
-        <div style='font-size:11px;color:#a0aec0;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px'>Professional Services</div>
-        <h1 style='color:#fff;margin:0;font-size:30px;font-weight:700'>PS Reporting Tools</h1>
-        <p style='color:#a0aec0;margin:10px 0 0;font-size:14px'>Select your name in the sidebar to get started.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.info("← Select your name in the sidebar to continue.")
-
-    c1, c2 = st.columns(2)
-    tools = [
-        ("Customer Re-Engagement",  "SS + NS + SFDC",  "Tier-based outreach templates for stale and unresponsive projects"),
-        ("Utilization Report",      "NS Time Export",  "Credit hours vs FF overruns — full utilization breakdown"),
-        ("Workload Health Score",   "SS + NS",         "Weighted project workload score across active FF projects"),
-        ("DRS Health Check",        "SS DRS",          "Flags logical inconsistencies and data quality issues in your DRS"),
-        ("Capacity Outlook",        "SS + NS + SFDC",  "Six-month rolling capacity and pipeline view — managers only"),
-        ("Vibe Check ✨",            "No data needed",  "Because sometimes you just need a GIF"),
-    ]
-    for i, (title, badge, desc) in enumerate(tools):
-        with (c1 if i % 2 == 0 else c2):
-            st.markdown(f"""
-            <div style='border:1px solid rgba(128,128,128,0.2);border-radius:10px;padding:20px 24px;
-                        margin-bottom:14px;'>
-                <div style='font-size:11px;font-weight:600;color:#4472C4;background:rgba(68,114,196,0.1);
-                            display:inline-block;border-radius:4px;padding:2px 8px;
-                            margin-bottom:8px'>{badge}</div>
-                <div style='font-weight:700;font-size:15px;margin-bottom:4px'>{title}</div>
-                <div style='font-size:13px;opacity:0.6'>{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
-    st.stop()
+# Guard handled by authentication above
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PULL DATA FROM SESSION STATE
