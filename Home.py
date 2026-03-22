@@ -131,6 +131,23 @@ with st.sidebar:
         ])
 
         # ── Product filter ────────────────────────────────────────────────────
+        # Maps the product labels in EMPLOYEE_ROLES to actual project_type
+        # values that appear in SS DRS / NS exports after normalisation.
+        PRODUCT_TO_PROJECT_TYPES = {
+            "Billing":       ["Billing", "ZoneBilling"],
+            "Capture":       ["ZoneCapture", "Capture", "ZoneCapture + e-Invoicing"],
+            "Approvals":     ["ZoneApprovals", "Approvals"],
+            "Reconcile":     ["ZoneReconcile", "Reconcile", "Reconcile 2.0", "ZoneReconcile"],
+            "Payments":      ["ZonePayments", "Payments"],
+            "Payroll":       ["Payroll", "ZonePayroll"],
+            "Reporting":     ["Reporting", "ZoneReporting"],
+            "e-Invoicing":   ["e-Invoicing", "ZoneCapture + e-Invoicing"],
+            "PSP":           ["PSP"],
+            "CC Statement Import": ["CC Import", "CC Statement Import"],
+            "SFTP Connector":["SFTP"],
+            "All":           [],  # catch-all — no filtering by type
+        }
+
         _all_products = sorted({
             p for n in _active_consultants
             for p in EMPLOYEE_ROLES.get(n, {}).get("products", [])
@@ -316,50 +333,79 @@ def _name_variants(full_name):
 
 view_variants = _name_variants(view_name)
 
-# For product-filtered team view, build set of matching consultant names
-_product_consultants = None
+# For product-filtered team view:
+# - _product_consultants: set of lowercase names to match against employee/PM columns
+# - _product_project_types: set of lowercase project_type values to match against DRS
+_product_consultants   = None
+_product_project_types = None
 if _product_view:
     from shared.constants import EMPLOYEE_ROLES as _ER
     _product_consultants = {
         n.lower() for n, info in _ER.items()
         if _product_view in info.get("products", [])
     }
+    # Also map to project_type strings for DRS filtering
+    _pt_map = {
+        "Billing":             ["billing", "zonebilling"],
+        "Capture":             ["zonecapture", "capture", "zonecapture + e-invoicing"],
+        "Approvals":           ["zoneapprovals", "approvals"],
+        "Reconcile":           ["zonereconcile", "reconcile", "reconcile 2.0"],
+        "Payments":            ["zonepayments", "payments"],
+        "Payroll":             ["payroll", "zonepayroll"],
+        "Reporting":           ["reporting", "zonereporting"],
+        "e-Invoicing":         ["e-invoicing", "einvoicing", "zonecapture + e-invoicing"],
+        "PSP":                 ["psp"],
+        "CC Statement Import": ["cc import", "cc statement import"],
+        "SFTP Connector":      ["sftp"],
+        "All":                 [],
+    }
+    _product_project_types = set(_pt_map.get(_product_view, []))
 
-def _match(val):
+def _match_name(val):
+    """Match against employee / PM name column."""
     if view_name == "ALL":
         if _product_consultants is not None:
-            # Filter to only consultants who work on this product
             return any(pc in str(val).lower() for pc in _product_consultants)
         return True
     return any(v in str(val).lower() for v in view_variants)
 
-# Filter DRS
+def _match_project_type(val):
+    """Match against project_type column for product-filtered views."""
+    if _product_project_types is None:
+        return True
+    return str(val).strip().lower() in _product_project_types
+
+# Filter DRS — use BOTH project_type AND pm name for product views
 my_projects = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
     if view_name == "ALL":
-        if _product_consultants is not None:
+        if _product_view:
+            # Filter by project_type OR by PM name (catches both angles)
+            pt_col = df_drs.get("project_type", pd.Series(dtype=str))
             pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
-            my_projects = df_drs[pm_col.apply(lambda v: _match(str(v)))].copy()
+            pt_mask = pt_col.apply(lambda v: _match_project_type(str(v)))
+            pm_mask = pm_col.apply(lambda v: _match_name(str(v)))
+            my_projects = df_drs[pt_mask | pm_mask].copy()
         else:
             my_projects = df_drs.copy()
     else:
-        pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(lambda v: _match(str(v)))
+        pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
         my_projects = df_drs[pm_mask].copy()
         if my_projects.empty and not is_manager(view_name):
             my_projects = df_drs.copy()
             st.caption("ℹ️ No PM column matched — showing all projects in this DRS file.")
 
-# Filter NS
+# Filter NS — by employee name
 my_ns = pd.DataFrame()
 if df_ns is not None and not df_ns.empty:
     if view_name == "ALL":
-        if _product_consultants is not None:
+        if _product_view:
             emp_col = df_ns.get("employee", pd.Series(dtype=str))
-            my_ns = df_ns[emp_col.apply(lambda v: _match(str(v)))].copy()
+            my_ns = df_ns[emp_col.apply(lambda v: _match_name(str(v)))].copy()
         else:
             my_ns = df_ns.copy()
     else:
-        emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match(str(v)))
+        emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
         my_ns = df_ns[emp_mask].copy()
 
 # Enrich DRS with NS inactivity
