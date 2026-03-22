@@ -19,81 +19,14 @@ from shared.loaders import (
 )
 from shared.template_utils import TEMPLATES, suggest_tier
 
-st.set_page_config(page_title="Daily Briefing", page_icon=None, layout="wide")
-
-# ── Auth guard ───────────────────────────────────────────────────────────────
-if not st.session_state.get("authentication_status"):
-    st.warning("Please log in first.")
-    st.switch_page("Home.py")
-    st.stop()
 
 # ── Pull identity from session state ─────────────────────────────────────────
 selected = st.session_state.get("consultant_name", "")
-if not selected:
-    st.warning("Please log in via Home first.")
-    st.switch_page("Home.py")
-    st.stop()
 
-role = get_role(selected)
+role = get_role(selected) if selected else "consultant"
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Sidebar — View As + Filter only (upload hub lives in Home.py sidebar) ─────
 with st.sidebar:
-    # Identity + sign out
-    _disp_first = selected.split(",")[1].strip() if "," in selected else selected
-    _auth_name  = st.session_state.get("name", _disp_first)
-    st.markdown(f"#### {_disp_first}")
-    st.caption(f"Signed in as **{_auth_name}**")
-    if st.button("Sign out", key="briefing_signout"):
-        for k in ["authentication_status","username","name","consultant_name",
-                  "df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
-            st.session_state.pop(k, None)
-        st.switch_page("Home.py")
-    st.markdown("---")
-
-    # Upload hub
-    st.markdown("**Upload data**")
-    st.caption("Upload once — available across all pages this session.")
-    from shared.loaders import load_drs, load_ns_time, load_sfdc
-    _drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs")
-    _ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
-    _sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
-    _ns_unassigned_file = (
-        st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
-                         help="Required for Capacity Outlook")
-        if role in ("manager","manager_only") else None
-    )
-    for _lbl, _key, _ldr, _f in [
-        ("SS DRS","df_drs",load_drs,_drs_file),
-        ("NS Time","df_ns",load_ns_time,_ns_file),
-        ("SFDC","df_sfdc",load_sfdc,_sfdc_file),
-    ]:
-        if _f and _key not in st.session_state:
-            try:    st.session_state[_key] = _ldr(_f)
-            except Exception as e: st.error(f"{_lbl}: {e}")
-    if _ns_unassigned_file and "df_ns_unassigned" not in st.session_state:
-        try:
-            import pandas as _pd
-            st.session_state["df_ns_unassigned"] = (
-                _pd.read_excel(_ns_unassigned_file)
-                if not _ns_unassigned_file.name.endswith(".csv")
-                else _pd.read_csv(_ns_unassigned_file)
-            )
-        except Exception as e: st.error(f"NS Unassigned: {e}")
-
-    st.markdown("---")
-    st.markdown("**Session data**")
-    for _lbl, _key in [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")] + \
-                      ([("NS Unassigned","df_ns_unassigned")] if role in ("manager","manager_only") else []):
-        _ok = _key in st.session_state
-        st.markdown(f'<div style="font-size:12px;color:{"#27AE60" if _ok else "rgba(128,128,128,0.4)"};'
-                    f'padding:3px 0">{"✓" if _ok else "○"}&nbsp; {_lbl}</div>', unsafe_allow_html=True)
-    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]):
-        if st.button("Clear loaded data", use_container_width=True, key="briefing_clear"):
-            for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
-                st.session_state.pop(k, None)
-            st.rerun()
-    st.markdown("---")
-
     # View As + Filter (managers only)
     view_as         = selected
     _product_filter = "All products"
