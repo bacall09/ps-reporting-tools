@@ -104,7 +104,7 @@ if not st.session_state.get("authentication_status"):
                     if _r: st.session_state["consultant_name"] = _r
                     st.rerun()
                 else:
-                    st.error("Incorrect password. Default: Zone{LastName}! e.g. ZoneSwanson!")
+                    st.error("Incorrect username or password.")
 
     with st.expander("🔑 Need to reset your password?"):
         st.caption("Generate a new hash and send it to your admin.")
