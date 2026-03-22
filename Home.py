@@ -625,15 +625,47 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     ff_credit = 0.0; ff_overrun = 0.0
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values("date")
+
+        # Build project → scope lookup from DRS (more reliable than NS project_type)
+        _proj_scope: dict = {}
+        if df_drs is not None and not df_drs.empty:
+            for _, _dr in df_drs.iterrows():
+                _pn   = str(_dr.get("project_name","")).strip()
+                _pid  = str(_dr.get("project_id","")).strip()
+                _pt   = str(_dr.get("project_type","")).strip()
+                _bgt  = _dr.get("budgeted_hours", None)
+                _co   = _dr.get("change_order", 0) or 0
+                # Prefer explicit budget from DRS
+                try:
+                    _explicit = float(_bgt) + float(_co) if _bgt else None
+                except (TypeError, ValueError):
+                    _explicit = None
+                # Fallback: derive from project_type via DEFAULT_SCOPE
+                _m = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                      if k.strip().lower() in _pt.lower()]
+                _type_sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+                _sc = _explicit or _type_sc
+                if _sc and _pn:  _proj_scope[_pn.lower()]  = _sc
+                if _sc and _pid: _proj_scope[_pid.lower()]  = _sc
+
         _con: dict = {}
         for _, _r in ff_rows.iterrows():
             _proj  = str(_r.get("project","")).strip()
+            _pid   = str(_r.get("project_id","")).strip()
             _ptype = str(_r.get("project_type","")).strip()
             _hrs   = float(_r.get("hours",0) or 0)
             if _hrs <= 0: continue
-            _m = [(k,float(v)) for k,v in DEFAULT_SCOPE.items() if k.strip().lower() in _ptype.lower()]
-            _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
-            if _sc is None: ff_credit += _hrs; continue
+
+            # Scope: DRS lookup first, then NS project_type, then DEFAULT_SCOPE keyword
+            _sc = (_proj_scope.get(_proj.lower()) or
+                   _proj_scope.get(_pid.lower()))
+            if _sc is None and _ptype:
+                _m = [(k,float(v)) for k,v in DEFAULT_SCOPE.items() if k.strip().lower() in _ptype.lower()]
+                _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+
+            if _sc is None:
+                ff_credit += _hrs; continue
+
             _used = _con.get(_proj, 0.0); _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
@@ -645,13 +677,15 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     credit_hrs  = round(tm_hrs + ff_credit, 2)
     overrun_hrs = round(ff_overrun, 2)
     admin_hrs   = round(admin_hrs, 2)
+    proj_hrs    = round(tm_hrs + ff_credit, 2)  # billable project hours
     credit_pct  = round(credit_hrs  / avail * 100, 2) if avail else None
     overrun_pct = round(overrun_hrs / avail * 100, 2) if avail else None
     admin_pct   = round(admin_hrs   / avail * 100, 2) if avail else None
+    proj_pct    = round(proj_hrs    / avail * 100, 2) if avail else None
 
     total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 2)
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         v = f"{avail}h" if avail else "—"
         lbl = "Available this month" if avail else "Available hrs (location not mapped)"
@@ -661,18 +695,27 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     with c3:
         if credit_pct is not None:
             col = "#27AE60" if credit_pct >= 70 else ("#F39C12" if credit_pct >= 60 else "#E74C3C")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{credit_pct}%</div><div class="metric-lbl">Utilization credit &nbsp;·&nbsp; {credit_hrs}h credited</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{credit_pct}%</div><div class="metric-lbl">Util credit &nbsp;·&nbsp; {credit_hrs}h</div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Utilization credit %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util credit %</div></div>', unsafe_allow_html=True)
     with c4:
+        if proj_pct is not None:
+            col = "#27AE60" if proj_pct >= 70 else ("#F39C12" if proj_pct >= 60 else "#E74C3C")
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{proj_pct}%</div><div class="metric-lbl">Project util &nbsp;·&nbsp; {proj_hrs}h</div></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Project util %</div></div>', unsafe_allow_html=True)
+    with c5:
         if overrun_pct is not None:
             col = "#E74C3C" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
             st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun &nbsp;·&nbsp; {overrun_hrs}h over budget</div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF project overrun %</div></div>', unsafe_allow_html=True)
-    with c5:
-        v = f"{admin_pct}%" if admin_pct is not None else "—"
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">Internal / admin &nbsp;·&nbsp; {admin_hrs}h</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %</div></div>', unsafe_allow_html=True)
+    with c6:
+        if admin_pct is not None:
+            col = "#718096"
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{admin_pct}%</div><div class="metric-lbl">Internal / admin &nbsp;·&nbsp; {admin_hrs}h</div></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal / admin %</div></div>', unsafe_allow_html=True)
 else:
     if df_ns is None:
         st.info("Upload NS Time Detail in the sidebar to see your utilization snapshot.")
@@ -743,10 +786,13 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
         else:
             _avail_cn = _avail_full
 
-        _util_pct = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
+        _util_pct    = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
+        _proj_pct_cn = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
+        _int_pct_cn  = round(_admin / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
+
         _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
         if is_leaver and exit_dt:
-            _display += f" * (left {exit_dt.strftime('%-d %b %Y')})"
+            _display += " *"
 
         return {
             "Consultant":   _display,
@@ -755,7 +801,8 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             "FF":           _ff or "—",
             "T&M":          _tm or "—",
             "Internal":     _admin or "—",
-            "Util %":       f"{_util_pct}%" if _util_pct is not None else "—",
+            "Project %":    f"{_proj_pct_cn}%" if _proj_pct_cn is not None else "—",
+            "Internal %":   f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
         }
 
     _rows = [_build_row(cn) for cn in _scope_names]
@@ -774,11 +821,12 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                 "FF":           st.column_config.TextColumn("FF h", width="small"),
                 "T&M":          st.column_config.TextColumn("T&M h", width="small"),
                 "Internal":     st.column_config.TextColumn("Internal h", width="small"),
-                "Util %":       st.column_config.TextColumn("Util %", width="small"),
+                "Project %":    st.column_config.TextColumn("Project %", width="small"),
+                "Internal %":   st.column_config.TextColumn("Internal %", width="small"),
             }
         )
         if _leaver_scope:
-            st.caption("* Prorated available hours based on last working day in the month.")
+            st.caption("* Available hours prorated")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — Re-engagement actions
