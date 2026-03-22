@@ -22,12 +22,6 @@ from shared.config import (
 )
 from shared.loaders import load_drs, load_ns_time
 
-st.set_page_config(page_title="Capacity Outlook", page_icon=None, layout="wide")
-# ── Auth guard — redirect to Home if not logged in ───────────────────────────
-if not st.session_state.get("authentication_status"):
-    st.warning("Please log in first.")
-    st.switch_page("Home.py")
-    st.stop()
 
 
 

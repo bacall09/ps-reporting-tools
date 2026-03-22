@@ -1752,11 +1752,6 @@ import streamlit as st
 import pandas as pd
 import io
 
-# ── Auth guard ───────────────────────────────────────────────────────────────
-if not st.session_state.get("authentication_status"):
-    st.warning("Please log in first.")
-    st.switch_page("Home.py")
-    st.stop()
 
 
 

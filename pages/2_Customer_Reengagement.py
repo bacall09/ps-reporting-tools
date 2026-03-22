@@ -17,12 +17,6 @@ from shared.template_utils import (
     highlight_placeholders, extract_placeholders,
 )
 
-st.set_page_config(page_title="Customer Re-Engagement", page_icon=None, layout="wide")
-# ── Auth guard — redirect to Home if not logged in ───────────────────────────
-if not st.session_state.get("authentication_status"):
-    st.warning("Please log in first.")
-    st.switch_page("Home.py")
-    st.stop()
 
 
 

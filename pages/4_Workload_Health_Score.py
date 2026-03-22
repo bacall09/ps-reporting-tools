@@ -14,12 +14,6 @@ from shared.constants import EMPLOYEE_ROLES, SS_COL_MAP, NS_COL_MAP, PHASE_BENCH
 from shared.config import NAVY, TEAL, WHITE, LTGRAY, AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP
 
 # ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="FF Workload Score", page_icon=None, layout="wide")
-# ── Auth guard — redirect to Home if not logged in ───────────────────────────
-if not st.session_state.get("authentication_status"):
-    st.warning("Please log in first.")
-    st.switch_page("Home.py")
-    st.stop()
 
 
 

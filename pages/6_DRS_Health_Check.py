@@ -10,12 +10,6 @@ from datetime import date
 from shared.loaders import load_drs
 from shared.constants import MILESTONE_COLS_MAP
 
-st.set_page_config(page_title="DRS Health Check", page_icon=None, layout="wide")
-# ── Auth guard — redirect to Home if not logged in ───────────────────────────
-if not st.session_state.get("authentication_status"):
-    st.warning("Please log in first.")
-    st.switch_page("Home.py")
-    st.stop()
 
 
 

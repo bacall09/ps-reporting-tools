@@ -2,12 +2,6 @@ import streamlit as st
 import requests
 import random
 
-st.set_page_config(page_title="Vibe Check", page_icon="✨", layout="centered")
-# ── Auth guard — redirect to Home if not logged in ───────────────────────────
-if not st.session_state.get("authentication_status"):
-    st.warning("Please log in first.")
-    st.switch_page("Home.py")
-    st.stop()
 
 
 
