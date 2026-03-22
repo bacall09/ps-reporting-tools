@@ -652,11 +652,11 @@ else:
         st.info("Upload NS Time Detail in the sidebar to see your utilization snapshot.")
     else:
         _view_label_for_warn = (
-    view_name.split(":",1)[1] + " team" if view_name.startswith("REGION:") else
-    "All team" if view_name == "ALL" else
-    view_name.split(",")[1].strip() if "," in view_name else view_name
-)
-st.warning(f"No time entries found for **{_view_label_for_warn}** in the NS file.")
+            view_name.split(":",1)[1] + " team" if view_name.startswith("REGION:") else
+            "All team" if view_name == "ALL" else
+            view_name.split(",")[1].strip() if "," in view_name else view_name
+        )
+        st.warning(f"No time entries found for **{_view_label_for_warn}** in the NS file.")
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
