@@ -240,10 +240,10 @@ with st.sidebar:
 
     selected = _roster_name  # identity comes from login, not a selectbox
 
-    role = get_role(selected) if selected != "— Select —" else None
+    role = get_role(selected) if selected else None
     view_as = selected
     _product_filter = "All products"  # default, overridden below for managers
-    if role in ("manager","manager_only") and selected != "— Select —":
+    if role == "manager" and selected:
         from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
         from shared.constants import EMPLOYEE_ROLES, get_role as _get_role
 
