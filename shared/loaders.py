@@ -423,6 +423,9 @@ NS_COL_MAP_OUT = {
     "hours":                "hours",
     "quantity":             "hours",
     "hours/quantity":       "hours",
+    "hours to date":        "hours_to_date",
+    "quantity to date":     "hours_to_date",
+    "hours/quantity to date": "hours_to_date",
 }
 
 
