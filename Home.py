@@ -200,7 +200,29 @@ if selected == "— Select —":
     </div>
     """, unsafe_allow_html=True)
 
-    st.warning("👆 Please select your name in the sidebar to continue.", icon=None)
+    st.info("← Select your name in the sidebar to continue.")
+
+    c1, c2 = st.columns(2)
+    tools = [
+        ("Customer Re-Engagement",  "SS + NS + SFDC",  "Tier-based outreach templates for stale and unresponsive projects"),
+        ("Utilization Report",      "NS Time Export",  "Credit hours vs FF overruns — full utilization breakdown"),
+        ("Workload Health Score",   "SS + NS",         "Weighted project workload score across active FF projects"),
+        ("DRS Health Check",        "SS DRS",          "Flags logical inconsistencies and data quality issues in your DRS"),
+        ("Capacity Outlook",        "SS + NS + SFDC",  "Six-month rolling capacity and pipeline view — managers only"),
+        ("Vibe Check ✨",            "No data needed",  "Because sometimes you just need a GIF"),
+    ]
+    for i, (title, badge, desc) in enumerate(tools):
+        with (c1 if i % 2 == 0 else c2):
+            st.markdown(f"""
+            <div style='border:1px solid rgba(128,128,128,0.2);border-radius:10px;padding:20px 24px;
+                        margin-bottom:14px;'>
+                <div style='font-size:11px;font-weight:600;color:#4472C4;background:rgba(68,114,196,0.1);
+                            display:inline-block;border-radius:4px;padding:2px 8px;
+                            margin-bottom:8px'>{badge}</div>
+                <div style='font-weight:700;font-size:15px;margin-bottom:4px'>{title}</div>
+                <div style='font-size:13px;opacity:0.6'>{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
