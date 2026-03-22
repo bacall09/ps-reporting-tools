@@ -802,9 +802,6 @@ def main():
         return
 
     st.markdown("---")
-    st.subheader("Step 2 — Upload Reports")
-    st.caption("Upload one or more reports — more reports = better inactivity detection.")
-
     # ── Pull from session state (uploaded on Home) — local upload as fallback ──
     _from_session = {
         "df_sfdc": st.session_state.get("df_sfdc"),
@@ -812,12 +809,19 @@ def main():
         "df_ns":   st.session_state.get("df_ns"),
     }
     _session_loaded = [k for k, v in _from_session.items() if v is not None]
-    if _session_loaded:
-        st.info(
-            f"✓ Using data loaded from Home page: "
+
+    # Only show upload section if data not already loaded from Home
+    if not _session_loaded:
+        st.subheader("Step 2 — Upload Reports")
+        st.caption("Upload one or more reports — more reports = better inactivity detection.")
+    else:
+        st.success(
+            f"✓ Data loaded from Home page: "
             f"{', '.join(k.replace('df_','').upper() for k in _session_loaded)}. "
-            f"Upload below to override for this page only."
+            f"Expand below to upload overrides if needed."
         )
+        with st.expander("Override uploaded data for this page", expanded=False):
+            st.caption("Upload here to override the Home page data for this session.")
 
     up1, up2, up3 = st.columns([3, 3, 3])
     with up1:
@@ -1130,7 +1134,9 @@ Used when no NS entries and no milestones are present.
             except:
                 return [""] * len(row)
 
-        sorted_df    = overview_df.sort_values("Days Inactive", ascending=False).copy()
+        # Coerce Days Inactive to numeric for safe sorting — non-numeric values sort last
+        _sort_col = overview_df["Days Inactive"].apply(lambda x: pd.to_numeric(x, errors="coerce"))
+        sorted_df = overview_df.iloc[_sort_col.sort_values(ascending=False, na_position="last").index].copy()
         # Ensure all columns are clean strings to avoid Arrow errors
         sorted_df = sorted_df.reset_index(drop=True)
         sorted_df.columns = [str(col) for col in sorted_df.columns]
