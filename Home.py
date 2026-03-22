@@ -517,20 +517,6 @@ if df_ns is not None and not df_ns.empty:
     else:
         my_ns = _ns_by_who.copy()
 
-# ── DEBUG (temporary) ────────────────────────────────────────────────────────
-if view_name.startswith("REGION:") and df_drs is not None:
-    with st.expander("🔍 Debug info (temporary)", expanded=True):
-        st.write("**view_name:**", view_name)
-        st.write("**_region_names:**", _region_names)
-        st.write("**_view_name_set:**", sorted(_view_name_set))
-        if "project_manager" in df_drs.columns:
-            _pm_vals = df_drs["project_manager"].dropna().astype(str).unique().tolist()[:30]
-            st.write("**Unique PM values in DRS:**", _pm_vals)
-        if "project_type" in df_drs.columns:
-            _pt_vals = df_drs["project_type"].dropna().astype(str).unique().tolist()[:30]
-            st.write("**Unique project_type values in DRS:**", _pt_vals)
-        st.write("**_product_project_types:**", _product_project_types)
-        st.write("**my_projects rows:**", len(my_projects))
 # ── END DEBUG ────────────────────────────────────────────────────────────────
 if not my_projects.empty and df_ns is not None:
     try:
@@ -699,6 +685,75 @@ else:
         st.warning(f"No time entries found for **{_view_label_for_warn}** in the NS file.")
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
+
+# ── Consultant breakdown table (group views only) ─────────────────────────────
+if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
+    st.markdown('<div class="section-label">Team Breakdown — This Month</div>', unsafe_allow_html=True)
+
+    my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
+    _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
+
+    # Build per-consultant rows
+    _rows = []
+    _scope_names = _region_names if _view_name_set else CONSULTANT_DROPDOWN
+
+    for _cn in _scope_names:
+        # Match this consultant's rows
+        _parts = [p.strip() for p in _cn.split(",")]
+        _variants = {_cn.lower(), _parts[0].lower()}
+        if len(_parts) == 2:
+            _variants.add(f"{_parts[1]} {_parts[0]}".lower())
+
+        _emp_mask = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+            lambda v: v in _variants or any(v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
+        )
+        _emp_rows = _month_ns_all[_emp_mask]
+
+        if _emp_rows.empty:
+            _total = 0.0; _ff = 0.0; _tm = 0.0; _admin = 0.0
+        else:
+            _bt = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+            _total = round(_emp_rows["hours"].sum(), 2)
+            _ff    = round(_emp_rows[_bt == "fixed fee"]["hours"].sum(), 2)
+            _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
+            _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
+
+        # Avail hours for this person
+        _cl = EMPLOYEE_LOCATION.get(_cn, "")
+        _cr = PS_REGION_OVERRIDE.get(_cn, PS_REGION_MAP.get(_cl, ""))
+        _avail_cn = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
+        if isinstance(_avail_cn, tuple): _avail_cn = _avail_cn[0]
+        _avail_cn = float(_avail_cn) if _avail_cn else None
+
+        _util_pct = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
+
+        _display_cn = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else _cn
+        _rows.append({
+            "Consultant":    _display_cn,
+            "Available h":   _avail_cn or "—",
+            "Total booked":  _total or "—",
+            "FF":            _ff or "—",
+            "T&M":           _tm or "—",
+            "Internal":      _admin or "—",
+            "Util %":        f"{_util_pct}%" if _util_pct is not None else "—",
+        })
+
+    if _rows:
+        _tbl = pd.DataFrame(_rows)
+        st.dataframe(
+            _tbl,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Consultant":   st.column_config.TextColumn("Consultant", width="medium"),
+                "Available h":  st.column_config.TextColumn("Avail h", width="small"),
+                "Total booked": st.column_config.TextColumn("Booked h", width="small"),
+                "FF":           st.column_config.TextColumn("FF h", width="small"),
+                "T&M":          st.column_config.TextColumn("T&M h", width="small"),
+                "Internal":     st.column_config.TextColumn("Internal h", width="small"),
+                "Util %":       st.column_config.TextColumn("Util %", width="small"),
+            }
+        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — Re-engagement actions
