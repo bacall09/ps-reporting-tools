@@ -23,41 +23,38 @@ from shared.template_utils import TEMPLATES, suggest_tier
 st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
 
 # ── Role-aware page navigation ────────────────────────────────────────────────
-# Build page groups based on logged-in user's role.
-# This replaces the default auto-discovery sidebar with grouped navigation.
-def _build_navigation():
-    _name = st.session_state.get("consultant_name", "")
-    _role = get_role(_name) if _name and _name != "— Select —" else None
+# st.navigation() must be called at module level — never inside a function
+# that nav.run() would re-execute (causes infinite recursion).
+_name = st.session_state.get("consultant_name", "")
+_role = get_role(_name) if _name and _name != "— Select —" else None
 
-    _home = st.Page("Home.py", title="Home", default=True)
+_home = st.Page("Home.py", title="Home", default=True)
 
-    _consultant_pages = [
-        st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
-        st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
-        st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
-        st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
-        st.Page("pages/7_Vibe_Check.py",            title="Vibe Check ✨"),
-    ]
+_consultant_pages = [
+    st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
+    st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
+    st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
+    st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
+    st.Page("pages/7_Vibe_Check.py",            title="Vibe Check ✨"),
+]
 
-    _manager_pages = [
-        st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook"),
-    ]
+_manager_pages = [
+    st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook"),
+]
 
-    if _role in ("manager", "manager_only"):
-        nav = st.navigation({
-            "": [_home],
-            "My Tools": _consultant_pages,
-            "Management": _manager_pages,
-        })
-    else:
-        nav = st.navigation({
-            "": [_home],
-            "My Tools": _consultant_pages,
-        })
+if _role in ("manager", "manager_only"):
+    _nav = st.navigation({
+        "": [_home],
+        "My Tools": _consultant_pages,
+        "Management": _manager_pages,
+    })
+else:
+    _nav = st.navigation({
+        "": [_home],
+        "My Tools": _consultant_pages,
+    })
 
-    nav.run()
-
-_build_navigation()
+_nav.run()
 
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
