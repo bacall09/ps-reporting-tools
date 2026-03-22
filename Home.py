@@ -502,7 +502,22 @@ if df_ns is not None and not df_ns.empty:
     else:
         my_ns = _ns_by_who.copy()
 
-# Enrich DRS with NS inactivity
+# ── DEBUG (temporary) ────────────────────────────────────────────────────────
+if view_name.startswith("REGION:") and df_drs is not None:
+    with st.expander("🔍 Debug info (temporary)", expanded=True):
+        st.write("**view_name:**", view_name)
+        st.write("**_region_names:**", _region_names)
+        st.write("**_view_name_set:**", sorted(_view_name_set))
+        if "project_manager" in df_drs.columns:
+            st.write("**Unique PM values in DRS:**",
+                     sorted(df_drs["project_manager"].dropna().unique().tolist()[:30]))
+        if "project_type" in df_drs.columns:
+            st.write("**Unique project_type values in DRS:**",
+                     sorted(df_drs["project_type"].dropna().unique().tolist()[:30]))
+        st.write("**_product_project_types:**", _product_project_types)
+        st.write("**_drs_by_who rows:**", len(_drs_by_who) if '_drs_by_who' in dir() else "N/A")
+        st.write("**my_projects rows:**", len(my_projects))
+# ── END DEBUG ────────────────────────────────────────────────────────────────
 if not my_projects.empty and df_ns is not None:
     try:
         my_projects = calc_days_inactive(my_projects, df_ns)
