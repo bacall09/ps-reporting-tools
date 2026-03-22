@@ -350,12 +350,11 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         # Build prior_htd: cumulative hours on each FF project BEFORE this period
         # Uses hours_to_date from NS (same logic as Utilization Report)
         prior_htd: dict = {}
-        # Build prior_htd from FULL NS dataset (not filtered) — same as Util Report
+        # Build prior_htd from FULL NS dataset, ALL billing types — same as Util Report
+        # hours_to_date is cumulative INCLUDING this period, so prior = max_htd - period_hrs
         if df_ns is not None and "hours_to_date" in df_ns.columns:
-            _ff_all = df_ns[df_ns.get("billing_type", pd.Series(dtype=str))
-                           .fillna("").str.strip().str.lower() == "fixed fee"].copy()
-            for _proj, _grp in _ff_all.groupby("project"):
-                _pn = str(_proj).strip()
+            for _proj, _grp in df_ns.groupby("project"):
+                _pn = " ".join(str(_proj).strip().split())
                 try:
                     _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
                     _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
@@ -365,7 +364,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
         _con: dict = {}
         for _, _r in ff_rows.iterrows():
-            _proj  = str(_r.get("project","")).strip()
+            _proj  = " ".join(str(_r.get("project","")).split())  # normalise whitespace
             _ptype = str(_r.get("project_type","")).strip()
             _hrs   = float(_r.get("hours", 0) or 0)
             if _hrs <= 0: continue
@@ -497,7 +496,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
                 _con_cn: dict = {}
                 for _, _fr in _ff_rows_cn.iterrows():
-                    _fp    = str(_fr.get("project","")).strip()
+                    _fp    = " ".join(str(_fr.get("project","")).split())
                     _ftype = str(_fr.get("project_type","")).strip()
                     _fh    = float(_fr.get("hours", 0) or 0)
                     if _fh <= 0: continue
