@@ -259,37 +259,12 @@ with st.sidebar:
             n for n in CONSULTANT_DROPDOWN if _get_role(n) in ("consultant", "manager")
         ])
 
-        # ── Step 1: Filter by product ─────────────────────────────────────────
-        _all_products = sorted({
-            p for n in _active_consultants
-            for p in EMPLOYEE_ROLES.get(n, {}).get("products", [])
-            if p and p != "All"
-        })
-
-        st.markdown("---")
-        st.markdown("**Filter by product:**")
-        _product_filter = st.selectbox(
-            "Product",
-            options=["All products"] + _all_products,
-            key="home_product_filter",
-            label_visibility="collapsed",
-        )
-
-        # ── Step 2: View As (who) — filtered by product if selected ──────────
-        if _product_filter != "All products":
-            _browse_consultants = [
-                n for n in _active_consultants
-                if _product_filter in EMPLOYEE_ROLES.get(n, {}).get("products", [])
-            ]
-        else:
-            _browse_consultants = _active_consultants
-
+        # ── Step 1: View As (who) ────────────────────────────────────────────
         _by_region_all = {}
-        for name in _browse_consultants:
+        for name in _active_consultants:
             _by_region_all.setdefault(_get_region(name), []).append(name)
 
         # Include managers-only in the browse list
-        from shared.constants import MANAGERS_ONLY as _MGRS_ONLY
         _mgr_only_names = sorted([
             e for e in ACTIVE_EMPLOYEES
             if get_role(e) == "manager_only"
@@ -303,6 +278,7 @@ with st.sidebar:
             _browse_options.append("── Managers ──")
             _browse_options.extend(_mgr_only_names)
 
+        st.markdown("---")
         st.markdown("**View as:**")
         browse = st.selectbox(
             "Browse team",
@@ -317,6 +293,21 @@ with st.sidebar:
             view_as = "ALL"
         else:
             view_as = browse
+
+        # ── Step 2: Filter by product (refines the view above) ───────────────
+        _all_products = sorted({
+            p for n in _active_consultants
+            for p in EMPLOYEE_ROLES.get(n, {}).get("products", [])
+            if p and p != "All"
+        })
+
+        st.markdown("**Filter by product:**")
+        _product_filter = st.selectbox(
+            "Product",
+            options=["All products"] + _all_products,
+            key="home_product_filter",
+            label_visibility="collapsed",
+        )
     # ── Upload hub ────────────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("**Upload data**")
