@@ -675,17 +675,18 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
                 ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
 
     credit_hrs  = round(tm_hrs + ff_credit, 2)
-    overrun_hrs = round(ff_overrun, 2)
-    admin_hrs   = round(admin_hrs, 2)
-    proj_hrs    = round(tm_hrs + ff_credit, 2)  # billable project hours
-    credit_pct  = round(credit_hrs  / avail * 100, 2) if avail else None
-    overrun_pct = round(overrun_hrs / avail * 100, 2) if avail else None
-    admin_pct   = round(admin_hrs   / avail * 100, 2) if avail else None
-    proj_pct    = round(proj_hrs    / avail * 100, 2) if avail else None
+    overrun_hrs  = round(ff_overrun, 2)
+    admin_hrs    = round(admin_hrs, 2)
+    ff_total_hrs = round(ff_credit + ff_overrun, 2)  # all FF hours
+    util_hrs     = round(tm_hrs + ff_credit, 2)       # T&M + FF within scope
+    util_pct     = round(util_hrs    / avail * 100, 2) if avail else None
+    overrun_pct  = round(overrun_hrs / avail * 100, 2) if avail else None
+    admin_pct    = round(admin_hrs   / avail * 100, 2) if avail else None
+    ff_pct       = round(ff_total_hrs/ avail * 100, 2) if avail else None
 
     total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 2)
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         v = f"{avail}h" if avail else "—"
         lbl = "Available this month" if avail else "Available hrs (location not mapped)"
@@ -693,29 +694,23 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     with c2:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{total_booked}h</div><div class="metric-lbl">Hours booked this month</div></div>', unsafe_allow_html=True)
     with c3:
-        if credit_pct is not None:
-            col = "#27AE60" if credit_pct >= 70 else ("#F39C12" if credit_pct >= 60 else "#E74C3C")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{credit_pct}%</div><div class="metric-lbl">Util credit &nbsp;·&nbsp; {credit_hrs}h</div></div>', unsafe_allow_html=True)
+        if util_pct is not None:
+            col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#E74C3C")
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {util_hrs}h credited</div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util credit %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %</div></div>', unsafe_allow_html=True)
     with c4:
-        if proj_pct is not None:
-            col = "#27AE60" if proj_pct >= 70 else ("#F39C12" if proj_pct >= 60 else "#E74C3C")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{proj_pct}%</div><div class="metric-lbl">Project util &nbsp;·&nbsp; {proj_hrs}h</div></div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Project util %</div></div>', unsafe_allow_html=True)
-    with c5:
         if overrun_pct is not None:
             col = "#E74C3C" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun &nbsp;·&nbsp; {overrun_hrs}h over budget</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {overrun_hrs}h over budget</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %</div></div>', unsafe_allow_html=True)
-    with c6:
+    with c5:
         if admin_pct is not None:
             col = "#718096"
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{admin_pct}%</div><div class="metric-lbl">Internal / admin &nbsp;·&nbsp; {admin_hrs}h</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {admin_hrs}h</div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal / admin %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %</div></div>', unsafe_allow_html=True)
 else:
     if df_ns is None:
         st.info("Upload NS Time Detail in the sidebar to see your utilization snapshot.")
@@ -786,8 +781,10 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
         else:
             _avail_cn = _avail_full
 
-        _util_pct    = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
-        _proj_pct_cn = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
+        _ff_total    = round(_ff, 2)
+        _util_hrs_cn = round(_ff + _tm, 2)  # will be refined with credit logic below
+        _util_pct_cn = round((_ff + _tm) / _avail_cn * 100, 1) if _avail_cn and (_ff + _tm) > 0 else None
+        _ff_pct_cn   = round(_ff / _avail_cn * 100, 1) if _avail_cn and _ff > 0 else None
         _int_pct_cn  = round(_admin / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
 
         _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
@@ -795,14 +792,14 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             _display += " *"
 
         return {
-            "Consultant":   _display,
-            "Available h":  _avail_cn or "—",
-            "Total booked": _total or "—",
-            "FF":           _ff or "—",
-            "T&M":          _tm or "—",
-            "Internal":     _admin or "—",
-            "Project %":    f"{_proj_pct_cn}%" if _proj_pct_cn is not None else "—",
-            "Internal %":   f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
+            "Consultant":  _display,
+            "Avail h":     _avail_cn or "—",
+            "FF h":        _ff or "—",
+            "T&M h":       _tm or "—",
+            "Internal h":  _admin or "—",
+            "Util %":      f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
+            "FF %":        f"{_ff_pct_cn}%" if _ff_pct_cn is not None else "—",
+            "Internal %":  f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
         }
 
     _rows = [_build_row(cn) for cn in _scope_names]
@@ -815,14 +812,14 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Consultant":   st.column_config.TextColumn("Consultant", width="medium"),
-                "Available h":  st.column_config.TextColumn("Avail h", width="small"),
-                "Total booked": st.column_config.TextColumn("Booked h", width="small"),
-                "FF":           st.column_config.TextColumn("FF h", width="small"),
-                "T&M":          st.column_config.TextColumn("T&M h", width="small"),
-                "Internal":     st.column_config.TextColumn("Internal h", width="small"),
-                "Project %":    st.column_config.TextColumn("Project %", width="small"),
-                "Internal %":   st.column_config.TextColumn("Internal %", width="small"),
+                "Consultant":  st.column_config.TextColumn("Consultant", width="medium"),
+                "Avail h":     st.column_config.TextColumn("Avail h",    width="small"),
+                "FF h":        st.column_config.TextColumn("FF h",       width="small"),
+                "T&M h":       st.column_config.TextColumn("T&M h",      width="small"),
+                "Internal h":  st.column_config.TextColumn("Internal h", width="small"),
+                "Util %":      st.column_config.TextColumn("Util %",     width="small"),
+                "FF %":        st.column_config.TextColumn("FF %",       width="small"),
+                "Internal %":  st.column_config.TextColumn("Internal %", width="small"),
             }
         )
         if _leaver_scope:
