@@ -160,23 +160,83 @@ _roster_name = _user_creds.get("full_roster_name", "")
 if _roster_name and st.session_state.get("consultant_name") != _roster_name:
     st.session_state["consultant_name"] = _roster_name
 
-# ── Role-aware page navigation ────────────────────────────────────────────────
-# NOTE: Home.py must NOT be included as a st.Page — nav.run() re-executes the
-# entrypoint causing infinite recursion. Home is the implicit default because
-# it IS the entrypoint. st.navigation() here just controls sidebar grouping.
-_name = st.session_state.get("consultant_name", "") or ""
-_role = get_role(_name) if _name and _name != "— Select —" else None
+# ── Sidebar — sign out + upload hub (persists across all pages via Home) ──────
+_display_first = _roster_name.split(",")[1].strip() if "," in _roster_name else _roster_name
+with st.sidebar:
+    st.markdown(f"#### {_display_first}")
+    st.caption(f"Signed in as **{_auth_name}**")
+    authenticator.logout("Sign out", location="sidebar", key="sidebar_logout")
+    st.markdown("---")
+    st.markdown("**Upload data**")
+    st.caption("Upload once — available across all pages this session.")
 
-_briefing_page    = st.Page("pages/1_Daily_Briefing.py",       title="Daily Briefing")
+    _role_for_upload = get_role(_roster_name) if _roster_name else None
+
+    drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs")
+    ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
+    sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
+
+    if _role_for_upload in ("manager", "manager_only"):
+        ns_unassigned_file = st.file_uploader(
+            "NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
+            help="Required for Capacity Outlook"
+        )
+    else:
+        ns_unassigned_file = None
+
+    for _lbl, _key, _loader, _file in [
+        ("SS DRS",        "df_drs",  load_drs,      drs_file),
+        ("NS Time",       "df_ns",   load_ns_time,  ns_file),
+        ("SFDC Contacts", "df_sfdc", load_sfdc,     sfdc_file),
+    ]:
+        if _file and _key not in st.session_state:
+            try:
+                st.session_state[_key] = _loader(_file)
+            except Exception as e:
+                st.error(f"{_lbl}: {e}")
+
+    if ns_unassigned_file and "df_ns_unassigned" not in st.session_state:
+        try:
+            import pandas as _pd
+            st.session_state["df_ns_unassigned"] = (
+                _pd.read_excel(ns_unassigned_file)
+                if not ns_unassigned_file.name.endswith(".csv")
+                else _pd.read_csv(ns_unassigned_file)
+            )
+        except Exception as e:
+            st.error(f"NS Unassigned: {e}")
+
+    st.markdown("---")
+    st.markdown("**Session data**")
+    _status_items = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
+    if _role_for_upload in ("manager","manager_only"):
+        _status_items.append(("NS Unassigned","df_ns_unassigned"))
+    for _lbl, _key in _status_items:
+        _loaded = _key in st.session_state
+        st.markdown(
+            f'<div style="font-size:12px;color:{"#27AE60" if _loaded else "rgba(128,128,128,0.4)"};padding:3px 0">'
+            f'{"✓" if _loaded else "○"}&nbsp; {_lbl}</div>',
+            unsafe_allow_html=True,
+        )
+    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]):
+        st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+        if st.button("Clear loaded data", use_container_width=True):
+            for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+# ── Role-aware page navigation ────────────────────────────────────────────────
+_name = st.session_state.get("consultant_name", "") or ""
+_role = get_role(_name) if _name else None
+
 _consultant_pages = [
-    _briefing_page,
+    st.Page("pages/1_Daily_Briefing.py",       title="Daily Briefing"),
     st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
     st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
     st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
     st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
     st.Page("pages/7_Vibe_Check.py",            title="Vibe Check ✨"),
 ]
-
 _manager_pages = [
     st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook"),
 ]
@@ -191,6 +251,7 @@ else:
         "My Tools": _consultant_pages,
     })
 
-# After login and setup, redirect to Daily Briefing
+# Redirect to Daily Briefing after login
+# Only fires when Home.py itself is the active page (i.e. right after login)
 st.switch_page("pages/1_Daily_Briefing.py")
 
