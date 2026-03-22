@@ -1,7 +1,7 @@
 """
 PS Tools — Shared Constants
 Employee roster, role assignments, column maps, templates.
-Updated: 2026-03-22
+Updated: 2026-03-22 v2
 """
 
 # ── Streamlit permission roles ─────────────────────────────────────────────────
