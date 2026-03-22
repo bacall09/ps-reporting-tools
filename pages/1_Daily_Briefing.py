@@ -345,15 +345,12 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
     ff_credit = 0.0; ff_overrun = 0.0
     if not ff_rows.empty and "project" in ff_rows.columns:
-        ff_rows = ff_rows.sort_values("date")
-        # Build prior_htd: hours consumed before this period per project
-        # Uses hours_to_date from NS — max HTD across all employees minus this period's hours
-        # This is exactly what the Util Report does
+        ff_rows = ff_rows.sort_values(["project", "date"])  # match Util Report sort order
+
+        # Build prior_htd from ALL NS rows (not just FF) — exactly as Util Report does
         prior_htd: dict = {}
         if df_ns is not None and "hours_to_date" in df_ns.columns:
-            _ff_ns = df_ns[df_ns.get("billing_type", pd.Series(dtype=str))
-                          .fillna("").str.strip().str.lower() == "fixed fee"].copy()
-            for _proj, _grp in _ff_ns.groupby("project"):
+            for _proj, _grp in df_ns.groupby("project"):
                 _pn = " ".join(str(_proj).strip().split())
                 try:
                     _max_htd  = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
@@ -448,7 +445,8 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
     _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
 
     _scope_names  = [n for n in (_region_names if _view_name_set else CONSULTANT_DROPDOWN)
-                     if get_role(n) != "manager_only"]
+                     if get_role(n) != "manager_only"
+                     and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0]
     _region_key   = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
 
     # Find leavers who were active in this month and belong to this region
