@@ -287,8 +287,15 @@ with st.sidebar:
             label_visibility="collapsed",
         )
 
-        if browse == "— My own view —" or browse.startswith("──"):
+        if browse == "— My own view —":
             view_as = selected
+        elif browse.startswith("── ") and browse.endswith(" ──"):
+            # Region header selected — show all consultants in that region
+            _region_selected = browse.replace("── ", "").replace(" ──", "").strip()
+            if _region_selected == "Managers":
+                view_as = "ALL_MANAGERS"
+            else:
+                view_as = f"REGION:{_region_selected}"
         elif browse == "👥 All team":
             view_as = "ALL"
         else:
@@ -404,7 +411,7 @@ _active_product = _product_filter if _product_filter != "All products" else None
 _product_project_types = set(_PT_MAP.get(_active_product, [])) if _active_product else None
 
 def _name_variants(full_name):
-    if full_name == "ALL":
+    if full_name in ("ALL",) or full_name.startswith("REGION:") or full_name == "ALL_MANAGERS":
         return []
     parts = [p.strip() for p in full_name.split(",")]
     variants = [full_name.lower()]
@@ -415,10 +422,27 @@ def _name_variants(full_name):
 
 view_variants = _name_variants(view_name)
 
+# Build set of names for region/manager views
+_view_name_set = None
+if view_name.startswith("REGION:"):
+    _region_sel = view_name.split(":", 1)[1]
+    from shared.config import EMPLOYEE_LOCATION as _EL, PS_REGION_MAP as _RM, PS_REGION_OVERRIDE as _RO
+    def _gr(n):
+        if n in _RO: return _RO[n]
+        _l = _EL.get(n, "")
+        return _RM.get(_l, "Other")
+    _view_name_set = {
+        n.lower() for n in CONSULTANT_DROPDOWN if _gr(n) == _region_sel
+    }
+elif view_name == "ALL_MANAGERS":
+    _view_name_set = {n.lower() for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"}
+
 def _match_name(val):
     """Match a name value against the current view selection."""
-    if view_name == "ALL":
+    if view_name in ("ALL",):
         return True
+    if _view_name_set is not None:
+        return any(ns in str(val).lower() for ns in _view_name_set)
     return any(v in str(val).lower() for v in view_variants)
 
 def _match_project_type(val):
@@ -428,11 +452,15 @@ def _match_project_type(val):
     return str(val).strip().lower() in _product_project_types
 
 # Filter DRS — by PM name first, then refine by project_type if product filter active
+_is_group_view = view_name in ("ALL", "ALL_MANAGERS") or view_name.startswith("REGION:")
 my_projects = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
-    # Step 1: filter by who (view_as)
-    if view_name == "ALL":
-        _drs_by_who = df_drs
+    if _is_group_view:
+        if _view_name_set is not None:
+            pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
+            _drs_by_who = df_drs[pm_col.apply(lambda v: _match_name(str(v)))]
+        else:
+            _drs_by_who = df_drs
     else:
         pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
         _drs_by_who = df_drs[pm_mask]
@@ -440,17 +468,16 @@ if df_drs is not None and not df_drs.empty:
             _drs_by_who = df_drs
             st.caption("ℹ️ No PM column matched — showing all projects.")
 
-    # Step 2: refine by product_type if product filter is active
     if _product_project_types is not None and not _drs_by_who.empty:
         pt_col = _drs_by_who.get("project_type", pd.Series(dtype=str))
         my_projects = _drs_by_who[pt_col.apply(lambda v: _match_project_type(str(v)))].copy()
     else:
         my_projects = _drs_by_who.copy()
 
-# Filter NS — by employee name (view_as), product filter not applied to NS
+# Filter NS — by employee name
 my_ns = pd.DataFrame()
 if df_ns is not None and not df_ns.empty:
-    if view_name == "ALL":
+    if _is_group_view and _view_name_set is None:
         my_ns = df_ns.copy()
     else:
         emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
@@ -473,6 +500,12 @@ _my_display = selected.split(",")[1].strip() if "," in selected else selected
 if view_name == "ALL":
     _view_label  = "All products" if not _active_product else _active_product
     _view_sub    = f"Viewing: All team · {_view_label}"
+elif view_name.startswith("REGION:"):
+    _region_label = view_name.split(":", 1)[1]
+    _prod_label   = f" · {_active_product}" if _active_product else ""
+    _view_sub     = f"Viewing: {_region_label} team{_prod_label}"
+elif view_name == "ALL_MANAGERS":
+    _view_sub     = "Viewing: Managers"
 elif view_name != selected:
     _view_display = view_name.split(",")[1].strip() if "," in view_name else view_name
     _prod_label   = f" · {_active_product}" if _active_product else ""
@@ -513,16 +546,18 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">This Month — Utilization</div>', unsafe_allow_html=True)
 
-if view_name == "ALL":
-    # Sum available hours across all active consultants in scope
-    _scope_names = (
-        [n for n in CONSULTANT_DROPDOWN
-         if _active_product is None or _active_product in EMPLOYEE_ROLES.get(n, {}).get("products", [])]
-        if _active_product
-        else CONSULTANT_DROPDOWN
-    )
+if view_name in ("ALL",) or view_name.startswith("REGION:") or view_name == "ALL_MANAGERS":
+    # Sum available hours across all consultants in scope
+    if view_name == "ALL":
+        _scope = CONSULTANT_DROPDOWN
+    elif view_name.startswith("REGION:"):
+        _scope = [n for n in CONSULTANT_DROPDOWN if _gr(n) == view_name.split(":",1)[1]]
+    else:
+        _scope = [n for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"]
+    if _active_product:
+        _scope = [n for n in _scope if _active_product in EMPLOYEE_ROLES.get(n, {}).get("products", [])]
     _avail_total = 0
-    for _cn in _scope_names:
+    for _cn in _scope:
         _cl = EMPLOYEE_LOCATION.get(_cn, "")
         if isinstance(_cl, tuple): _cl = _cl[0]
         _cr = PS_REGION_OVERRIDE.get(_cn, PS_REGION_MAP.get(_cl, ""))
