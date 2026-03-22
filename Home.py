@@ -119,7 +119,12 @@ if not _auth_status:
                         st.session_state["authentication_status"] = True
                         st.session_state["username"] = _username
                         st.session_state["name"]     = _selected_display
-                        st.rerun()
+                        # Resolve roster name and set immediately
+                        _login_creds = _creds["usernames"].get(_username, {})
+                        _login_roster = _login_creds.get("full_roster_name", "")
+                        if _login_roster:
+                            st.session_state["consultant_name"] = _login_roster
+                        st.switch_page("pages/1_Daily_Briefing.py")
                     else:
                         st.error("Incorrect password. Your default is Zone{LastName}! e.g. ZoneSwanson!")
 
@@ -160,7 +165,7 @@ _roster_name = _user_creds.get("full_roster_name", "")
 if _roster_name and st.session_state.get("consultant_name") != _roster_name:
     st.session_state["consultant_name"] = _roster_name
 
-# ── Sidebar — sign out + upload hub (persists across all pages via Home) ──────
+# ── Sidebar — sign out + upload hub ──────────────────────────────────────────
 _display_first = _roster_name.split(",")[1].strip() if "," in _roster_name else _roster_name
 with st.sidebar:
     st.markdown(f"#### {_display_first}")
@@ -250,8 +255,4 @@ else:
     st.navigation({
         "My Tools": _consultant_pages,
     })
-
-# Redirect to Daily Briefing after login
-# Only fires when Home.py itself is the active page (i.e. right after login)
-st.switch_page("pages/1_Daily_Briefing.py")
 
