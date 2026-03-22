@@ -420,17 +420,19 @@ def _name_variants(full_name):
         variants.append(parts[0].lower())
     return variants
 
+# ── Region helper (module level so avail hours can use it) ───────────────────
+def _gr(n):
+    """Return PS region for a consultant name."""
+    if n in PS_REGION_OVERRIDE: return PS_REGION_OVERRIDE[n]
+    _l = EMPLOYEE_LOCATION.get(n, "")
+    return PS_REGION_MAP.get(_l, "Other")
+
 view_variants = _name_variants(view_name)
 
 # Build set of names for region/manager views
 _view_name_set = None
 if view_name.startswith("REGION:"):
     _region_sel = view_name.split(":", 1)[1]
-    from shared.config import EMPLOYEE_LOCATION as _EL, PS_REGION_MAP as _RM, PS_REGION_OVERRIDE as _RO
-    def _gr(n):
-        if n in _RO: return _RO[n]
-        _l = _EL.get(n, "")
-        return _RM.get(_l, "Other")
     _view_name_set = {
         n.lower() for n in CONSULTANT_DROPDOWN if _gr(n) == _region_sel
     }
@@ -474,14 +476,20 @@ if df_drs is not None and not df_drs.empty:
     else:
         my_projects = _drs_by_who.copy()
 
-# Filter NS — by employee name
+# Filter NS — by employee name, then also by project_type if product filter active
 my_ns = pd.DataFrame()
 if df_ns is not None and not df_ns.empty:
     if _is_group_view and _view_name_set is None:
-        my_ns = df_ns.copy()
+        _ns_by_who = df_ns
     else:
         emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
-        my_ns = df_ns[emp_mask].copy()
+        _ns_by_who = df_ns[emp_mask]
+    # Apply product filter to NS if project_type column exists
+    if _product_project_types is not None and "project_type" in _ns_by_who.columns:
+        _ns_pt = _ns_by_who["project_type"].fillna("").str.strip().str.lower()
+        my_ns = _ns_by_who[_ns_pt.isin(_product_project_types)].copy()
+    else:
+        my_ns = _ns_by_who.copy()
 
 # Enrich DRS with NS inactivity
 if not my_projects.empty and df_ns is not None:
@@ -643,7 +651,12 @@ else:
     if df_ns is None:
         st.info("Upload NS Time Detail in the sidebar to see your utilization snapshot.")
     else:
-        st.warning(f"No time entries found for **{view_name}** in the NS file.")
+        _view_label_for_warn = (
+    view_name.split(":",1)[1] + " team" if view_name.startswith("REGION:") else
+    "All team" if view_name == "ALL" else
+    view_name.split(",")[1].strip() if "," in view_name else view_name
+)
+st.warning(f"No time entries found for **{_view_label_for_warn}** in the NS file.")
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
@@ -655,7 +668,12 @@ st.markdown('<div class="section-label">Re-Engagement Actions</div>', unsafe_all
 if df_drs is None:
     st.info("Upload SS DRS Export in the sidebar to see re-engagement actions.")
 elif my_projects.empty:
-    st.warning(f"No projects found for **{view_name}** in the DRS file.")
+    _view_label_drs = (
+        view_name.split(":",1)[1] + " team" if view_name.startswith("REGION:") else
+        "All team" if view_name == "ALL" else
+        view_name.split(",")[1].strip() if "," in view_name else view_name
+    )
+    st.warning(f"No projects found for **{_view_label_drs}** in the DRS file.")
 elif "days_inactive" not in my_projects.columns:
     st.info("Upload NS Time Detail alongside DRS to calculate project inactivity.")
 else:
