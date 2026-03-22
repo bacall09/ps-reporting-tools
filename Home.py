@@ -114,14 +114,77 @@ with st.sidebar:
     role = get_role(selected) if selected != "— Select —" else None
     view_as = selected
     if role in ("manager","manager_only") and selected != "— Select —":
+        from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
+        from shared.constants import EMPLOYEE_ROLES, get_role as _get_role
+
+        # Build grouped options: All Team → by PS Region → by name
+        def _get_region(name):
+            if name in PS_REGION_OVERRIDE:
+                return PS_REGION_OVERRIDE[name]
+            loc = EMPLOYEE_LOCATION.get(name) or next(
+                (EMPLOYEE_LOCATION[k] for k in EMPLOYEE_LOCATION if name.startswith(k.split(",")[0])), None
+            )
+            return PS_REGION_MAP.get(loc, "Other") if loc else "Other"
+
+        _active_consultants = sorted([
+            n for n in CONSULTANT_DROPDOWN if _get_role(n) in ("consultant", "manager")
+        ])
+
+        # ── Product filter ────────────────────────────────────────────────────
+        _all_products = sorted({
+            p for n in _active_consultants
+            for p in EMPLOYEE_ROLES.get(n, {}).get("products", [])
+        })
+
         st.markdown("---")
-        st.markdown("**View as consultant:**")
-        browse = st.selectbox(
-            "Browse team member",
-            options=["— My own view —"] + sorted(CONSULTANT_DROPDOWN),
-            key="home_browse",
+        st.markdown("**Filter by product:**")
+        _product_filter = st.selectbox(
+            "Product",
+            options=["All products"] + _all_products,
+            key="home_product_filter",
+            label_visibility="collapsed",
         )
-        if browse != "— My own view —":
+
+        # Apply product filter to consultant list
+        if _product_filter != "All products":
+            _filtered_consultants = [
+                n for n in _active_consultants
+                if _product_filter in EMPLOYEE_ROLES.get(n, {}).get("products", [])
+            ]
+        else:
+            _filtered_consultants = _active_consultants
+
+        # Build region groups from filtered list
+        _by_region = {}
+        for name in _filtered_consultants:
+            r = _get_region(name)
+            _by_region.setdefault(r, []).append(name)
+
+        # Build flat option list with group headers
+        _browse_options = ["— My own view —", "👥 All team"]
+        if _product_filter != "All products":
+            _browse_options.append(f"👥 All {_product_filter}")
+        for region in sorted(_by_region.keys()):
+            _browse_options.append(f"── {region} ──")
+            _browse_options.extend(_by_region[region])
+
+        st.markdown("**View as:**")
+        browse = st.selectbox(
+            "Browse team",
+            options=_browse_options,
+            key="home_browse",
+            label_visibility="collapsed",
+        )
+
+        # Resolve selection
+        if browse == "— My own view —" or browse.startswith("──"):
+            view_as = selected
+        elif browse == "👥 All team":
+            view_as = "ALL"
+        elif browse.startswith("👥 All "):
+            # Product-filtered team view — store as special key
+            view_as = f"PRODUCT:{_product_filter}"
+        else:
             view_as = browse
 
     # ── Upload hub ────────────────────────────────────────────────────────────
@@ -235,7 +298,15 @@ today     = date.today()
 month_key = today.strftime("%Y-%m")
 view_name = view_as
 
+# Parse product-filtered view
+_product_view = None
+if view_name.startswith("PRODUCT:"):
+    _product_view = view_name.split(":", 1)[1]
+    view_name = "ALL"
+
 def _name_variants(full_name):
+    if full_name == "ALL":
+        return []
     parts = [p.strip() for p in full_name.split(",")]
     variants = [full_name.lower()]
     if len(parts) == 2:
@@ -245,23 +316,51 @@ def _name_variants(full_name):
 
 view_variants = _name_variants(view_name)
 
+# For product-filtered team view, build set of matching consultant names
+_product_consultants = None
+if _product_view:
+    from shared.constants import EMPLOYEE_ROLES as _ER
+    _product_consultants = {
+        n.lower() for n, info in _ER.items()
+        if _product_view in info.get("products", [])
+    }
+
 def _match(val):
+    if view_name == "ALL":
+        if _product_consultants is not None:
+            # Filter to only consultants who work on this product
+            return any(pc in str(val).lower() for pc in _product_consultants)
+        return True
     return any(v in str(val).lower() for v in view_variants)
 
 # Filter DRS
 my_projects = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
-    pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(lambda v: _match(str(v)))
-    my_projects = df_drs[pm_mask].copy()
-    if my_projects.empty and not is_manager(view_name):
-        my_projects = df_drs.copy()
-        st.caption("ℹ️ No PM column matched — showing all projects in this DRS file.")
+    if view_name == "ALL":
+        if _product_consultants is not None:
+            pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
+            my_projects = df_drs[pm_col.apply(lambda v: _match(str(v)))].copy()
+        else:
+            my_projects = df_drs.copy()
+    else:
+        pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(lambda v: _match(str(v)))
+        my_projects = df_drs[pm_mask].copy()
+        if my_projects.empty and not is_manager(view_name):
+            my_projects = df_drs.copy()
+            st.caption("ℹ️ No PM column matched — showing all projects in this DRS file.")
 
 # Filter NS
 my_ns = pd.DataFrame()
 if df_ns is not None and not df_ns.empty:
-    emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match(str(v)))
-    my_ns = df_ns[emp_mask].copy()
+    if view_name == "ALL":
+        if _product_consultants is not None:
+            emp_col = df_ns.get("employee", pd.Series(dtype=str))
+            my_ns = df_ns[emp_col.apply(lambda v: _match(str(v)))].copy()
+        else:
+            my_ns = df_ns.copy()
+    else:
+        emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match(str(v)))
+        my_ns = df_ns[emp_mask].copy()
 
 # Enrich DRS with NS inactivity
 if not my_projects.empty and df_ns is not None:
@@ -273,11 +372,24 @@ if not my_projects.empty and df_ns is not None:
 # ══════════════════════════════════════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-display_name = view_name.split(",")[1].strip() if "," in view_name else view_name
-note         = f" (viewing as {display_name})" if view_as != selected else ""
-emp_info     = EMPLOYEE_ROLES.get(view_name, {})
-emp_role     = emp_info.get("role", "Consultant")
-emp_products = emp_info.get("products", [])
+if _product_view:
+    display_name = f"All {_product_view} team"
+    note         = f" (viewing {_product_view} consultants)"
+    emp_info     = {}
+    emp_role     = "Manager"
+    emp_products = []
+elif view_name == "ALL":
+    display_name = "All Team"
+    note         = " (viewing all team)"
+    emp_info     = {}
+    emp_role     = "Manager"
+    emp_products = []
+else:
+    display_name = view_name.split(",")[1].strip() if "," in view_name else view_name
+    note         = f" (viewing as {display_name})" if view_as != selected else ""
+    emp_info     = EMPLOYEE_ROLES.get(view_name, {})
+    emp_role     = emp_info.get("role", "Consultant")
+    emp_products = emp_info.get("products", [])
 
 ch, cm = st.columns([3, 1])
 with ch:
@@ -295,11 +407,12 @@ with ch:
         unsafe_allow_html=True,
     )
 with cm:
-    loc = EMPLOYEE_LOCATION.get(view_name, "")
-    if isinstance(loc, tuple): loc = loc[0]
-    region = PS_REGION_OVERRIDE.get(view_name, PS_REGION_MAP.get(loc, ""))
-    if region:
-        st.markdown(f'<div class="badge-blue action-badge" style="margin-top:12px">{region}</div>', unsafe_allow_html=True)
+    if view_name != "ALL":
+        loc = EMPLOYEE_LOCATION.get(view_name, "")
+        if isinstance(loc, tuple): loc = loc[0]
+        region = PS_REGION_OVERRIDE.get(view_name, PS_REGION_MAP.get(loc, ""))
+        if region:
+            st.markdown(f'<div class="badge-blue action-badge" style="margin-top:12px">{region}</div>', unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
@@ -308,9 +421,13 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">This Month — Utilization</div>', unsafe_allow_html=True)
 
-loc_key = EMPLOYEE_LOCATION.get(view_name, "")
-if isinstance(loc_key, tuple): loc_key = loc_key[0]
-avail = AVAIL_HOURS.get(loc_key, {}).get(month_key) if loc_key else None
+if view_name == "ALL":
+    loc_key = None
+    avail   = None
+else:
+    loc_key = EMPLOYEE_LOCATION.get(view_name, "")
+    if isinstance(loc_key, tuple): loc_key = loc_key[0]
+    avail = AVAIL_HOURS.get(loc_key, {}).get(month_key) if loc_key else None
 
 if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
