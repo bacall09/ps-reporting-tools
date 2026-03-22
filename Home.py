@@ -433,18 +433,29 @@ view_variants = _name_variants(view_name)
 _view_name_set = None
 if view_name.startswith("REGION:"):
     _region_sel = view_name.split(":", 1)[1]
-    _view_name_set = {
-        n.lower() for n in CONSULTANT_DROPDOWN if _gr(n) == _region_sel
-    }
+    _region_names = [n for n in CONSULTANT_DROPDOWN if _gr(n) == _region_sel]
+    # Include name variants but NOT first-name-only (too ambiguous)
+    _view_name_set = set()
+    for n in _region_names:
+        parts = [p.strip() for p in n.split(",")]
+        _view_name_set.add(n.lower())                              # "longalong, santiago"
+        _view_name_set.add(parts[0].lower())                       # "longalong" (last name)
+        if len(parts) == 2:
+            _view_name_set.add(f"{parts[1]} {parts[0]}".lower())  # "santiago longalong"
 elif view_name == "ALL_MANAGERS":
     _view_name_set = {n.lower() for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"}
 
 def _match_name(val):
     """Match a name value against the current view selection."""
-    if view_name in ("ALL",):
+    if view_name == "ALL":
         return True
     if _view_name_set is not None:
-        return any(ns in str(val).lower() for ns in _view_name_set)
+        v = str(val).strip().lower()
+        # Check full string match OR "First Last" / "Last, First" exact match
+        return v in _view_name_set or any(
+            v == ns or v.startswith(ns + " ") or v.endswith(" " + ns)
+            for ns in _view_name_set
+        )
     return any(v in str(val).lower() for v in view_variants)
 
 def _match_project_type(val):
