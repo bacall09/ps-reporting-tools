@@ -125,8 +125,10 @@ if not st.session_state.get("authentication_status"):
                             language="toml")
     st.stop()
 
-# ── Authenticated: sidebar upload hub ────────────────────────────────────────
+# ── Authenticated: sidebar ────────────────────────────────────────────────────
 _display_first = _roster.split(",")[1].strip() if "," in _roster else _roster
+_upload_role   = get_role(_roster) if _roster else None
+
 with st.sidebar:
     st.markdown(f"#### {_display_first}")
     st.caption(f"Signed in as **{_auth_name}**")
@@ -136,9 +138,52 @@ with st.sidebar:
             st.session_state.pop(k, None)
         st.rerun()
     st.markdown("---")
+
+    # ── View As + Filter (managers only) ──────────────────────────────────────
+    if _upload_role == "manager":
+        from shared.config import EMPLOYEE_LOCATION as _EL, PS_REGION_MAP as _RM, PS_REGION_OVERRIDE as _RO
+
+        def _get_region(name):
+            if name in _RO: return _RO[name]
+            return _RM.get(_EL.get(name, ""), "Other")
+
+        _active_c = sorted([
+            n for n in CONSULTANT_DROPDOWN
+            if get_role(n) in ("consultant", "manager")
+            and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
+        ])
+        _by_rgn = {}
+        for _cn in _active_c:
+            _by_rgn.setdefault(_get_region(_cn), []).append(_cn)
+
+        _mgr_only = sorted([n for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"])
+        _bopts = ["— My own view —", "👥 All team"]
+        for _rg in sorted(_by_rgn.keys()):
+            _bopts.append(f"── {_rg} ──")
+            _bopts.extend(_by_rgn[_rg])
+        if _mgr_only:
+            _bopts.append("── Managers ──")
+            _bopts.extend(_mgr_only)
+
+        st.markdown("**View as:**")
+        _browse = st.selectbox("Browse team", _bopts,
+                               key="home_browse", label_visibility="collapsed")
+
+        _all_prods = sorted({
+            p for n in _active_c
+            for p in EMPLOYEE_ROLES.get(n, {}).get("products", []) if p and p != "All"
+        })
+        st.markdown("**Filter by product:**")
+        _product_filter_home = st.selectbox("Product", ["All products"] + _all_prods,
+                                            key="home_product_filter", label_visibility="collapsed")
+
+        # Store in session state so Daily Briefing can read them
+        st.session_state["_view_browse"]   = _browse
+        st.session_state["_product_filter"] = _product_filter_home
+        st.markdown("---")
+
     st.markdown("**Upload data**")
     st.caption("Upload once — available across all pages this session.")
-    _upload_role = get_role(_roster) if _roster else None
     drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs")
     ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
     sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
