@@ -219,8 +219,15 @@ with st.sidebar:
                     unsafe_allow_html=True)
     if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]):
         if st.button("Clear loaded data", use_container_width=True, key="home_clear"):
-            for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
-                st.session_state.pop(k, None)
+            # Clear dataframes and uploader widget states
+            keys_to_clear = [
+                "df_drs","df_ns","df_sfdc","df_ns_unassigned",
+                "hub_drs","hub_ns","hub_sfdc","hub_ns_unassigned",
+            ]
+            # Also clear any FormData/file widget state Streamlit holds internally
+            for k in list(st.session_state.keys()):
+                if k in keys_to_clear or k.startswith("hub_"):
+                    del st.session_state[k]
             st.rerun()
 
 # ── Run the selected page ─────────────────────────────────────────────────────
