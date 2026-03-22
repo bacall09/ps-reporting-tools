@@ -165,25 +165,41 @@ def _match_project_type(val):
 # Filter DRS — by PM name first, then refine by project_type if product filter active
 _is_group_view = view_name in ("ALL", "ALL_MANAGERS") or view_name.startswith("REGION:")
 
-# Build project scope lookup from full DRS — used for FF overrun in both metrics and table
-_proj_scope: dict = {}
+# Build project scope lookup AND overrun map from DRS
+# DRS has cumulative actual_hours + budgeted_hours — far more reliable than NS month slice
+_proj_scope:   dict = {}  # project_name.lower() → budget hours
+_proj_actual:  dict = {}  # project_name.lower() → actual hours to date
+_proj_overrun: dict = {}  # project_name.lower() → overrun hours (actual - budget, if > 0)
+
 if df_drs is not None and not df_drs.empty:
     for _, _dr in df_drs.iterrows():
         _pn  = str(_dr.get("project_name","")).strip()
         _pid = str(_dr.get("project_id","")).strip()
         _pt  = str(_dr.get("project_type","")).strip()
         _bgt = _dr.get("budgeted_hours", None)
+        _act = _dr.get("actual_hours", None)
         _co  = _dr.get("change_order", 0) or 0
         try:
-            _explicit = float(_bgt) + float(_co) if _bgt else None
+            _budget = float(_bgt) + float(_co) if _bgt else None
         except (TypeError, ValueError):
-            _explicit = None
-        _m = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
-              if k.strip().lower() in _pt.lower()]
-        _type_sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
-        _sc = _explicit or _type_sc
-        if _sc and _pn:  _proj_scope[_pn.lower()]  = _sc
-        if _sc and _pid: _proj_scope[_pid.lower()]  = _sc
+            _budget = None
+        # Fallback scope from DEFAULT_SCOPE if no explicit budget
+        if _budget is None:
+            _m = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                  if k.strip().lower() in _pt.lower()]
+            _budget = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+        try:
+            _actual = float(_act) if _act is not None else None
+        except (TypeError, ValueError):
+            _actual = None
+
+        for _key in [_pn.lower(), _pid.lower()]:
+            if not _key or _key in ("", "nan"): continue
+            if _budget: _proj_scope[_key]  = _budget
+            if _actual: _proj_actual[_key] = _actual
+            if _budget and _actual and _actual > _budget:
+                _proj_overrun[_key] = round(_actual - _budget, 2)
+
 my_projects = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
     if _is_group_view:
@@ -283,6 +299,8 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">This Month — Utilization</div>', unsafe_allow_html=True)
 
+prior_htd: dict = {}  # cumulative FF hours per project before this period
+
 if view_name in ("ALL",) or view_name.startswith("REGION:") or view_name == "ALL_MANAGERS":
     # Sum available hours across all consultants in scope
     if view_name == "ALL":
@@ -328,20 +346,43 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     ff_credit = 0.0; ff_overrun = 0.0
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values("date")
+
+        # Build prior_htd: cumulative hours on each FF project BEFORE this period
+        # Uses hours_to_date from NS (same logic as Utilization Report)
+        prior_htd: dict = {}
+        if "hours_to_date" in my_ns.columns:
+            _ff_all = my_ns[my_ns.get("billing_type", pd.Series(dtype=str))
+                           .fillna("").str.strip().str.lower() == "fixed fee"].copy()
+            for _proj, _grp in _ff_all.groupby("project"):
+                _pn = str(_proj).strip()
+                try:
+                    _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
+                    prior_htd[_pn] = max(0.0, _max_htd - _period_hrs)
+                except Exception:
+                    prior_htd[_pn] = 0.0
+
         _con: dict = {}
         for _, _r in ff_rows.iterrows():
             _proj  = str(_r.get("project","")).strip()
-            _pid   = str(_r.get("project_id","")).strip()
             _ptype = str(_r.get("project_type","")).strip()
-            _hrs   = float(_r.get("hours",0) or 0)
+            _hrs   = float(_r.get("hours", 0) or 0)
             if _hrs <= 0: continue
-            _sc = (_proj_scope.get(_proj.lower()) or _proj_scope.get(_pid.lower()))
-            if _sc is None and _ptype:
-                _m = [(k,float(v)) for k,v in DEFAULT_SCOPE.items() if k.strip().lower() in _ptype.lower()]
-                _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+
+            # Scope from DEFAULT_SCOPE via project_type keyword match
+            _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                   if k.strip().lower() in _ptype.lower()]
+            _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+
             if _sc is None:
-                ff_credit += _hrs; continue
-            _used = _con.get(_proj, 0.0); _rem = _sc - _used
+                ff_credit += _hrs; continue  # no scope defined → credit as-is
+
+            # Seed prior hours from hours_to_date if available
+            if _proj not in _con:
+                _con[_proj] = prior_htd.get(_proj, 0.0)
+
+            _used = _con[_proj]
+            _rem  = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
             elif _hrs <= _rem:
@@ -444,24 +485,30 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
             _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
 
-            # Per-consultant FF credit/overrun split using module-level _proj_scope
-            _ff_rows_cn = _emp_rows[_bt == "fixed fee"].sort_values("date")
-            _ff_util = 0.0; _ff_over = 0.0; _con_cn: dict = {}
-            for _, _fr in _ff_rows_cn.iterrows():
-                _fp  = str(_fr.get("project","")).strip()
-                _fid = str(_fr.get("project_id","")).strip()
-                _fh  = float(_fr.get("hours",0) or 0)
-                if _fh <= 0: continue
-                _fsc = _proj_scope.get(_fp.lower()) or _proj_scope.get(_fid.lower())
-                if _fsc is None:
-                    _ff_util += _fh; continue
-                _fused = _con_cn.get(_fp, 0.0); _frem = _fsc - _fused
-                if _frem <= 0:
-                    _ff_over += _fh
-                elif _fh <= _frem:
-                    _ff_util += _fh; _con_cn[_fp] = _fused + _fh
-                else:
-                    _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fp] = _fsc
+            # Per-consultant FF credit/overrun — same logic as top-level engine
+            _ff_rows_cn = _emp_rows[_bt == "fixed fee"].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
+            _ff_util = 0.0; _ff_over = 0.0
+            if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
+                _con_cn: dict = {}
+                for _, _fr in _ff_rows_cn.iterrows():
+                    _fp    = str(_fr.get("project","")).strip()
+                    _ftype = str(_fr.get("project_type","")).strip()
+                    _fh    = float(_fr.get("hours", 0) or 0)
+                    if _fh <= 0: continue
+                    _fm = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                           if k.strip().lower() in _ftype.lower()]
+                    _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
+                    if _fsc is None:
+                        _ff_util += _fh; continue
+                    if _fp not in _con_cn:
+                        _con_cn[_fp] = prior_htd.get(_fp, 0.0)
+                    _fused = _con_cn[_fp]; _frem = _fsc - _fused
+                    if _frem <= 0:
+                        _ff_over += _fh
+                    elif _fh <= _frem:
+                        _ff_util += _fh; _con_cn[_fp] = _fused + _fh
+                    else:
+                        _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fp] = _fsc
             _ff_util = round(_ff_util, 2)
             _ff_over = round(_ff_over, 2)
 
