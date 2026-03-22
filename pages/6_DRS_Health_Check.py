@@ -51,20 +51,33 @@ st.markdown("""
 df_drs = st.session_state.get("df_drs")
 
 if df_drs is not None:
-    st.info("✓ Using SS DRS loaded from the Home page. Upload below to override.")
-
-uploaded = st.file_uploader(
-    "Drop SS DRS Export here (or load on Home page)",
-    type=["xlsx", "csv"],
-    key="drs_health_upload",
-)
-if uploaded:
-    try:
-        df_drs = load_drs(uploaded)
-        st.success(f"Loaded {len(df_drs):,} rows from `{uploaded.name}`")
-    except Exception as e:
-        st.error(f"Could not load file: {e}")
-        df_drs = None
+    st.success("✓ Using SS DRS loaded from the Home page.")
+    with st.expander("Override uploaded data for this page"):
+        uploaded = st.file_uploader(
+            "Drop SS DRS Export here",
+            type=["xlsx", "csv"],
+            key="drs_health_upload",
+        )
+        if uploaded:
+            try:
+                df_drs = load_drs(uploaded)
+                st.success(f"Loaded {len(df_drs):,} rows from `{uploaded.name}`")
+            except Exception as e:
+                st.error(f"Could not load file: {e}")
+                df_drs = None
+else:
+    uploaded = st.file_uploader(
+        "Drop SS DRS Export here (or load on Home page)",
+        type=["xlsx", "csv"],
+        key="drs_health_upload",
+    )
+    if uploaded:
+        try:
+            df_drs = load_drs(uploaded)
+            st.success(f"Loaded {len(df_drs):,} rows from `{uploaded.name}`")
+        except Exception as e:
+            st.error(f"Could not load file: {e}")
+            df_drs = None
 
 if df_drs is None:
     st.info("Upload your SS DRS Export (or load it on the Home page) to run the health check.")
