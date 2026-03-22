@@ -36,12 +36,65 @@ if not selected:
 
 role = get_role(selected)
 
-# ── Sidebar — View As and Filter controls (managers only) ────────────────────
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown(f"**Daily Briefing**")
-    st.caption(f"MTD snapshot · as of today")
+    # Identity + sign out
+    _disp_first = selected.split(",")[1].strip() if "," in selected else selected
+    _auth_name  = st.session_state.get("name", _disp_first)
+    st.markdown(f"#### {_disp_first}")
+    st.caption(f"Signed in as **{_auth_name}**")
+    if st.button("Sign out", key="briefing_signout"):
+        for k in ["authentication_status","username","name","consultant_name",
+                  "df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
+            st.session_state.pop(k, None)
+        st.switch_page("Home.py")
     st.markdown("---")
 
+    # Upload hub
+    st.markdown("**Upload data**")
+    st.caption("Upload once — available across all pages this session.")
+    from shared.loaders import load_drs, load_ns_time, load_sfdc
+    _drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs")
+    _ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
+    _sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
+    _ns_unassigned_file = (
+        st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
+                         help="Required for Capacity Outlook")
+        if role in ("manager","manager_only") else None
+    )
+    for _lbl, _key, _ldr, _f in [
+        ("SS DRS","df_drs",load_drs,_drs_file),
+        ("NS Time","df_ns",load_ns_time,_ns_file),
+        ("SFDC","df_sfdc",load_sfdc,_sfdc_file),
+    ]:
+        if _f and _key not in st.session_state:
+            try:    st.session_state[_key] = _ldr(_f)
+            except Exception as e: st.error(f"{_lbl}: {e}")
+    if _ns_unassigned_file and "df_ns_unassigned" not in st.session_state:
+        try:
+            import pandas as _pd
+            st.session_state["df_ns_unassigned"] = (
+                _pd.read_excel(_ns_unassigned_file)
+                if not _ns_unassigned_file.name.endswith(".csv")
+                else _pd.read_csv(_ns_unassigned_file)
+            )
+        except Exception as e: st.error(f"NS Unassigned: {e}")
+
+    st.markdown("---")
+    st.markdown("**Session data**")
+    for _lbl, _key in [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")] + \
+                      ([("NS Unassigned","df_ns_unassigned")] if role in ("manager","manager_only") else []):
+        _ok = _key in st.session_state
+        st.markdown(f'<div style="font-size:12px;color:{"#27AE60" if _ok else "rgba(128,128,128,0.4)"};'
+                    f'padding:3px 0">{"✓" if _ok else "○"}&nbsp; {_lbl}</div>', unsafe_allow_html=True)
+    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]):
+        if st.button("Clear loaded data", use_container_width=True, key="briefing_clear"):
+            for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+    st.markdown("---")
+
+    # View As + Filter (managers only)
     view_as         = selected
     _product_filter = "All products"
 
@@ -50,19 +103,17 @@ with st.sidebar:
 
         def _get_region2(name):
             if name in _RO2: return _RO2[name]
-            loc = _EL2.get(name, "")
-            return _RM2.get(loc, "Other")
+            return _RM2.get(_EL2.get(name, ""), "Other")
 
         _active_consultants = sorted([
             n for n in CONSULTANT_DROPDOWN if get_role(n) in ("consultant", "manager")
             and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
         ])
-
         _by_region = {}
         for _cn in _active_consultants:
             _by_region.setdefault(_get_region2(_cn), []).append(_cn)
 
-        _mgr_only = sorted([n for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"])
+        _mgr_only    = sorted([n for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"])
         _browse_opts = ["— My own view —", "👥 All team"]
         for _rgn in sorted(_by_region.keys()):
             _browse_opts.append(f"── {_rgn} ──")
@@ -74,12 +125,11 @@ with st.sidebar:
         st.markdown("**View as:**")
         _browse = st.selectbox("Browse team", _browse_opts,
                                key="briefing_browse", label_visibility="collapsed")
-
         if _browse == "— My own view —":
             view_as = selected
         elif _browse.startswith("── ") and _browse.endswith(" ──"):
-            _rgn_sel = _browse.replace("── ", "").replace(" ──", "").strip()
-            view_as = f"MANAGERS" if _rgn_sel == "Managers" else f"REGION:{_rgn_sel}"
+            _rs = _browse.replace("── ","").replace(" ──","").strip()
+            view_as = "ALL_MANAGERS" if _rs == "Managers" else f"REGION:{_rs}"
         elif _browse == "👥 All team":
             view_as = "ALL"
         else:
@@ -87,8 +137,7 @@ with st.sidebar:
 
         _all_products = sorted({
             p for n in _active_consultants
-            for p in EMPLOYEE_ROLES.get(n, {}).get("products", [])
-            if p and p != "All"
+            for p in EMPLOYEE_ROLES.get(n, {}).get("products", []) if p and p != "All"
         })
         st.markdown("**Filter by product:**")
         _product_filter = st.selectbox("Product", ["All products"] + _all_products,
