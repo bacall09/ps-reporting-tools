@@ -18,6 +18,13 @@ from shared.template_utils import (
 )
 
 st.set_page_config(page_title="Customer Re-Engagement", page_icon=None, layout="wide")
+# ── Auth guard — redirect to Home if not logged in ───────────────────────────
+if not st.session_state.get("authentication_status"):
+    st.warning("Please log in first.")
+    st.switch_page("Home.py")
+    st.stop()
+
+
 
 # ── Product keywords for fuzzy matching ──────────────────────────────────────
 PRODUCT_KEYWORDS = [
@@ -325,8 +332,11 @@ SFDC_COL_MAP = {
     "opportunity":              "opportunity",
     "account":                  "account",
     "contact name":             "contact_name",
+    "full name":                "contact_name",
+    "name":                     "contact_name",
     "contact":                  "contact_name",
     "contact email":            "email",
+    "email address":            "email",
     "role":                     "title",
     "product":                  "product",
     "products":                 "product",
@@ -337,6 +347,11 @@ SFDC_COL_MAP = {
     "territory":                "territory",
     "account owner":            "account_manager",
     "owner":                    "account_manager",
+    "owner name":               "account_manager",
+    "opportunity owner name":   "account_manager",
+    "rep":                      "account_manager",
+    "ae":                       "account_manager",
+    "csm":                      "account_manager",
     # New columns
     "implementation contact":   "impl_contact_flag",
     "implementation contact exists": "impl_contact_flag",
@@ -778,28 +793,50 @@ def _get_project_log(project):
 
 def main():
 
+    # ── Identity — use Home session state if available ────────────────────
+    _session_name = st.session_state.get("consultant_name")
 
-
-    # ── Who is using this tool? ───────────────────────────────────────────
-    st.subheader("Step 1 — Who are you?")
-    _u_col, _r_col = st.columns([3, 2])
-    with _u_col:
-        selected_user = st.selectbox(
-            "Select your name",
-            ["— Select —"] + ACTIVE_EMPLOYEES,
-            key="selected_user"
-        )
-    with _r_col:
-        user_role = st.radio(
-            "Role",
-            ["IC — my projects only", "Manager / Admin — all projects"],
-            key="user_role",
-            horizontal=False
-        )
-    is_manager = user_role.startswith("Manager")
-    if selected_user == "— Select —":
-        st.info("Select your name to get started.")
-        return
+    if _session_name and _session_name != "— Select —":
+        # Already identified on Home — derive role automatically
+        from shared.constants import get_role as _get_role
+        _role = _get_role(_session_name)
+        is_manager   = _role in ("manager", "manager_only")
+        selected_user = _session_name
+        # Show compact identity banner instead of Step 1
+        _disp = (_session_name.split(",")[1].strip() + " " + _session_name.split(",")[0].strip()
+                 if "," in _session_name else _session_name)
+        _role_label = "Manager — all projects" if is_manager else "Consultant — my projects only"
+        st.success(f"✓ Signed in as **{_disp}** ({_role_label})")
+        with st.expander("Switch identity", expanded=False):
+            _u_col, _r_col = st.columns([3, 2])
+            with _u_col:
+                _override = st.selectbox("Select a different name", ["— Keep current —"] + ACTIVE_EMPLOYEES, key="re_user_override")
+            with _r_col:
+                _role_override = st.radio("Role", ["IC — my projects only", "Manager / Admin — all projects"], key="re_role_override", horizontal=False)
+            if _override != "— Keep current —":
+                selected_user = _override
+                is_manager    = _role_override.startswith("Manager")
+    else:
+        # Not identified on Home — show Step 1 as before
+        st.subheader("Step 1 — Who are you?")
+        _u_col, _r_col = st.columns([3, 2])
+        with _u_col:
+            selected_user = st.selectbox(
+                "Select your name",
+                ["— Select —"] + ACTIVE_EMPLOYEES,
+                key="selected_user"
+            )
+        with _r_col:
+            user_role = st.radio(
+                "Role",
+                ["IC — my projects only", "Manager / Admin — all projects"],
+                key="user_role",
+                horizontal=False
+            )
+        is_manager = user_role.startswith("Manager")
+        if selected_user == "— Select —":
+            st.info("Select your name to get started — or go to the Home page to set your identity once for all pages.")
+            return
 
     st.markdown("---")
     # ── Pull from session state (uploaded on Home) — local upload as fallback ──
@@ -1381,7 +1418,7 @@ Used when no NS entries and no milestones are present.
 
     # Service term expiry — only shown for Tier 4
     if int(days_inactive) >= 180:
-        # Use subscription_start_date + 12m if available, else blank (mandatory)
+        # Calculate subscription_start_date + 12m if available
         _sub_start = None
         if df_drs is not None and "subscription_start_date" in df_drs.columns:
             _sub_row = df_drs[df_drs[opp_col].astype(str) == str(selected_proj)] if opp_col in df_drs.columns else pd.DataFrame()
@@ -1389,19 +1426,33 @@ Used when no NS entries and no milestones are present.
                 _sv = pd.to_datetime(_sub_row["subscription_start_date"].iloc[0], errors="coerce")
                 if pd.notna(_sv):
                     _sub_start = (_sv + pd.DateOffset(months=12)).date()
+
         _svc_key = f"svc_exp_{str(selected_proj)[:30].replace(' ','_')}"
+        # Only set session state default once per project — don't overwrite user edits
         if _svc_key not in st.session_state:
-            st.session_state[_svc_key] = _sub_start  # None if no subscription date
-        expiry_val = st.date_input(
-            "Service term expiry date *",
-            value=st.session_state.get(_svc_key),
-            key=_svc_key,
-            help="12 months from contract/subscription start date"
-        )
-        if expiry_val is None:
-            st.warning("⚠️ Please enter the service term expiry date.")
-            return
-        service_expiry = expiry_val
+            st.session_state[_svc_key] = _sub_start
+
+        if _sub_start:
+            # Subscription date found — pre-populate with calculated expiry
+            expiry_val = st.date_input(
+                "Service term expiry date",
+                value=st.session_state.get(_svc_key) or _sub_start,
+                key=_svc_key,
+                help="Auto-calculated: Start Date (Subscription) + 12 months. Edit if needed."
+            )
+            service_expiry = expiry_val
+        else:
+            # No subscription date in DRS — leave blank, user can enter manually
+            st.markdown("**Service term expiry date**")
+            st.caption("Not found in DRS — enter manually if known, or leave blank.")
+            _manual = st.date_input(
+                "Service term expiry date",
+                value=None,
+                key=_svc_key,
+                help="12 months from contract/subscription start date",
+                label_visibility="collapsed",
+            )
+            service_expiry = _manual  # may be None — handled in template fill
     else:
         service_expiry = date.today()
 
@@ -1530,6 +1581,12 @@ Used when no NS entries and no milestones are present.
                 cc_emails = cc_emails + [_extra_cc.strip()]
         else:
             st.warning("Email and/or contact name columns not detected. Check your export headers.")
+            with st.expander("🔍 Debug — columns found in your SFDC file"):
+                st.caption("These are the column names after mapping. If you see your email/name columns below under a different name, let your admin know to add it to the column map.")
+                st.write(sorted(proj_rows.columns.tolist()) if not proj_rows.empty else "No rows matched for this project")
+                if df_sfdc is not None:
+                    st.caption("All columns in loaded SFDC file:")
+                    st.write(sorted(df_sfdc.columns.tolist()))
             to_emails = []
             cc_emails = []
 
@@ -1589,7 +1646,10 @@ Used when no NS entries and no milestones are present.
     st.markdown(f"<div class='cc-box'>📋 <b>CC guidance:</b> {cc_raw}</div>", unsafe_allow_html=True)
 
     if tier_num in (3, 4) and not am:
-        st.warning("Account Manager name not found in SFDC data — you'll need to fill {ACCOUNT MANAGER} manually.")
+        if df_sfdc is None:
+            st.info("Upload your SFDC Contacts file to auto-populate the Account Manager name.")
+        else:
+            st.warning("Account Manager not found in SFDC data — fill {ACCOUNT MANAGER} manually in the template.")
 
     # ── Build filled template ─────────────────────────────────────────────────
     # Strip numeric prefix from phase for clean template insertion (e.g. "02. Configuration" → "Configuration")
@@ -1603,7 +1663,7 @@ Used when no NS entries and no milestones are present.
         "IMPLEMENTATION CONSULTANT": consultant_name,
         "ACCOUNT MANAGER":        str(am) if am else "",
         "REMAINING SESSIONS":     remaining_sessions,
-        "SERVICE TERM EXPIRY":    service_expiry.strftime("%B %d, %Y"),
+        "SERVICE TERM EXPIRY":    service_expiry.strftime("%B %d, %Y") if service_expiry else "[SERVICE TERM EXPIRY — please enter manually]",
     }
 
     subject, body, _ = fill_template(selected_template, fields)
@@ -1781,6 +1841,8 @@ document.getElementById("cb").addEventListener("click",function(){{
 📝 **Log all outreach in your SmartSheet project tracker** for audit trail purposes.
         """)
 
+
+main()
 
 if __name__ == "__main__":
     main()

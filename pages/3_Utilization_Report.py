@@ -1752,6 +1752,14 @@ import streamlit as st
 import pandas as pd
 import io
 
+# ── Auth guard ───────────────────────────────────────────────────────────────
+if not st.session_state.get("authentication_status"):
+    st.warning("Please log in first.")
+    st.switch_page("Home.py")
+    st.stop()
+
+
+
 # Ensure shared/ is on the path regardless of how Streamlit Cloud runs the file
 
 
@@ -2375,6 +2383,8 @@ def build_tableau_excel(df, scope_map, consumed):
     buf.seek(0)
     return buf
 
+
+main()
 
 if __name__ == "__main__":
     main()

@@ -3,6 +3,13 @@ import requests
 import random
 
 st.set_page_config(page_title="Vibe Check", page_icon="✨", layout="centered")
+# ── Auth guard — redirect to Home if not logged in ───────────────────────────
+if not st.session_state.get("authentication_status"):
+    st.warning("Please log in first.")
+    st.switch_page("Home.py")
+    st.stop()
+
+
 
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">

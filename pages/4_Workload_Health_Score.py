@@ -15,6 +15,13 @@ from shared.config import NAVY, TEAL, WHITE, LTGRAY, AVAIL_HOURS, EMPLOYEE_LOCAT
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="FF Workload Score", page_icon=None, layout="wide")
+# ── Auth guard — redirect to Home if not logged in ───────────────────────────
+if not st.session_state.get("authentication_status"):
+    st.warning("Please log in first.")
+    st.switch_page("Home.py")
+    st.stop()
+
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 NAVY     = "1e2c63"
@@ -1925,6 +1932,8 @@ label="⬇ Download Workload Health Score Report",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
+
+main()
 
 if __name__ == "__main__":
     main()
