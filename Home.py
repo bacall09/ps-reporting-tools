@@ -566,7 +566,7 @@ if view_name in ("ALL",) or view_name.startswith("REGION:") or view_name == "ALL
             _avail_total += _ch
         elif _ch and isinstance(_ch, tuple):
             _avail_total += _ch[0]
-    avail = _avail_total if _avail_total > 0 else None
+    avail = round(_avail_total, 2) if _avail_total > 0 else None
     loc_key = None
 else:
     loc_key = EMPLOYEE_LOCATION.get(view_name, "")
@@ -580,12 +580,12 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     bt_col    = "billing_type" if "billing_type" in month_ns.columns else None
     if bt_col:
         _bt       = month_ns[bt_col].fillna("").str.strip().str.lower()
-        admin_hrs = round(month_ns[_bt == "internal"]["hours"].sum(), 1)
-        tm_hrs    = round(month_ns[_bt == "t&m"]["hours"].sum(), 1)
+        admin_hrs = round(month_ns[_bt == "internal"]["hours"].sum(), 2)
+        tm_hrs    = round(month_ns[_bt == "t&m"]["hours"].sum(), 2)
         ff_rows   = month_ns[_bt == "fixed fee"].copy()
     else:
         admin_hrs = 0.0
-        tm_hrs    = round(month_ns["hours"].sum(), 1)
+        tm_hrs    = round(month_ns["hours"].sum(), 2)
         ff_rows   = pd.DataFrame()
 
     ff_credit = 0.0; ff_overrun = 0.0
@@ -615,7 +615,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     overrun_pct = round(overrun_hrs / avail * 100, 2) if avail else None
     admin_pct   = round(admin_hrs   / avail * 100, 2) if avail else None
 
-    total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 1)
+    total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 2)
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
