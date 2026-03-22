@@ -1049,7 +1049,7 @@ def build_excel(availability, conflicts, combined_df, months, ss_df):
                        if isinstance(mm.get(months[0]), tuple) and mm.get(months[0],(None,999))[1] > 60)
     avail_cons   = sum(1 for _, mm in availability.items()
                        if isinstance(mm.get(months[0]), tuple) and mm.get(months[0],(None,0))[1] <= 60)
-    total_unassigned = len(ns_df) if combined_df is not None else 0
+    total_unassigned = len(combined_df) if combined_df is not None else 0
 
     dash_section(ws_dash, 5, 2, "CURRENT MONTH SNAPSHOT", ncols=7)
     metrics = [
