@@ -392,18 +392,23 @@ month_key = today.strftime("%Y-%m")
 view_name = view_as
 
 # ── Product type crosswalk (EMPLOYEE_ROLES labels → DRS project_type values)
+# DRS uses "ZoneApp: X", "ZoneBill: X", "ZonePay: X", "ZoneRpt: X" format
 _PT_MAP = {
-    "Billing":             ["billing", "zonebilling"],
-    "Capture":             ["zonecapture", "capture", "zonecapture + e-invoicing"],
-    "Approvals":           ["zoneapprovals", "approvals"],
-    "Reconcile":           ["zonereconcile", "reconcile", "reconcile 2.0"],
-    "Payments":            ["zonepayments", "payments"],
-    "Payroll":             ["payroll", "zonepayroll"],
-    "Reporting":           ["reporting", "zonereporting"],
-    "e-Invoicing":         ["e-invoicing", "einvoicing", "zonecapture + e-invoicing"],
-    "PSP":                 ["psp"],
-    "CC Statement Import": ["cc import", "cc statement import"],
-    "SFTP Connector":      ["sftp"],
+    "Billing":             ["zonebill: zb_standard", "zonebill: zb_premium", "zonebill: zab implementation",
+                            "zonebill: zab partner impl", "zonebill: optimization", "zonebill: optimization audit",
+                            "zonebill: subscription services", "billing", "zonebilling"],
+    "Capture":             ["zoneapp: capture", "zoneapp: capture & e-invoicing", "zonecapture", "capture"],
+    "Approvals":           ["zoneapp: approvals", "zoneapprovals", "approvals"],
+    "Reconcile":           ["zoneapp: reconcile", "zoneapp: reconcile 2.0", "zoneapp: reconcile psp",
+                            "zonereconcile", "reconcile", "reconcile 2.0"],
+    "Payments":            ["zoneapp: payments", "zoneapp: ap payment", "zonepayments", "payments"],
+    "Payroll":             ["zonepay: implementation", "zonepay: optimization", "payroll", "zonepayroll"],
+    "Reporting":           ["zonerpt: install, dwh", "zonerpt: optimization", "reporting", "zonereporting"],
+    "e-Invoicing":         ["zoneapp: e-invoicing", "zoneapp: capture & e-invoicing", "e-invoicing", "einvoicing"],
+    "PSP":                 ["zoneapp: reconcile psp", "psp"],
+    "CC Statement Import": ["zoneapp: cc statement import", "cc import", "cc statement import"],
+    "SFTP Connector":      ["zoneapp: sftp connector", "sftp"],
+    "All":                 ["zoneapps: consulting", "zep: implementation", "zep: optimization"],
 }
 
 # Resolve active product filter
@@ -467,7 +472,12 @@ def _match_project_type(val):
     """Return True if project_type matches the active product filter."""
     if _product_project_types is None:
         return True
-    return str(val).strip().lower() in _product_project_types
+    v = str(val).strip().lower()
+    # Exact match first
+    if v in _product_project_types:
+        return True
+    # Contains match — handles slight variations
+    return any(pt in v or v in pt for pt in _product_project_types)
 
 # Filter DRS — by PM name first, then refine by project_type if product filter active
 _is_group_view = view_name in ("ALL", "ALL_MANAGERS") or view_name.startswith("REGION:")
