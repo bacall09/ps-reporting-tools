@@ -811,9 +811,42 @@ def main():
     _session_loaded = [k for k, v in _from_session.items() if v is not None]
 
     # Only show upload section if data not already loaded from Home
+    sfdc_file = None
+    drs_file  = None
+    ns_file   = None
+
     if not _session_loaded:
         st.subheader("Step 2 — Upload Reports")
         st.caption("Upload one or more reports — more reports = better inactivity detection.")
+        up1, up2, up3 = st.columns([3, 3, 3])
+        with up1:
+            st.markdown("**SFDC Contacts Export** — for contact lookup")
+            st.markdown(
+                "📁 [Download latest from shared Drive ↗]"
+                "(https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m)"
+            )
+            st.caption("Required: First Name, Last Name, Email, Account Name, Opportunity Name")
+            sfdc_file = st.file_uploader("Drop SFDC Contacts file here", type=["xlsx","xls","csv"], key="sfdc_outreach")
+            if sfdc_file:
+                import re as _re
+                _dm = _re.search(r'(\d{8})', sfdc_file.name)
+                if _dm:
+                    try:
+                        _fd   = datetime.strptime(_dm.group(1), "%Y%m%d")
+                        _age  = (datetime.today() - _fd).days
+                        if _age == 0:       st.success(f"📅 File dated today — current.")
+                        elif _age <= 7:     st.info(f"📅 {_fd.strftime('%b %d, %Y')} — {_age}d old.")
+                        else:               st.warning(f"📅 {_fd.strftime('%b %d, %Y')} — {_age}d old. Consider refreshing.")
+                    except: pass
+        with up2:
+            st.markdown("**SS DRS Export** — project list & phase")
+            st.markdown("[Download current SS DRS report ↗](#)", help="Link coming soon")
+            st.caption("Required: Project Name, Project Phase, Project Type, Billing Type, Status")
+            drs_file = st.file_uploader("Drop SS DRS file here", type=["xlsx","xls","csv"], key="drs_outreach")
+        with up3:
+            st.markdown("**NS Time Detail** — objective inactivity signal")
+            st.markdown("[Download latest NS Time Detail ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=70652&saverun=T&whence=)")
+            ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
     else:
         st.success(
             f"✓ Data loaded from Home page: "
@@ -822,38 +855,16 @@ def main():
         )
         with st.expander("Override uploaded data for this page", expanded=False):
             st.caption("Upload here to override the Home page data for this session.")
-
-    up1, up2, up3 = st.columns([3, 3, 3])
-    with up1:
-        st.markdown("**SFDC Contacts Export** — for contact lookup")
-        st.markdown(
-            "📁 [Download latest from shared Drive ↗]"
-            "(https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m)"
-        )
-        st.caption("Required: First Name, Last Name, Email, Account Name, Opportunity Name")
-        sfdc_file = st.file_uploader("Drop SFDC Contacts file here", type=["xlsx","xls","csv"], key="sfdc_outreach")
-        if sfdc_file:
-            import re as _re
-            _dm = _re.search(r'(\d{8})', sfdc_file.name)
-            if _dm:
-                try:
-                    _fd   = datetime.strptime(_dm.group(1), "%Y%m%d")
-                    _age  = (datetime.today() - _fd).days
-                    if _age == 0:       st.success(f"📅 File dated today — current.")
-                    elif _age <= 7:     st.info(f"📅 {_fd.strftime('%b %d, %Y')} — {_age}d old.")
-                    else:               st.warning(f"📅 {_fd.strftime('%b %d, %Y')} — {_age}d old. Consider refreshing.")
-                except: pass
-
-    with up2:
-        st.markdown("**SS DRS Export** — project list & phase")
-        st.markdown("[Download current SS DRS report ↗](#)", help="Link coming soon")
-        st.caption("Required: Project Name, Project Phase, Project Type, Billing Type, Status")
-        drs_file = st.file_uploader("Drop SS DRS file here", type=["xlsx","xls","csv"], key="drs_outreach")
-
-    with up3:
-        st.markdown("**NS Time Detail** — objective inactivity signal")
-        st.markdown("[Download latest NS Time Detail ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=70652&saverun=T&whence=)")
-        ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
+            up1, up2, up3 = st.columns([3, 3, 3])
+            with up1:
+                st.markdown("**SFDC Contacts Export**")
+                sfdc_file = st.file_uploader("Drop SFDC Contacts file here", type=["xlsx","xls","csv"], key="sfdc_outreach")
+            with up2:
+                st.markdown("**SS DRS Export**")
+                drs_file = st.file_uploader("Drop SS DRS file here", type=["xlsx","xls","csv"], key="drs_outreach")
+            with up3:
+                st.markdown("**NS Time Detail**")
+                ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
 
     # Require at least one source — session state counts
     if not sfdc_file and not drs_file and not ns_file and not _session_loaded:
