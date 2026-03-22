@@ -367,16 +367,10 @@ else:
                         st.markdown(f"**Suggested template:** {tier}")
                         st.markdown(f"*Subject:* {tmpl.get('subject','')}")
                         # Store project + tier so Re-Engagement page auto-selects them
-                        if st.button("Go to Re-Engagement →", key=f"draft_{proj_name}", type="primary"):
+                        if st.button("Draft outreach →", key=f"draft_{proj_name}", type="primary"):
                             st.session_state["_jump_to_proj"] = proj_name
                             st.session_state["_jump_tier"]    = tier
-                        # Show link after button press — st.page_link works on Streamlit Cloud
-                        if st.session_state.get("_jump_to_proj") == proj_name:
-                            st.success("Project and template saved.")
-                            st.markdown(
-                                "**[→ Go to Customer Re-Engagement](/Customer_Reengagement)**",
-                                unsafe_allow_html=False,
-                            )
+                            st.switch_page("pages/2_Customer_Reengagement.py")
                     else:
                         st.markdown("No template matched for this inactivity window.")
 
