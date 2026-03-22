@@ -1,6 +1,8 @@
 """
-PS Tools — Home
-Auth + upload hub. Redirects to Daily Briefing after login.
+PS Tools — Home (entrypoint)
+Handles auth, navigation, and upload hub.
+With st.navigation in Streamlit 1.32+, Home registers pages and calls pg.run().
+The login gate lives in a shared helper called by every page.
 """
 import streamlit as st
 import pandas as pd
@@ -14,7 +16,7 @@ from shared.loaders import load_drs, load_ns_time, load_sfdc
 
 st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
 
-# ── Build credentials from secrets ───────────────────────────────────────────
+# ── Build credentials ─────────────────────────────────────────────────────────
 def _to_dict(obj):
     try:
         d = dict(obj)
@@ -25,8 +27,8 @@ def _to_dict(obj):
 _secrets_creds = st.secrets.get("credentials", {})
 _creds = {
     "usernames": {
-        uname: _to_dict(udata)
-        for uname, udata in _to_dict(_secrets_creds.get("usernames", {})).items()
+        u: _to_dict(d)
+        for u, d in _to_dict(_secrets_creds.get("usernames", {})).items()
     }
 }
 _cookie_raw = _to_dict(st.secrets.get("cookie", {}))
@@ -39,12 +41,16 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days = int(_cookie.get("expiry_days", 30)),
 )
 
-# ── Navigation must be registered BEFORE any st.switch_page calls ─────────────
-_auth_name  = st.session_state.get("name", "")
-_auth_user  = st.session_state.get("username", "")
-_roster     = _creds["usernames"].get(_auth_user, {}).get("full_roster_name", "")
-_role       = get_role(_roster) if _roster else None
+# ── Auth state ────────────────────────────────────────────────────────────────
+_auth_user   = st.session_state.get("username", "")
+_auth_name   = st.session_state.get("name", "")
+_roster      = _creds["usernames"].get(_auth_user, {}).get("full_roster_name", "")
+_role        = get_role(_roster) if _roster else None
 
+if _roster and st.session_state.get("consultant_name") != _roster:
+    st.session_state["consultant_name"] = _roster
+
+# ── Register navigation ───────────────────────────────────────────────────────
 _consultant_pages = [
     st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing"),
     st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
@@ -56,11 +62,11 @@ _consultant_pages = [
 _manager_pages = [st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook")]
 
 if _role in ("manager", "manager_only"):
-    st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages})
+    pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages})
 else:
-    st.navigation({"My Tools": _consultant_pages})
+    pg = st.navigation({"My Tools": _consultant_pages})
 
-# ── Login gate ────────────────────────────────────────────────────────────────
+# ── Login gate (shown instead of page content when not authenticated) ─────────
 if not st.session_state.get("authentication_status"):
     _user_options  = {d.get("name", u): u for u, d in _creds["usernames"].items()}
     _display_names = sorted(_user_options.keys())
@@ -74,11 +80,9 @@ if not st.session_state.get("authentication_status"):
         <p style='color:#a0aec0;margin:10px 0 0;font-size:13px'>Sign in to continue.</p>
     </div>""", unsafe_allow_html=True)
 
-    # Plain widgets (no st.form — st.switch_page cannot fire inside a form)
     _col = st.columns([1, 2, 1])[1]
     with _col:
-        _sel = st.selectbox("Select your name", ["— Select —"] + _display_names,
-                            key="login_name")
+        _sel = st.selectbox("Select your name", ["— Select —"] + _display_names, key="login_name")
         _pw  = st.text_input("Password", type="password",
                              placeholder="Enter your password", key="login_pw")
         if st.button("Sign in →", use_container_width=True, type="primary", key="login_btn"):
@@ -98,12 +102,12 @@ if not st.session_state.get("authentication_status"):
                     st.session_state["username"]              = _uname
                     st.session_state["name"]                  = _sel
                     if _r: st.session_state["consultant_name"] = _r
-                    st.rerun()  # re-run Home — auth passes → switch_page fires below
+                    st.rerun()
                 else:
                     st.error("Incorrect password. Default: Zone{LastName}! e.g. ZoneSwanson!")
 
     with st.expander("🔑 Need to reset your password?"):
-        st.caption("Generate a new hash and send it to your admin to update in Streamlit secrets.")
+        st.caption("Generate a new hash and send it to your admin.")
         _rc = st.columns([1, 2, 1])[1]
         with _rc:
             _rn  = st.selectbox("Your name", ["— Select —"] + _display_names, key="reset_name")
@@ -121,9 +125,58 @@ if not st.session_state.get("authentication_status"):
                             language="toml")
     st.stop()
 
-# ── Authenticated ─────────────────────────────────────────────────────────────
-if _roster and st.session_state.get("consultant_name") != _roster:
-    st.session_state["consultant_name"] = _roster
+# ── Authenticated: sidebar upload hub ────────────────────────────────────────
+_display_first = _roster.split(",")[1].strip() if "," in _roster else _roster
+with st.sidebar:
+    st.markdown(f"#### {_display_first}")
+    st.caption(f"Signed in as **{_auth_name}**")
+    if st.button("Sign out", key="home_signout"):
+        for k in ["authentication_status","username","name","consultant_name",
+                  "df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
+            st.session_state.pop(k, None)
+        st.rerun()
+    st.markdown("---")
+    st.markdown("**Upload data**")
+    st.caption("Upload once — available across all pages this session.")
+    _upload_role = get_role(_roster) if _roster else None
+    drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs")
+    ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
+    sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
+    ns_ua_file = (
+        st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
+                         help="Required for Capacity Outlook")
+        if _upload_role in ("manager","manager_only") else None
+    )
+    for _lbl, _key, _ldr, _f in [
+        ("SS DRS","df_drs",load_drs,drs_file),
+        ("NS Time","df_ns",load_ns_time,ns_file),
+        ("SFDC","df_sfdc",load_sfdc,sfdc_file),
+    ]:
+        if _f and _key not in st.session_state:
+            try:    st.session_state[_key] = _ldr(_f)
+            except Exception as e: st.error(f"{_lbl}: {e}")
+    if ns_ua_file and "df_ns_unassigned" not in st.session_state:
+        try:
+            import pandas as _pd
+            st.session_state["df_ns_unassigned"] = (
+                _pd.read_excel(ns_ua_file) if not ns_ua_file.name.endswith(".csv")
+                else _pd.read_csv(ns_ua_file)
+            )
+        except Exception as e: st.error(f"NS Unassigned: {e}")
+    st.markdown("---")
+    st.markdown("**Session data**")
+    _si = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
+    if _upload_role in ("manager","manager_only"): _si.append(("NS Unassigned","df_ns_unassigned"))
+    for _lbl, _key in _si:
+        _ok = _key in st.session_state
+        st.markdown(f'<div style="font-size:12px;color:{"#27AE60" if _ok else "rgba(128,128,128,0.4)"};'
+                    f'padding:3px 0">{"✓" if _ok else "○"}&nbsp; {_lbl}</div>',
+                    unsafe_allow_html=True)
+    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]):
+        if st.button("Clear loaded data", use_container_width=True, key="home_clear"):
+            for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]:
+                st.session_state.pop(k, None)
+            st.rerun()
 
-# Redirect immediately — sidebar renders on the destination page
-st.switch_page("pages/1_Daily_Briefing.py")
+# ── Run the selected page ─────────────────────────────────────────────────────
+pg.run()
