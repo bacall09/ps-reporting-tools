@@ -337,7 +337,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         _bt       = month_ns[bt_col].fillna("").str.strip().str.lower()
         admin_hrs = round(month_ns[_bt == "internal"]["hours"].sum(), 2)
         tm_hrs    = round(month_ns[_bt == "t&m"]["hours"].sum(), 2)
-        ff_rows   = month_ns[_bt == "fixed fee"].copy()
+        ff_rows   = month_ns[_bt == "fixed fee"].copy()  # non_billable flag irrelevant for FF scope
     else:
         admin_hrs = 0.0
         tm_hrs    = round(month_ns["hours"].sum(), 2)
@@ -350,8 +350,9 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         # Build prior_htd: cumulative hours on each FF project BEFORE this period
         # Uses hours_to_date from NS (same logic as Utilization Report)
         prior_htd: dict = {}
-        if "hours_to_date" in my_ns.columns:
-            _ff_all = my_ns[my_ns.get("billing_type", pd.Series(dtype=str))
+        # Build prior_htd from FULL NS dataset (not filtered) — same as Util Report
+        if df_ns is not None and "hours_to_date" in df_ns.columns:
+            _ff_all = df_ns[df_ns.get("billing_type", pd.Series(dtype=str))
                            .fillna("").str.strip().str.lower() == "fixed fee"].copy()
             for _proj, _grp in _ff_all.groupby("project"):
                 _pn = str(_proj).strip()
@@ -375,7 +376,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
             if _sc is None:
-                ff_credit += _hrs; continue  # no scope defined → credit as-is
+                ff_overrun += _hrs; continue  # no scope defined → counts as overrun (matches Util Report)
 
             # Seed prior hours from hours_to_date if available
             if _proj not in _con:
@@ -402,29 +403,34 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
     total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 2)
 
+    def _fmt_hrs(h):
+        """Format hours: drop trailing zeros but keep up to 2dp. e.g. 176.0→176, 167.2→167.2, 176.25→176.25"""
+        if h is None: return "—"
+        s = f"{h:.2f}".rstrip('0').rstrip('.')
+        return f"{s}h"
+
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        v = f"{avail}h" if avail else "—"
+        v   = _fmt_hrs(avail)
         lbl = "Available this month" if avail else "Available hrs (location not mapped)"
         st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}</div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{total_booked}h</div><div class="metric-lbl">Hours booked this month</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month</div></div>', unsafe_allow_html=True)
     with c3:
         if util_pct is not None:
             col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#E74C3C")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {util_hrs}h credited</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %</div></div>', unsafe_allow_html=True)
     with c4:
         if overrun_pct is not None:
             col = "#E74C3C" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {overrun_hrs}h over budget</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %</div></div>', unsafe_allow_html=True)
     with c5:
         if admin_pct is not None:
-            col = "#718096"
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {admin_hrs}h</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %</div></div>', unsafe_allow_html=True)
 else:
@@ -499,7 +505,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                            if k.strip().lower() in _ftype.lower()]
                     _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
                     if _fsc is None:
-                        _ff_util += _fh; continue
+                        _ff_over += _fh; continue  # no scope = overrun
                     if _fp not in _con_cn:
                         _con_cn[_fp] = prior_htd.get(_fp, 0.0)
                     _fused = _con_cn[_fp]; _frem = _fsc - _fused
