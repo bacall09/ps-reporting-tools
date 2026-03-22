@@ -415,6 +415,8 @@ NS_COL_MAP_OUT = {
     "project internal id":  "project_id",
     "job":                  "project_id",
     "billing type":         "billing_type",
+    "project type":         "project_type",
+    "type":                 "project_type",
     "project manager":      "project_manager",
     "date":                 "date",
     "transaction date":     "date",
