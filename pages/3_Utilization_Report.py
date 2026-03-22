@@ -2379,7 +2379,5 @@ def build_tableau_excel(df, scope_map, consumed):
     return buf
 
 
-main()
-
 if __name__ == "__main__":
     main()

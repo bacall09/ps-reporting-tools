@@ -2064,4 +2064,5 @@ def main():
         type="primary",
     )
 
-main()
+if __name__ == "__main__":
+    main()

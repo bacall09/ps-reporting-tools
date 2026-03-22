@@ -1927,7 +1927,5 @@ label="⬇ Download Workload Health Score Report",
     )
 
 
-main()
-
 if __name__ == "__main__":
     main()
