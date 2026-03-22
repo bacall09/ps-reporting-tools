@@ -6,13 +6,16 @@ Updated: 2026-03-22
 
 # ── Streamlit permission roles ─────────────────────────────────────────────────
 # Manager-only: see all pages, do NOT appear in consultant dropdowns
-MANAGERS_ONLY = ["Longi", "Prince", "Rusnak"]
+MANAGERS_ONLY = []  # Login handles identity — no manager-only access tier needed
 
 # Manager + Consultant: see all pages AND appear in consultant-scoped views
 MANAGER_CONSULTANTS = [
     "Ickler, Georganne",   # Consultant & Manager of PS
     "Lappin, Thomas",      # Manager-level Consultant
+    "Longi",               # Director of PS
     "Murphy, Conor",       # Solution Architect — manager tier
+    "Prince",              # VP of PMO
+    "Rusnak",              # VP of PS
     "Snee, Stefanie J",    # Manager-level Consultant
     "Stone, Matt",         # Manager-level Consultant
     "Swanson, Patti",      # Consultant & Director of PS
@@ -86,10 +89,10 @@ EMPLOYEE_ROLES = {
     "Swanson, Patti":         {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": [], "util_exempt": True},
     "Tuazon, Carol":          {"role": "Consultant", "products": ["Payroll", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],                            "learning": []},
     "Zoric, Ivan":            {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
-    # ── Managers only ────────────────────────────────────────────────────────
-    "Longi":                  {"role": "Manager",  "products": [], "learning": []},
-    "Prince":                 {"role": "Manager",  "products": [], "learning": []},
-    "Rusnak":                 {"role": "Manager",  "products": [], "learning": []},
+    # ── Leadership (managers only — no product delivery) ─────────────────────
+    "Longi":                  {"role": "Manager", "products": [], "learning": []},
+    "Prince":                 {"role": "Manager", "products": [], "learning": []},
+    "Rusnak":                 {"role": "Manager", "products": [], "learning": []},
     # ── Leavers (historical data only — do not remove) ────────────────────────
     "Alam, Laisa":            {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
     "Centinaje, Rhodechild":  {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
@@ -113,7 +116,7 @@ ACTIVE_EMPLOYEES = [k for k in EMPLOYEE_ROLES if k not in NO_ACCESS and k not in
 # Dropdown: consultants + manager-consultants (alphabetical)
 CONSULTANT_DROPDOWN = sorted([
     e for e in ACTIVE_EMPLOYEES
-    if get_role(e) in ("consultant", "manager", "manager_only")
+    if get_role(e) in ("consultant", "manager")
 ])
 
 # Dropdown: managers (all tiers)
