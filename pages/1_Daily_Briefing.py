@@ -22,60 +22,23 @@ from shared.template_utils import TEMPLATES, suggest_tier
 
 # ── Pull identity from session state ─────────────────────────────────────────
 selected = st.session_state.get("consultant_name", "")
+role     = get_role(selected) if selected else "consultant"
 
-role = get_role(selected) if selected else "consultant"
+# View As and Filter are set by Home.py sidebar — just read from session state
+_browse          = st.session_state.get("_view_browse", "— My own view —")
+_product_filter  = st.session_state.get("_product_filter", "All products")
 
-# ── Sidebar — View As + Filter only (upload hub lives in Home.py sidebar) ─────
-with st.sidebar:
-    # View As + Filter (managers only)
-    view_as         = selected
-    _product_filter = "All products"
-
-    if role == "manager":
-        from shared.config import EMPLOYEE_LOCATION as _EL2, PS_REGION_MAP as _RM2, PS_REGION_OVERRIDE as _RO2
-
-        def _get_region2(name):
-            if name in _RO2: return _RO2[name]
-            return _RM2.get(_EL2.get(name, ""), "Other")
-
-        _active_consultants = sorted([
-            n for n in CONSULTANT_DROPDOWN if get_role(n) in ("consultant", "manager")
-            and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
-        ])
-        _by_region = {}
-        for _cn in _active_consultants:
-            _by_region.setdefault(_get_region2(_cn), []).append(_cn)
-
-        _mgr_only    = sorted([n for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"])
-        _browse_opts = ["— My own view —", "👥 All team"]
-        for _rgn in sorted(_by_region.keys()):
-            _browse_opts.append(f"── {_rgn} ──")
-            _browse_opts.extend(_by_region[_rgn])
-        if _mgr_only:
-            _browse_opts.append("── Managers ──")
-            _browse_opts.extend(_mgr_only)
-
-        st.markdown("**View as:**")
-        _browse = st.selectbox("Browse team", _browse_opts,
-                               key="briefing_browse", label_visibility="collapsed")
-        if _browse == "— My own view —":
-            view_as = selected
-        elif _browse.startswith("── ") and _browse.endswith(" ──"):
-            _rs = _browse.replace("── ","").replace(" ──","").strip()
-            view_as = "ALL_MANAGERS" if _rs == "Managers" else f"REGION:{_rs}"
-        elif _browse == "👥 All team":
-            view_as = "ALL"
-        else:
-            view_as = _browse
-
-        _all_products = sorted({
-            p for n in _active_consultants
-            for p in EMPLOYEE_ROLES.get(n, {}).get("products", []) if p and p != "All"
-        })
-        st.markdown("**Filter by product:**")
-        _product_filter = st.selectbox("Product", ["All products"] + _all_products,
-                                       key="briefing_product", label_visibility="collapsed")
-
+view_as = selected
+if role == "manager":
+    if _browse == "— My own view —":
+        view_as = selected
+    elif _browse.startswith("── ") and _browse.endswith(" ──"):
+        _rs = _browse.replace("── ","").replace(" ──","").strip()
+        view_as = "ALL_MANAGERS" if _rs == "Managers" else f"REGION:{_rs}"
+    elif _browse == "👥 All team":
+        view_as = "ALL"
+    else:
+        view_as = _browse
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
