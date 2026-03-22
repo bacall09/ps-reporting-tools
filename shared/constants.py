@@ -1,7 +1,7 @@
 """
 PS Tools — Shared Constants
 Employee roster, role assignments, column maps, templates.
-Updated: 2026-03-19
+Updated: 2026-03-22
 """
 
 # ── Streamlit permission roles ─────────────────────────────────────────────────
@@ -9,12 +9,24 @@ Updated: 2026-03-19
 MANAGERS_ONLY = ["Longi", "Prince", "Rusnak"]
 
 # Manager + Consultant: see all pages AND appear in consultant-scoped views
-MANAGER_CONSULTANTS = ["Ickler, Georganne", "Lappin, Thomas", "Law, Brandon",
-                       "Murphy, Conor", "Snee, Stefanie J", "Stone, Matt", "Swanson, Patti"]
+MANAGER_CONSULTANTS = [
+    "Ickler, Georganne",   # Consultant & Manager of PS
+    "Lappin, Thomas",      # Manager-level Consultant
+    "Murphy, Conor",       # Solution Architect — manager tier
+    "Snee, Stefanie J",    # Manager-level Consultant
+    "Stone, Matt",         # Manager-level Consultant
+    "Swanson, Patti",      # Consultant & Director of PS
+]
 
-# No access
-NO_ACCESS = ["Alam, Laisa", "Chan, Joven", "Eyong, Eyong", "Hernandez, Camila",
-             "Rushbrook, Emma C", "Strauss, John W", "Centinaje, Rhodechild"]
+# No access (leavers or no Streamlit access)
+NO_ACCESS = [
+    "Alam, Laisa",          # No longer employed
+    "Chan, Joven",          # No longer employed
+    "Eyong, Eyong",         # No longer employed
+    "Hernandez, Camila",    # No longer employed
+    "Centinaje, Rhodechild",# Left March 16 2026
+    "Cloete, Bronwyn",      # Left Feb 23 2026 — not part of PS org
+]
 
 def get_role(name: str) -> str:
     """Return 'manager_only' | 'manager' | 'consultant' | 'no_access'."""
@@ -33,64 +45,66 @@ def is_consultant(name: str) -> bool:
     return get_role(name) in ("consultant", "manager")
 
 # ── Employee roster ────────────────────────────────────────────────────────────
+# util_exempt: True = no utilisation targets (managers, solution architects etc.)
 EMPLOYEE_ROLES = {
-    # ── Project Managers ──────────────────────────────────────────────────────
-    "Barrio, Nairobi":        {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
-    "Hughes, Madalyn":        {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
-    "Porangada, Suraj":       {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
-    "Cadelina, Macoy":        {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
+    # ── Project Managers (no product delivery) ────────────────────────────────
+    "Barrio, Nairobi":        {"role": "Project Manager",    "products": [], "learning": []},
+    "Cadelina, Macoy":        {"role": "Project Manager",    "products": [], "learning": [], "note": "New as of March 3 2026"},
+    "Hughes, Madalyn":        {"role": "Project Manager",    "products": [], "learning": []},
+    "Porangada, Suraj":       {"role": "Project Manager",    "products": [], "learning": []},
     # ── Solution Architects ───────────────────────────────────────────────────
-    "Bell, Stuart":           {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
-    "DiMarco, Nicole R":      {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
-    "Murphy, Conor":          {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
-    "Finalle-Newton, Jesse":  {"role": "Solution Architect", "products": ["Reporting"],                                                                            "learning": []},
-    # ── Developer ─────────────────────────────────────────────────────────────
-    "Church, Jason G":        {"role": "Developer",          "products": ["All"],                                                                                  "learning": [], "util_exempt": True},
-    "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-    "Law, Brandon":           {"role": "Developer",          "products": ["Reporting"],                                                                            "learning": []},
-    "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
+    "Bell, Stuart":           {"role": "Solution Architect", "products": ["Billing"],     "learning": []},
+    "DiMarco, Nicole R":      {"role": "Solution Architect", "products": ["Billing"],     "learning": []},
+    "Murphy, Conor":          {"role": "Solution Architect", "products": ["Billing"],     "learning": [], "util_exempt": True},
+    "Finalle-Newton, Jesse":  {"role": "Solution Architect", "products": ["Reporting"],   "learning": []},
+    # ── Developers ────────────────────────────────────────────────────────────
+    "Church, Jason G":        {"role": "Developer",          "products": ["All"],         "learning": [], "util_exempt": True},
+    "Dunn, Steven":           {"role": "Developer",          "products": ["All"],         "learning": []},
+    "Law, Brandon":           {"role": "Developer",          "products": ["Reporting"],   "learning": []},
+    "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],         "learning": []},
     # ── Consultants ───────────────────────────────────────────────────────────
-    "Arestarkhov, Yaroslav":  {"role": "Consultant",         "products": ["Billing", "Capture"],                                                                   "learning": []},
-    "Carpen, Anamaria":       {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
-    "Cooke, Ellen":           {"role": "Consultant",         "products": ["Billing", "Payroll"],                                                                   "learning": []},
-    "Cruz, Daniel":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "Payments", "e-Invoicing", "SFTP Connector", "CC Statement Import"], "learning": []},
-    "Dolha, Madalina":        {"role": "Consultant",         "products": ["Capture", "Reconcile", "CC Statement Import", "Reconcile PSP", "e-Invoicing"],          "learning": []},
-    "Gardner, Cheryll L":     {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Hopkins, Chris":         {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
-    "Ickler, Georganne":      {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Isberg, Eric":           {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
-    "Jordanova, Marija":      {"role": "Consultant",         "products": ["Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],     "learning": []},
-    "Lappin, Thomas":         {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": ["Capture", "Reconcile"]},
-    "Longalong, Santiago":    {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": ["Billing"]},
-    "Mohammad, Manaan":       {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
-    "Morris, Lisa":           {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "NAQVI, SYED":            {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "Olson, Austin D":        {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Pallone, Daniel":        {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "Raykova, Silvia":        {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
-    "Selvakumar, Sajithan":   {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
-    "Snee, Stefanie J":       {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Stone, Matt":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Swanson, Patti":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
-    "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
-    "Zoric, Ivan":            {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
-    # ── Leavers (historical data only) ────────────────────────────────────────
-    "Alam, Laisa":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Centinaje, Rhodechild":  {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
-    "Chan, Joven":            {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
-    "Cloete, Bronwyn":        {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
-    "Eyong, Eyong":           {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
-    "Hamilton, Julie C":      {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
-    "Hernandez, Camila":      {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Rushbrook, Emma C":      {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "Strauss, John W":        {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
+    "Arestarkhov, Yaroslav":  {"role": "Consultant", "products": ["Billing", "Capture"],                                                                              "learning": []},
+    "Carpen, Anamaria":       {"role": "Consultant", "products": ["Capture", "Approvals", "e-Invoicing"],                                                             "learning": []},
+    "Cooke, Ellen":           {"role": "Consultant", "products": ["Billing", "Payroll"],                                                                              "learning": []},
+    "Cruz, Daniel":           {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "Payments", "e-Invoicing", "SFTP Connector", "CC Statement Import"], "learning": []},
+    "Dolha, Madalina":        {"role": "Consultant", "products": ["Capture", "Reconcile", "CC Statement Import", "PSP", "e-Invoicing"],                               "learning": []},
+    "Gardner, Cheryll L":     {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
+    "Hopkins, Chris":         {"role": "Consultant", "products": ["Capture", "Approvals"],                                                                            "learning": []},
+    "Ickler, Georganne":      {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
+    "Isberg, Eric":           {"role": "Consultant", "products": ["Reporting"],                                                                                       "learning": []},
+    "Jordanova, Marija":      {"role": "Consultant", "products": ["Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],                          "learning": []},
+    "Lappin, Thomas":         {"role": "Consultant", "products": ["Payroll"],                                                                                         "learning": ["Capture", "Reconcile"]},
+    "Longalong, Santiago":    {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile"],                                                               "learning": ["Billing"]},
+    "Mohammad, Manaan":       {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile"],                                                               "learning": []},
+    "Morris, Lisa":           {"role": "Consultant", "products": ["Payroll"],                                                                                         "learning": []},
+    "NAQVI, SYED":            {"role": "Consultant", "products": ["Payroll"],                                                                                         "learning": []},
+    "Olson, Austin D":        {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
+    "Pallone, Daniel":        {"role": "Consultant", "products": ["Payroll"],                                                                                         "learning": []},
+    "Raykova, Silvia":        {"role": "Consultant", "products": ["Capture", "Approvals", "e-Invoicing"],                                                             "learning": []},
+    "Selvakumar, Sajithan":   {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile"],                                                               "learning": []},
+    "Snee, Stefanie J":       {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
+    "Swanson, Patti":         {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": [], "util_exempt": True},
+    "Tuazon, Carol":          {"role": "Consultant", "products": ["Payroll", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],                            "learning": []},
+    "Zoric, Ivan":            {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
+    # ── Leavers (historical data only — do not remove) ────────────────────────
+    "Alam, Laisa":            {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
+    "Centinaje, Rhodechild":  {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
+    "Chan, Joven":            {"role": "Consultant", "products": ["Capture"],                                                                                         "learning": []},
+    "Cloete, Bronwyn":        {"role": "Consultant", "products": ["Capture", "Approvals"],                                                                            "learning": []},
+    "Eyong, Eyong":           {"role": "Consultant", "products": ["Capture"],                                                                                         "learning": []},
+    "Hamilton, Julie C":      {"role": "Consultant", "products": ["Reporting"],                                                                                       "learning": []},
+    "Hernandez, Camila":      {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
+    "Rushbrook, Emma C":      {"role": "Consultant", "products": ["Payroll"],                                                                                         "learning": []},
+    "Strauss, John W":        {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
 }
 
-# Active employees (excludes leavers + no-access)
-ACTIVE_EMPLOYEES = [k for k in EMPLOYEE_ROLES if k not in NO_ACCESS
-                    and k not in ["Alam, Laisa", "Chan, Joven", "Cloete, Bronwyn",
-                                  "Eyong, Eyong", "Hamilton, Julie C", "Hernandez, Camila",
-                                  "Rushbrook, Emma C", "Strauss, John W"]]
+# Active employees (excludes no-access and leavers)
+_LEAVERS = {
+    "Alam, Laisa", "Chan, Joven", "Centinaje, Rhodechild", "Cloete, Bronwyn",
+    "Eyong, Eyong", "Hamilton, Julie C", "Hernandez, Camila",
+    "Rushbrook, Emma C", "Strauss, John W",
+}
+ACTIVE_EMPLOYEES = [k for k in EMPLOYEE_ROLES if k not in NO_ACCESS and k not in _LEAVERS]
 
 # Dropdown: consultants + manager-consultants (alphabetical)
 CONSULTANT_DROPDOWN = sorted([

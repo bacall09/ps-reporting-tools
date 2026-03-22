@@ -35,14 +35,14 @@ UTIL_EXEMPT_EMPLOYEES = ["swanson"]  # case-insensitive match
 
 # ── Employee → Location lookup (drives avail hours + PS region) ──────────────
 EMPLOYEE_LOCATION = {
+    # ── Consultants ───────────────────────────────────────────────────────────
     "Arestarkhov, Yaroslav":  "Czech Republic",
     "Carpen, Anamaria":       "Spain",
-    "Centinaje, Rhodechild":  "Manila (PH)",
-    "Dolha, Madalina":         "Faroe Islands",
-    "Dolha":                    "Faroe Islands",
-    "Cooke, Ellen":             "Northern Ireland",
+    "Cooke, Ellen":           "Northern Ireland",
     "Cruz, Daniel":           "Manila (PH)",
     "DiMarco, Nicole R":      "USA",
+    "Dolha, Madalina":        "Faroe Islands",
+    "Finalle-Newton, Jesse":  "USA",
     "Gardner, Cheryll L":     "USA",
     "Hopkins, Chris":         "USA",
     "Ickler, Georganne":      "USA",
@@ -51,30 +51,53 @@ EMPLOYEE_LOCATION = {
     "Lappin, Thomas":         "Northern Ireland",
     "Longalong, Santiago":    "Manila (PH)",
     "Mohammad, Manaan":       "Canada",
-    "Morris, Lisa":           "Sydney (NSW)",
-    "Pallone, Daniel":        "Sydney (NSW)",
+    "Morris, Lisa":           "Sydney (AU)",
     "NAQVI, SYED":            "Canada",
+    "Olson, Austin D":        "USA",
+    "Pallone, Daniel":        "Sydney (AU)",
     "Raykova, Silvia":        "Netherlands",
     "Selvakumar, Sajithan":   "Canada",
     "Snee, Stefanie J":       "USA",
-    "Stone, Matt":            "USA",
+    "Swanson, Patti":         "UK",
     "Tuazon, Carol":          "Manila (PH)",
     "Zoric, Ivan":            "Serbia",
-    "Murphy, Conor":          "USA",
+    # ── Solution Architects ───────────────────────────────────────────────────
     "Bell, Stuart":           "USA",
-    "Cloete":                 "South Africa",  # location TBD — flagged
-    "Hamilton C":             "USA",           # location TBD — flagged
-    "Swanson":                "USA",           # util-exempt
+    "Murphy, Conor":          "USA",
+    # ── Developers ────────────────────────────────────────────────────────────
+    "Church, Jason G":        "USA",
+    "Dunn, Steven":           "USA",
+    "Law, Brandon":           "USA",
+    "Quiambao, Generalyn":    "Manila (PH)",
+    # ── Project Managers ──────────────────────────────────────────────────────
+    "Barrio, Nairobi":        "USA",
+    "Cadelina, Macoy":        "Manila (PH)",
+    "Hughes, Madalyn":        "USA",
+    "Porangada, Suraj":       "USA",
+    # ── Managers only ─────────────────────────────────────────────────────────
+    "Longi":                  "Sydney (AU)",
+    "Prince":                 "USA",
+    "Rusnak":                 "USA",
+    # ── Leavers (kept for historical avail hours lookups) ─────────────────────
+    "Centinaje, Rhodechild":  "Manila (PH)",
+    "Chan, Joven":            "Manila (PH)",
+    "Cloete, Bronwyn":        "Netherlands",  # was Capture/Approvals — left Feb 2026
+    "Hamilton, Julie C":      "USA",
+    "Hernandez, Camila":      "USA",
+    "Rushbrook, Emma C":      "Sydney (AU)",
+    "Stone, Matt":            "USA",
+    "Strauss, John W":        "USA",
 }
 
 # ── PS Region overrides (employee name → region, bypasses location mapping) ──
 PS_REGION_OVERRIDE = {
-    "NAQVI, SYED":  "EMEA",  # Canada-based but reports into EMEA
-    "Cruz, Daniel": "NOAM",  # Manila-based but reports into NOAM
+    "NAQVI, SYED":         "EMEA",  # Canada-based but reports into EMEA
+    "Cruz, Daniel":        "NOAM",  # Manila-based but reports into NOAM
+    "Quiambao, Generalyn": "NOAM",  # Manila-based but reports into NOAM
 }
 
 PS_REGION_MAP = {
-    "Sydney (NSW)":     "APAC",
+    "Sydney (AU)":      "APAC",
     "Manila (PH)":      "APAC",
     "UK":               "EMEA",
     "Spain":            "EMEA",
@@ -116,7 +139,7 @@ AVAIL_HOURS = {
     "Serbia":           {"2026-01":152.00,"2026-02":152.00,"2026-03":176.00,"2026-04":160.00,"2026-05":160.00,"2026-06":176.00,"2026-07":184.00,"2026-08":168.00,"2026-09":176.00,"2026-10":176.00,"2026-11":160.00,"2026-12":184.00},
     "Canada":           {"2026-01":168.00,"2026-02":160.00,"2026-03":176.00,"2026-04":168.00,"2026-05":160.00,"2026-06":176.00,"2026-07":176.00,"2026-08":160.00,"2026-09":160.00,"2026-10":168.00,"2026-11":160.00,"2026-12":168.00},
     "USA":              {"2026-01":160.00,"2026-02":152.00,"2026-03":176.00,"2026-04":176.00,"2026-05":160.00,"2026-06":168.00,"2026-07":176.00,"2026-08":168.00,"2026-09":168.00,"2026-10":168.00,"2026-11":152.00,"2026-12":176.00},
-    "Sydney (NSW)":     {"2026-01":152.00,"2026-02":152.00,"2026-03":167.20,"2026-04":144.40,"2026-05":159.60,"2026-06":159.60,"2026-07":174.80,"2026-08":152.00,"2026-09":167.20,"2026-10":159.60,"2026-11":159.60,"2026-12":159.60},
+    "Sydney (AU)":     {"2026-01":152.00,"2026-02":152.00,"2026-03":167.20,"2026-04":144.40,"2026-05":159.60,"2026-06":159.60,"2026-07":174.80,"2026-08":152.00,"2026-09":167.20,"2026-10":159.60,"2026-11":159.60,"2026-12":159.60},
     "Manila (PH)":      {"2026-01":168.00,"2026-02":152.00,"2026-03":176.00,"2026-04":152.00,"2026-05":160.00,"2026-06":168.00,"2026-07":184.00,"2026-08":152.00,"2026-09":176.00,"2026-10":176.00,"2026-11":152.00,"2026-12":144.00},
 }
 
