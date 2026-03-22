@@ -1275,16 +1275,17 @@ def main():
     ss_file  = None
     ns_file  = None
 
+    # Also check for NS Unassigned loaded from Home (managers only)
+    _ns_unassigned_from_session = st.session_state.get("df_ns_unassigned")
+    if _ns_unassigned_from_session is not None:
+        _loaded.append("NS Unassigned")
+
     if _loaded:
         st.success(f"✓ Data loaded from Home page: {', '.join(_loaded)}. Expand below to upload overrides.")
-        with st.expander("Override SS DRS or SFDC for this page", expanded=False):
-            st.caption("Upload here to override Home page data. NS Unassigned Projects always requires a separate upload.")
+        with st.expander("Override data for this page", expanded=False):
+            st.caption("Upload here to override Home page data for this session.")
             ss_file = st.file_uploader("SS DRS Export", type=["xlsx","xls","csv"], key="ss_cap_p3")
-        # NS Unassigned always needs its own upload — different report from NS Time Detail
-        st.subheader("Upload NS Unassigned Projects")
-        st.caption("Required: Project, Territory, Billing Type, Project Type, Signed Date, Project Outreach, Start Date, T&M Scope")
-        st.markdown("[Open NS Unassigned Projects Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=)")
-        ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_unassigned_p3")
+            ns_file = st.file_uploader("NS Unassigned Projects", type=["xlsx","xls","csv"], key="ns_unassigned_p3")
     else:
         col1, col2 = st.columns(2)
         with col1:
@@ -1338,6 +1339,9 @@ def main():
             st.success(f"Loaded {len(ns_df):,} unassigned projects from NS.")
         except Exception as e:
             st.error(f"Error loading NS file: {e}")
+    elif _ns_unassigned_from_session is not None:
+        # Raw df already loaded from Home — use directly (already a DataFrame)
+        ns_df = _ns_unassigned_from_session
 
     # Step 3 — SFDC Closed Won
     st.markdown("---")
