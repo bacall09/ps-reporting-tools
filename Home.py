@@ -27,18 +27,38 @@ st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
 # AUTHENTICATION
 # ══════════════════════════════════════════════════════════════════════════════
 # Credentials are stored in Streamlit secrets (never in the repo).
-# Each user entry has: name, email, password (bcrypt hash), full_roster_name
-_creds = dict(st.secrets.get("credentials", {}))
-_cookie = dict(st.secrets.get("cookie", {
+# st.secrets returns AttrDict objects — must be converted to plain dicts recursively.
+def _to_dict(obj):
+    """Recursively convert AttrDict / secrets objects to plain dicts."""
+    try:
+        d = dict(obj)
+        return {k: _to_dict(v) for k, v in d.items()}
+    except (TypeError, ValueError):
+        return obj
+
+# Build credentials dict in the exact shape authenticator expects:
+# {"usernames": {"username": {"name": ..., "password": ..., ...}, ...}}
+_secrets_creds = st.secrets.get("credentials", {})
+_usernames_raw = _secrets_creds.get("usernames", {})
+
+_creds = {
+    "usernames": {
+        uname: _to_dict(udata)
+        for uname, udata in _to_dict(_usernames_raw).items()
+    }
+}
+
+_cookie_raw = st.secrets.get("cookie", {})
+_cookie = _to_dict(_cookie_raw) if _cookie_raw else {
     "name": "ps_tools_auth",
     "key": "fallback_key_change_me",
     "expiry_days": 30,
-}))
+}
 
 authenticator = stauth.Authenticate(
-    credentials   = _creds,
-    cookie_name   = _cookie.get("name", "ps_tools_auth"),
-    cookie_key    = _cookie.get("key", "fallback_key"),
+    credentials        = _creds,
+    cookie_name        = _cookie.get("name", "ps_tools_auth"),
+    cookie_key         = _cookie.get("key", "fallback_key"),
     cookie_expiry_days = int(_cookie.get("expiry_days", 30)),
 )
 
@@ -65,8 +85,7 @@ if _auth_status is None:
     st.stop()
 
 # ── Authenticated — resolve full roster name from secrets ────────────────────
-# Each credentials entry has a full_roster_name matching EMPLOYEE_ROLES keys
-_user_creds = _creds.get("usernames", {}).get(_auth_user, {})
+_user_creds  = _creds["usernames"].get(_auth_user, {})
 _roster_name = _user_creds.get("full_roster_name", "")
 
 # Auto-set consultant_name in session state from login
