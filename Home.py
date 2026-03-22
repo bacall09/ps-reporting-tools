@@ -433,7 +433,12 @@ view_variants = _name_variants(view_name)
 _view_name_set = None
 if view_name.startswith("REGION:"):
     _region_sel = view_name.split(":", 1)[1]
-    _region_names = [n for n in CONSULTANT_DROPDOWN if _gr(n) == _region_sel]
+    # Only include people who actually do product delivery for name matching
+    _region_names = [
+        n for n in CONSULTANT_DROPDOWN
+        if _gr(n) == _region_sel
+        and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
+    ]
     # Include name variants but NOT first-name-only (too ambiguous)
     _view_name_set = set()
     for n in _region_names:
@@ -509,13 +514,12 @@ if view_name.startswith("REGION:") and df_drs is not None:
         st.write("**_region_names:**", _region_names)
         st.write("**_view_name_set:**", sorted(_view_name_set))
         if "project_manager" in df_drs.columns:
-            st.write("**Unique PM values in DRS:**",
-                     sorted(df_drs["project_manager"].dropna().unique().tolist()[:30]))
+            _pm_vals = df_drs["project_manager"].dropna().astype(str).unique().tolist()[:30]
+            st.write("**Unique PM values in DRS:**", _pm_vals)
         if "project_type" in df_drs.columns:
-            st.write("**Unique project_type values in DRS:**",
-                     sorted(df_drs["project_type"].dropna().unique().tolist()[:30]))
+            _pt_vals = df_drs["project_type"].dropna().astype(str).unique().tolist()[:30]
+            st.write("**Unique project_type values in DRS:**", _pt_vals)
         st.write("**_product_project_types:**", _product_project_types)
-        st.write("**_drs_by_who rows:**", len(_drs_by_who) if '_drs_by_who' in dir() else "N/A")
         st.write("**my_projects rows:**", len(my_projects))
 # ── END DEBUG ────────────────────────────────────────────────────────────────
 if not my_projects.empty and df_ns is not None:
