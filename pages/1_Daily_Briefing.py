@@ -299,7 +299,7 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">This Month — Utilization</div>', unsafe_allow_html=True)
 
-prior_htd: dict = {}  # cumulative FF hours per project before this period
+prior_htd: dict = {}  # seeded by FF engine; referenced by _build_row
 
 if view_name in ("ALL",) or view_name.startswith("REGION:") or view_name == "ALL_MANAGERS":
     # Sum available hours across all consultants in scope
@@ -346,43 +346,38 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     ff_credit = 0.0; ff_overrun = 0.0
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values("date")
-
-        # Build prior_htd: cumulative hours on each FF project BEFORE this period
-        # Uses hours_to_date from NS (same logic as Utilization Report)
+        # Build prior_htd: hours consumed before this period per project
+        # Uses hours_to_date from NS — max HTD across all employees minus this period's hours
+        # This is exactly what the Util Report does
         prior_htd: dict = {}
-        # Build prior_htd from FULL NS dataset, ALL billing types — same as Util Report
-        # hours_to_date is cumulative INCLUDING this period, so prior = max_htd - period_hrs
         if df_ns is not None and "hours_to_date" in df_ns.columns:
-            for _proj, _grp in df_ns.groupby("project"):
+            _ff_ns = df_ns[df_ns.get("billing_type", pd.Series(dtype=str))
+                          .fillna("").str.strip().str.lower() == "fixed fee"].copy()
+            for _proj, _grp in _ff_ns.groupby("project"):
                 _pn = " ".join(str(_proj).strip().split())
                 try:
-                    _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
-                    _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
-                    prior_htd[_pn] = max(0.0, _max_htd - _period_hrs)
+                    _max_htd  = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    _period_h = float(_grp["hours"].sum() or 0)
+                    prior_htd[_pn] = max(0.0, _max_htd - _period_h)
                 except Exception:
                     prior_htd[_pn] = 0.0
 
         _con: dict = {}
         for _, _r in ff_rows.iterrows():
-            _proj  = " ".join(str(_r.get("project","")).split())  # normalise whitespace
+            _proj  = " ".join(str(_r.get("project","")).split())
             _ptype = str(_r.get("project_type","")).strip()
             _hrs   = float(_r.get("hours", 0) or 0)
             if _hrs <= 0: continue
 
-            # Scope from DEFAULT_SCOPE via project_type keyword match
             _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
                    if k.strip().lower() in _ptype.lower()]
             _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
             if _sc is None:
-                ff_overrun += _hrs; continue  # no scope defined → counts as overrun (matches Util Report)
+                ff_credit += _hrs; continue  # UNCONFIGURED: excluded from overrun metric (matches Util Report Watch List behaviour)
 
-            # Seed prior hours from hours_to_date if available
-            if _proj not in _con:
-                _con[_proj] = prior_htd.get(_proj, 0.0)
-
-            _used = _con[_proj]
-            _rem  = _sc - _used
+            if _proj not in _con: _con[_proj] = prior_htd.get(_proj, 0.0)
+            _used = _con[_proj]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
             elif _hrs <= _rem:
@@ -452,7 +447,8 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
     _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
 
-    _scope_names  = _region_names if _view_name_set else CONSULTANT_DROPDOWN
+    _scope_names  = [n for n in (_region_names if _view_name_set else CONSULTANT_DROPDOWN)
+                     if get_role(n) != "manager_only"]
     _region_key   = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
 
     # Find leavers who were active in this month and belong to this region
@@ -504,7 +500,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                            if k.strip().lower() in _ftype.lower()]
                     _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
                     if _fsc is None:
-                        _ff_over += _fh; continue  # no scope = overrun
+                        _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
                     if _fp not in _con_cn:
                         _con_cn[_fp] = prior_htd.get(_fp, 0.0)
                     _fused = _con_cn[_fp]; _frem = _fsc - _fused
