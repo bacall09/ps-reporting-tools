@@ -23,15 +23,11 @@ from shared.template_utils import TEMPLATES, suggest_tier
 st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
 
 # ── Role-aware page navigation ────────────────────────────────────────────────
-# Called at module level — st.navigation + nav.run() must not be inside any
-# function that nav.run() would re-invoke (causes infinite recursion).
-try:
-    _name = st.session_state.get("consultant_name", "") or ""
-    _role = get_role(_name) if _name and _name != "— Select —" else None
-except Exception:
-    _role = None
-
-_home = st.Page("Home.py", title="Home", default=True)
+# NOTE: Home.py must NOT be included as a st.Page — nav.run() re-executes the
+# entrypoint causing infinite recursion. Home is the implicit default because
+# it IS the entrypoint. st.navigation() here just controls sidebar grouping.
+_name = st.session_state.get("consultant_name", "") or ""
+_role = get_role(_name) if _name and _name != "— Select —" else None
 
 _consultant_pages = [
     st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
@@ -45,22 +41,15 @@ _manager_pages = [
     st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook"),
 ]
 
-try:
-    if _role in ("manager", "manager_only"):
-        _nav = st.navigation({
-            "": [_home],
-            "My Tools": _consultant_pages,
-            "Management": _manager_pages,
-        })
-    else:
-        _nav = st.navigation({
-            "": [_home],
-            "My Tools": _consultant_pages,
-        })
-    _nav.run()
-except Exception as _nav_err:
-    st.error(f"Navigation error: {_nav_err}")
-    st.stop()
+if _role in ("manager", "manager_only"):
+    st.navigation({
+        "My Tools": _consultant_pages,
+        "Management": _manager_pages,
+    })
+else:
+    st.navigation({
+        "My Tools": _consultant_pages,
+    })
 
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
