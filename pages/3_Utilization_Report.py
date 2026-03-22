@@ -1807,20 +1807,30 @@ def main():
 
     # ── Upload — session state from Home takes priority ──────
     _ns_from_session = st.session_state.get("df_ns")
+    uploaded = None
 
     if _ns_from_session is not None:
-        st.info("✓ Using NS Time Detail loaded from the Home page. Upload below to override.")
-
-    st.subheader("Step 1 — Upload NetSuite Time Detail Export")
-    st.markdown("[Open NS Time Details Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&saverun=T&whence=)")
-    st.caption("Supported columns: Employee, Region, Project, Project Type, Billing Type, "
-               "Hours to Date, Date, Hours, Approval Status, Case/Task/Event, Non-Billable")
-
-    uploaded = st.file_uploader(
-        "Drop your file here or click to browse",
-        type=["csv", "xlsx", "xls"],
-        help="Supports CSV and Excel files exported from NetSuite"
-    )
+        st.success("✓ NS Time Detail loaded from Home page. Expand below to upload a different file.")
+        with st.expander("Override NS Time Detail for this page", expanded=False):
+            st.markdown("[Open NS Time Details Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&saverun=T&whence=)")
+            st.caption("Supported columns: Employee, Region, Project, Project Type, Billing Type, "
+                       "Hours to Date, Date, Hours, Approval Status, Case/Task/Event, Non-Billable")
+            uploaded = st.file_uploader(
+                "Drop your file here or click to browse",
+                type=["csv", "xlsx", "xls"],
+                help="Supports CSV and Excel files exported from NetSuite",
+                key="util_ns_override"
+            )
+    else:
+        st.subheader("Step 1 — Upload NetSuite Time Detail Export")
+        st.markdown("[Open NS Time Details Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&saverun=T&whence=)")
+        st.caption("Supported columns: Employee, Region, Project, Project Type, Billing Type, "
+                   "Hours to Date, Date, Hours, Approval Status, Case/Task/Event, Non-Billable")
+        uploaded = st.file_uploader(
+            "Drop your file here or click to browse",
+            type=["csv", "xlsx", "xls"],
+            help="Supports CSV and Excel files exported from NetSuite"
+        )
 
     if not uploaded and _ns_from_session is None:
         # Show stored config as reference

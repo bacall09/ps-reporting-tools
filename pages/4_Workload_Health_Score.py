@@ -1626,33 +1626,37 @@ def main():
     # ── Session state data from Home page ────────────────────────────────────
     _ss_from_session = st.session_state.get("df_drs")
     _ns_from_session = st.session_state.get("df_ns")
-    if _ss_from_session is not None or _ns_from_session is not None:
-        st.info(
-            f"✓ Using data loaded from Home page"
-            f"{' (DRS)' if _ss_from_session is not None else ''}"
-            f"{' (NS Time)' if _ns_from_session is not None else ''}. "
-            "Upload below to override for this page only."
+    _session_loaded  = []
+    if _ss_from_session is not None: _session_loaded.append("SS DRS")
+    if _ns_from_session is not None: _session_loaded.append("NS Time")
+
+    ss_file = None
+    ns_file = None
+
+    if _session_loaded:
+        st.success(f"✓ Data loaded from Home page: {', '.join(_session_loaded)}. Expand below to upload overrides.")
+        with st.expander("Override uploaded data for this page", expanded=False):
+            st.caption("Upload here to override the Home page data for this session.")
+            ss_file = st.file_uploader("SS DRS Export", type=["xlsx","xls","csv"], key="ss_upload")
+            ns_file = st.file_uploader("NS Time Detail", type=["xlsx","xls","csv"], key="ns_upload")
+    else:
+        st.subheader("Step 1 — Upload Smartsheets DRS Export")
+        st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
+        ss_file = st.file_uploader(
+            "Drop your file here or click to browse",
+            type=["xlsx", "xls", "csv"],
+            key="ss_upload"
+        )
+        st.subheader("Step 2 — Upload NetSuite Time Detail Export")
+        st.caption("Used to compare time data with the current project list to identify project manager assignments and projects without time entries for the period.")
+        ns_file = st.file_uploader(
+            "Drop your file here or click to browse",
+            type=["xlsx", "xls", "csv"],
+            key="ns_upload"
         )
 
-    # ── Uploads ───────────────────────────────────────────────────────────────
-    st.subheader("Step 1 — Upload Smartsheets DRS Export")
-    st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
-    ss_file = st.file_uploader(
-        "Drop your file here or click to browse",
-        type=["xlsx", "xls", "csv"],
-        key="ss_upload"
-    )
-
-    st.subheader("Step 2 — Upload NetSuite Time Detail Export")
-    st.caption("Used to compare time data with the current project list to identify project manager assignments and projects without time entries for the period.")
-    ns_file = st.file_uploader(
-        "Drop your file here or click to browse",
-        type=["xlsx", "xls", "csv"],
-        key="ns_upload"
-    )
-
     if not ss_file and _ss_from_session is None:
-        st.info(" Upload your Smartsheets DRS export (or load it on the Home page) to continue.")
+        st.info("Upload your Smartsheets DRS export (or load it on the Home page) to continue.")
         return
 
     # ── Process ───────────────────────────────────────────────────────────────

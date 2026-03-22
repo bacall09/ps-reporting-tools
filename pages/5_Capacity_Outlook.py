@@ -1271,19 +1271,31 @@ def main():
     _loaded = []
     if _ss_from_session is not None:  _loaded.append("SS DRS")
     if _sfdc_from_session is not None: _loaded.append("SFDC")
-    if _loaded:
-        st.info(f"✓ Using {', '.join(_loaded)} loaded from the Home page. Upload below to override.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Step 1 — Upload Smartsheets DRS Export")
-        st.caption("Required: Project Name, Consultant, Phase, Project Type, Billing Type, Start Date")
-        ss_file = st.file_uploader("Drop SS DRS file here (or load on Home)", type=["xlsx", "xls", "csv"], key="ss_cap_p3")
-    with col2:
-        st.subheader("Step 2 — Upload NS Unassigned Projects")
+    ss_file  = None
+    ns_file  = None
+
+    if _loaded:
+        st.success(f"✓ Data loaded from Home page: {', '.join(_loaded)}. Expand below to upload overrides.")
+        with st.expander("Override SS DRS or SFDC for this page", expanded=False):
+            st.caption("Upload here to override Home page data. NS Unassigned Projects always requires a separate upload.")
+            ss_file = st.file_uploader("SS DRS Export", type=["xlsx","xls","csv"], key="ss_cap_p3")
+        # NS Unassigned always needs its own upload — different report from NS Time Detail
+        st.subheader("Upload NS Unassigned Projects")
         st.caption("Required: Project, Territory, Billing Type, Project Type, Signed Date, Project Outreach, Start Date, T&M Scope")
         st.markdown("[Open NS Unassigned Projects Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=)")
         ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_unassigned_p3")
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Step 1 — Upload Smartsheets DRS Export")
+            st.caption("Required: Project Name, Consultant, Phase, Project Type, Billing Type, Start Date")
+            ss_file = st.file_uploader("Drop SS DRS file here (or load on Home)", type=["xlsx", "xls", "csv"], key="ss_cap_p3")
+        with col2:
+            st.subheader("Step 2 — Upload NS Unassigned Projects")
+            st.caption("Required: Project, Territory, Billing Type, Project Type, Signed Date, Project Outreach, Start Date, T&M Scope")
+            st.markdown("[Open NS Unassigned Projects Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=)")
+            ns_file = st.file_uploader("Drop NS Unassigned Projects file here", type=["xlsx", "xls", "csv"], key="ns_unassigned_p3")
 
     ss_df         = None
     ss_raw_df     = None
@@ -1329,13 +1341,13 @@ def main():
 
     # Step 3 — SFDC Closed Won
     st.markdown("---")
-    st.subheader("Step 3 — Upload SFDC Closed Won PS Opps (Optional)")
-    st.caption("Required: Opportunity Name, Account Name, Close Date, Territory, Product, PS SOW Hours")
-    sfdc_col1, sfdc_col2 = st.columns([2, 1])
-    with sfdc_col1:
+    sfdc_file = None
+    if _sfdc_from_session is not None and not _loaded.__contains__("SFDC") == False:
+        pass  # already handled in expander above if loaded
+    if _sfdc_from_session is None:
+        st.subheader("Step 3 — Upload SFDC Closed Won PS Opps (Optional)")
+        st.caption("Required: Opportunity Name, Account Name, Close Date, Territory, Product, PS SOW Hours")
         sfdc_file = st.file_uploader("Drop SFDC Closed Won file here (or load on Home)", type=["xlsx", "xls", "csv"], key="sfdc_cap_p3")
-    with sfdc_col2:
-        st.empty()
 
     sfdc_buffer_weeks = st.slider(
         "Est. weeks from Close to PS Start Dates",
