@@ -86,6 +86,10 @@ EMPLOYEE_ROLES = {
     "Swanson, Patti":         {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": [], "util_exempt": True},
     "Tuazon, Carol":          {"role": "Consultant", "products": ["Payroll", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],                            "learning": []},
     "Zoric, Ivan":            {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
+    # ── Managers only ────────────────────────────────────────────────────────
+    "Longi":                  {"role": "Manager",  "products": [], "learning": []},
+    "Prince":                 {"role": "Manager",  "products": [], "learning": []},
+    "Rusnak":                 {"role": "Manager",  "products": [], "learning": []},
     # ── Leavers (historical data only — do not remove) ────────────────────────
     "Alam, Laisa":            {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
     "Centinaje, Rhodechild":  {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
@@ -109,7 +113,7 @@ ACTIVE_EMPLOYEES = [k for k in EMPLOYEE_ROLES if k not in NO_ACCESS and k not in
 # Dropdown: consultants + manager-consultants (alphabetical)
 CONSULTANT_DROPDOWN = sorted([
     e for e in ACTIVE_EMPLOYEES
-    if get_role(e) in ("consultant", "manager")
+    if get_role(e) in ("consultant", "manager", "manager_only")
 ])
 
 # Dropdown: managers (all tiers)

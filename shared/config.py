@@ -94,6 +94,7 @@ PS_REGION_OVERRIDE = {
     "NAQVI, SYED":         "EMEA",  # Canada-based but reports into EMEA
     "Cruz, Daniel":        "NOAM",  # Manila-based but reports into NOAM
     "Quiambao, Generalyn": "NOAM",  # Manila-based but reports into NOAM
+    "Cadelina, Macoy":     "NOAM",  # Manila-based but reports into NOAM
 }
 
 PS_REGION_MAP = {
