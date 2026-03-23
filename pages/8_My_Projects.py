@@ -232,6 +232,7 @@ else:
         _pn  = str(row.get("project_name","") or "")
         _cust = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
         return {
+            "Needs Action":         needs,
             "Customer":             _cust,
             "Project Type":         str(row.get("project_type","") or ""),
             "Status":               str(row.get("status","") or ""),
@@ -248,7 +249,6 @@ else:
             "Hypercare Start":      _ms("ms_hypercare_start"),
             "Close Out Tasks":      _ms("ms_close_out"),
             "Transition to Support":_ms("ms_transition"),
-            "Needs Action":         needs,
         }
 
     edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
@@ -257,14 +257,14 @@ else:
     _ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2",
                 "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     col_cfg = {
-        "Customer":              st.column_config.TextColumn("Customer",          disabled=True, width="medium"),
-        "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True, width="small"),
-        "Status":                st.column_config.TextColumn("Status",            disabled=True, width="small"),
+        "Needs Action":          st.column_config.TextColumn("",                  disabled=True, width="small"),
+        "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
+        "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
+        "Status":                st.column_config.TextColumn("Status",            disabled=True),
         "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
         "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
         "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
         **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
-        "Needs Action":          st.column_config.TextColumn("Needs Action",      disabled=True, width="small"),
     }
 
     st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
@@ -305,7 +305,7 @@ else:
         )
 
     # ── Re-engagement shortcuts for inactive projects ─────────────────────────
-    _inactive_projs = active[active["days_inactive"].fillna(0)>=14]
+    _inactive_projs = active[active["days_inactive"].fillna(0)>=14].sort_values("days_inactive", ascending=False)
     if not _inactive_projs.empty:
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
         st.markdown('<div class="section-label">Re-engagement shortcuts</div>', unsafe_allow_html=True)
