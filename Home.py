@@ -71,17 +71,17 @@ if not st.session_state.get("authentication_status"):
     _user_options  = {d.get("name", u): u for u, d in _creds["usernames"].items()}
     _display_names = sorted(_user_options.keys())
 
-    st.markdown("""
-    <div style='background:#1e2c63;padding:32px 40px 28px;border-radius:10px;
-                max-width:480px;margin:60px auto 24px'>
-        <div style='font-size:11px;color:#a0aec0;letter-spacing:2px;
-                    text-transform:uppercase;margin-bottom:8px'>Professional Services</div>
-        <h1 style='color:#fff;margin:0;font-size:28px;font-weight:700'>PS Reporting Tools</h1>
-        <p style='color:#a0aec0;margin:10px 0 0;font-size:13px'>Sign in to continue.</p>
-    </div>""", unsafe_allow_html=True)
-
+    st.markdown("<div style='margin-top:60px'></div>", unsafe_allow_html=True)
     _col = st.columns([1, 2, 1])[1]
     with _col:
+        st.markdown("""
+        <div style='background:#1e2c63;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px'>
+            <div style='font-size:11px;color:#a0aec0;letter-spacing:2px;
+                        text-transform:uppercase;margin-bottom:8px'>Professional Services</div>
+            <h1 style='color:#fff;margin:0;font-size:28px;font-weight:700'>PS Reporting Tools</h1>
+            <p style='color:#a0aec0;margin:10px 0 0;font-size:13px'>Sign in to continue.</p>
+        </div>""", unsafe_allow_html=True)
+
         _sel = st.selectbox("Select your name", ["— Select —"] + _display_names, key="login_name")
         _pw  = st.text_input("Password", type="password",
                              placeholder="Enter your password", key="login_pw")
