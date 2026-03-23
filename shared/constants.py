@@ -10,6 +10,7 @@ MANAGERS_ONLY = []  # Login handles identity — no manager-only access tier nee
 
 # Manager + Consultant: see all pages AND appear in consultant-scoped views
 MANAGER_CONSULTANTS = [
+    "Hopkins, Chris",      # Team Lead — Capture & Approvals (NOAM)
     "Ickler, Georganne",   # Consultant & Manager of PS
     "Lappin, Thomas",      # Manager-level Consultant
     "Longi",               # Director of PS
@@ -72,7 +73,7 @@ EMPLOYEE_ROLES = {
     "Cruz, Daniel":           {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "Payments", "e-Invoicing", "SFTP Connector", "CC Statement Import"], "learning": []},
     "Dolha, Madalina":        {"role": "Consultant", "products": ["Capture", "Reconcile", "CC Statement Import", "PSP", "e-Invoicing"],                               "learning": []},
     "Gardner, Cheryll L":     {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
-    "Hopkins, Chris":         {"role": "Consultant", "products": ["Capture", "Approvals"],                                                                            "learning": []},
+    "Hopkins, Chris":         {"role": "Team Lead",   "products": ["Capture", "Approvals"],                                                                            "learning": []},
     "Ickler, Georganne":      {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
     "Isberg, Eric":           {"role": "Consultant", "products": ["Reporting"],                                                                                       "learning": []},
     "Jordanova, Marija":      {"role": "Consultant", "products": ["Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],                          "learning": []},
