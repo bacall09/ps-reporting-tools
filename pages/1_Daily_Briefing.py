@@ -688,37 +688,4 @@ else:
 
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3 — Re-engagement Actions
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Re-Engagement Actions</div>', unsafe_allow_html=True)
-
-if df_drs is None:
-    st.info("Upload SS DRS Export in the sidebar to see re-engagement actions.")
-elif my_projects.empty or "days_inactive" not in my_projects.columns:
-    st.info("Upload NS Time Detail alongside DRS to calculate project inactivity.")
-else:
-    _stale_re = my_projects[my_projects["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False)
-    if _stale_re.empty:
-        st.markdown('<span class="action-badge badge-green">✓ All clear</span> No projects flagged for re-engagement.', unsafe_allow_html=True)
-    else:
-        for _ri, (_, row) in enumerate(_stale_re.iterrows()):
-            proj_name  = str(row.get("project_name", "—"))
-            days_inac  = int(row.get("days_inactive", 0))
-            tier       = suggest_tier(days_inac)
-            pm_name    = str(row.get("project_manager", "") or "")
-            _cust      = proj_name.split(" - ")[0].strip() if " - " in proj_name else proj_name
-            _rc1, _rc2, _rc3 = st.columns([3, 1, 1])
-            with _rc1:
-                _pm_str = f" · {pm_name}" if _is_group_view and pm_name else ""
-                st.markdown(f'<span style="font-size:13px;font-weight:600">{_cust}</span> <span style="font-size:11px;opacity:.6">{days_inac}d inactive · {tier or "Monitor"}{_pm_str}</span>', unsafe_allow_html=True)
-            with _rc3:
-                if tier and tier in TEMPLATES:
-                    if st.button("Draft →", key=f"db_draft_{_ri}", use_container_width=True):
-                        st.session_state["_jump_to_proj"] = proj_name
-                        st.session_state["_jump_tier"]    = tier
-                        st.switch_page("pages/2_Customer_Reengagement.py")
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")

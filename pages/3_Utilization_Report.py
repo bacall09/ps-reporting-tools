@@ -1869,6 +1869,17 @@ def main():
     else:
         df_raw = _ns_from_session
 
+    # ── Apply consultant filter for IC role ──────────────────
+    _session_name = st.session_state.get("consultant_name", "")
+    if _session_name:
+        from shared.constants import get_role as _get_role
+        _role = _get_role(_session_name)
+        _is_mgr = _role in ("manager", "manager_only")
+        if not _is_mgr and "employee" in df_raw.columns:
+            _filtered = df_raw[df_raw["employee"].astype(str).str.strip() == _session_name]
+            if not _filtered.empty:
+                df_raw = _filtered.copy()
+
     st.divider()
 
     # ── Process ───────────────────────────────────────────────

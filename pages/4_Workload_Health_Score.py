@@ -1480,6 +1480,24 @@ def main():
     try:
         ss_df, milestone_cols = load_ss(ss_file) if ss_file else (_ss_from_session, [])
         ns_df, ns_min_date = load_ns(ns_file) if ns_file else ((_ns_from_session, None) if _ns_from_session is not None else (None, None))
+
+        # ── Apply consultant filter for IC role ──────────────
+        _session_name = st.session_state.get("consultant_name", "")
+        if _session_name:
+            from shared.constants import get_role as _get_role
+            _role = _get_role(_session_name)
+            _is_mgr = _role in ("manager", "manager_only")
+            if not _is_mgr:
+                _pm_col = next((c for c in ["project_manager", "consultant"] if c in ss_df.columns), None)
+                if _pm_col:
+                    _filtered_ss = ss_df[ss_df[_pm_col].astype(str).str.strip() == _session_name]
+                    if not _filtered_ss.empty:
+                        ss_df = _filtered_ss.copy()
+                if ns_df is not None and "employee" in ns_df.columns:
+                    _filtered_ns = ns_df[ns_df["employee"].astype(str).str.strip() == _session_name]
+                    if not _filtered_ns.empty:
+                        ns_df = _filtered_ns.copy()
+
         scored_df = score_projects(ss_df, ns_df)
         consultant_df, missing_pm = build_consultant_summary(scored_df, ss_df=ss_df)
         stale_df = build_stale_projects(ss_df, ns_df) if ns_df is not None else pd.DataFrame()
