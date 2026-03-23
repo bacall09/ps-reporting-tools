@@ -229,8 +229,11 @@ else:
         def _dt(col):
             v = row.get(col)
             return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
+        _pn  = str(row.get("project_name","") or "")
+        _cust = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
         return {
-            "Project":              str(row.get("project_name","") or ""),
+            "Customer":             _cust,
+            "Project Type":         str(row.get("project_type","") or ""),
             "Status":               str(row.get("status","") or ""),
             "Phase":                str(row.get("phase","") or ""),
             "Start Date":           _dt("start_date"),
@@ -254,8 +257,9 @@ else:
     _ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2",
                 "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     col_cfg = {
-        "Project":               st.column_config.TextColumn("Project",          disabled=True, width="large"),
-        "Status":                st.column_config.TextColumn("Status",           disabled=True, width="small"),
+        "Customer":              st.column_config.TextColumn("Customer",          disabled=True, width="medium"),
+        "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True, width="small"),
+        "Status":                st.column_config.TextColumn("Status",            disabled=True, width="small"),
         "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
         "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
         "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
