@@ -610,7 +610,6 @@ else:
     _14      = _today - pd.Timedelta(days=14)
 
     # Phase breakdown
-    from shared.constants import PHASE_BENCHMARKS_DAYS
     _PHASE_ORDER = ["00. onboarding","01. requirements and design","02. configuration",
                     "03. enablement/training","04. uat","05. prep for go-live",
                     "06. go-live","07. data migration","08. ready for support transition","09. phase 2 scoping"]
