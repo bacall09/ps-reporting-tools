@@ -181,7 +181,7 @@ st.markdown("""
     <div class="hero-pills">
         <span class="hpill hpill-mint">✦ Consultants</span>
         <span class="hpill hpill-sky">✦ Managers</span>
-        <span class="hpill hpill-white">Phase 1 · 2026</span>
+        <span class="hpill hpill-white">2026</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -276,19 +276,17 @@ CONSULTANT_TOOLS = [
     {
         "icon": "📁",
         "title": "My Projects",
-        "sub": "Your full portfolio — milestones, health flags, and a change export flow. All in one place.",
+        "sub": "Your full portfolio — milestones, health flags, and needs-action items. All in one place.",
         "steps": [
             "Navigate to My Projects. Your active projects load automatically.",
             "Review the snapshot metrics at the top — active projects, overdue milestones, at-risk flags.",
             "Expand any project to see milestone detail, phase status, and days since last activity.",
-            "Flag projects as At Risk, Behind, or On Track directly in the tool.",
-            "Use the export flow to generate a change summary for a project.",
+            "Review on-hold projects at the bottom to keep track of paused work.",
         ],
         "why": [
-            "Replaces the Smartsheet individual dashboard — but with logic, not just rows.",
-            "Filtered to your projects only — no noise from the rest of the team.",
-            "PS defines what 'at risk' means, not Smartsheet's display settings.",
-            "Phase 2 will write updates back to Smartsheet directly from this view.",
+            "Gives each consultant a focused, personal view of their own portfolio.",
+            "Surfaces milestone gaps and inactivity in one glance — no scrolling through a shared sheet.",
+            "Works alongside Smartsheet DRS as an interactive layer on top of your existing data.",
         ],
         "tip": "On-hold projects show separately at the bottom — don't lose track of them.",
     },
@@ -341,8 +339,8 @@ for tool in CONSULTANT_TOOLS:
 st.markdown('<hr class="help-divider">', unsafe_allow_html=True)
 
 
-# ── MANAGEMENT TOOLS ──────────────────────────────────────────────────────────
-st.markdown('<div class="section-eyebrow">Management & reporting tools</div>', unsafe_allow_html=True)
+# ── REPORTING TOOLS ──────────────────────────────────────────────────────────
+st.markdown('<div class="section-eyebrow">Reporting tools</div>', unsafe_allow_html=True)
 
 MGMT_TOOLS = [
     {
@@ -382,15 +380,15 @@ MGMT_TOOLS = [
     {
         "icon": "🔭",
         "title": "Capacity Outlook",
-        "sub": "Forward-looking headcount signal for pipeline and resourcing decisions.",
+        "sub": "Forward-looking headcount signal for pipeline and resourcing decisions. Primarily used by managers.",
         "steps": [
             "Upload NetSuite and SS DRS exports on Home.",
             "Navigate to Capacity Outlook and select the forecast window.",
             "Review projected availability by consultant and region.",
         ],
         "why": [
-            "Combines current project phase data with expected close dates to project future bandwidth.",
-            "Helps Sales and PS align on when the team can absorb new bookings.",
+            "Combines current project data with expected close dates to project future bandwidth.",
+            "Helps PS and Sales align on when the team can absorb new bookings.",
             "Consultants in learning/training are surfaced as future capacity, not current.",
         ],
         "tip": None,
@@ -475,17 +473,17 @@ st.markdown('<div class="section-eyebrow">Where this is headed</div>', unsafe_al
 st.markdown("""
 <div style="background:#F4F7FF; border-radius:10px; padding:22px 26px; margin-bottom:8px;">
     <div class="phase-row">
-        <div class="pdot pdot-now">1</div>
+        <div class="pdot pdot-now">✓</div>
         <div class="pt">
             <strong>Now — Interactive viewing</strong>
-            <span>Role-filtered, logic-driven views of your work. PS owns the rules, not Smartsheet.</span>
+            <span>Role-filtered, logic-driven views built on top of your Smartsheet and NetSuite data.</span>
         </div>
     </div>
     <div class="phase-row">
         <div class="pdot pdot-next">2</div>
         <div class="pt">
             <strong>Next — Smartsheet write-back</strong>
-            <span>Update milestones, flag status changes, and submit updates directly from the tool into the source of record.</span>
+            <span>Update milestones and flag status changes directly from the tool — synced back to Smartsheet as the source of record.</span>
         </div>
     </div>
     <div class="phase-row" style="margin-bottom:0">
@@ -502,7 +500,7 @@ st.markdown("""
 # ── FOOTER ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="help-footer">
-    <strong>PS Tools</strong> · Built by PS, for PS · Phase 1 · 2026<br>
+    <strong>PS Tools</strong> · Built by PS, for PS · 2026<br>
     Questions about the tool? Reach out to your PS manager.<br>
     Found a bug? We want to know — this thing only gets better with feedback.
 </div>
