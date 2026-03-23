@@ -1236,7 +1236,7 @@ Used when no NS entries and no milestones are present.
 
     # Days inactive input
     st.markdown("---")
-    st.subheader("Step 4 — Set Context")
+    st.subheader("Step 2 — Set Context")
 
     # Try to derive product from SFDC data, allow manual override
     _sfdc_product = normalise_product_name(product) if product else ""
@@ -1368,7 +1368,7 @@ Used when no NS entries and no milestones are present.
 
     # ── Contacts ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Step 5 — Select Recipients")
+    st.subheader("Step 3 — Select Recipients")
 
     # Safe defaults — overridden below if contacts are found
     to_emails             = []
@@ -1531,7 +1531,7 @@ Used when no NS entries and no milestones are present.
         if int(days_inactive) >= 60:
             st.warning("⚠️ No prior outreach logged for this project. Per sequencing rules, start with Tier 1 before escalating — unless Tier 1 was sent outside this tool.")
 
-    st.subheader("Step 6 — Template")
+    st.subheader("Step 4 — Template")
 
     suggested = suggest_tier(int(days_inactive)) or list(TEMPLATES.keys())[0]
     tier_names = list(TEMPLATES.keys())
@@ -1580,7 +1580,7 @@ Used when no NS entries and no milestones are present.
 
     # ── Preview ───────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Step 7 — Review & Send")
+    st.subheader("Step 5 — Review & Send")
 
     # Remaining placeholders
     remaining = extract_placeholders(body) + extract_placeholders(subject)
