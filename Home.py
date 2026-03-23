@@ -184,14 +184,23 @@ with st.sidebar:
 
     st.markdown("**Upload data**")
     st.caption("Upload once — available across all pages this session.")
+
     drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs")
+    st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
+
     ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
+    st.markdown('<a href="https://zoneandco.okta.com/login/token/redirect?stateToken=02.id.prbI267TX8pXUfua87U_XSZrrueOEhHWjPS8GEYz" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Time Detail Search</a>', unsafe_allow_html=True)
+
     sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
+    st.markdown('<a href="https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SFDC Contacts (Google Drive)</a>', unsafe_allow_html=True)
+
     ns_ua_file = (
         st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
                          help="Required for Capacity Outlook")
         if _upload_role in ("manager","manager_only") else None
     )
+    if _upload_role in ("manager","manager_only"):
+        st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Unassigned Projects</a>', unsafe_allow_html=True)
     for _lbl, _key, _ldr, _f in [
         ("SS DRS","df_drs",load_drs,drs_file),
         ("NS Time","df_ns",load_ns_time,ns_file),
