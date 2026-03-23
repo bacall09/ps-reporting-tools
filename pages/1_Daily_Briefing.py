@@ -419,7 +419,10 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         s = f"{rounded:.2f}".rstrip('0').rstrip('.')
         return f"{s}h"
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    # Pre-calculate WHS so it sits in the same row
+    _whs_score, _whs_label, _whs_col = consultant_whs(selected, df_drs) if (df_drs is not None and not _is_group_view) else (None, "—", "#718096")
+
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         v   = _fmt_hrs(avail)
         lbl = "Available this month" if avail else "Available hrs (location not mapped)"
@@ -443,6 +446,11 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %</div></div>', unsafe_allow_html=True)
+    with c6:
+        if _whs_score is not None:
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS &nbsp;·&nbsp; {_whs_label}</div></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">WHS</div></div>', unsafe_allow_html=True)
 
     # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
     if ff_unscoped > 0:
@@ -620,8 +628,10 @@ else:
         return -1
 
     _pc = sorted(
-        [(ph, cnt) for ph, cnt in _active["phase"].fillna("—").value_counts().items()],
-        key=lambda x: _pidx_db(x[0])
+        [(("Unassigned" if str(ph) in ("—", "", "nan") else ph), cnt)
+         for ph, cnt in _active["phase"].fillna("Unassigned").value_counts().items()
+         if cnt > 0],
+        key=lambda x: (_pidx_db(x[0]) if x[0] != "Unassigned" else 999)
     )
 
     # Going live this week
@@ -673,23 +683,8 @@ else:
         if len(_stale) > 0:
             st.markdown('<div style="font-size:11px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)
 
-    if st.button("→ Go to My Projects", key="db_goto_mp"):
-        st.switch_page("pages/8_My_Projects.py")
 
-    # ── WHS metric ────────────────────────────────────────────────────────────
-    if df_drs is not None and not _is_group_view:
-        _whs_score, _whs_label, _whs_col = consultant_whs(selected, df_drs)
-        if _whs_score is not None:
-            st.markdown('<div class="section-label" style="margin-top:16px">Workload Health Score</div>', unsafe_allow_html=True)
-            _wc1, _wc2 = st.columns([1, 3])
-            with _wc1:
-                st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div>'
-                            f'<div class="metric-lbl">WHS · {_whs_label}</div></div>', unsafe_allow_html=True)
-            with _wc2:
-                _thresholds = 'Low ≤25 · Medium 26–60 · High 61+'
-                st.markdown(f'<div style="font-size:12px;opacity:.6;padding-top:8px">{_thresholds}</div>', unsafe_allow_html=True)
-                if st.button("→ Go to Workload Health Score", key="db_goto_whs"):
-                    st.switch_page("pages/4_Workload_Health_Score.py")
+
 
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
