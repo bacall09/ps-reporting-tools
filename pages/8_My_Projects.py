@@ -268,9 +268,9 @@ else:
     }
 
     st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
-    st.markdown('<span style="font-size:11.5px;opacity:.6">For a deeper look at data quality issues, see the '
-                '<a href="/DRS_Health_Check" target="_self" style="color:inherit;text-decoration:underline;font-weight:600">DRS Health Check</a> page.</span>',
-                unsafe_allow_html=True)
+    st.markdown('<span style="font-size:11.5px;opacity:.6">For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
+    if st.button("→ Go to DRS Health Check", key="mp_drs_link"):
+        st.switch_page("pages/6_DRS_Health_Check.py")
 
     edited = st.data_editor(
         edit_df,
