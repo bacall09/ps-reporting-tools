@@ -195,7 +195,7 @@ with c1:
     for ph,cnt in _pc:
         st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{cnt} · {str(ph).split(".")[-1].strip()[:22]}</div>',unsafe_allow_html=True)
 with c2:
-    col="#E74C3C" if len(gls)>0 else "inherit"
+    col="#27AE60" if len(gls)>0 else "inherit"
     st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{len(gls)}</div><div class="metric-lbl">Going live this week</div></div>',unsafe_allow_html=True)
     for _,r in gls.iterrows():
         st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{str(r.get("project_name",""))[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>',unsafe_allow_html=True)
@@ -219,119 +219,112 @@ st.markdown('<div class="section-label">Needs Action</div>',unsafe_allow_html=Tr
 needs_action = (active[active["_needs"].astype(bool)].sort_values(["_ne","_nw","days_inactive"],ascending=[False,False,False])
                 if "_needs" in active.columns and active["_needs"].any() else pd.DataFrame())
 
-if needs_action.empty:
-    st.markdown('<span style="font-size:13px;color:#27AE60">✓ No projects currently need attention.</span>',unsafe_allow_html=True)
-else:
-    st.markdown(f'**{len(needs_action)} project(s)** need attention')
-    if "queued_changes" not in st.session_state:
-        st.session_state["queued_changes"] = {}
-
-    for _ri,(_,row) in enumerate(needs_action.iterrows()):
-        pn        = str(row.get("project_name","—"))
-        phase     = str(row.get("phase","—"))
-        days_inac = int(row.get("days_inactive",0))
-        flist     = row.get("_flags",[]) or []
-        tier      = suggest_tier(days_inac) if days_inac>=14 else None
-        ne,nw     = int(row.get("_ne",0)),int(row.get("_nw",0))
-
-        _lbl = pn
-        if ne: _lbl += f"  ·  {ne} Error{'s' if ne>1 else ''}"
-        if nw: _lbl += f"  ·  {nw} Warning{'s' if nw>1 else ''}"
-        if days_inac>=14: _lbl += f"  ·  {days_inac}d inactive"
-
-        with st.expander(_lbl,expanded=(ne>0)):
-            ci,ca=st.columns([3,2])
-            with ci:
-                bh=""
-                for sev,fk,msg,ed in flist:
-                    cls="pf-e" if sev=="error" else "pf-w"
-                    bh+=f'<span class="pf {cls}">{"✏️ " if ed else "ℹ️ "}{msg}</span>'
-                if bh: st.markdown(bh+"<br>",unsafe_allow_html=True)
-                st.markdown(f"**Phase:** {phase}")
-                st.markdown(f"**RAG:** {str(row.get('rag','')or'—').strip().upper()[:1] or '—'}")
-                if days_inac>=0: st.markdown(f"**Days inactive:** {days_inac}")
-                gl=row.get("go_live_date")
-                if pd.notna(gl): st.markdown(f"**Go Live:** {pd.Timestamp(gl).strftime('%-d %b %Y')}")
-            with ca:
-                if tier and tier in TEMPLATES:
-                    st.markdown(f"**Re-engagement:** {tier}")
-                    if st.button("Draft outreach →",key=f"mp_d_{_ri}",type="primary"):
-                        st.session_state["_jump_to_proj"]=pn
-                        st.session_state["_jump_tier"]=tier
-                        st.switch_page("pages/2_Customer_Reengagement.py")
-
-                ef=[(fk,msg) for _,fk,msg,ed in flist if ed and fk]
-                if ef:
-                    st.markdown("**Update in DRS:**")
-                    # _ri makes every widget key unique across all projects
-                    ek=f"mp_{_ri}"
-                    _q=st.session_state["queued_changes"].get(pn,{})
-                    nv=dict(_q)
-                    for fk,lbl in ef:
-                        raw=row.get(fk)
-                        if fk=="phase":
-                            pi2=next((i for i,p in enumerate(PHASE_OPTIONS) if phase.lower().replace(" ","") in p.lower().replace(" ","")),0)
-                            v=st.selectbox("Phase",PHASE_OPTIONS,index=pi2,key=f"{ek}_ph")
-                            if v!=phase: nv["Project Phase"]=v
-                        elif fk=="schedule_health":
-                            cur=str(raw or "")
-                            si=SCHEDULE_OPTIONS.index(cur) if cur in SCHEDULE_OPTIONS else 0
-                            v=st.selectbox("Schedule Health",SCHEDULE_OPTIONS,index=si,key=f"{ek}_sh")
-                            if v!=cur: nv["Schedule Health"]=v
-                        elif fk in MS_TO_SS:
-                            ml=MILESTONE_COLS_MAP.get(fk,lbl)
-                            cd=pd.Timestamp(raw).date() if pd.notna(raw) else date.today()
-                            v=st.date_input(ml,value=cd,key=f"{ek}_{fk}")
-                            if str(v)!=str(cd): nv[MS_TO_SS[fk]]=str(v)
-
-                    b1,b2=st.columns(2)
-                    with b1:
-                        if st.button("Queue change",key=f"{ek}_sv",use_container_width=True):
-                            nv["Project Name"]=pn
-                            st.session_state["queued_changes"][pn]=nv
-                            st.rerun()
-                    with b2:
-                        if _q and st.button("Clear",key=f"{ek}_cl",use_container_width=True):
-                            st.session_state["queued_changes"].pop(pn,None)
-                            st.rerun()
-                    if pn in st.session_state["queued_changes"]:
-                        st.markdown('<span style="font-size:11px;color:#27AE60">✓ Queued for export</span>',unsafe_allow_html=True)
-
-# ── Export ───────────────────────────────────────────────────────────────────
-_qa=st.session_state.get("queued_changes",{})
-if _qa:
-    st.markdown('<hr class="divider">',unsafe_allow_html=True)
-    st.markdown(f'**{len(_qa)} change(s) queued for export**')
-    _edf=pd.DataFrame([{"project_name":pn,**flds} for pn,flds in _qa.items()])
-    st.dataframe(_edf,use_container_width=True,hide_index=True)
-    _buf=io.BytesIO(); _edf.to_csv(_buf,index=False)
-    st.download_button("⬇ Export changes to CSV",data=_buf.getvalue(),
-                       file_name=f"drs_changes_{date.today().strftime('%Y%m%d')}.csv",
-                       mime="text/csv",type="primary")
-    if st.button("Clear all queued changes",key="mp_clr_all"):
-        st.session_state["queued_changes"]={}; st.rerun()
-
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
-
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3 — Active Projects
+# SECTION 2+3 — Active Projects (editable table + export)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Active Projects</div>',unsafe_allow_html=True)
+
 if active.empty:
     st.info("No active projects found.")
 else:
-    def _tr(row):
-        fl=row.get("_flags",[]) or []
-        fs=" ".join("🔴" if s=="error" else "🟡" for s,_,_m,_e in fl) if fl else "✓"
-        di=int(row.get("days_inactive",-1))
-        return {"Project":str(row.get("project_name","")),"Phase":str(row.get("phase","—")),
-                "RAG":str(row.get("rag","")or"—").strip(),
-                "Days Inactive":di if di>=0 else "—",
-                "Go Live":pd.Timestamp(row["go_live_date"]).strftime("%-d %b %Y") if pd.notna(row.get("go_live_date")) else "—",
-                "Schedule":str(row.get("schedule_health","")or"—").strip(),
-                "Last Milestone":str(row.get("last_milestone","—")),"Flags":fs}
-    st.dataframe(pd.DataFrame([_tr(r) for _,r in active.iterrows()]),
-                 use_container_width=True,hide_index=True)
+    # ── Build editable dataframe ──────────────────────────────────────────────
+    def _to_edit_row(row):
+        fl   = row.get("_flags",[]) or []
+        errs = [msg for sev,_,msg,_ in fl if sev=="error"]
+        warns= [msg for sev,_,msg,_ in fl if sev=="warn"]
+        flag_str = (" | ".join(f"🔴 {m}" for m in errs) + (" | " if errs and warns else "") +
+                    " | ".join(f"🟡 {m}" for m in warns)) if (errs or warns) else "✓"
+        di   = int(row.get("days_inactive",-1))
+        gl   = pd.Timestamp(row["go_live_date"]).strftime("%-d %b %Y") if pd.notna(row.get("go_live_date")) else ""
+        # milestone dates — convert to string so data_editor handles them cleanly
+        def _ms(col):
+            v=row.get(col)
+            return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
+        return {
+            "Project":          str(row.get("project_name","")),
+            "Phase":            str(row.get("phase","") or ""),
+            "Schedule Health":  str(row.get("schedule_health","") or ""),
+            "RAG":              str(row.get("rag","") or "").strip(),
+            "Days Inactive":    di if di>=0 else 0,
+            "Go Live":          gl,
+            "Intro Email Sent": _ms("ms_intro_email"),
+            "UAT Signoff":      _ms("ms_uat_signoff"),
+            "Prod Cutover":     _ms("ms_prod_cutover"),
+            "Hypercare Start":  _ms("ms_hypercare_start"),
+            "Flags":            flag_str,
+        }
+
+    edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
+
+    # ── Column config ─────────────────────────────────────────────────────────
+    col_cfg = {
+        "Project":          st.column_config.TextColumn("Project",         disabled=True, width="large"),
+        "Phase":            st.column_config.SelectboxColumn("Phase",       options=PHASE_OPTIONS, width="medium"),
+        "Schedule Health":  st.column_config.SelectboxColumn("Schedule",    options=["","On Track","At Risk","Behind","Significantly Behind"], width="small"),
+        "RAG":              st.column_config.TextColumn("RAG",              disabled=True, width="small"),
+        "Days Inactive":    st.column_config.NumberColumn("Days Inactive",  disabled=True, width="small"),
+        "Go Live":          st.column_config.TextColumn("Go Live",          disabled=True, width="small"),
+        "Intro Email Sent": st.column_config.TextColumn("Intro Email",      width="small"),
+        "UAT Signoff":      st.column_config.TextColumn("UAT Signoff",      width="small"),
+        "Prod Cutover":     st.column_config.TextColumn("Prod Cutover",     width="small"),
+        "Hypercare Start":  st.column_config.TextColumn("Hypercare Start",  width="small"),
+        "Flags":            st.column_config.TextColumn("Flags",            disabled=True, width="large"),
+    }
+
+    st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
+
+    edited = st.data_editor(
+        edit_df,
+        column_config=col_cfg,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key="mp_edit_table",
+    )
+
+    # ── Detect changes vs original ────────────────────────────────────────────
+    editable_cols = ["Phase","Schedule Health","Intro Email Sent","UAT Signoff","Prod Cutover","Hypercare Start"]
+    changed = edited[editable_cols].fillna("").ne(edit_df[editable_cols].fillna("")).any(axis=1)
+    changed_df = edited[changed].copy() if changed.any() else pd.DataFrame()
+
+    # ── Export bar ────────────────────────────────────────────────────────────
+    ex1, ex2 = st.columns([3,1])
+    with ex1:
+        if changed.any():
+            st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {changed.sum()} project(s) edited — ready to export</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span style="font-size:12px;opacity:.5">No edits yet — edit cells above then export</span>', unsafe_allow_html=True)
+    with ex2:
+        _export_df = changed_df if not changed_df.empty else edited
+        _buf = io.BytesIO()
+        _export_df.to_csv(_buf, index=False)
+        st.download_button(
+            label="⬇ Export to CSV" if not changed_df.empty else "⬇ Export all",
+            data=_buf.getvalue(),
+            file_name=f"drs_updates_{date.today().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            type="primary" if not changed_df.empty else "secondary",
+            use_container_width=True,
+        )
+
+    # ── Re-engagement shortcuts for inactive projects ─────────────────────────
+    _inactive_projs = active[active["days_inactive"].fillna(0)>=14]
+    if not _inactive_projs.empty:
+        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Re-engagement shortcuts</div>', unsafe_allow_html=True)
+        for _ri,(_,row) in enumerate(_inactive_projs.iterrows()):
+            pn        = str(row.get("project_name","—"))
+            days_inac = int(row.get("days_inactive",0))
+            tier      = suggest_tier(days_inac) if days_inac>=14 else None
+            if tier and tier in TEMPLATES:
+                _rc1,_rc2,_rc3 = st.columns([3,1,1])
+                with _rc1:
+                    st.markdown(f'<span style="font-size:13px">{pn}</span> <span style="font-size:11px;opacity:.6">{days_inac}d inactive · {tier}</span>', unsafe_allow_html=True)
+                with _rc3:
+                    if st.button("Draft outreach →", key=f"mp_re_{_ri}", use_container_width=True):
+                        st.session_state["_jump_to_proj"] = pn
+                        st.session_state["_jump_tier"]    = tier
+                        st.switch_page("pages/2_Customer_Reengagement.py")
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
