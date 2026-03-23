@@ -59,6 +59,7 @@ _consultant_pages = [
     st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
     st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
     # st.Page("pages/7_Vibe_Check.py",          title="Vibe Check ✨"),  # hidden
+    st.Page("pages/9_Help.py",                  title="Help & How-To"),
 ]
 _manager_pages = [st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook")]
 
