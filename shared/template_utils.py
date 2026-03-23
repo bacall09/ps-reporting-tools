@@ -207,6 +207,15 @@ SS_COL_MAP_OUT = {
     "hypercare start":             "ms_hypercare_start",
     "close out remaining tasks":   "ms_close_out",
     "transition to support":       "ms_transition",
+    # ── Financials & scope ────────────────────────────────────────────────────
+    "actual hours":                "actual_hours",
+    "budgeted hours":              "budgeted_hours",
+    "change order":                "change_order",
+    "change order hours":          "change_order",
+    # ── Legacy flag ───────────────────────────────────────────────────────────
+    "legacy":                      "legacy",
+    # ── Client sentiment ──────────────────────────────────────────────────────
+    "client sentiment":            "client_sentiment",
 }
 
 INACTIVE_PHASES_OUT = {

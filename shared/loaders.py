@@ -244,6 +244,24 @@ def load_drs(file):
     df["days_inactive"]      = _results.apply(lambda x: x[0]).astype(int)
     df["_inactivity_source"] = _results.apply(lambda x: x[1])
 
+    # Normalise legacy flag
+    if "legacy" in df.columns:
+        df["legacy"] = df["legacy"].fillna("").astype(str).str.strip().str.lower().isin(
+            {"yes", "true", "1", "y"}
+        )
+    else:
+        df["legacy"] = False
+
+    # Burn % = actual_hours / (budgeted_hours + change_order)
+    if "actual_hours" in df.columns and "budgeted_hours" in df.columns:
+        _co = pd.to_numeric(df.get("change_order", 0), errors="coerce").fillna(0)
+        _bgt = pd.to_numeric(df["budgeted_hours"], errors="coerce").fillna(0)
+        _act = pd.to_numeric(df["actual_hours"], errors="coerce").fillna(0)
+        _scope = _bgt + _co
+        df["burn_pct"] = (_act / _scope * 100).where(_scope > 0, None).round(1)
+    else:
+        df["burn_pct"] = None
+
     # Store unmapped columns for debug
     df.attrs["unmapped_cols"] = [c for c in df.columns if c not in SS_COL_MAP_OUT.values()]
 
@@ -426,6 +444,11 @@ NS_COL_MAP_OUT = {
     "hours to date":        "hours_to_date",
     "quantity to date":     "hours_to_date",
     "hours/quantity to date": "hours_to_date",
+    "non-billable":         "non_billable",
+    "non billable":         "non_billable",
+    "nonbillable":          "non_billable",
+    "non_billable":         "non_billable",
+    "is non billable":      "non_billable",
 }
 
 
