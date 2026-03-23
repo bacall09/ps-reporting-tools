@@ -436,11 +436,20 @@ filtered = filtered.sort_values(["_sev_ord", "project"])
 for proj_name, proj_group in filtered.groupby("project", sort=False):
     n_e = len(proj_group[proj_group["severity"] == "Error"])
     n_w = len(proj_group[proj_group["severity"] == "Warning"])
-    summary_badges = ""
-    if n_e: summary_badges += f'<span class="sev-error">{n_e} Error{"s" if n_e>1 else ""}</span>'
-    if n_w: summary_badges += f'<span class="sev-warning">{n_w} Warning{"s" if n_w>1 else ""}</span>'
 
-    with st.expander(f"{proj_name}   {summary_badges}", expanded=(n_e > 0)):
+    # Expander label must be plain text — Streamlit doesn't render HTML in titles
+    summary_text = ""
+    if n_e: summary_text += f"  ·  {n_e} Error{'s' if n_e>1 else ''}"
+    if n_w: summary_text += f"  ·  {n_w} Warning{'s' if n_w>1 else ''}"
+
+    with st.expander(f"{proj_name}{summary_text}", expanded=(n_e > 0)):
+        # Show badge summary at top of expander body
+        badge_html = ""
+        if n_e: badge_html += f'<span class="sev-error">{n_e} Error{"s" if n_e>1 else ""}</span> '
+        if n_w: badge_html += f'<span class="sev-warning">{n_w} Warning{"s" if n_w>1 else ""}</span>'
+        if badge_html:
+            st.markdown(f'<div style="margin-bottom:10px">{badge_html}</div>', unsafe_allow_html=True)
+
         for _, finding in proj_group.iterrows():
             sev   = finding["severity"]
             sev_cls = {"Error": "sev-error", "Warning": "sev-warning", "Info": "sev-info"}.get(sev, "sev-info")
