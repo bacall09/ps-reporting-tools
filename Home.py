@@ -53,6 +53,7 @@ if _roster and st.session_state.get("consultant_name") != _roster:
 # ── Register navigation ───────────────────────────────────────────────────────
 _consultant_pages = [
     st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing"),
+    st.Page("pages/8_My_Projects.py",            title="My Projects"),
     st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
     st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
     st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
