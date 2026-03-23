@@ -926,6 +926,10 @@ def main():
             st.error(f"Could not load DRS file: {e}")
     else:
         df_drs = _from_session.get("df_drs")
+        if df_drs is not None and not is_manager:
+            if "project_manager" in df_drs.columns:
+                _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
+                df_drs = _filtered if not _filtered.empty else df_drs
 
     if ns_file:
         try:
