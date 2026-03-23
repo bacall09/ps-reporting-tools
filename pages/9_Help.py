@@ -220,35 +220,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div style="border:1px solid #DDE4F5; border-radius:10px; overflow:hidden; margin-bottom:8px;">
-    <table class="uploads-tbl">
-        <thead><tr>
-            <th>File</th>
-            <th>Where to export from</th>
-            <th>Used by</th>
-        </tr></thead>
-        <tbody>
-            <tr>
-                <td><strong>SS DRS Export</strong></td>
-                <td>Smartsheet → DRS sheet → Export as .xlsx or .csv</td>
-                <td>My Projects, Customer Re-engagement, DRS Health Check, Daily Briefing</td>
-            </tr>
-            <tr>
-                <td><strong>Salesforce Export</strong></td>
-                <td>Salesforce → Opportunities report → Export</td>
-                <td>Customer Re-engagement</td>
-            </tr>
-            <tr>
-                <td><strong>NetSuite Time Export</strong></td>
-                <td>NetSuite → Time reports → Detail level export</td>
-                <td>Utilization Report, Workload Health, Capacity Outlook</td>
-            </tr>
-        </tbody>
-    </table>
-</div>
-""", unsafe_allow_html=True)
-
 st.markdown('<hr class="help-divider">', unsafe_allow_html=True)
 
 
@@ -439,62 +410,7 @@ for tool in MGMT_TOOLS:
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown('<hr class="help-divider">', unsafe_allow_html=True)
 
-
-# ── VIBE CHECK ────────────────────────────────────────────────────────────────
-st.markdown('<div class="section-eyebrow">The important stuff · Everyone</div>', unsafe_allow_html=True)
-
-st.markdown("""
-<div class="tool-card">
-    <div class="tc-header">
-        <div class="tc-icon">✌️</div>
-        <div>
-            <div class="tc-title">Vibe Check</div>
-            <div class="tc-sub">Pick your mood. Get a GIF. It's been a long sprint. Not a substitute for PTO.</div>
-        </div>
-    </div>
-    <div class="tc-body single">
-        <ul class="why-list">
-            <li>Select your mood from the dropdown, or describe it in your own words.</li>
-            <li>Receive an appropriately calibrated GIF and an encouraging PS-flavored message.</li>
-            <li>Hit "Give me another one" if the first GIF isn't doing it for you.</li>
-            <li>No data uploads required. This one you get for free.</li>
-        </ul>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ── ROADMAP ───────────────────────────────────────────────────────────────────
-st.markdown('<hr class="help-divider">', unsafe_allow_html=True)
-st.markdown('<div class="section-eyebrow">Where this is headed</div>', unsafe_allow_html=True)
-
-st.markdown("""
-<div style="background:#F4F7FF; border-radius:10px; padding:22px 26px; margin-bottom:8px;">
-    <div class="phase-row">
-        <div class="pdot pdot-now">✓</div>
-        <div class="pt">
-            <strong>Now — Interactive viewing</strong>
-            <span>Role-filtered, logic-driven views built on top of your Smartsheet and NetSuite data.</span>
-        </div>
-    </div>
-    <div class="phase-row">
-        <div class="pdot pdot-next">2</div>
-        <div class="pt">
-            <strong>Next — Smartsheet write-back</strong>
-            <span>Update milestones and flag status changes directly from the tool — synced back to Smartsheet as the source of record.</span>
-        </div>
-    </div>
-    <div class="phase-row" style="margin-bottom:0">
-        <div class="pdot pdot-next">3</div>
-        <div class="pt">
-            <strong>Future — Live data</strong>
-            <span>Direct API connections to Salesforce, NetSuite, and Smartsheet. No manual uploads.</span>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
 
 
 # ── FOOTER ────────────────────────────────────────────────────────────────────

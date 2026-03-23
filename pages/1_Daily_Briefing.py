@@ -272,25 +272,40 @@ emp_info     = EMPLOYEE_ROLES.get(selected, {})
 emp_role     = emp_info.get("role", "Consultant")
 emp_products = emp_info.get("products", [])
 
-ch, cm = st.columns([3, 1])
-with ch:
-    _hour = datetime.now().hour
-    _greeting = (
-        "Good morning" if _hour < 12
-        else "Good afternoon" if _hour < 17
-        else "Good evening"
-    )
-    st.markdown(f'<div class="brief-header">{_greeting}, {_my_display}</div>', unsafe_allow_html=True)
-    _sub_parts = [emp_role, ", ".join(emp_products) if emp_products else "All Products", today.strftime("%A, %B %-d %Y")]
-    if _view_sub:
-        _sub_parts.append(_view_sub)
-    st.markdown(f'<div class="brief-sub">{' · '.join(_sub_parts)}</div>', unsafe_allow_html=True)
-with cm:
-    loc = EMPLOYEE_LOCATION.get(selected, "")
-    if isinstance(loc, tuple): loc = loc[0]
-    region = PS_REGION_OVERRIDE.get(selected, PS_REGION_MAP.get(loc, ""))
-    if region:
-        st.markdown(f'<div class="badge-blue action-badge" style="margin-top:12px">{region}</div>', unsafe_allow_html=True)
+_hour = datetime.now().hour
+_greeting = (
+    "Good morning" if _hour < 12
+    else "Good afternoon" if _hour < 17
+    else "Good evening"
+)
+_sub_parts = [emp_role, ", ".join(emp_products) if emp_products else "All Products", today.strftime("%A, %B %-d %Y")]
+if _view_sub:
+    _sub_parts.append(_view_sub)
+loc = EMPLOYEE_LOCATION.get(selected, "")
+if isinstance(loc, tuple): loc = loc[0]
+region = PS_REGION_OVERRIDE.get(selected, PS_REGION_MAP.get(loc, ""))
+_region_pill = (
+    f"<span style='display:inline-block;margin-top:12px;padding:4px 12px;border-radius:20px;"
+    f"background:rgba(62,207,178,0.15);border:1px solid rgba(62,207,178,0.3);color:#3ECFB2;"
+    f"font-size:11px;font-weight:700;letter-spacing:.5px'>{region}</span>"
+) if region else ""
+_sub_str = " · ".join(_sub_parts)
+
+st.markdown(
+    f"<div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;"
+    f"font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
+    f"<div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;"
+    f"background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>"
+    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+    f"color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Daily Briefing</div>"
+    f"<h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>"
+    f"{_greeting}, {_my_display}</h1>"
+    f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>"
+    f"{_sub_str}</p>"
+    f"{_region_pill}"
+    f"</div>",
+    unsafe_allow_html=True
+)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 

@@ -1586,16 +1586,11 @@ def main():
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
         </style>
-        <div style='background-color:#1e2c63;padding:24px 32px;border-radius:8px;margin-bottom:24px;font-family:Manrope,sans-serif'>
-            <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>FF Workload Score</h1>
-            <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>
-                Weighted project scoring across active Fixed Fee engagements — by consultant and phase
-            </p>
-            <p style='color:#8ab0c0;margin:8px 0 0 0;font-size:12px;font-family:Manrope,sans-serif;line-height:1.6;'>
-                Each active FF project is scored by <b>phase weight</b> × <b>client health multiplier</b> × <b>risk multiplier</b>.
-                Thresholds: <b>Low</b> 1–25 pts &nbsp;·&nbsp; <b>Medium</b> 26–60 pts &nbsp;·&nbsp; <b>High</b> 61+ pts (flag to Director).
-                T&amp;M projects and inactive phases (On Hold / Complete) are excluded from scoring.
-            </p>
+        <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
+            <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
+            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
+            <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Workload Health Score</h1>
+            <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Weighted project scoring across active Fixed Fee engagements — by consultant and phase. Each project scored by phase weight × client health × risk multiplier.</p>
         </div>
     """, unsafe_allow_html=True)
 

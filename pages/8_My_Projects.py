@@ -154,8 +154,14 @@ else:
 
 # ── Header ────────────────────────────────────────────────────────────────────
 _dn = view_as.split(",")[1].strip()+" "+view_as.split(",")[0] if "," in view_as else view_as
-st.markdown(f'<div style="font-size:24px;font-weight:700;margin-bottom:4px">My Projects — {_dn}</div>',unsafe_allow_html=True)
-st.markdown(f'<div style="font-size:13px;opacity:.6;margin-bottom:20px">{today.strftime("%A, %B %-d %Y")} · {len(active)} active · {len(on_hold)} on hold</div>',unsafe_allow_html=True)
+st.markdown(f"""
+<div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
+    <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
+    <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · My Work</div>
+    <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>My Projects — {_dn}</h1>
+    <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>{today.strftime("%A, %B %-d %Y")} · {len(active)} active · {len(on_hold)} on hold</p>
+</div>
+""", unsafe_allow_html=True)
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
