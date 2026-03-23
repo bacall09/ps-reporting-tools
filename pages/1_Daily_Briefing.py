@@ -343,7 +343,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         tm_hrs    = round(month_ns["hours"].sum(), 2)
         ff_rows   = pd.DataFrame()
 
-    ff_credit = 0.0; ff_overrun = 0.0
+    ff_credit = 0.0; ff_overrun = 0.0; ff_unscoped = 0.0
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values(["project", "date"])  # match Util Report sort order
 
@@ -371,7 +371,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
             if _sc is None:
-                ff_credit += _hrs; continue  # UNCONFIGURED: excluded from overrun metric (matches Util Report Watch List behaviour)
+                ff_unscoped += _hrs; ff_credit += _hrs; continue  # UNCONFIGURED: excluded from overrun metric
 
             if _proj not in _con: _con[_proj] = prior_htd.get(_proj, 0.0)
             _used = _con[_proj]; _rem = _sc - _used
@@ -395,9 +395,12 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 2)
 
     def _fmt_hrs(h):
-        """Format hours: drop trailing zeros but keep up to 2dp. e.g. 176.0→176, 167.2→167.2, 176.25→176.25"""
+        """Format hours: round to 1dp max, drop trailing zeros.
+        e.g. 176.0→176, 167.2→167.2, 176.25→176.25, 6600.10000001→6600.1"""
         if h is None: return "—"
-        s = f"{h:.2f}".rstrip('0').rstrip('.')
+        # Round to 2dp first to kill float noise, then strip trailing zeros
+        rounded = round(h, 2)
+        s = f"{rounded:.2f}".rstrip('0').rstrip('.')
         return f"{s}h"
 
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -424,6 +427,10 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %</div></div>', unsafe_allow_html=True)
+
+    # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
+    if ff_unscoped > 0:
+        st.warning(f"⚠️ {_fmt_hrs(ff_unscoped)} on FF projects with NO SCOPE DEFINED — see Utilization Report Watch List tab in the downloaded report.")
 else:
     if df_ns is None:
         st.info("Upload NS Time Detail in the sidebar to see your utilization snapshot.")
@@ -598,21 +605,23 @@ else:
             phase      = row.get("phase", "—")
             tier       = suggest_tier(days_inac)
             tier_label = tier if tier else "Monitor"
+            pm_name    = row.get("project_manager", "")
 
             with st.expander(f"{proj_name} — {days_inac}d inactive · {tier_label}"):
                 ci, ca = st.columns([1, 2])
                 with ci:
                     st.markdown(f"**Phase:** {phase}")
                     st.markdown(f"**Days inactive:** {days_inac}")
+                    # Show PM for managers; hide for consultants
+                    if _is_group_view and pm_name:
+                        st.markdown(f"**Project Manager:** {pm_name}")
                     try:
                         lm = calc_last_milestone(row)
                         if lm and lm != "—": st.markdown(f"**Last milestone:** {lm}")
                     except Exception: pass
                 with ca:
                     if tier and tier in TEMPLATES:
-                        tmpl = TEMPLATES[tier]
                         st.markdown(f"**Suggested template:** {tier}")
-                        st.markdown(f"*Subject:* {tmpl.get('subject','')}")
                         if st.button("Draft outreach →", key=f"draft_{_ri}_{proj_name[:20]}", type="primary"):
                             st.session_state["_jump_to_proj"] = proj_name
                             st.session_state["_jump_tier"]    = tier

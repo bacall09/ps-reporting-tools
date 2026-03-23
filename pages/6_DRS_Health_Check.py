@@ -181,6 +181,10 @@ for _, row in df_drs.iterrows():
     days_inac = _get(row, "days_inactive")
     phase_idx = _phase_idx(phase) if phase else -1
 
+    # Legacy projects had no milestone tracking — skip all milestone checks
+    _legacy_raw = _get(row, "legacy", "")
+    is_legacy = str(_legacy_raw).strip().lower() in ("yes", "true", "1", "y")
+
     def flag(severity, category, rule, description, expected=""):
         findings.append({
             "project":     proj,
@@ -308,54 +312,58 @@ for _, row in df_drs.iterrows():
                 pass
 
     # ── Milestone sequence ────────────────────────────────────────────────────
-    ms_dates = {}
-    for ms_col in MS_ORDER:
-        if ms_col in row.index:
-            v = row.get(ms_col)
-            if _is_date(v):
-                ms_dates[ms_col] = pd.to_datetime(v)
+    # Legacy projects had no milestone tracking — skip all milestone checks
+    if is_legacy:
+        pass  # milestone checks exempt for legacy projects
+    else:
+        ms_dates = {}
+        for ms_col in MS_ORDER:
+            if ms_col in row.index:
+                v = row.get(ms_col)
+                if _is_date(v):
+                    ms_dates[ms_col] = pd.to_datetime(v)
 
-    # Check date ordering — each milestone should be >= the previous one
-    prev_col, prev_date = None, None
-    for ms_col in MS_ORDER:
-        if ms_col not in ms_dates:
-            prev_col, prev_date = None, None
-            continue
-        dt = ms_dates[ms_col]
-        if prev_date is not None and dt < prev_date:
-            flag("Error", "Milestone Sequence",
-                 f"Milestone out of sequence: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
-                 f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' ({dt.strftime('%d %b %Y')}) "
-                 f"is dated before '{MILESTONE_COLS_MAP.get(prev_col, prev_col)}' "
-                 f"({prev_date.strftime('%d %b %Y')}).",
-                 "Milestone dates should follow delivery order.")
-        prev_col, prev_date = ms_col, dt
+        # Check date ordering — each milestone should be >= the previous one
+        prev_col, prev_date = None, None
+        for ms_col in MS_ORDER:
+            if ms_col not in ms_dates:
+                prev_col, prev_date = None, None
+                continue
+            dt = ms_dates[ms_col]
+            if prev_date is not None and dt < prev_date:
+                flag("Error", "Milestone Sequence",
+                     f"Milestone out of sequence: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
+                     f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' ({dt.strftime('%d %b %Y')}) "
+                     f"is dated before '{MILESTONE_COLS_MAP.get(prev_col, prev_col)}' "
+                     f"({prev_date.strftime('%d %b %Y')}).",
+                     "Milestone dates should follow delivery order.")
+            prev_col, prev_date = ms_col, dt
 
-    # ── Phase vs milestones ───────────────────────────────────────────────────
-    # Flag milestones completed that are ahead of current phase
-    if phase_idx >= 0:
-        for ms_col, expected_phase in MS_EXPECTED_BY_PHASE.items():
-            exp_idx = _phase_idx(expected_phase)
-            if ms_col in ms_dates and exp_idx > phase_idx + 1:
-                flag("Warning", "Phase vs Milestone",
-                     f"Milestone ahead of current phase: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
-                     f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' is completed but "
-                     f"current phase is '{phase}' — this milestone is expected in a later phase.",
-                     "Check whether phase needs to be advanced.")
-
-    # Flag milestones that should be done by now but are missing
-    if phase_idx >= 0:
-        for ms_col, expected_phase in MS_EXPECTED_BY_PHASE.items():
-            exp_idx = _phase_idx(expected_phase)
-            if exp_idx >= 0 and phase_idx > exp_idx and ms_col not in ms_dates:
-                # Only flag the most critical ones to avoid noise
-                critical = {"ms_intro_email", "ms_uat_signoff", "ms_prod_cutover"}
-                if ms_col in critical:
+        # ── Phase vs milestones ───────────────────────────────────────────────
+        # Flag milestones completed that are ahead of current phase
+        if phase_idx >= 0:
+            for ms_col, expected_phase in MS_EXPECTED_BY_PHASE.items():
+                exp_idx = _phase_idx(expected_phase)
+                if ms_col in ms_dates and exp_idx > phase_idx + 1:
                     flag("Warning", "Phase vs Milestone",
-                         f"Expected milestone missing: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
-                         f"Phase is '{phase}' but '{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' "
-                         f"has no completion date recorded.",
-                         "Complete or back-date the milestone if it has been done.")
+                         f"Milestone ahead of current phase: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
+                         f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' is completed but "
+                         f"current phase is '{phase}' — this milestone is expected in a later phase.",
+                         "Check whether phase needs to be advanced.")
+
+        # Flag milestones that should be done by now but are missing
+        if phase_idx >= 0:
+            for ms_col, expected_phase in MS_EXPECTED_BY_PHASE.items():
+                exp_idx = _phase_idx(expected_phase)
+                if exp_idx >= 0 and phase_idx > exp_idx and ms_col not in ms_dates:
+                    # Only flag the most critical ones to avoid noise
+                    critical = {"ms_intro_email", "ms_uat_signoff", "ms_prod_cutover"}
+                    if ms_col in critical:
+                        flag("Warning", "Phase vs Milestone",
+                             f"Expected milestone missing: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
+                             f"Phase is '{phase}' but '{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' "
+                             f"has no completion date recorded.",
+                             "Complete or back-date the milestone if it has been done.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RESULTS
