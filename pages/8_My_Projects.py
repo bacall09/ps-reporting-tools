@@ -521,6 +521,3 @@ st.markdown(
     'PS Reporting Tools · Internal use only · Data loaded this session only</div>',
     unsafe_allow_html=True
 )
-
-if __name__ == "__main__":
-    main()
