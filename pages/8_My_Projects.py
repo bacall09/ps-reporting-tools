@@ -212,14 +212,6 @@ with c4:
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 2 — Needs Action
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Needs Action</div>',unsafe_allow_html=True)
-
-needs_action = (active[active["_needs"].astype(bool)].sort_values(["_ne","_nw","days_inactive"],ascending=[False,False,False])
-                if "_needs" in active.columns and active["_needs"].any() else pd.DataFrame())
-
-# ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2+3 — Active Projects (editable table + export)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Active Projects</div>',unsafe_allow_html=True)
@@ -229,49 +221,50 @@ if active.empty:
 else:
     # ── Build editable dataframe ──────────────────────────────────────────────
     def _to_edit_row(row):
-        fl   = row.get("_flags",[]) or []
-        errs = [msg for sev,_,msg,_ in fl if sev=="error"]
-        warns= [msg for sev,_,msg,_ in fl if sev=="warn"]
-        flag_str = (" | ".join(f"🔴 {m}" for m in errs) + (" | " if errs and warns else "") +
-                    " | ".join(f"🟡 {m}" for m in warns)) if (errs or warns) else "✓"
-        di   = int(row.get("days_inactive",-1))
-        gl   = pd.Timestamp(row["go_live_date"]).strftime("%-d %b %Y") if pd.notna(row.get("go_live_date")) else ""
-        # milestone dates — convert to string so data_editor handles them cleanly
+        fl    = row.get("_flags",[]) or []
+        needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
         def _ms(col):
-            v=row.get(col)
+            v = row.get(col)
             return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
+        def _dt(col):
+            v = row.get(col)
+            return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
         return {
-            "Project":          str(row.get("project_name","")),
-            "Phase":            str(row.get("phase","") or ""),
-            "Schedule Health":  str(row.get("schedule_health","") or ""),
-            "RAG":              str(row.get("rag","") or "").strip(),
-            "Days Inactive":    di if di>=0 else 0,
-            "Go Live":          gl,
-            "Intro Email Sent": _ms("ms_intro_email"),
-            "UAT Signoff":      _ms("ms_uat_signoff"),
-            "Prod Cutover":     _ms("ms_prod_cutover"),
-            "Hypercare Start":  _ms("ms_hypercare_start"),
-            "Flags":            flag_str,
+            "Project":              str(row.get("project_name","") or ""),
+            "Status":               str(row.get("status","") or ""),
+            "Phase":                str(row.get("phase","") or ""),
+            "Start Date":           _dt("start_date"),
+            "Est. Go-Live":         _dt("go_live_date"),
+            "Intro Email Sent":     _ms("ms_intro_email"),
+            "Config Start":         _ms("ms_config_start"),
+            "Enablement Session":   _ms("ms_enablement"),
+            "Session #1":           _ms("ms_session1"),
+            "Session #2":           _ms("ms_session2"),
+            "UAT Signoff":          _ms("ms_uat_signoff"),
+            "Prod Cutover":         _ms("ms_prod_cutover"),
+            "Hypercare Start":      _ms("ms_hypercare_start"),
+            "Close Out Tasks":      _ms("ms_close_out"),
+            "Transition to Support":_ms("ms_transition"),
+            "Needs Action":         needs,
         }
 
     edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
 
     # ── Column config ─────────────────────────────────────────────────────────
+    _ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2",
+                "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     col_cfg = {
-        "Project":          st.column_config.TextColumn("Project",         disabled=True, width="large"),
-        "Phase":            st.column_config.SelectboxColumn("Phase",       options=PHASE_OPTIONS, width="medium"),
-        "Schedule Health":  st.column_config.SelectboxColumn("Schedule",    options=["","On Track","At Risk","Behind","Significantly Behind"], width="small"),
-        "RAG":              st.column_config.TextColumn("RAG",              disabled=True, width="small"),
-        "Days Inactive":    st.column_config.NumberColumn("Days Inactive",  disabled=True, width="small"),
-        "Go Live":          st.column_config.TextColumn("Go Live",          disabled=True, width="small"),
-        "Intro Email Sent": st.column_config.TextColumn("Intro Email",      width="small"),
-        "UAT Signoff":      st.column_config.TextColumn("UAT Signoff",      width="small"),
-        "Prod Cutover":     st.column_config.TextColumn("Prod Cutover",     width="small"),
-        "Hypercare Start":  st.column_config.TextColumn("Hypercare Start",  width="small"),
-        "Flags":            st.column_config.TextColumn("Flags",            disabled=True, width="large"),
+        "Project":               st.column_config.TextColumn("Project",          disabled=True, width="large"),
+        "Status":                st.column_config.TextColumn("Status",           disabled=True, width="small"),
+        "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
+        "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
+        "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
+        **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
+        "Needs Action":          st.column_config.TextColumn("Needs Action",      disabled=True, width="small"),
     }
 
     st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
+    st.markdown('<span style="font-size:11.5px;opacity:.6">For a deeper look at data quality issues, see the <b>DRS Health Check</b> page.</span>', unsafe_allow_html=True)
 
     edited = st.data_editor(
         edit_df,
@@ -283,7 +276,7 @@ else:
     )
 
     # ── Detect changes vs original ────────────────────────────────────────────
-    editable_cols = ["Phase","Schedule Health","Intro Email Sent","UAT Signoff","Prod Cutover","Hypercare Start"]
+    editable_cols = ["Phase","Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2","UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     changed = edited[editable_cols].fillna("").ne(edit_df[editable_cols].fillna("")).any(axis=1)
     changed_df = edited[changed].copy() if changed.any() else pd.DataFrame()
 
