@@ -74,8 +74,12 @@ with st.sidebar:
             _bopts.append(f"── {_rg} ──")
             _bopts.extend(_by_rgn[_rg])
 
+        # Persist previous selection across reruns
+        _prev = st.session_state.get("myproj_browse", "— My own projects —")
+        _default_idx = _bopts.index(_prev) if _prev in _bopts else 0
+
         st.markdown("**View as:**")
-        _browse = st.selectbox("Consultant", _bopts,
+        _browse = st.selectbox("Consultant", _bopts, index=_default_idx,
                                key="myproj_browse", label_visibility="collapsed")
 
         if _browse != "— My own projects —" and not (_browse.startswith("── ") and _browse.endswith(" ──")):
@@ -105,8 +109,8 @@ def _match_pm(v):
 pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
 my_drs = df_drs[pm_col.apply(lambda v: _match_pm(str(v)))].copy()
 
-# If no match and not a manager, show all (fallback)
-if my_drs.empty and not is_manager(view_as):
+# If no match and it's the user's own view (not a manager viewing someone else), show all
+if my_drs.empty and view_as == selected and not is_manager(selected):
     my_drs = df_drs.copy()
 
 # Enrich with NS days inactive if available
