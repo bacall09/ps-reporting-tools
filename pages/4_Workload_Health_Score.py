@@ -4,6 +4,12 @@ Upload a Smartsheets DRS export + NetSuite time detail to generate
 a weighted workload score per consultant across active FF projects.
 """
 import streamlit as st
+from shared.whs import (
+    PHASE_WEIGHTS, INACTIVE_PHASES, WHS_LOW, WHS_MEDIUM,
+    workload_level, client_health_multiplier, risk_multiplier,
+    get_phase_weight, get_ps_region, score_projects, build_consultant_summary,
+    GREEN, AMBER, RED,
+)
 import pandas as pd
 import io
 from datetime import datetime
@@ -170,24 +176,6 @@ PS_REGION_MAP = {
     "Canada":           "NOAM",
 }
 
-# ── Phase weights ─────────────────────────────────────────────────────────────
-PHASE_WEIGHTS = {
-    "00. onboarding":                    1.0,
-    "01. requirements and design":       1.0,
-    "02. configuration":                 2.0,
-    "03. enablement/training":           2.5,
-    "04. uat":                           3.0,
-    "05. prep for go-live":              1.0,
-    "06. go-live":                       3.0,
-    "07. data migration":                1.0,
-    "08. ready for support transition":  0.5,
-    "09. phase 2 scoping":               1.0,
-    "10. complete/pending final billing": 0.0,
-    "11. on hold":                       0.25,
-    "12. ps review":                     0.25,
-}
-
-# Phases excluded from active workload score
 INACTIVE_PHASES = {"10. complete/pending final billing", "12. ps review"}
 
 # ── Workload thresholds ───────────────────────────────────────────────────────
@@ -235,50 +223,7 @@ def _emp_util_exempt(name):
     return False
 
 
-def workload_level(score):
-    if score <= 25:   return "Low",    GREEN
-    if score <= 60:   return "Medium", AMBER
-    return "High", RED
-
-# ── Client health multiplier ──────────────────────────────────────────────────
-def client_health_multiplier(responsiveness, sentiment):
-    r = str(responsiveness).strip().lower() if pd.notna(responsiveness) else ""
-    s = str(sentiment).strip().lower() if pd.notna(sentiment) else ""
-    if ("negative" in s or "unresponsive" in r) and ("negative" in s and "unresponsive" in r):
-        return 1.3
-    if "negative" in s or "unresponsive" in r or "not responding" in r:
-        return 1.15
-    return 1.0
-
-# ── Risk multiplier ───────────────────────────────────────────────────────────
-def risk_multiplier(risk_level):
-    r = str(risk_level).strip().lower() if pd.notna(risk_level) else ""
-    if "high"   in r: return 1.2
-    if "medium" in r: return 1.1
-    return 1.0
-
-# ── Employee → PS Region lookup ───────────────────────────────────────────────
-def get_ps_region(name):
-    if not name or str(name).strip().lower() in ("", "nan", "none"):
-        return "Unknown"
-    name = str(name).strip()
-    if name in PS_REGION_OVERRIDE:
-        return PS_REGION_OVERRIDE[name]
-    loc = _emp_location(name)
-    if not loc:
-        last = name.split(",")[0].strip()
-        loc = next((_emp_location(k) for k, v in EMPLOYEE_LOCATION.items() if k.split(",")[0].strip().lower() == last.lower()), None)
-    return PS_REGION_MAP.get(loc, "Unknown") if loc else "Unknown"
-
 # ── Phase weight lookup ───────────────────────────────────────────────────────
-def get_phase_weight(phase):
-    if not phase or str(phase).strip().lower() in ("", "nan", "none"):
-        return 1.0, "Undefined"
-    p = str(phase).strip().lower()
-    if p in PHASE_WEIGHTS:
-        return PHASE_WEIGHTS[p], str(phase).strip()
-    return 1.0, str(phase).strip()
-
 # ── SS column map ─────────────────────────────────────────────────────────────
 SS_COL_MAP = {
     "project name":          "project_name",
@@ -922,131 +867,6 @@ def build_stale_projects(ss_df, ns_df):
 
 
 # ── Scoring engine ────────────────────────────────────────────────────────────
-def score_projects(ss_df, ns_df):
-    """
-    Join SS + NS, compute per-project weighted score (FF only, excl inactive).
-    Returns scored DataFrame.
-    """
-    df = ss_df.copy()
-
-    # T&M already filtered at load_ss — no further filtering needed here
-
-    # Exclude inactive phases from score (still kept in data, score = 0)
-    def is_active(phase):
-        if not phase or str(phase).strip().lower() in ("", "nan", "none"):
-            return True
-        return str(phase).strip().lower() not in INACTIVE_PHASES
-
-    # PM comes from SS directly — NS no longer used for PM lookup
-    # Normalise: use "project_manager" col from SS if present
-    _ss_pm_col = next((col for col in ["project_manager", "consultant"] if col in df.columns), None)
-    if _ss_pm_col and _ss_pm_col != "project_manager":
-        df["project_manager"] = df[_ss_pm_col]
-    elif _ss_pm_col is None:
-        df["project_manager"] = None
-    df["pm_flag"] = df["project_manager"].isna()
-
-    # Phase weight
-    df["phase_weight"] = df["phase"].apply(lambda p: get_phase_weight(p)[0])
-
-    # Multipliers
-    resp_col = "client_responsiveness" if "client_responsiveness" in df.columns else None
-    sent_col = "client_sentiment"      if "client_sentiment"      in df.columns else None
-    risk_col = "risk_level"            if "risk_level"            in df.columns else None
-
-    df["client_health_mult"] = df.apply(
-        lambda r: client_health_multiplier(
-            r[resp_col] if resp_col else None,
-            r[sent_col] if sent_col else None
-        ), axis=1
-    )
-    df["risk_mult"] = df[risk_col].apply(risk_multiplier) if risk_col else 1.0
-
-    # Active = not on hold by phase OR status
-    # Active statuses: In Progress, Awarded, Pending (anything except On-hold variants)
-    def is_active_row(row):
-        phase_inactive = not is_active(row.get("phase", ""))
-        status_val     = str(row.get("status", "")).strip().lower()
-        status_onhold  = status_val in ("on-hold", "on hold", "onhold", "on_hold")
-        return not phase_inactive and not status_onhold
-
-    df["active"] = df.apply(is_active_row, axis=1)
-
-    # Total projects = all FF rows (excl Complete/Pending Final Billing)
-    complete_phases = {"10. complete/pending final billing"}
-    df["total_project"] = df["phase"].apply(
-        lambda p: str(p).strip().lower() not in complete_phases if pd.notna(p) else True
-    )
-
-    # T&M projects kept for project counts but scored 0 (demand tracked via NS)
-    _tm_mask = df["project_type"].str.lower().str.contains("t&m|time.*material", na=False, regex=True)         if "project_type" in df.columns else pd.Series(False, index=df.index)
-    df["weighted_score"] = df.apply(
-        lambda r: round(r["phase_weight"] * r["client_health_mult"] * r["risk_mult"], 2)
-        if (r["active"] and not _tm_mask.loc[r.name]) else 0.0, axis=1
-    )
-
-    # PS Region from employee lookup (consultant = project_manager from NS)
-    df["ps_region"] = df["project_manager"].apply(get_ps_region)
-    df["role"] = df["project_manager"].apply(
-        lambda n: EMPLOYEE_ROLES.get(str(n).strip(), {}).get("role", "Consultant") if pd.notna(n) else ""
-    )
-
-    return df
-
-
-def build_consultant_summary(scored_df, ss_df=None):
-    """Aggregate scored projects by consultant."""
-    # Scoring groupby — uses project_manager from NS join, pm_flag rows score 0
-    active = scored_df[scored_df["active"]].copy()
-
-    grp = active.groupby("project_manager").agg(
-        total_score=("weighted_score", "sum"),
-        ps_region=("ps_region", "first"),
-        role=("role", "first"),
-    ).reset_index()
-
-    grp["total_score"] = grp["total_score"].round(1)
-    grp["workload_level"] = grp["total_score"].apply(lambda s: workload_level(s)[0])
-    grp = grp.sort_values("total_score", ascending=False).reset_index(drop=True)
-
-    # Project counts — computed from SS directly (consultant col) to match page 3
-    # This avoids undercounting from pm_flag / T&M exclusions on the NS join side
-    # Determine which column holds the consultant/PM name in ss_df
-    _pm_col = next((col for col in ["project_manager", "consultant"] if col in ss_df.columns), None) if ss_df is not None else None
-    if ss_df is not None and _pm_col is not None:
-        _complete_ph = {"10. complete/pending final billing", "12. ps review"}
-        _onhold_st   = {"on-hold", "on hold", "onhold", "on_hold"}
-        _tm_types    = {"t&m", "time & material", "time and material"}
-        _id_col = "project_id" if "project_id" in ss_df.columns else "project_name"
-        _total_map  = {}
-        _active_map = {}
-        for _cons, _grp in ss_df.groupby(_pm_col):
-            _billing = (_grp["billing_type"].astype(str).str.strip().str.lower()
-                        if "billing_type" in _grp.columns else pd.Series("", index=_grp.index))
-            _phase   = (_grp["phase"].astype(str).str.strip().str.lower()
-                        if "phase" in _grp.columns else pd.Series("", index=_grp.index))
-            _stat    = (_grp["status"].astype(str).str.strip().str.lower()
-                        if "status" in _grp.columns else pd.Series("", index=_grp.index))
-            _ff           = ~_billing.isin(_tm_types)
-            _not_complete = ~_phase.isin(_complete_ph)
-            _not_onhold   = ~_stat.isin(_onhold_st)
-            _total_map[str(_cons).strip()]  = int(_grp[_ff & _not_complete][_id_col].nunique())
-            _active_map[str(_cons).strip()] = int(_grp[_ff & _not_complete & _not_onhold][_id_col].nunique())
-        grp["total_project_count"]  = grp["project_manager"].map(_total_map).fillna(0).astype(int)
-        grp["active_project_count"] = grp["project_manager"].map(_active_map).fillna(0).astype(int)
-    else:
-        # Fallback to scored_df counts if ss_df not available
-        total = scored_df[scored_df["total_project"]].copy() if "total_project" in scored_df.columns else scored_df.copy()
-        active_counts = active.groupby("project_manager")["project_id"].nunique()
-        total_counts  = total.groupby("project_manager")["project_id"].nunique()
-        grp["active_project_count"] = grp["project_manager"].map(active_counts).fillna(0).astype(int)
-        grp["total_project_count"]  = grp["project_manager"].map(total_counts).fillna(0).astype(int)
-
-    # Flag missing PM
-    missing = scored_df[scored_df["pm_flag"] == True]["project_id"].nunique()
-    return grp, missing
-
-
 # ── Excel builder ─────────────────────────────────────────────────────────────
 def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=None):
     def _safe(v):
