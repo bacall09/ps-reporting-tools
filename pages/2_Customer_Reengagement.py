@@ -814,7 +814,7 @@ def main():
                 is_manager    = _role_override.startswith("Manager")
     else:
         # Not identified on Home — show Step 1 as before
-        st.subheader("Step 1 — Who are you?")
+        st.subheader("Step 2 — Who are you?")
         _u_col, _r_col = st.columns([3, 2])
         with _u_col:
             selected_user = st.selectbox(
@@ -849,7 +849,7 @@ def main():
     ns_file   = None
 
     if not _session_loaded:
-        st.subheader("Step 2 — Upload Reports")
+        st.subheader("Step 3 — Upload Reports")
         st.caption("Upload one or more reports — more reports = better inactivity detection.")
         up1, up2, up3 = st.columns([3, 3, 3])
         with up1:
@@ -982,7 +982,7 @@ def main():
         _total    = len(df_drs)
         _onhold   = int(df_drs["_on_hold"].sum()) if "_on_hold" in df_drs.columns else 0
         _active   = _total - _onhold
-        _inactive = int((df_drs["days_inactive"] >= 30).sum()) if "days_inactive" in df_drs.columns else 0
+        _inactive = int((df_drs["days_inactive"] >= 14).sum()) if "days_inactive" in df_drs.columns else 0
 
         mc1, mc2, mc3, mc4 = st.columns(4)
         with mc1:
@@ -1026,7 +1026,7 @@ Used when no NS entries and no milestones are present.
                         if c in df_drs.columns]
 
         _action_df = df_drs[
-            (df_drs["days_inactive"] >= 30) &
+            (df_drs["days_inactive"] >= 14) &
             (~df_drs.get("_on_hold", pd.Series(False, index=df_drs.index)))
         ].copy() if "days_inactive" in df_drs.columns else pd.DataFrame()
 
@@ -1105,102 +1105,12 @@ Used when no NS entries and no milestones are present.
         else:
             st.success("✅ No projects requiring re-engagement this week.")
 
-        st.markdown("---")
-        st.subheader("All Projects")
-
-        overview_cols = {
-            "project_name":           "Project",
-            "status":                 "Status",
-            "phase":                  "Phase",
-            "start_date":             "Start Date",
-            "days_inactive":          "Days Inactive",
-            "last_milestone":         "Last Milestone",
-            "entry_source":           "Inactivity Source",
-            "client_responsiveness":  "Responsiveness",
-            "last_time_entry":        "Last NS Entry",
-            "Suggested Tier":         "Suggested Tier",
-        }
-        # Last Time Entry — from NS if available, else DRS Modified date
-        if "last_ns_entry" in df_drs.columns:
-            df_drs["last_time_entry"] = df_drs["last_ns_entry"].dt.strftime("%Y-%m-%d").fillna("—")
-        else:
-            df_drs["last_time_entry"] = "—"
-        df_drs["entry_source"] = df_drs["_inactivity_source"] if "_inactivity_source" in df_drs.columns else "—"
-
-        avail_cols = [c for c in overview_cols if c in df_drs.columns]
-        overview_df = df_drs[avail_cols].rename(columns=overview_cols).copy()
-
-        # Format start date
-        if "Start Date" in overview_df.columns:
-            overview_df["Start Date"] = pd.to_datetime(overview_df["Start Date"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("—")
-
-        # Add Suggested Tier column
-        if "days_inactive" in df_drs.columns:
-            df_drs["Suggested Tier"] = df_drs["days_inactive"].apply(
-                lambda d: (
-                    "Unknown" if int(d) < 0 else
-                    "—" if int(d) < 14 else
-                    "Eligible for informal follow up" if int(d) < 30 else
-                    "Tier 1" if int(d) < 60 else
-                    "Tier 2" if int(d) < 90 else
-                    "Tier 3" if int(d) < 180 else
-                    "Tier 4"
-                ) if str(d).lstrip('-').isdigit() else "—"
-            )
-        if "Days Inactive" in overview_df.columns:
-            def _tier_label(days):
-                try:
-                    d = int(days)
-                    if d < 0:   return "Unknown"
-                    if d < 14:  return "—"
-                    if d < 30:  return "Eligible for informal follow up"
-                    if d < 60:  return "Tier 1"
-                    if d < 90:  return "Tier 2"
-                    if d < 180: return "Tier 3"
-                    return "Tier 4"
-                except: return "—"
-            overview_df["Suggested Tier"] = overview_df["Days Inactive"].apply(_tier_label)
-            overview_df["Days Inactive"]  = overview_df["Days Inactive"].apply(
-                lambda x: "Unknown" if int(x) < 0 else int(x)
-            )
-            # Mark On Hold projects in table
-            if "_on_hold" in df_drs.columns:
-                on_hold_mask = df_drs["_on_hold"].values[:len(overview_df)]
-                overview_df.loc[on_hold_mask, "Suggested Tier"] = "On Hold"
-
-        # Colour-code rows by tier
-        def _style_overview_row(row):
-            days = row.get("Days Inactive", 0)
-            try:
-                d = int(days)
-                if d >= 180: bg, fg = "#e8d5ff", "#4a235a"   # purple
-                elif d >= 90:  bg, fg = "#FDECED", "#9C0006"  # red
-                elif d >= 60:  bg, fg = "#FFEB9C", "#9C6500"  # amber
-                elif d >= 30:  bg, fg = "#C6EFCE", "#276221"  # green
-                else:          return [""] * len(row)
-                return [f"background-color:{bg};color:{fg}"] * len(row)
-            except:
-                return [""] * len(row)
-
-        # Coerce Days Inactive to numeric for safe sorting — non-numeric values sort last
-        _sort_col = overview_df["Days Inactive"].apply(lambda x: pd.to_numeric(x, errors="coerce"))
-        sorted_df = overview_df.iloc[_sort_col.sort_values(ascending=False, na_position="last").index].copy()
-        # Ensure all columns are clean strings to avoid Arrow errors
-        sorted_df = sorted_df.reset_index(drop=True)
-        sorted_df.columns = [str(col) for col in sorted_df.columns]
-        for _col in sorted_df.columns:
-            if sorted_df[_col].dtype == object:
-                sorted_df[_col] = sorted_df[_col].fillna("—").astype(str)
-        styled_overview = sorted_df.style.apply(_style_overview_row, axis=1)
-        st.dataframe(styled_overview, hide_index=True, use_container_width=True)
-        st.caption("🔔 Eligible for informal follow up = 14–29 days · On Hold projects shown for reference only")
-
 
     else:
         st.info("Upload SS DRS to see your project overview.")
 
     st.markdown("---")
-    st.subheader("Step 3 — Select a Project")
+    st.subheader("Step 1 — Select a Project")
 
     # ── Column resolution — works for both SFDC and DRS modes ─────────────
     if mode == "sfdc":
