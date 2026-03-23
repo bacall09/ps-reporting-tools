@@ -982,7 +982,8 @@ def main():
         _total    = len(df_drs)
         _onhold   = int(df_drs["_on_hold"].sum()) if "_on_hold" in df_drs.columns else 0
         _active   = _total - _onhold
-        _inactive = int((df_drs["days_inactive"] >= 14).sum()) if "days_inactive" in df_drs.columns else 0
+        _on_hold_mask = df_drs.get("_on_hold", pd.Series(False, index=df_drs.index)).astype(bool)
+        _inactive = int(((df_drs["days_inactive"] >= 14) & ~_on_hold_mask).sum()) if "days_inactive" in df_drs.columns else 0
 
         mc1, mc2, mc3, mc4 = st.columns(4)
         with mc1:
@@ -992,7 +993,7 @@ def main():
         with mc3:
             st.metric("On Hold", _onhold)
         with mc4:
-            st.metric("Requiring Follow-Up", _inactive, help="Projects with 30+ days inactivity")
+            st.metric("Requiring Follow-Up", _inactive, help="Active projects with 14+ days inactivity (on-hold excluded)")
 
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
         with st.expander("How is 'Days Inactive' calculated?", expanded=False):
@@ -1352,9 +1353,9 @@ Used when no NS entries and no milestones are present.
             )
             service_expiry = expiry_val
         else:
-            # No subscription date in DRS — leave blank, user can enter manually
-            st.markdown("**Service term expiry date**")
-            st.caption("Not found in DRS — enter manually if known, or leave blank.")
+            # No subscription date in DRS — required manual entry
+            st.markdown("**Service term expiry date** :red[*]")
+            st.caption("Not found in DRS — enter the contract expiry date to continue (contract start + 12 months).")
             _manual = st.date_input(
                 "Service term expiry date",
                 value=None,
@@ -1362,7 +1363,10 @@ Used when no NS entries and no milestones are present.
                 help="12 months from contract/subscription start date",
                 label_visibility="collapsed",
             )
-            service_expiry = _manual  # may be None — handled in template fill
+            if _manual is None:
+                st.error("Service term expiry date is required for Tier 4 outreach. Please enter a date to continue.")
+                st.stop()
+            service_expiry = _manual
     else:
         service_expiry = date.today()
 
