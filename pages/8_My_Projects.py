@@ -132,7 +132,7 @@ def _flags(row):
     if pd.notna(go_live) and pd.notna(start_dt):
         if pd.Timestamp(go_live)<pd.Timestamp(start_dt):
             out.append(("error",None,"Go Live before Start date — raise with admin",False))
-    if not is_leg and pi>_pidx("00. onboarding") and not pd.notna(row.get("ms_intro_email")):
+    if not is_leg and pi>=_pidx("00. onboarding") and pi>=0 and not pd.notna(row.get("ms_intro_email")):
         out.append(("warn","ms_intro_email","Intro email date not recorded",True))
     if not str(row.get("schedule_health","")or"").strip():
         out.append(("warn","schedule_health","Schedule Health not set",True))
@@ -183,11 +183,11 @@ ihc = (active[active["phase"].fillna("").str.lower().str.contains("06|go-live|go
               &active["go_live_date"].notna()&(active["go_live_date"]>=_14)]
        if "go_live_date" in active.columns else pd.DataFrame())
 
-# Missing intro email
-mi = (active[~active.get("legacy",pd.Series(False,index=active.index)).astype(bool)
-             &active["phase"].fillna("").apply(lambda p:_pidx(p)>_pidx("00. onboarding"))
-             &~active["ms_intro_email"].notna()]
-      if "ms_intro_email" in active.columns else pd.DataFrame())
+# Missing intro email — flag any active non-legacy project in or past onboarding without a date
+_leg        = active.get("legacy", pd.Series(False, index=active.index)).astype(bool)
+_onb_or_past = active["phase"].fillna("").apply(lambda p: _pidx(p) >= _pidx("00. onboarding") and _pidx(p) >= 0)
+_no_intro   = (~active["ms_intro_email"].notna()) if "ms_intro_email" in active.columns else pd.Series(True, index=active.index)
+mi          = active[(~_leg) & _onb_or_past & _no_intro] if "ms_intro_email" in active.columns else pd.DataFrame()
 
 c1,c2,c3,c4=st.columns(4)
 with c1:
