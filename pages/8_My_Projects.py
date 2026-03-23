@@ -167,50 +167,6 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 1 — Snapshot
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Snapshot</div>',unsafe_allow_html=True)
-
-# Phase counts sorted by phase order
-_pc = sorted(active["phase"].value_counts().items(),key=lambda x:_pidx(x[0])) if "phase" in active.columns else []
-
-# Going live this week — sorted by date asc
-_n7 = today+timedelta(days=7)
-gls = (active[active["go_live_date"].notna()&(active["go_live_date"]>=today)&(active["go_live_date"]<=_n7)]
-       .sort_values("go_live_date") if "go_live_date" in active.columns else pd.DataFrame())
-
-# In hypercare week 1
-_14 = today-timedelta(days=14)
-ihc = (active[active["phase"].fillna("").str.lower().str.contains("06|go-live|go live|hypercare",na=False)
-              &active["go_live_date"].notna()&(active["go_live_date"]>=_14)]
-       if "go_live_date" in active.columns else pd.DataFrame())
-
-# Missing intro email — flag any active non-legacy project in or past onboarding without a date
-_leg        = active.get("legacy", pd.Series(False, index=active.index)).astype(bool)
-_onb_or_past = active["phase"].fillna("").apply(lambda p: _pidx(p) >= _pidx("00. onboarding") and _pidx(p) >= 0)
-_no_intro   = (~active["ms_intro_email"].notna()) if "ms_intro_email" in active.columns else pd.Series(True, index=active.index)
-mi          = active[(~_leg) & _onb_or_past & _no_intro] if "ms_intro_email" in active.columns else pd.DataFrame()
-
-c1,c2,c3,c4=st.columns(4)
-with c1:
-    st.markdown(f'<div class="metric-card"><div class="metric-val">{len(active)}</div><div class="metric-lbl">Active Projects</div></div>',unsafe_allow_html=True)
-    for ph,cnt in _pc:
-        st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{cnt} · {str(ph).split(".")[-1].strip()[:22]}</div>',unsafe_allow_html=True)
-with c2:
-    col="#27AE60" if len(gls)>0 else "inherit"
-    st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{len(gls)}</div><div class="metric-lbl">Going live this week</div></div>',unsafe_allow_html=True)
-    for _,r in gls.iterrows():
-        st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{str(r.get("project_name",""))[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>',unsafe_allow_html=True)
-with c3:
-    col="#F39C12" if len(ihc)>0 else "inherit"
-    st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{len(ihc)}</div><div class="metric-lbl">In hypercare (week 1)</div></div>',unsafe_allow_html=True)
-    for _,r in ihc.iterrows():
-        st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{str(r.get("project_name",""))[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>',unsafe_allow_html=True)
-with c4:
-    col="#E74C3C" if len(mi)>0 else "inherit"
-    st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{len(mi)}</div><div class="metric-lbl">Missing intro email</div></div>',unsafe_allow_html=True)
-    if len(mi)>0: st.markdown('<div style="font-size:11px;opacity:.55">Excl. legacy projects</div>',unsafe_allow_html=True)
-
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
-
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2+3 — Active Projects (editable table + export)
 # ══════════════════════════════════════════════════════════════════════════════

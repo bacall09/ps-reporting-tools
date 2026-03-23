@@ -592,71 +592,122 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             st.caption("* Available hours prorated")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 2 — Re-engagement actions
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 2 — Project Snapshot
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-label">My Projects — Snapshot</div>', unsafe_allow_html=True)
+
+if df_drs is None:
+    st.info("Upload SS DRS Export in the sidebar to see your project snapshot.")
+elif my_projects.empty:
+    st.info("No projects found in the DRS file for your profile.")
+else:
+    _ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool)
+    _active  = my_projects[~_ioh].copy()
+    _today   = pd.Timestamp.today().normalize()
+    _n7      = _today + pd.Timedelta(days=7)
+    _14      = _today - pd.Timedelta(days=14)
+
+    # Phase breakdown
+    from shared.constants import PHASE_BENCHMARKS_DAYS
+    _PHASE_ORDER = ["00. onboarding","01. requirements and design","02. configuration",
+                    "03. enablement/training","04. uat","05. prep for go-live",
+                    "06. go-live","07. data migration","08. ready for support transition","09. phase 2 scoping"]
+    def _pidx_db(p):
+        pl = str(p).strip().lower()
+        for i, ph in enumerate(_PHASE_ORDER):
+            if pl.startswith(ph[:6]) or ph in pl or pl in ph: return i
+        return -1
+
+    _pc = sorted(
+        [(ph, cnt) for ph, cnt in _active["phase"].fillna("—").value_counts().items()],
+        key=lambda x: _pidx_db(x[0])
+    )
+
+    # Going live this week
+    _gls = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _today) & (_active["go_live_date"] <= _n7)]
+            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
+
+    # In hypercare
+    _ihc = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _14) & (_active["go_live_date"] < _today)]
+            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
+
+    # Missing intro email
+    _leg      = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
+    _onb_plus = _active["phase"].fillna("").apply(lambda p: _pidx_db(p) >= 0)
+    _no_intro = (~_active["ms_intro_email"].notna()) if "ms_intro_email" in _active.columns else pd.Series(True, index=_active.index)
+    _mi       = _active[(~_leg) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
+
+    # Re-engagement
+    _stale = pd.DataFrame()
+    if "days_inactive" in my_projects.columns:
+        _stale = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False)
+
+    snap1, snap2, snap3, snap4, snap5 = st.columns(5)
+    with snap1:
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
+        for ph, cnt in _pc:
+            st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{cnt} · {str(ph).split(".")[-1].strip()[:22]}</div>', unsafe_allow_html=True)
+    with snap2:
+        _col = "#27AE60" if len(_gls) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
+        for _, r in _gls.iterrows():
+            _cust = str(r.get("project_name",""))
+            _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
+            st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
+    with snap3:
+        _col = "#F39C12" if len(_ihc) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare (week 1)</div></div>', unsafe_allow_html=True)
+        for _, r in _ihc.iterrows():
+            _cust = str(r.get("project_name",""))
+            _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
+            st.markdown(f'<div style="font-size:11px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
+    with snap4:
+        _col = "#E74C3C" if len(_mi) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email</div></div>', unsafe_allow_html=True)
+        if len(_mi) > 0:
+            st.markdown('<div style="font-size:11px;opacity:.55">Excl. legacy projects</div>', unsafe_allow_html=True)
+    with snap5:
+        _col = "#E74C3C" if len(_stale) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement</div></div>', unsafe_allow_html=True)
+        if len(_stale) > 0:
+            st.markdown('<div style="font-size:11px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)
+
+    if st.button("→ Go to My Projects", key="db_goto_mp"):
+        st.switch_page("pages/8_My_Projects.py")
+
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 3 — Re-engagement Actions
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Re-Engagement Actions</div>', unsafe_allow_html=True)
 
 if df_drs is None:
     st.info("Upload SS DRS Export in the sidebar to see re-engagement actions.")
-elif my_projects.empty:
-    _view_label_drs = (
-        view_name.split(":",1)[1] + " team" if view_name.startswith("REGION:") else
-        "All team" if view_name == "ALL" else
-        view_name.split(",")[1].strip() if "," in view_name else view_name
-    )
-    st.warning(f"No projects found for **{_view_label_drs}** in the DRS file.")
-elif "days_inactive" not in my_projects.columns:
+elif my_projects.empty or "days_inactive" not in my_projects.columns:
     st.info("Upload NS Time Detail alongside DRS to calculate project inactivity.")
 else:
-    stale = my_projects[my_projects["days_inactive"] >= 14].sort_values("days_inactive", ascending=False)
-    if stale.empty:
-        st.markdown('<span class="action-badge badge-green">All clear</span> No projects flagged for re-engagement.', unsafe_allow_html=True)
+    _stale_re = my_projects[my_projects["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False)
+    if _stale_re.empty:
+        st.markdown('<span class="action-badge badge-green">✓ All clear</span> No projects flagged for re-engagement.', unsafe_allow_html=True)
     else:
-        st.markdown(f"**{len(stale)} project(s)** need re-engagement outreach")
-
-        for _ri, (_, row) in enumerate(stale.iterrows()):
-            proj_name  = row.get("project_name", "—")
+        for _ri, (_, row) in enumerate(_stale_re.iterrows()):
+            proj_name  = str(row.get("project_name", "—"))
             days_inac  = int(row.get("days_inactive", 0))
-            phase      = row.get("phase", "—")
             tier       = suggest_tier(days_inac)
-            tier_label = tier if tier else "Monitor"
-            pm_name    = row.get("project_manager", "")
-
-            with st.expander(f"{proj_name} — {days_inac}d inactive · {tier_label}"):
-                ci, ca = st.columns([1, 2])
-                with ci:
-                    st.markdown(f"**Phase:** {phase}")
-                    st.markdown(f"**Days inactive:** {days_inac}")
-                    # Show PM for managers; hide for consultants
-                    if _is_group_view and pm_name:
-                        st.markdown(f"**Project Manager:** {pm_name}")
-                    try:
-                        lm = calc_last_milestone(row)
-                        if lm and lm != "—": st.markdown(f"**Last milestone:** {lm}")
-                    except Exception: pass
-                with ca:
-                    if tier and tier in TEMPLATES:
-                        st.markdown(f"**Suggested template:** {tier}")
-                        if st.button("Draft outreach →", key=f"draft_{_ri}_{proj_name[:20]}", type="primary"):
-                            st.session_state["_jump_to_proj"] = proj_name
-                            st.session_state["_jump_tier"]    = tier
-                            st.switch_page("pages/2_Customer_Reengagement.py")
-                    else:
-                        st.markdown("No template matched for this inactivity window.")
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3 — Welcome email actions (placeholder)
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Welcome Email Actions</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div style="border:1px dashed rgba(128,128,128,0.3);border-radius:8px;padding:16px 20px;opacity:0.6">' +
-    '<div style="font-size:13px;font-weight:600;margin-bottom:4px">Coming soon</div>' +
-    '<div style="font-size:12px">Newly assigned projects that haven\'t had a welcome / intro email sent yet will surface here, with a pre-filled template ready to send.</div>' +
-    '</div>',
-    unsafe_allow_html=True,
-)
+            pm_name    = str(row.get("project_manager", "") or "")
+            _cust      = proj_name.split(" - ")[0].strip() if " - " in proj_name else proj_name
+            _rc1, _rc2, _rc3 = st.columns([3, 1, 1])
+            with _rc1:
+                _pm_str = f" · {pm_name}" if _is_group_view and pm_name else ""
+                st.markdown(f'<span style="font-size:13px;font-weight:600">{_cust}</span> <span style="font-size:11px;opacity:.6">{days_inac}d inactive · {tier or "Monitor"}{_pm_str}</span>', unsafe_allow_html=True)
+            with _rc3:
+                if tier and tier in TEMPLATES:
+                    if st.button("Draft →", key=f"db_draft_{_ri}", use_container_width=True):
+                        st.session_state["_jump_to_proj"] = proj_name
+                        st.session_state["_jump_tier"]    = tier
+                        st.switch_page("pages/2_Customer_Reengagement.py")
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")

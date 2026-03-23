@@ -82,6 +82,17 @@ if df_drs is None:
     st.info("Upload your SS DRS Export (or load it on the Home page) to run the health check.")
     st.stop()
 
+# ── Apply consultant filter if logged in as IC ────────────────────────────────
+from shared.constants import get_role as _get_role
+_session_name = st.session_state.get("consultant_name", "")
+if _session_name:
+    _role = _get_role(_session_name)
+    _is_manager = _role in ("manager", "manager_only")
+    if not _is_manager and "project_manager" in df_drs.columns:
+        _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == _session_name]
+        if not _filtered.empty:
+            df_drs = _filtered
+
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
