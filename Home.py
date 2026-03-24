@@ -6,7 +6,6 @@ The login gate lives in a shared helper called by every page.
 """
 import streamlit as st
 import pandas as pd
-import streamlit_authenticator as stauth
 
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
@@ -33,13 +32,6 @@ _creds = {
 }
 _cookie_raw = _to_dict(st.secrets.get("cookie", {}))
 _cookie = _cookie_raw or {"name": "ps_tools_auth", "key": "fallback_key", "expiry_days": 30}
-
-authenticator = stauth.Authenticate(
-    credentials        = _creds,
-    cookie_name        = _cookie.get("name", "ps_tools_auth"),
-    cookie_key         = _cookie.get("key", "fallback_key"),
-    cookie_expiry_days = int(_cookie.get("expiry_days", 30)),
-)
 
 # ── Auth state ────────────────────────────────────────────────────────────────
 _auth_user   = st.session_state.get("username", "")
