@@ -37,7 +37,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-_b = st.session_state.get("home_browse", "") or ""
+# Use passthrough key if set (navigated from My Projects), else fall back to home_browse
+_b = st.session_state.pop("_va_passthrough", None) or st.session_state.get("home_browse", "") or ""
 if _b.startswith("── ") and _b.endswith(" ──"):
     _drs_title_sfx = f" — {_b[3:-3].strip()} Team"
 elif _b and _b not in ("— My own view —", "— Select —", "👥 All team"):

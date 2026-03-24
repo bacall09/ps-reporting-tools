@@ -302,11 +302,12 @@ else:
     st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
     st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
     if st.button("→ Go to DRS Health Check", key="mp_drs_link"):
-        # Sync current view selection into home_browse so DRS Health Check filters correctly
+        # Pass current view to DRS Health Check via a passthrough key
+        # (cannot write directly to home_browse — it's bound to a widget)
         if _va_region:
-            st.session_state["home_browse"] = f"── {_va_region} ──"
+            st.session_state["_va_passthrough"] = f"── {_va_region} ──"
         elif view_as and view_as != selected:
-            st.session_state["home_browse"] = view_as
+            st.session_state["_va_passthrough"] = view_as
         st.switch_page("pages/6_DRS_Health_Check.py")
 
     edited = st.data_editor(
@@ -367,15 +368,26 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4 — On Hold
 # ══════════════════════════════════════════════════════════════════════════════
-with st.expander(f"On Hold ({len(on_hold)} projects)",expanded=False):
-    if on_hold.empty:
-        st.markdown("No on-hold projects.")
-    else:
-        st.dataframe(pd.DataFrame([{
-            "Project":str(r.get("project_name","")),"Phase":str(r.get("phase","—")),
-            "RAG":str(r.get("rag","")or"—").strip(),
-            "Go Live":pd.Timestamp(r["go_live_date"]).strftime("%-d %b %Y") if pd.notna(r.get("go_live_date")) else "—",
-            "Days Inactive":int(r.get("days_inactive",-1)) if r.get("days_inactive",-1)>=0 else "—",
-        } for _,r in on_hold.iterrows()]),use_container_width=True,hide_index=True)
+st.markdown('<div class="section-label">On Hold</div>', unsafe_allow_html=True)
+if on_hold.empty:
+    st.markdown("No on-hold projects.")
+else:
+    _oh_rows = []
+    for _, r in on_hold.iterrows():
+        _oh_row = {
+            "Project":      str(r.get("project_name", "")),
+            "Phase":        str(r.get("phase", "—")),
+            "RAG":          str(r.get("rag", "") or "—").strip(),
+            "Go Live":      pd.Timestamp(r["go_live_date"]).strftime("%-d %b %Y") if pd.notna(r.get("go_live_date")) else "—",
+            "Days Inactive": int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
+        }
+        if _va_region:
+            _oh_row["Consultant"] = str(r.get("project_manager", "") or "")
+        _oh_rows.append(_oh_row)
+    _oh_df = pd.DataFrame(_oh_rows)
+    # Put Consultant second if present
+    if "Consultant" in _oh_df.columns:
+        _oh_df = _oh_df[["Project", "Consultant"] + [c for c in _oh_df.columns if c not in ("Project", "Consultant")]]
+    st.dataframe(_oh_df, use_container_width=True, hide_index=True)
 
 st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:20px">PS Reporting Tools · Internal use only · Data loaded this session only</div>',unsafe_allow_html=True)
