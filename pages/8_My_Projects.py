@@ -199,7 +199,8 @@ else:
         except: return str(v).strip()
 
     _ns_htd: dict    = {}  # project_id → max hours_to_date
-    _ns_tm_hrs: dict = {}  # project_id → sum of T&M hours
+    _ns_tm_hrs: dict = {}  # project_id → T&M scope hours
+    _ns_tm_pids: set = set()  # project_ids confirmed T&M from NS billing_type
 
     if df_ns is not None:
         _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
@@ -221,8 +222,15 @@ else:
                         _v = _grp["tm_scope"].dropna().astype(float)
                         if not _v.empty:
                             _ns_tm_hrs[_k] = round(float(_v.max()), 2)
+                            _ns_tm_pids.add(_k)
                     except Exception:
                         pass
+        # Also flag T&M by billing_type in NS (catches projects where tm_scope is present)
+        if _ns_id_col and "billing_type" in df_ns.columns:
+            _tm_ns = df_ns[df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"]
+            for _pid in _tm_ns[_ns_id_col].dropna().unique():
+                _k = _clean_pid(_pid)
+                if _k: _ns_tm_pids.add(_k)
         elif _ns_id_col and "hours" in df_ns.columns and "billing_type" in df_ns.columns:
             # Fallback: sum T&M hours if T&M Scope column not present
             _tm_mask = df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"
@@ -249,9 +257,10 @@ else:
         # Scope: FF → from DEFAULT_SCOPE table by project_type; T&M → total NS hours logged
         _ptype_raw = str(row.get("project_type", "") or "")
         _bill_raw  = str(row.get("billing_type", "") or "").strip().lower()
-        _is_tm     = "t&m" in _bill_raw or "time" in _bill_raw
+        _pid_key   = _clean_pid(row.get("project_id", ""))
+        _is_tm     = ("t&m" in _bill_raw or "time" in _bill_raw
+                      or _pid_key in _ns_tm_pids)  # confirmed T&M from NS
         _ff_scope  = get_ff_scope(_ptype_raw)
-        _pid_key = _clean_pid(row.get("project_id", ""))
         if _is_tm:
             # T&M scope from NS Time Detail "T&M Scope" column (max per project_id)
             # Falls back to hours sum if column not present in export
