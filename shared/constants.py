@@ -286,8 +286,7 @@ def resolve_view_as(consultant_name: str, home_browse: str, employee_roles: dict
       - region: region string if a region is selected (or None)
       - is_group_view: True if manager viewing a region or all
     """
-    from shared.constants import get_role as _gr
-    logged_in_role = _gr(consultant_name) if consultant_name else "consultant"
+    logged_in_role = get_role(consultant_name) if consultant_name else "consultant"
     is_mgr = logged_in_role in ("manager", "manager_only")
 
     if not is_mgr:
