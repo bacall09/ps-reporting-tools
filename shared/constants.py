@@ -155,6 +155,24 @@ def resolve_name(raw: str) -> str:
     """Return canonical roster name for a raw DRS/NS name, or the original if no alias."""
     return NAME_ALIASES.get(str(raw).strip().lower(), str(raw).strip())
 
+def name_matches(drs_value: str, roster_name: str) -> bool:
+    """Match a DRS/NS name value against a canonical roster name.
+    Handles Last, First vs First Last format differences and aliases.
+    """
+    if not drs_value or not roster_name: return False
+    v = resolve_name(str(drs_value)).strip().lower()
+    r = str(roster_name).strip().lower()
+    # Build match variants from roster name (Last, First format)
+    parts = [p.strip() for p in r.split(",")]
+    variants = {r, parts[0]}  # "last, first" and "last"
+    if len(parts) == 2:
+        variants.add(f"{parts[1].strip()} {parts[0]}")  # "first last"
+    # Exact / boundary match
+    if v in variants or any(v == nv or v.startswith(nv + " ") or v.endswith(" " + nv) for nv in variants):
+        return True
+    # Substring fallback for format mismatches (min 5 chars to avoid false positives)
+    return any(nv in v for nv in variants if len(nv) >= 5)
+
 # ── Column maps ───────────────────────────────────────────────────────────────
 SS_COL_MAP = {
     "project name":          "project_name",
