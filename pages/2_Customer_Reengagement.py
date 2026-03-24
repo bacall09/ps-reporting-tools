@@ -6,6 +6,7 @@ from rapidfuzz import fuzz
 from shared.constants import (
     EMPLOYEE_ROLES, ACTIVE_EMPLOYEES, PRODUCT_KEYWORDS,
     MILESTONE_COLS_MAP, SS_COL_MAP, NS_COL_MAP, SFDC_COL_MAP,
+    name_matches,
 )
 from shared.loaders import (
     load_drs, load_sfdc, load_ns_time,
@@ -998,7 +999,7 @@ def main():
             if not _f.empty: df = _f
         elif _va_name or not is_manager:
             _target = _va_name if _va_name else selected_user
-            _f = df[df["opportunity_owner"].astype(str).str.strip().apply(lambda v: __import__("shared.constants", fromlist=["resolve_name"]).resolve_name(v)) == _target]
+            _f = df[df["opportunity_owner"].apply(lambda v: name_matches(v, _target))]
             if not _f.empty: df = _f
 
     # ── Project overview table ─────────────────────────────────────────────
