@@ -275,3 +275,46 @@ def get_ff_scope(project_type: str):
     if not matches:
         return None
     return max(matches, key=lambda x: len(x[0]))[1]
+
+
+# ── View As resolver — reads home_browse and returns (name_or_none, region_or_none, is_manager_view) ──
+def resolve_view_as(consultant_name: str, home_browse: str, employee_roles: dict, employee_location: dict,
+                    ps_region_map: dict, ps_region_override: dict, consultant_dropdown: list):
+    """
+    Returns (selected_name, region, is_group_view):
+      - selected_name: single consultant name to filter to (or None for region/all)
+      - region: region string if a region is selected (or None)
+      - is_group_view: True if manager viewing a region or all
+    """
+    from shared.constants import get_role as _gr
+    logged_in_role = _gr(consultant_name) if consultant_name else "consultant"
+    is_mgr = logged_in_role in ("manager", "manager_only")
+
+    if not is_mgr:
+        return consultant_name, None, False
+
+    b = str(home_browse or "").strip()
+    if not b or b in ("— My own view —", "— Select —", "👥 All team", ""):
+        return consultant_name, None, False
+    if b.startswith("── ") and b.endswith(" ──"):
+        region = b[3:-3].strip()
+        return None, region, True
+    # Individual consultant selected
+    return b, None, False
+
+
+def get_region_consultants(region: str, employee_location: dict, ps_region_map: dict,
+                           ps_region_override: dict, consultant_dropdown: list) -> set:
+    """Return set of normalised name variants for all consultants in a region."""
+    names = set()
+    for n in consultant_dropdown:
+        loc = employee_location.get(n, "")
+        if isinstance(loc, tuple): loc = loc[0]
+        nr = ps_region_override.get(n, ps_region_map.get(loc, "Other"))
+        if nr == region:
+            names.add(n.lower())
+            parts = [p.strip() for p in n.split(",")]
+            names.add(parts[0].lower())
+            if len(parts) == 2:
+                names.add(f"{parts[1]} {parts[0]}".lower())
+    return names
