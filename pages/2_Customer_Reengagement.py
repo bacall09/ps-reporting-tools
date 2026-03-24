@@ -789,6 +789,9 @@ def _get_project_log(project):
 
 def main():
 
+    # Safe defaults
+    _va_name = None; _va_region = None; _is_group = False
+
     # ── Identity — use Home session state if available ────────────────────
     _session_name = st.session_state.get("consultant_name")
 
@@ -978,6 +981,18 @@ def main():
         df   = df_sfdc
         mode = "sfdc"
 
+    # ── Ensure df is filtered to match the view selection ─────────────────
+    # df_drs is already filtered above; apply same logic to df_sfdc if in sfdc mode
+    if mode == "sfdc" and df is not None and "opportunity_owner" in df.columns:
+        if _va_region:
+            _rc = get_region_consultants(_va_region, EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES)
+            _f = df[df["opportunity_owner"].astype(str).str.strip().str.lower().isin(_rc)]
+            if not _f.empty: df = _f
+        elif _va_name or not is_manager:
+            _target = _va_name if _va_name else selected_user
+            _f = df[df["opportunity_owner"].astype(str).str.strip() == _target]
+            if not _f.empty: df = _f
+
     # ── Project overview table ─────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Your Projects")
@@ -1118,6 +1133,7 @@ Used when no NS entries and no milestones are present.
 
     st.markdown("---")
     st.subheader("Step 1 — Select a Project")
+    st.caption(f"DEBUG: mode={mode} | df rows={len(df) if df is not None else 0} | df_drs rows={len(df_drs) if df_drs is not None else 0} | selected_user={selected_user} | _va_region={_va_region} | _va_name={_va_name}")
 
     # ── Column resolution — works for both SFDC and DRS modes ─────────────
     if mode == "sfdc":
