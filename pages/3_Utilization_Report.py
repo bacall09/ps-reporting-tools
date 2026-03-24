@@ -448,14 +448,17 @@ def assign_credits(df, scope_map):
     _htd_col = "hours_to_date"
     prior_htd = {}
     if _htd_col in df.columns:
-        for _proj, _grp in df.groupby("project"):
-            _proj_n = " ".join(str(_proj).split())
+        # Group by (project, project_type) — same composite key as consumed dict
+        # Prevents cross-product-type HTD bleed on multi-product accounts
+        _htd_grp_cols = [c for c in ["project", "project_type"] if c in df.columns]
+        for _key, _grp in df.groupby(_htd_grp_cols):
+            _pk = tuple(" ".join(str(k).strip().split()) for k in (_key if isinstance(_key, tuple) else (_key,)))
             try:
-                _max_htd   = float(_grp[_htd_col].dropna().astype(float).max() or 0)
+                _max_htd    = float(_grp[_htd_col].dropna().astype(float).max() or 0)
                 _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
-                prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
+                prior_htd[_pk] = max(0.0, _max_htd - _period_hrs)
             except Exception:
-                prior_htd[_proj_n] = 0.0
+                prior_htd[_pk] = 0.0
 
     consumed = {}
     credit_hrs_list    = []
@@ -506,11 +509,13 @@ def assign_credits(df, scope_map):
             htd_start_list.append(0)
             continue
 
-        # Seed starting balance from pre-period hours only (not cumulative HTD)
-        if proj not in consumed:
-            consumed[proj] = prior_htd.get(proj, 0.0)
+        # Seed starting balance — composite key: (project, project_type)
+        # Prevents cross-product-type HTD bleed on multi-product accounts
+        _ck = (proj, ptype)
+        if _ck not in consumed:
+            consumed[_ck] = prior_htd.get(_ck, 0.0)
 
-        already    = consumed[proj]
+        already    = consumed[_ck]
         remaining  = scope_hrs - already
         htd_start_list.append(already)
 
@@ -518,11 +523,11 @@ def assign_credits(df, scope_map):
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("OVERRUN"); notes_list.append(f"Scope exhausted (cap: {scope_hrs:.0f}h)")
         elif hrs <= remaining:
-            consumed[proj] = already + hrs
+            consumed[_ck] = already + hrs
             credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("CREDITED"); notes_list.append(f"NB within scope ({already:.1f}/{scope_hrs:.0f}h used)")
         else:
-            consumed[proj] = already + remaining
+            consumed[_ck] = already + remaining
             credit_hrs_list.append(remaining); variance_hrs_list.append(hrs - remaining)
             credit_tag_list.append("PARTIAL")
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
