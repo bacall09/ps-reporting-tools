@@ -92,6 +92,14 @@ if role == "manager":
         st.session_state["_mp_va"] = _pick
         if _pick not in ("— My own projects —",) and not (_pick.startswith("── ") and _pick.endswith(" ──")):
             view_as = _pick
+        elif _pick.startswith("── ") and _pick.endswith(" ──"):
+            # Region header selected — store region label for filtering
+            st.session_state["_mp_va_region"] = _pick[3:-3].strip()
+        else:
+            st.session_state["_mp_va_region"] = None
+    _va_region = st.session_state.get("_mp_va_region")
+else:
+    _va_region = None
 
 # ── Data ─────────────────────────────────────────────────────────────────────
 df_drs = st.session_state.get("df_drs")
@@ -100,19 +108,40 @@ if df_drs is None:
     st.info("Upload SS DRS Export in the sidebar to see your projects.")
     st.stop()
 
-# Filter to consultant
-_vp = [p.strip() for p in view_as.split(",")]
-_vv = {view_as.lower(), _vp[0].lower()}
-if len(_vp)==2: _vv.add(f"{_vp[1].strip()} {_vp[0]}".lower())
-def _mpm(v):
-    v=str(v).strip().lower()
-    return v in _vv or any(v==nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _vv)
-pm_col = df_drs.get("project_manager",pd.Series(dtype=str))
-my_drs = df_drs[pm_col.apply(lambda v:_mpm(str(v)))].copy()
+# Filter to consultant or region
+pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
 
-if my_drs.empty and view_as==selected and is_manager(selected):
-    st.info(f"No projects assigned to {selected} in DRS. Use 'View as' to browse a consultant.")
+if _va_region and role == "manager":
+    # Region view — show all consultants in this region
+    _region_consultants = set()
+    for n in CONSULTANT_DROPDOWN:
+        _nl = EMPLOYEE_LOCATION.get(n, "")
+        _nr = PS_REGION_OVERRIDE.get(n, PS_REGION_MAP.get(_nl, "Other"))
+        if _nr == _va_region:
+            _region_consultants.add(n.lower())
+            _vp2 = [p.strip() for p in n.split(",")]
+            _region_consultants.add(_vp2[0].lower())
+            if len(_vp2) == 2:
+                _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
+    my_drs = df_drs[pm_col.apply(lambda v: str(v).strip().lower() in _region_consultants)].copy()
+    if my_drs.empty:
+        st.info(f"No projects found for the {_va_region} region in DRS.")
+        st.stop()
+elif view_as == selected and is_manager(selected):
+    # Manager viewing their own — show nothing (they have no projects)
+    st.info(f"You are logged in as a manager. Use 'View as' to browse a consultant or region.")
     st.stop()
+else:
+    _vp = [p.strip() for p in view_as.split(",")]
+    _vv = {view_as.lower(), _vp[0].lower()}
+    if len(_vp) == 2: _vv.add(f"{_vp[1].strip()} {_vp[0]}".lower())
+    def _mpm(v):
+        v = str(v).strip().lower()
+        return v in _vv or any(v == nv or v.startswith(nv + " ") or v.endswith(" " + nv) for nv in _vv)
+    my_drs = df_drs[pm_col.apply(lambda v: _mpm(str(v)))].copy()
+    if my_drs.empty:
+        st.info(f"No projects found for {view_as} in DRS.")
+        st.stop()
 
 if df_ns is not None:
     try: my_drs = calc_days_inactive(my_drs,df_ns)
