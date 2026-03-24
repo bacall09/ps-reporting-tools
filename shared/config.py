@@ -75,9 +75,9 @@ EMPLOYEE_LOCATION = {
     "Hughes, Madalyn":        "USA",
     "Porangada, Suraj":       "USA",
     # ── Managers only ─────────────────────────────────────────────────────────
-    "Longi":                  "Sydney (AU)",
-    "Prince":                 "USA",
-    "Rusnak":                 "USA",
+    "Longi, Sameer":                  "Sydney (AU)",
+    "Prince, Trevor":                 "USA",
+    "Rusnak, Connor":                 "USA",
     # ── Leavers (kept for historical avail hours lookups) ─────────────────────
     "Centinaje, Rhodechild":  "Manila (PH)",
     "Chan, Joven":            "Manila (PH)",

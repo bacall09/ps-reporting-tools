@@ -16,11 +16,11 @@ MANAGER_CONSULTANTS = [
     "Hughes, Madalyn",     # Project Manager
     "Ickler, Georganne",   # Consultant & Manager of PS
     "Lappin, Thomas",      # Manager-level Consultant
-    "Longi",               # Director of PS
+    "Longi, Sameer",               # Director of PS
     "Murphy, Conor",       # Solution Architect — manager tier
     "Porangada, Suraj",    # Project Manager
-    "Prince",              # VP of PMO
-    "Rusnak",              # VP of PS
+    "Prince, Trevor",              # VP of PMO
+    "Rusnak, Connor",              # VP of PS
     "Snee, Stefanie J",    # Manager-level Consultant
     "Stone, Matt",         # Manager-level Consultant
     "Swanson, Patti",      # Consultant & Director of PS
@@ -95,9 +95,9 @@ EMPLOYEE_ROLES = {
     "Tuazon, Carol":          {"role": "Consultant", "products": ["Payroll", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],                            "learning": []},
     "Zoric, Ivan":            {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
     # ── Leadership (managers only — no product delivery) ─────────────────────
-    "Longi":                  {"role": "Manager", "products": [], "learning": []},
-    "Prince":                 {"role": "Manager", "products": [], "learning": []},
-    "Rusnak":                 {"role": "Manager", "products": [], "learning": []},
+    "Longi, Sameer":                  {"role": "Manager", "products": [], "learning": []},
+    "Prince, Trevor":                 {"role": "Manager", "products": [], "learning": []},
+    "Rusnak, Connor":                 {"role": "Manager", "products": [], "learning": []},
     # ── Leavers (historical data only — do not remove) ────────────────────────
     "Alam, Laisa":            {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
     "Centinaje, Rhodechild":  {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],               "learning": []},
