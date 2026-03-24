@@ -499,7 +499,9 @@ def assign_credits(df, scope_map):
         scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
 
         if scope_hrs is None:
-            credit_hrs_list.append(0); variance_hrs_list.append(hrs)
+            # UNCONFIGURED: count as credited (matches Daily Briefing logic)
+            # Hours flagged separately via the no-scope banner below the metrics
+            credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("UNCONFIGURED"); notes_list.append(f"Fixed Fee but no scope defined for: {ptype}")
             htd_start_list.append(0)
             continue
@@ -1945,13 +1947,22 @@ def main():
         credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#e74c3c"
         credit_label = "On target" if credit_pct >= 0.70 else "Below target" if credit_pct >= 0.60 else "At risk"
 
-        # Max date in report
+        # Date range banner
         if "date" in df.columns:
-            max_date = pd.to_datetime(df["date"], errors="coerce").max()
-            date_str = max_date.strftime("%-d %B %Y") if pd.notna(max_date) else "—"
+            _dates_clean = pd.to_datetime(df["date"], errors="coerce").dropna()
+            if not _dates_clean.empty:
+                _min_date = _dates_clean.min().strftime("%-d %b %Y")
+                _max_date = _dates_clean.max().strftime("%-d %b %Y")
+                date_str  = _dates_clean.max().strftime("%-d %B %Y")
+            else:
+                _min_date = _max_date = date_str = "—"
         else:
-            date_str = "—"
-            st.markdown(f"<div style='font-size:13px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:12px'>Data through <strong style='color:#ffffff'>{date_str}</strong></div>", unsafe_allow_html=True)
+            _min_date = _max_date = date_str = "—"
+        st.markdown(
+            f"<div style='font-size:12px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:12px'>"
+            f"Reporting period: <strong style='color:inherit'>{_min_date} — {_max_date}</strong></div>",
+            unsafe_allow_html=True
+        )
 
         def fmt_hrs(n):
             """Show 2 decimals only if needed — drops .00 and .X0 trailing zeros."""
