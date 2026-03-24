@@ -37,11 +37,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.markdown("""
+_b = st.session_state.get("home_browse", "") or ""
+if _b.startswith("── ") and _b.endswith(" ──"):
+    _drs_title_sfx = f" — {_b[3:-3].strip()} Team"
+elif _b and _b not in ("— My own view —", "— Select —", "👥 All team"):
+    _bp = [p.strip() for p in _b.split(",")]
+    _drs_title_sfx = f" — {_bp[1] + ' ' + _bp[0] if len(_bp)==2 else _b}"
+else:
+    _drs_title_sfx = ""
+
+st.markdown(f"""
 <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
     <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
     <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
-    <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>DRS Health Check</h1>
+    <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>DRS Health Check{_drs_title_sfx}</h1>
     <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Logical consistency validator for Smartsheet DRS data — flags fields and combinations that don't align with expected project state.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -488,8 +497,10 @@ for proj_name, proj_group in filtered.groupby("project", sort=False):
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ── Export ────────────────────────────────────────────────────────────────────
-export = filtered[["project","severity","category","rule","description","expected"]].rename(columns={
-    "project": "Project", "severity": "Severity", "category": "Category",
+_pm_cols = ["project_manager"] if "project_manager" in filtered.columns else []
+_export_cols = ["project"] + _pm_cols + ["severity","category","rule","description","expected"]
+export = filtered[[c for c in _export_cols if c in filtered.columns]].rename(columns={
+    "project": "Project", "project_manager": "Consultant", "severity": "Severity", "category": "Category",
     "rule": "Rule", "description": "Description", "expected": "Expected State",
 })
 st.download_button(

@@ -249,8 +249,9 @@ else:
         _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
         _bal = round(float(_scope) - float(_htd), 2) if _scope != "" and _htd != "" else ""
         return {
-            "Needs Action":         needs,
+            "Flags":                needs,
             "Customer":             _cust,
+            "Consultant":           str(row.get("project_manager","") or ""),
             "Project Type":         str(row.get("project_type","") or ""),
             "Status":               str(row.get("status","") or ""),
             "Phase":                str(row.get("phase","") or ""),
@@ -272,13 +273,17 @@ else:
         }
 
     edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
+# Hide Consultant column for single-person views
+if not _va_region:
+    edit_df = edit_df.drop(columns=["Consultant"], errors="ignore")
 
     # ── Column config ─────────────────────────────────────────────────────────
     _ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2",
                 "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     col_cfg = {
-        "Needs Action":          st.column_config.TextColumn("",                  disabled=True, width="small"),
+        "Flags":                 st.column_config.TextColumn("Flags",             disabled=True, width="small"),
         "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
+        "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
         "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
         "Status":                st.column_config.TextColumn("Status",            disabled=True),
         "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
@@ -291,8 +296,13 @@ else:
     }
 
     st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
-    st.markdown('<span style="font-size:11.5px;opacity:.6">For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
+    st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
     if st.button("→ Go to DRS Health Check", key="mp_drs_link"):
+        # Sync current view selection into home_browse so DRS Health Check filters correctly
+        if _va_region:
+            st.session_state["home_browse"] = f"── {_va_region} ──"
+        elif view_as and view_as != selected:
+            st.session_state["home_browse"] = view_as
         st.switch_page("pages/6_DRS_Health_Check.py")
 
     edited = st.data_editor(
