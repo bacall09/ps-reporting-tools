@@ -11,7 +11,7 @@ from shared.constants import EMPLOYEE_ROLES
 # ── Colours ───────────────────────────────────────────────────────────────────
 GREEN = "#27AE60"
 AMBER = "#F39C12"
-RED   = "#E74C3C"
+RED   = "#C0392B"
 
 # ── Phase weights ─────────────────────────────────────────────────────────────
 PHASE_WEIGHTS = {
