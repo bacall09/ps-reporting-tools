@@ -659,8 +659,6 @@ else:
     _mi       = _active[(~_leg) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
 
     # Unscoped hours banner — matches Util Report behaviour
-    if ff_unscoped > 0:
-        st.warning(f"⚠️ {round(ff_unscoped, 2)}h on FF projects with NO SCOPE DEFINED — review in Utilization Report.")
 
     # Re-engagement
     _stale = pd.DataFrame()
