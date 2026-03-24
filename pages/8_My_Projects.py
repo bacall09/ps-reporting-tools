@@ -120,7 +120,11 @@ else:
     def _mpm(v):
         # Resolve aliases (e.g. "Church, Jason" → "Church, Jason G")
         v = resolve_name(str(v)).lower()
-        return v in _vv or any(v == nv or v.startswith(nv + " ") or v.endswith(" " + nv) for nv in _vv)
+        # Exact / boundary match first
+        if v in _vv or any(v == nv or v.startswith(nv + " ") or v.endswith(" " + nv) for nv in _vv):
+            return True
+        # Substring fallback — handles "First Last" vs "Last, First" format differences
+        return any(nv in v for nv in _vv if len(nv) > 4)
     my_drs = df_drs[pm_col.apply(lambda v: _mpm(str(v)))].copy()
     if my_drs.empty:
         st.info(f"No projects found for {view_as} in DRS.")
