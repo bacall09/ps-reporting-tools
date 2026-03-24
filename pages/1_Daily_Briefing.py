@@ -367,14 +367,15 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         # Build prior_htd — same formula as Util Report assign_credits
         prior_htd: dict = {}
         if "hours_to_date" in month_ns.columns:
-            for _proj, _grp in month_ns.groupby("project"):
-                _pn = " ".join(str(_proj).strip().split())
+            _htd_grp_cols = [c for c in ["project","project_type"] if c in month_ns.columns]
+            for _key, _grp in month_ns.groupby(_htd_grp_cols):
+                _pk = tuple(" ".join(str(k).strip().split()) for k in (_key if isinstance(_key, tuple) else (_key,)))
                 try:
                     _max_htd  = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
                     _period_h = float(_grp["hours"].sum() or 0)
-                    prior_htd[_pn] = max(0.0, _max_htd - _period_h)
+                    prior_htd[_pk] = max(0.0, _max_htd - _period_h)
                 except Exception:
-                    prior_htd[_pn] = 0.0
+                    prior_htd[_pk] = 0.0
 
         _con: dict = {}
         _debug_rows = []  # for reconciliation expander
@@ -396,20 +397,21 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
                                      "Remaining": "—", "Credited": 0.0, "Overrun": 0.0, "Tag": "UNCONFIGURED"})
                 continue
 
-            if _proj not in _con: _con[_proj] = prior_htd.get(_proj, 0.0)
-            _used = _con[_proj]; _rem = _sc - _used
+            _ck = (_proj, _ptype)  # composite key: project + product type
+            if _ck not in _con: _con[_ck] = prior_htd.get(_ck, prior_htd.get((_proj,), 0.0))
+            _used = _con[_ck]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
                 _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
                                      "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
                                      "Remaining": 0.0, "Credited": 0.0, "Overrun": _hrs, "Tag": "OVERRUN"})
             elif _hrs <= _rem:
-                ff_credit += _hrs; _con[_proj] = _used + _hrs
+                ff_credit += _hrs; _con[_ck] = _used + _hrs
                 _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
                                      "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
                                      "Remaining": round(_rem, 2), "Credited": _hrs, "Overrun": 0.0, "Tag": "CREDITED"})
             else:
-                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
+                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_ck] = _sc
                 _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
                                      "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
                                      "Remaining": round(_rem, 2), "Credited": round(_rem, 2),
