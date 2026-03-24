@@ -272,10 +272,14 @@ else:
             "Transition to Support":_ms("ms_transition"),
         }
 
-    edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
-# Hide Consultant column for single-person views
-if not _va_region:
-    edit_df = edit_df.drop(columns=["Consultant"], errors="ignore")
+    try:
+        edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
+    except Exception as _e:
+        st.error(f"Table build error: {_e}")
+        st.stop()
+    # Hide Consultant column for single-person views
+    if not _va_region:
+        edit_df = edit_df.drop(columns=["Consultant"], errors="ignore")
 
     # ── Column config ─────────────────────────────────────────────────────────
     _ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2",
