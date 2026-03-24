@@ -75,27 +75,11 @@ MS_TO_SS = {
 view_as = selected
 _va_region = None
 if role == "manager":
-    def _gr(n):
-        if n in PS_REGION_OVERRIDE: return PS_REGION_OVERRIDE[n]
-        return PS_REGION_MAP.get(EMPLOYEE_LOCATION.get(n,""),"Other")
-    _ac = sorted([n for n in CONSULTANT_DROPDOWN
-                  if get_role(n) in ("consultant","manager")
-                  and EMPLOYEE_ROLES.get(n,{}).get("products")])
-    _by = {}
-    for n in _ac: _by.setdefault(_gr(n),[]).append(n)
-    _opts = ["— My own projects —"]
-    for rg in sorted(_by): _opts.append(f"── {rg} ──"); _opts.extend(_by[rg])
-
-    # Render in same sidebar position as Home's View As
-    with st.sidebar:
-        st.markdown("**View as:**")
-        _pick = st.selectbox("mp_va", _opts, key="mp_va_sel", label_visibility="collapsed")
-
-    if _pick.startswith("── ") and _pick.endswith(" ──"):
+    # Read from Home's View As dropdown — same widget, same position, no duplication
+    _pick = st.session_state.get("home_browse", "— My own view —")
+    if _pick and _pick.startswith("── ") and _pick.endswith(" ──"):
         _va_region = _pick[3:-3].strip()
-    elif _pick == "— My own projects —":
-        _va_region = None
-    else:
+    elif _pick and _pick not in ("— My own view —", "— Select —", ""):
         view_as    = _pick
         _va_region = None
 
