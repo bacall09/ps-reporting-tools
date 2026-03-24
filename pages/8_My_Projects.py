@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
     MILESTONE_COLS_MAP, get_role, is_manager,
-    get_ff_scope,
+    get_ff_scope, resolve_name,
 )
 from shared.config import (
     EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
@@ -105,7 +105,7 @@ if _va_region and role == "manager":
             _region_consultants.add(_vp2[0].lower())
             if len(_vp2) == 2:
                 _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
-    my_drs = df_drs[pm_col.apply(lambda v: str(v).strip().lower() in _region_consultants)].copy()
+    my_drs = df_drs[pm_col.apply(lambda v: resolve_name(str(v)).lower() in _region_consultants or str(v).strip().lower() in _region_consultants)].copy()
     if my_drs.empty:
         st.info(f"No projects found for the {_va_region} region in DRS.")
         st.stop()
@@ -118,7 +118,8 @@ else:
     _vv = {view_as.lower(), _vp[0].lower()}
     if len(_vp) == 2: _vv.add(f"{_vp[1].strip()} {_vp[0]}".lower())
     def _mpm(v):
-        v = str(v).strip().lower()
+        # Resolve aliases (e.g. "Church, Jason" → "Church, Jason G")
+        v = resolve_name(str(v)).lower()
         return v in _vv or any(v == nv or v.startswith(nv + " ") or v.endswith(" " + nv) for nv in _vv)
     my_drs = df_drs[pm_col.apply(lambda v: _mpm(str(v)))].copy()
     if my_drs.empty:

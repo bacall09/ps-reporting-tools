@@ -998,7 +998,7 @@ def main():
             if not _f.empty: df = _f
         elif _va_name or not is_manager:
             _target = _va_name if _va_name else selected_user
-            _f = df[df["opportunity_owner"].astype(str).str.strip() == _target]
+            _f = df[df["opportunity_owner"].astype(str).str.strip().apply(lambda v: __import__("shared.constants", fromlist=["resolve_name"]).resolve_name(v)) == _target]
             if not _f.empty: df = _f
 
     # ── Project overview table ─────────────────────────────────────────────

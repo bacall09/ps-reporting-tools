@@ -1907,10 +1907,10 @@ def main():
             _filtered = df_raw[df_raw["employee"].astype(str).str.strip().str.lower().isin(_rc)]
             if not _filtered.empty: df_raw = _filtered.copy()
         elif _va_name and "employee" in df_raw.columns:
-            _filtered = df_raw[df_raw["employee"].astype(str).str.strip() == _va_name]
+            _filtered = df_raw[df_raw["employee"].astype(str).str.strip().apply(lambda v: __import__("shared.constants", fromlist=["resolve_name"]).resolve_name(v)) == _va_name]
             if not _filtered.empty: df_raw = _filtered.copy()
         elif not _is_mgr and "employee" in df_raw.columns:
-            _filtered = df_raw[df_raw["employee"].astype(str).str.strip() == _session_name]
+            _filtered = df_raw[df_raw["employee"].astype(str).str.strip().apply(lambda v: __import__("shared.constants", fromlist=["resolve_name"]).resolve_name(v)) == _session_name]
             if not _filtered.empty: df_raw = _filtered.copy()
 
     st.divider()

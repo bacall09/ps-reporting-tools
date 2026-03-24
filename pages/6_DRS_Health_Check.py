@@ -111,7 +111,7 @@ if _session_name:
     elif _va_name or not _is_manager:
         _target = _va_name if _va_name else _session_name
         if "project_manager" in df_drs.columns:
-            _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == _target]
+            _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip().apply(lambda v: __import__("shared.constants", fromlist=["resolve_name"]).resolve_name(v)) == _target]
             if not _filtered.empty: df_drs = _filtered
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
