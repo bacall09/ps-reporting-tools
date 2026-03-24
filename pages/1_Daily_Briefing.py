@@ -344,6 +344,11 @@ else:
     if isinstance(loc_key, tuple): loc_key = loc_key[0]
     avail = AVAIL_HOURS.get(loc_key, {}).get(month_key) if loc_key else None
 
+# Safe defaults in case NS not uploaded
+tm_hrs = 0.0; ff_credit = 0.0; ff_overrun = 0.0; ff_unscoped = 0.0
+admin_hrs = 0.0; credit_hrs = 0.0; overrun_hrs = 0.0; util_hrs = 0.0
+util_pct = None; overrun_pct = None; admin_pct = None; total_booked = 0.0
+
 if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
     month_ns = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
