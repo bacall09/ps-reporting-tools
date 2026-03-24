@@ -90,12 +90,14 @@ if role == "manager":
         st.markdown("**My Projects — View as:**")
         _pick = st.selectbox("mp_va",_opts,index=_di,key="mp_va_sel",label_visibility="collapsed")
         st.session_state["_mp_va"] = _pick
-        if _pick not in ("— My own projects —",) and not (_pick.startswith("── ") and _pick.endswith(" ──")):
-            view_as = _pick
-        elif _pick.startswith("── ") and _pick.endswith(" ──"):
-            # Region header selected — store region label for filtering
+        if _pick.startswith("── ") and _pick.endswith(" ──"):
+            # Region header selected
             st.session_state["_mp_va_region"] = _pick[3:-3].strip()
+        elif _pick == "— My own projects —":
+            st.session_state["_mp_va_region"] = None
         else:
+            # Individual consultant selected
+            view_as = _pick
             st.session_state["_mp_va_region"] = None
     _va_region = st.session_state.get("_mp_va_region")
 else:
