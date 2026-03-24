@@ -10,11 +10,15 @@ MANAGERS_ONLY = []  # Login handles identity — no manager-only access tier nee
 
 # Manager + Consultant: see all pages AND appear in consultant-scoped views
 MANAGER_CONSULTANTS = [
+    "Barrio, Nairobi",     # Project Manager
+    "Cadelina, Macoy",     # Project Manager
     "Hopkins, Chris",      # Team Lead — Capture & Approvals (NOAM)
+    "Hughes, Madalyn",     # Project Manager
     "Ickler, Georganne",   # Consultant & Manager of PS
     "Lappin, Thomas",      # Manager-level Consultant
     "Longi",               # Director of PS
     "Murphy, Conor",       # Solution Architect — manager tier
+    "Porangada, Suraj",    # Project Manager
     "Prince",              # VP of PMO
     "Rusnak",              # VP of PS
     "Snee, Stefanie J",    # Manager-level Consultant
