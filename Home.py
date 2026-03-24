@@ -152,7 +152,10 @@ with st.sidebar:
         _active_c = sorted([
             n for n in CONSULTANT_DROPDOWN
             if get_role(n) in ("consultant", "manager")
-            and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
+            and (
+                len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
+                or EMPLOYEE_ROLES.get(n, {}).get("role", "") == "Project Manager"
+            )
         ])
         _by_rgn = {}
         for _cn in _active_c:
