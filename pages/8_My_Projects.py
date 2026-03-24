@@ -85,21 +85,19 @@ if role == "manager":
         for n in _ac: _by.setdefault(_gr(n),[]).append(n)
         _opts = ["— My own projects —"]
         for rg in sorted(_by): _opts.append(f"── {rg} ──"); _opts.extend(_by[rg])
-        _prev = st.session_state.get("_mp_va","— My own projects —")
+        # Read current widget value — use session state key directly so it persists across reruns
+        _prev = st.session_state.get("mp_va_sel", "— My own projects —")
         _di   = _opts.index(_prev) if _prev in _opts else 0
         st.markdown("**My Projects — View as:**")
-        _pick = st.selectbox("mp_va",_opts,index=_di,key="mp_va_sel",label_visibility="collapsed")
-        st.session_state["_mp_va"] = _pick
+        _pick = st.selectbox("mp_va", _opts, index=_di, key="mp_va_sel", label_visibility="collapsed")
+        # Derive view intent from current selection
         if _pick.startswith("── ") and _pick.endswith(" ──"):
-            # Region header selected
-            st.session_state["_mp_va_region"] = _pick[3:-3].strip()
+            _va_region = _pick[3:-3].strip()
         elif _pick == "— My own projects —":
-            st.session_state["_mp_va_region"] = None
+            _va_region = None
         else:
-            # Individual consultant selected
-            view_as = _pick
-            st.session_state["_mp_va_region"] = None
-    _va_region = st.session_state.get("_mp_va_region")
+            view_as    = _pick
+            _va_region = None
 else:
     _va_region = None
 
