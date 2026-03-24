@@ -73,30 +73,31 @@ MS_TO_SS = {
 
 # ── Sidebar View As (managers only) ──────────────────────────────────────────
 view_as = selected
+_va_region = None
 if role == "manager":
+    def _gr(n):
+        if n in PS_REGION_OVERRIDE: return PS_REGION_OVERRIDE[n]
+        return PS_REGION_MAP.get(EMPLOYEE_LOCATION.get(n,""),"Other")
+    _ac = sorted([n for n in CONSULTANT_DROPDOWN
+                  if get_role(n) in ("consultant","manager")
+                  and EMPLOYEE_ROLES.get(n,{}).get("products")])
+    _by = {}
+    for n in _ac: _by.setdefault(_gr(n),[]).append(n)
+    _opts = ["— My own projects —"]
+    for rg in sorted(_by): _opts.append(f"── {rg} ──"); _opts.extend(_by[rg])
+
+    # Render in same sidebar position as Home's View As
     with st.sidebar:
-        def _gr(n):
-            if n in PS_REGION_OVERRIDE: return PS_REGION_OVERRIDE[n]
-            return PS_REGION_MAP.get(EMPLOYEE_LOCATION.get(n,""),"Other")
-        _ac = sorted([n for n in CONSULTANT_DROPDOWN
-                      if get_role(n) in ("consultant","manager")
-                      and EMPLOYEE_ROLES.get(n,{}).get("products")])
-        _by = {}
-        for n in _ac: _by.setdefault(_gr(n),[]).append(n)
-        _opts = ["— My own projects —"]
-        for rg in sorted(_by): _opts.append(f"── {rg} ──"); _opts.extend(_by[rg])
-        st.markdown("**My Projects — View as:**")
+        st.markdown("**View as:**")
         _pick = st.selectbox("mp_va", _opts, key="mp_va_sel", label_visibility="collapsed")
-        # Derive view intent from current selection
-        if _pick.startswith("── ") and _pick.endswith(" ──"):
-            _va_region = _pick[3:-3].strip()
-        elif _pick == "— My own projects —":
-            _va_region = None
-        else:
-            view_as    = _pick
-            _va_region = None
-else:
-    _va_region = None
+
+    if _pick.startswith("── ") and _pick.endswith(" ──"):
+        _va_region = _pick[3:-3].strip()
+    elif _pick == "— My own projects —":
+        _va_region = None
+    else:
+        view_as    = _pick
+        _va_region = None
 
 # ── Data ─────────────────────────────────────────────────────────────────────
 df_drs = st.session_state.get("df_drs")
@@ -180,7 +181,9 @@ else:
     for c in ["_flags","_ne","_nw","_needs"]: active[c]=None
 
 # ── Header ────────────────────────────────────────────────────────────────────
-_dn = view_as.split(",")[1].strip()+" "+view_as.split(",")[0] if "," in view_as else view_as
+_dn = (_va_region + " Team" if _va_region
+       else view_as.split(",")[1].strip()+" "+view_as.split(",")[0] if "," in view_as
+       else view_as)
 st.markdown(f"""
 <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
     <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
