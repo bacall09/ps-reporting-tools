@@ -1133,7 +1133,6 @@ Used when no NS entries and no milestones are present.
 
     st.markdown("---")
     st.subheader("Step 1 — Select a Project")
-    st.caption(f"DEBUG: mode={mode} | df rows={len(df) if df is not None else 0} | df_drs rows={len(df_drs) if df_drs is not None else 0} | selected_user={selected_user} | _va_region={_va_region} | _va_name={_va_name}")
 
     # ── Column resolution — works for both SFDC and DRS modes ─────────────
     if mode == "sfdc":
