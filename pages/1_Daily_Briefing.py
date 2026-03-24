@@ -378,7 +378,6 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
                     prior_htd[_pk] = 0.0
 
         _con: dict = {}
-        _debug_rows = []  # for reconciliation expander
         for _, _r in ff_rows.iterrows():
             _proj  = " ".join(str(_r.get("project","")).split())
             _ptype = str(_r.get("project_type","")).strip()
@@ -392,9 +391,6 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
             if _sc is None:
                 ff_unscoped += _hrs
-                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
-                                     "Hours": _hrs, "Scope": "—", "Prior HTD": "—",
-                                     "Remaining": "—", "Credited": 0.0, "Overrun": 0.0, "Tag": "UNCONFIGURED"})
                 continue
 
             _ck = (_proj, _ptype)  # composite key: project + product type
@@ -402,20 +398,10 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             _used = _con[_ck]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
-                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
-                                     "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
-                                     "Remaining": 0.0, "Credited": 0.0, "Overrun": _hrs, "Tag": "OVERRUN"})
             elif _hrs <= _rem:
                 ff_credit += _hrs; _con[_ck] = _used + _hrs
-                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
-                                     "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
-                                     "Remaining": round(_rem, 2), "Credited": _hrs, "Overrun": 0.0, "Tag": "CREDITED"})
             else:
                 ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_ck] = _sc
-                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
-                                     "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
-                                     "Remaining": round(_rem, 2), "Credited": round(_rem, 2),
-                                     "Overrun": round(_hrs - _rem, 2), "Tag": "PARTIAL"})
 
     credit_hrs  = round(tm_hrs + ff_credit, 2)
     overrun_hrs  = round(ff_overrun, 2)
@@ -428,15 +414,6 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     ff_pct       = round(ff_total_hrs/ avail * 100, 2) if avail else None
 
     total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 2)
-
-    # ── Reconciliation debug expander ─────────────────────────────────────────
-    if _debug_rows:
-        with st.expander(f"🔍 Util reconciliation detail — {len(_debug_rows)} FF rows · compare with Util Report › Detail tab", expanded=False):
-            import pandas as _dpd
-            _debug_df = _dpd.DataFrame(_debug_rows)
-            st.dataframe(_debug_df, hide_index=True, use_container_width=True)
-            st.caption(f"T&M: {tm_hrs}h · FF credited: {ff_credit}h · FF overrun: {ff_overrun}h · Internal: {admin_hrs}h · Unscoped: {ff_unscoped}h")
-            st.caption("Prior HTD = hours on this project before this period. Scope = configured cap. Compare Tag column with Util Report Detail tab to find discrepancies.")
 
     def _fmt_hrs(h):
         """Format hours: round to 1dp max, drop trailing zeros.

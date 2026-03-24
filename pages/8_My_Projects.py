@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
     MILESTONE_COLS_MAP, get_role, is_manager,
+    get_ff_scope,
 )
 from shared.config import (
     EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
@@ -175,18 +176,50 @@ st.markdown('<div class="section-label">Active Projects</div>',unsafe_allow_html
 if active.empty:
     st.info("No active projects found.")
 else:
+    # ── Build NS lookups per project ─────────────────────────────────────────
+    _ns_htd: dict  = {}  # project_name → max hours_to_date (FF scope reference)
+    _ns_tm_hrs: dict = {}  # project_name → sum of T&M hours (scope for T&M)
+    if df_ns is not None and "project" in df_ns.columns:
+        if "hours_to_date" in df_ns.columns:
+            for _proj, _grp in df_ns.groupby("project"):
+                try:
+                    _ns_htd[str(_proj).strip()] = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                except Exception:
+                    pass
+        if "hours" in df_ns.columns and "billing_type" in df_ns.columns:
+            _tm_mask = df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"
+            for _proj, _grp in df_ns[_tm_mask].groupby("project"):
+                try:
+                    _ns_tm_hrs[str(_proj).strip()] = float(_grp["hours"].sum() or 0)
+                except Exception:
+                    pass
+
     # ── Build editable dataframe ──────────────────────────────────────────────
     def _to_edit_row(row):
         fl    = row.get("_flags",[]) or []
         needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
         def _ms(col):
             v = row.get(col)
-            return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
+            return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
         def _dt(col):
             v = row.get(col)
             return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
-        _pn  = str(row.get("project_name","") or "")
-        _cust = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
+        _pn    = str(row.get("project_name","") or "")
+        _cust  = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
+        # Scope: FF → from DEFAULT_SCOPE table by project_type; T&M → total NS hours logged
+        _ptype_raw = str(row.get("project_type", "") or "")
+        _bill_raw  = str(row.get("billing_type", "") or "").strip().lower()
+        _is_tm     = "t&m" in _bill_raw or "time" in _bill_raw
+        _ff_scope  = get_ff_scope(_ptype_raw)
+        _pn_key    = _pn.strip()
+        if _is_tm:
+            _scope = round(_ns_tm_hrs.get(_pn_key, 0.0), 1) if _pn_key in _ns_tm_hrs else ""
+        elif _ff_scope is not None:
+            _scope = float(_ff_scope)
+        else:
+            _scope = ""
+        _htd = round(_ns_htd.get(_pn_key, 0.0), 1) if _pn_key in _ns_htd else ""
+        _bal = round(float(_scope) - float(_htd), 1) if _scope != "" and _htd != "" else ""
         return {
             "Needs Action":         needs,
             "Customer":             _cust,
@@ -195,6 +228,9 @@ else:
             "Phase":                str(row.get("phase","") or ""),
             "Start Date":           _dt("start_date"),
             "Est. Go-Live":         _dt("go_live_date"),
+            "Scope Hrs":            _scope,
+            "Hours to Date":        _htd,
+            "Balance":              _bal,
             "Intro Email Sent":     _ms("ms_intro_email"),
             "Config Start":         _ms("ms_config_start"),
             "Enablement Session":   _ms("ms_enablement"),
@@ -220,6 +256,9 @@ else:
         "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
         "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
         "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
+        "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
+        "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
+        "Balance":               st.column_config.NumberColumn("Balance",           disabled=True, width="small"),
         **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
     }
 
