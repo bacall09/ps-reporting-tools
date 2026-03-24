@@ -176,23 +176,36 @@ st.markdown('<div class="section-label">Active Projects</div>',unsafe_allow_html
 if active.empty:
     st.info("No active projects found.")
 else:
-    # ── Build NS lookups per project ─────────────────────────────────────────
-    _ns_htd: dict  = {}  # project_name → max hours_to_date (FF scope reference)
-    _ns_tm_hrs: dict = {}  # project_name → sum of T&M hours (scope for T&M)
-    if df_ns is not None and "project" in df_ns.columns:
-        if "hours_to_date" in df_ns.columns:
-            for _proj, _grp in df_ns.groupby("project"):
-                try:
-                    _ns_htd[str(_proj).strip()] = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
-                except Exception:
-                    pass
-        if "hours" in df_ns.columns and "billing_type" in df_ns.columns:
+    # ── Build NS lookups keyed by project_id ─────────────────────────────────
+    def _clean_pid(v):
+        try:
+            s = str(v).strip()
+            if s in ("", "nan", "None"): return ""
+            return str(int(float(s)))
+        except: return str(v).strip()
+
+    _ns_htd: dict    = {}  # project_id → max hours_to_date
+    _ns_tm_hrs: dict = {}  # project_id → sum of T&M hours
+
+    if df_ns is not None:
+        _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
+        if _ns_id_col and "hours_to_date" in df_ns.columns:
+            for _pid, _grp in df_ns.groupby(_ns_id_col):
+                _k = _clean_pid(_pid)
+                if _k:
+                    try:
+                        _ns_htd[_k] = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    except Exception:
+                        pass
+        if _ns_id_col and "hours" in df_ns.columns and "billing_type" in df_ns.columns:
             _tm_mask = df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"
-            for _proj, _grp in df_ns[_tm_mask].groupby("project"):
-                try:
-                    _ns_tm_hrs[str(_proj).strip()] = float(_grp["hours"].sum() or 0)
-                except Exception:
-                    pass
+            for _pid, _grp in df_ns[_tm_mask].groupby(_ns_id_col):
+                _k = _clean_pid(_pid)
+                if _k:
+                    try:
+                        _ns_tm_hrs[_k] = float(_grp["hours"].sum() or 0)
+                    except Exception:
+                        pass
 
     # ── Build editable dataframe ──────────────────────────────────────────────
     def _to_edit_row(row):
@@ -211,14 +224,16 @@ else:
         _bill_raw  = str(row.get("billing_type", "") or "").strip().lower()
         _is_tm     = "t&m" in _bill_raw or "time" in _bill_raw
         _ff_scope  = get_ff_scope(_ptype_raw)
-        _pn_key    = _pn.strip()
+        _pid_key = _clean_pid(row.get("project_id", ""))
         if _is_tm:
-            _scope = round(_ns_tm_hrs.get(_pn_key, 0.0), 1) if _pn_key in _ns_tm_hrs else ""
+            # TODO: replace with actual scoped hours per project (SFDC opportunity or DRS field)
+            # Current proxy = total NS hours logged (T&M is uncapped so no scope table exists)
+            _scope = round(_ns_tm_hrs.get(_pid_key, 0.0), 1) if _pid_key and _pid_key in _ns_tm_hrs else ""
         elif _ff_scope is not None:
             _scope = float(_ff_scope)
         else:
             _scope = ""
-        _htd = round(_ns_htd.get(_pn_key, 0.0), 1) if _pn_key in _ns_htd else ""
+        _htd = round(_ns_htd.get(_pid_key, 0.0), 1) if _pid_key and _pid_key in _ns_htd else ""
         _bal = round(float(_scope) - float(_htd), 1) if _scope != "" and _htd != "" else ""
         return {
             "Needs Action":         needs,
