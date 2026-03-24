@@ -1950,7 +1950,7 @@ def main():
         admin_pct   = total_admin        / hours_this_period if hours_this_period else 0
 
         credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#e74c3c"
-        credit_label = "On target" if credit_pct >= 0.70 else "Below target" if credit_pct >= 0.60 else "At risk"
+        credit_label = "On target · Goal: 70%" if credit_pct >= 0.70 else "Below target · Goal: 70%" if credit_pct >= 0.60 else "At risk · Goal: 70%"
 
         # Date range banner
         if "date" in df.columns:
@@ -1989,7 +1989,8 @@ def main():
         m1, m2, m3, _gap, m4, m5 = st.columns([2, 2, 2, 0.3, 2, 2])
         with m1: st.markdown(metric_card("Projects This Period", f"{df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups:,}"), unsafe_allow_html=True)
         with m2: st.markdown(metric_card("Hours This Period", fmt_hrs(hours_this_period)), unsafe_allow_html=True)
-        with m3: st.markdown(metric_card("Utilization Credits", fmt_hrs(total_credit), f"{credit_pct:.1%} of hrs · {credit_label}", credit_color), unsafe_allow_html=True)
+        _cred_arrow = "↑" if credit_pct >= 0.60 else "↓"
+        with m3: st.markdown(metric_card("Utilization Credits", fmt_hrs(total_credit), f"{credit_pct:.1%} of hrs · {credit_label}", credit_color, pill_icon=_cred_arrow), unsafe_allow_html=True)
         with m4: st.markdown(metric_card("FF Project Overrun Hrs", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "#ff4b4b", pill_icon=""), unsafe_allow_html=True)
         with m5: st.markdown(metric_card("Admin Hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs", "#808495", pill_icon="·"), unsafe_allow_html=True)
 
@@ -2118,6 +2119,10 @@ def main():
                                 styles[idx_pos] = f"background-color:{bg};color:{fg};font-weight:600"
                 return styles
 
+            # Round numeric display columns to 2dp
+            for _rc in ["Avail Hrs (Capacity)","Hours Logged","Util Credits","FF Overrun Hrs"]:
+                if _rc in show_df.columns:
+                    show_df[_rc] = pd.to_numeric(show_df[_rc], errors="coerce").round(2)
             styled_df = show_df.style.apply(_style_util_row, axis=1)
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
 

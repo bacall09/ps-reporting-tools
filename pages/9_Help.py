@@ -203,8 +203,8 @@ st.markdown("""
         </div>
         <div class="start-step">
             <div class="ss-num">2</div>
-            <div class="ss-title">Go to Home</div>
-            <div class="ss-desc">The Home page is your upload hub. Drop your data exports here — once is enough.</div>
+            <div class="ss-title">Go to Daily Briefing</div>
+            <div class="ss-desc">The Daily Briefing page is your upload hub. Drop your data exports here.</div>
         </div>
         <div class="start-step">
             <div class="ss-num">3</div>
@@ -214,7 +214,7 @@ st.markdown("""
         <div class="start-step">
             <div class="ss-num">4</div>
             <div class="ss-title">Navigate freely</div>
-            <div class="ss-desc">Every page picks up your uploaded data. No re-uploading. Your view is filtered to your projects.</div>
+            <div class="ss-desc">Every page picks up your uploaded data. Your view is filtered to your projects.</div>
         </div>
     </div>
 </div>
@@ -284,28 +284,16 @@ for tool in CONSULTANT_TOOLS:
     steps_html = "".join(f'<li><span class="sn">{i+1}</span>{s}</li>' for i, s in enumerate(tool["steps"]))
     why_html   = "".join(f"<li>{w}</li>" for w in tool["why"])
     tip_html   = f'<div class="tip-box">💡 <strong>Tip:</strong> {tool["tip"]}</div>' if tool.get("tip") else ""
-    st.markdown(f"""
-    <div class="tool-card">
-        <div class="tc-header">
-            <div class="tc-icon">{tool["icon"]}</div>
-            <div>
-                <div class="tc-title">{tool["title"]}</div>
-                <div class="tc-sub">{tool["sub"]}</div>
-            </div>
-        </div>
-        <div class="tc-body">
-            <div>
-                <div class="col-lbl">How to use it</div>
-                <ul class="steps-list">{steps_html}</ul>
-            </div>
-            <div>
-                <div class="col-lbl">Why it helps</div>
-                <ul class="why-list">{why_html}</ul>
-                {tip_html}
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="tool-card">'
+        f'<div class="tc-header"><div class="tc-icon">{tool["icon"]}</div>'
+        f'<div><div class="tc-title">{tool["title"]}</div><div class="tc-sub">{tool["sub"]}</div></div></div>'
+        f'<div class="tc-body">'
+        f'<div><div class="col-lbl">How to use it</div><ul class="steps-list">{steps_html}</ul></div>'
+        f'<div><div class="col-lbl">Why it helps</div><ul class="why-list">{why_html}</ul>{tip_html}</div>'
+        f'</div></div>',
+        unsafe_allow_html=True
+    )
 
 st.markdown('<hr class="help-divider">', unsafe_allow_html=True)
 
@@ -387,28 +375,16 @@ for tool in MGMT_TOOLS:
     steps_html = "".join(f'<li><span class="sn">{i+1}</span>{s}</li>' for i, s in enumerate(tool["steps"]))
     why_html   = "".join(f"<li>{w}</li>" for w in tool["why"])
     tip_html   = f'<div class="tip-box">💡 <strong>Tip:</strong> {tool["tip"]}</div>' if tool.get("tip") else ""
-    st.markdown(f"""
-    <div class="tool-card">
-        <div class="tc-header">
-            <div class="tc-icon">{tool["icon"]}</div>
-            <div>
-                <div class="tc-title">{tool["title"]}</div>
-                <div class="tc-sub">{tool["sub"]}</div>
-            </div>
-        </div>
-        <div class="tc-body">
-            <div>
-                <div class="col-lbl">How to use it</div>
-                <ul class="steps-list">{steps_html}</ul>
-            </div>
-            <div>
-                <div class="col-lbl">Why it helps</div>
-                <ul class="why-list">{why_html}</ul>
-                {tip_html}
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="tool-card">'
+        f'<div class="tc-header"><div class="tc-icon">{tool["icon"]}</div>'
+        f'<div><div class="tc-title">{tool["title"]}</div><div class="tc-sub">{tool["sub"]}</div></div></div>'
+        f'<div class="tc-body">'
+        f'<div><div class="col-lbl">How to use it</div><ul class="steps-list">{steps_html}</ul></div>'
+        f'<div><div class="col-lbl">Why it helps</div><ul class="why-list">{why_html}</ul>{tip_html}</div>'
+        f'</div></div>',
+        unsafe_allow_html=True
+    )
 
 
 

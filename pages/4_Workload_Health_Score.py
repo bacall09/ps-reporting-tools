@@ -829,11 +829,11 @@ def build_stale_projects(ss_df, ns_df):
     merged["days_since"] = (today - merged["last_entry"]).dt.days
 
     def _flag(days):
-        if pd.isna(days): return "⚫ No Entry"
+        if pd.isna(days): return "No Entry in Period"
         if days < 14:     return ""
-        if days < 30:     return "🟡 14d+"
-        if days < 60:     return "🟠 30d+"
-        return "🔴 60d+"
+        if days < 30:     return "14d+"
+        if days < 60:     return "30d+"
+        return "60d+"
 
     merged["Staleness"] = merged["days_since"].apply(_flag)
     stale = merged[merged["Staleness"] != ""].copy()
@@ -859,7 +859,7 @@ def build_stale_projects(ss_df, ns_df):
     display["Days Since"]          = stale["days_since"].where(stale["days_since"].notna(), -1).astype(int).replace(-1, "—")
     display["Staleness"]           = stale["Staleness"]
 
-    _sort_order = {"🔴 60d+": 0, "🟠 30d+": 1, "🟡 14d+": 2, "⚫ No Entry": 3}
+    _sort_order = {"60d+": 0, "30d+": 1, "14d+": 2, "No Entry in Period": 3}
     display["_sort"] = display["Staleness"].map(_sort_order).fillna(9)
     display = display.sort_values(["_sort", "Consultant"]).drop(columns=["_sort"]).reset_index(drop=True)
 
@@ -1555,10 +1555,10 @@ def main():
 
 **Stale Projects** — Active FF projects cross-referenced against NS time entries.
 A project is flagged if no time has been booked within the NS report window:
-- 🟡 **14d+** — No time booked in 14–29 days
-- 🟠 **30d+** — No time booked in 30–59 days
-- 🔴 **60d+** — No time booked in 60+ days
-- ⚫ **No Entry** — No time booked in the NS report period
+- **14d+** — No time booked in 14–29 days
+- **30d+** — No time booked in 30–59 days
+- **60d+** — No time booked in 60+ days
+- **No Entry in Period** — No time booked in the NS Time Detail report period
 
 **Excluded from all counts:**
 - T&M (Time & Material) projects — demand tracked separately via NS
@@ -1628,19 +1628,18 @@ A project is flagged if no time has been booked within the NS report window:
                 st.success("No stale projects detected — all active projects have recent time entries.")
         else:
             st.markdown("#### Stale Projects — No Recent Time Booked")
+            _ns_period_str = f"{pd.to_datetime(ns_df['date'], errors='coerce').min().strftime('%-d %b') if ns_df is not None and 'date' in ns_df.columns else '—'} — {pd.to_datetime(ns_df['date'], errors='coerce').max().strftime('%-d %b %Y') if ns_df is not None and 'date' in ns_df.columns else '—'}"
             st.caption(
-                "🟡 14d+ = no time in 14–29 days · "
-                "🟠 30d+ = no time in 30–59 days · "
-                "🔴 60d+ = no time in 60+ days · "
-                "⚫ No Entry = no time booked in the NS report period"
+                f"14d+ = no time in 14–29 days  ·  30d+ = no time in 30–59 days  ·  "
+                f"60d+ = no time in 60+ days  ·  No Entry in Period = no time booked in NS Time Detail ({_ns_period_str})"
             )
             # Summary counts — ordered lightest to most severe, then no entry
             _counts = stale_df["Staleness"].value_counts()
             _c1, _c2, _c3, _c4 = st.columns(4)
-            with _c1: st.markdown(metric_card("14d+ No Time",  str(_counts.get("🟡 14d+",     0)), "14–29 days",        "#f39c12"), unsafe_allow_html=True)
-            with _c2: st.markdown(metric_card("30d+ No Time",  str(_counts.get("🟠 30d+",     0)), "30–59 days",        "#e67e22"), unsafe_allow_html=True)
-            with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("🔴 60d+",     0)), "60+ days",          "#e74c3c"), unsafe_allow_html=True)
-            with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("⚫ No Entry", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
+            with _c1: st.markdown(metric_card("14d+ No Time",  str(_counts.get("14d+", 0)), "14–29 days",        "#f39c12"), unsafe_allow_html=True)
+            with _c2: st.markdown(metric_card("30d+ No Time",  str(_counts.get("30d+", 0)), "30–59 days",        "#e67e22"), unsafe_allow_html=True)
+            with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("60d+", 0)), "60+ days",          "#e74c3c"), unsafe_allow_html=True)
+            with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("No Entry in Period", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
             st.dataframe(stale_df, hide_index=True, use_container_width=True)
 

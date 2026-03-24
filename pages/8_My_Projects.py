@@ -194,7 +194,7 @@ else:
                 _k = _clean_pid(_pid)
                 if _k:
                     try:
-                        _ns_htd[_k] = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                        _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
                     except Exception:
                         pass
         if _ns_id_col and "hours" in df_ns.columns and "billing_type" in df_ns.columns:
@@ -203,7 +203,7 @@ else:
                 _k = _clean_pid(_pid)
                 if _k:
                     try:
-                        _ns_tm_hrs[_k] = float(_grp["hours"].sum() or 0)
+                        _ns_tm_hrs[_k] = round(float(_grp["hours"].sum() or 0), 2)
                     except Exception:
                         pass
 
@@ -228,13 +228,13 @@ else:
         if _is_tm:
             # TODO: replace with actual scoped hours per project (SFDC opportunity or DRS field)
             # Current proxy = total NS hours logged (T&M is uncapped so no scope table exists)
-            _scope = round(_ns_tm_hrs.get(_pid_key, 0.0), 1) if _pid_key and _pid_key in _ns_tm_hrs else ""
+            _scope = round(_ns_tm_hrs.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_tm_hrs else ""
         elif _ff_scope is not None:
             _scope = float(_ff_scope)
         else:
             _scope = ""
-        _htd = round(_ns_htd.get(_pid_key, 0.0), 1) if _pid_key and _pid_key in _ns_htd else ""
-        _bal = round(float(_scope) - float(_htd), 1) if _scope != "" and _htd != "" else ""
+        _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
+        _bal = round(float(_scope) - float(_htd), 2) if _scope != "" and _htd != "" else ""
         return {
             "Needs Action":         needs,
             "Customer":             _cust,
