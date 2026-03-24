@@ -144,6 +144,17 @@ MANAGER_DROPDOWN = sorted(
     [e for e in ACTIVE_EMPLOYEES if e in MANAGER_CONSULTANTS]
 )
 
+# ── Name aliases — maps DRS/NS name variants to canonical roster names ───────
+# Use when source data drops middle initials or uses alternate spelling
+NAME_ALIASES = {
+    "church, jason":   "Church, Jason G",
+    "church, jason g": "Church, Jason G",
+}
+
+def resolve_name(raw: str) -> str:
+    """Return canonical roster name for a raw DRS/NS name, or the original if no alias."""
+    return NAME_ALIASES.get(str(raw).strip().lower(), str(raw).strip())
+
 # ── Column maps ───────────────────────────────────────────────────────────────
 SS_COL_MAP = {
     "project name":          "project_name",
