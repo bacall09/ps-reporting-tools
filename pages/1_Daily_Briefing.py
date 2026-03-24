@@ -348,12 +348,13 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
     month_ns = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
 
-    bt_col    = "billing_type" if "billing_type" in month_ns.columns else None
+    bt_col = "billing_type" if "billing_type" in month_ns.columns else None
     if bt_col:
         _bt       = month_ns[bt_col].fillna("").str.strip().str.lower()
         admin_hrs = round(month_ns[_bt == "internal"]["hours"].sum(), 2)
         tm_hrs    = round(month_ns[_bt == "t&m"]["hours"].sum(), 2)
-        ff_rows   = month_ns[_bt == "fixed fee"].copy()  # non_billable flag irrelevant for FF scope
+        # Match Util Report Rule 3: anything not internal or T&M = Fixed Fee
+        ff_rows   = month_ns[(_bt != "internal") & (_bt != "t&m")].copy()
     else:
         admin_hrs = 0.0
         tm_hrs    = round(month_ns["hours"].sum(), 2)
@@ -361,12 +362,12 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
     ff_credit = 0.0; ff_overrun = 0.0; ff_unscoped = 0.0
     if not ff_rows.empty and "project" in ff_rows.columns:
-        ff_rows = ff_rows.sort_values(["project", "date"])  # match Util Report sort order
+        ff_rows = ff_rows.sort_values(["project", "date"])
 
-        # Build prior_htd from ALL NS rows (not just FF) — exactly as Util Report does
+        # Build prior_htd — same formula as Util Report assign_credits
         prior_htd: dict = {}
-        if df_ns is not None and "hours_to_date" in df_ns.columns:
-            for _proj, _grp in df_ns.groupby("project"):
+        if "hours_to_date" in month_ns.columns:
+            for _proj, _grp in month_ns.groupby("project"):
                 _pn = " ".join(str(_proj).strip().split())
                 try:
                     _max_htd  = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
@@ -376,10 +377,12 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
                     prior_htd[_pn] = 0.0
 
         _con: dict = {}
+        _debug_rows = []  # for reconciliation expander
         for _, _r in ff_rows.iterrows():
             _proj  = " ".join(str(_r.get("project","")).split())
             _ptype = str(_r.get("project_type","")).strip()
             _hrs   = float(_r.get("hours", 0) or 0)
+            _date  = str(_r.get("date", ""))[:10]
             if _hrs <= 0: continue
 
             _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
@@ -387,16 +390,30 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
             if _sc is None:
-                ff_unscoped += _hrs; ff_credit += _hrs; continue  # UNCONFIGURED: excluded from overrun metric
+                ff_unscoped += _hrs
+                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
+                                     "Hours": _hrs, "Scope": "—", "Prior HTD": "—",
+                                     "Remaining": "—", "Credited": 0.0, "Overrun": 0.0, "Tag": "UNCONFIGURED"})
+                continue
 
             if _proj not in _con: _con[_proj] = prior_htd.get(_proj, 0.0)
             _used = _con[_proj]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
+                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
+                                     "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
+                                     "Remaining": 0.0, "Credited": 0.0, "Overrun": _hrs, "Tag": "OVERRUN"})
             elif _hrs <= _rem:
                 ff_credit += _hrs; _con[_proj] = _used + _hrs
+                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
+                                     "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
+                                     "Remaining": round(_rem, 2), "Credited": _hrs, "Overrun": 0.0, "Tag": "CREDITED"})
             else:
                 ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
+                _debug_rows.append({"Date": _date, "Project": _proj, "Type": _ptype,
+                                     "Hours": _hrs, "Scope": _sc, "Prior HTD": round(_used, 2),
+                                     "Remaining": round(_rem, 2), "Credited": round(_rem, 2),
+                                     "Overrun": round(_hrs - _rem, 2), "Tag": "PARTIAL"})
 
     credit_hrs  = round(tm_hrs + ff_credit, 2)
     overrun_hrs  = round(ff_overrun, 2)
@@ -409,6 +426,15 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     ff_pct       = round(ff_total_hrs/ avail * 100, 2) if avail else None
 
     total_booked = round(month_ns[month_ns["hours"] > 0]["hours"].sum(), 2)
+
+    # ── Reconciliation debug expander ─────────────────────────────────────────
+    if _debug_rows:
+        with st.expander(f"🔍 Util reconciliation detail — {len(_debug_rows)} FF rows · compare with Util Report › Detail tab", expanded=False):
+            import pandas as _dpd
+            _debug_df = _dpd.DataFrame(_debug_rows)
+            st.dataframe(_debug_df, hide_index=True, use_container_width=True)
+            st.caption(f"T&M: {tm_hrs}h · FF credited: {ff_credit}h · FF overrun: {ff_overrun}h · Internal: {admin_hrs}h · Unscoped: {ff_unscoped}h")
+            st.caption("Prior HTD = hours on this project before this period. Scope = configured cap. Compare Tag column with Util Report Detail tab to find discrepancies.")
 
     def _fmt_hrs(h):
         """Format hours: round to 1dp max, drop trailing zeros.
@@ -647,6 +673,10 @@ else:
     _onb_plus = _active["phase"].fillna("").apply(lambda p: _pidx_db(p) >= 0)
     _no_intro = (~_active["ms_intro_email"].notna()) if "ms_intro_email" in _active.columns else pd.Series(True, index=_active.index)
     _mi       = _active[(~_leg) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
+
+    # Unscoped hours banner — matches Util Report behaviour
+    if ff_unscoped > 0:
+        st.warning(f"⚠️ {round(ff_unscoped, 2)}h on FF projects with NO SCOPE DEFINED — review in Utilization Report.")
 
     # Re-engagement
     _stale = pd.DataFrame()
