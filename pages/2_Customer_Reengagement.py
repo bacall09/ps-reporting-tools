@@ -793,25 +793,22 @@ def main():
     _session_name = st.session_state.get("consultant_name")
 
     if _session_name and _session_name != "— Select —":
-        # Already identified on Home — derive role automatically
-        from shared.constants import get_role as _get_role
+        from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
+        from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
+        _home_browse = st.session_state.get("home_browse", "— My own view —")
+        _va_name, _va_region, _is_group = resolve_view_as(
+            _session_name, _home_browse, EMPLOYEE_ROLES,
+            EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES
+        )
         _role = _get_role(_session_name)
-        is_manager   = _role in ("manager", "manager_only")
-        selected_user = _session_name
-        # Show compact identity banner instead of Step 1
-        _disp = (_session_name.split(",")[1].strip() + " " + _session_name.split(",")[0].strip()
-                 if "," in _session_name else _session_name)
-        _role_label = "Manager — all projects" if is_manager else "Consultant — my projects only"
-        st.success(f"✓ Signed in as **{_disp}** ({_role_label})")
-        with st.expander("Switch identity", expanded=False):
-            _u_col, _r_col = st.columns([3, 2])
-            with _u_col:
-                _override = st.selectbox("Select a different name", ["— Keep current —"] + ACTIVE_EMPLOYEES, key="re_user_override")
-            with _r_col:
-                _role_override = st.radio("Role", ["IC — my projects only", "Manager / Admin — all projects"], key="re_role_override", horizontal=False)
-            if _override != "— Keep current —":
-                selected_user = _override
-                is_manager    = _role_override.startswith("Manager")
+        is_manager    = _role in ("manager", "manager_only")
+        selected_user = _va_name if _va_name else _session_name
+        _disp = (selected_user.split(",")[1].strip() + " " + selected_user.split(",")[0].strip()
+                 if "," in selected_user else selected_user)
+        if _va_region:
+            _disp = f"{_va_region} Team"
+        _role_label = "Manager" if is_manager else "Consultant"
+        st.success(f"✓ Signed in as **{_session_name.split(',')[1].strip() if ',' in _session_name else _session_name}** · Viewing: **{_disp}**")
     else:
         # Not identified on Home — show Step 1 as before
         st.subheader("Step 2 — Who are you?")
@@ -920,7 +917,11 @@ def main():
     if drs_file:
         try:
             df_drs = load_drs(drs_file)
-            if not is_manager:
+            if _va_region:
+                _rc = get_region_consultants(_va_region, EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES)
+                _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip().str.lower().isin(_rc)]
+                df_drs = _filtered if not _filtered.empty else df_drs
+            elif not is_manager or _va_name:
                 if "project_manager" in df_drs.columns:
                     _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
                     df_drs = _filtered if not _filtered.empty else df_drs
@@ -928,10 +929,15 @@ def main():
             st.error(f"Could not load DRS file: {e}")
     else:
         df_drs = _from_session.get("df_drs")
-        if df_drs is not None and not is_manager:
-            if "project_manager" in df_drs.columns:
-                _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
+        if df_drs is not None:
+            if _va_region:
+                _rc = get_region_consultants(_va_region, EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES)
+                _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip().str.lower().isin(_rc)]
                 df_drs = _filtered if not _filtered.empty else df_drs
+            elif not is_manager or _va_name:
+                if "project_manager" in df_drs.columns:
+                    _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
+                    df_drs = _filtered if not _filtered.empty else df_drs
 
     if ns_file:
         try:
@@ -1239,6 +1245,16 @@ Used when no NS entries and no milestones are present.
     st.markdown("---")
     st.subheader("Step 2 — Set Context")
 
+    # ── Effective tier — considers both calculated days AND any template override ──
+    # Template selector is in Step 4 (rendered later) but persists in session state
+    _tmpl_ss_key = f"tmpl_select_{str(selected_proj)[:30].replace(chr(32),'_')}"
+    _override_tmpl = st.session_state.get(_tmpl_ss_key)
+    _override_tier = TEMPLATES[_override_tmpl]["tier"] if _override_tmpl and _override_tmpl in TEMPLATES else 0
+    # Map tier → minimum days threshold for field visibility
+    _tier_days_map = {1: 30, 2: 60, 3: 90, 4: 180}
+    _effective_days = max(_drs_days if _drs_days and _drs_days >= 0 else 0,
+                          _tier_days_map.get(_override_tier, 0))
+
     # Try to derive product from SFDC data, allow manual override
     _sfdc_product = normalise_product_name(product) if product else ""
 
@@ -1300,7 +1316,7 @@ Used when no NS entries and no milestones are present.
         _display_name = f"{_parts[1].strip()} {_parts[0].strip()}" if len(_parts) == 2 else selected_user
         consultant_name = st.text_input("Your name (Implementation Consultant)", value=_display_name, key="ic_name")
     with col5:
-        if int(days_inactive) >= 180:
+        if _effective_days >= 180:
             # Pre-fill from DRS milestone calculation — use df_drs directly
             # (proj_rows may have been reassigned to SFDC rows losing DRS columns)
             _drs_remaining = ""
@@ -1328,7 +1344,7 @@ Used when no NS entries and no milestones are present.
             remaining_sessions = ""
 
     # Service term expiry — only shown for Tier 4
-    if int(days_inactive) >= 180:
+    if _effective_days >= 180:
         # Calculate subscription_start_date + 12m if available
         _sub_start = None
         if df_drs is not None and "subscription_start_date" in df_drs.columns:

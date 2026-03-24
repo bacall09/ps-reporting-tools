@@ -82,16 +82,27 @@ if df_drs is None:
     st.info("Upload your SS DRS Export (or load it on the Home page) to run the health check.")
     st.stop()
 
-# ── Apply consultant filter if logged in as IC ────────────────────────────────
-from shared.constants import get_role as _get_role
+# ── Apply view_as filter (respects home_browse for managers) ──────────────────
+from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
+from shared.config import EMPLOYEE_LOCATION as _EL3, PS_REGION_MAP as _RM3, PS_REGION_OVERRIDE as _RO3
+from shared.constants import ACTIVE_EMPLOYEES as _AE3, EMPLOYEE_ROLES as _ER3
 _session_name = st.session_state.get("consultant_name", "")
 if _session_name:
+    _home_browse = st.session_state.get("home_browse", "— My own view —")
+    _va_name, _va_region, _is_group = resolve_view_as(
+        _session_name, _home_browse, _ER3, _EL3, _RM3, _RO3, _AE3
+    )
     _role = _get_role(_session_name)
     _is_manager = _role in ("manager", "manager_only")
-    if not _is_manager and "project_manager" in df_drs.columns:
-        _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == _session_name]
-        if not _filtered.empty:
-            df_drs = _filtered
+    if _va_region and "project_manager" in df_drs.columns:
+        _rc = get_region_consultants(_va_region, _EL3, _RM3, _RO3, _AE3)
+        _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip().str.lower().isin(_rc)]
+        if not _filtered.empty: df_drs = _filtered
+    elif _va_name or not _is_manager:
+        _target = _va_name if _va_name else _session_name
+        if "project_manager" in df_drs.columns:
+            _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == _target]
+            if not _filtered.empty: df_drs = _filtered
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 

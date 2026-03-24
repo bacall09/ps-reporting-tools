@@ -1876,16 +1876,29 @@ def main():
     else:
         df_raw = _ns_from_session
 
-    # ── Apply consultant filter for IC role ──────────────────
+    # ── Apply view_as filter (respects home_browse for managers) ──
     _session_name = st.session_state.get("consultant_name", "")
     if _session_name:
-        from shared.constants import get_role as _get_role
+        from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
+        from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
+        from shared.constants import ACTIVE_EMPLOYEES, EMPLOYEE_ROLES
+        _home_browse = st.session_state.get("home_browse", "— My own view —")
+        _va_name, _va_region, _is_group = resolve_view_as(
+            _session_name, _home_browse, EMPLOYEE_ROLES,
+            EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES
+        )
         _role = _get_role(_session_name)
         _is_mgr = _role in ("manager", "manager_only")
-        if not _is_mgr and "employee" in df_raw.columns:
+        if _va_region and "employee" in df_raw.columns:
+            _rc = get_region_consultants(_va_region, EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES)
+            _filtered = df_raw[df_raw["employee"].astype(str).str.strip().str.lower().isin(_rc)]
+            if not _filtered.empty: df_raw = _filtered.copy()
+        elif _va_name and "employee" in df_raw.columns:
+            _filtered = df_raw[df_raw["employee"].astype(str).str.strip() == _va_name]
+            if not _filtered.empty: df_raw = _filtered.copy()
+        elif not _is_mgr and "employee" in df_raw.columns:
             _filtered = df_raw[df_raw["employee"].astype(str).str.strip() == _session_name]
-            if not _filtered.empty:
-                df_raw = _filtered.copy()
+            if not _filtered.empty: df_raw = _filtered.copy()
 
     st.divider()
 
@@ -2079,6 +2092,10 @@ def main():
                 "util_vs_capacity":  "Util % (vs Capacity)",
                 "proj_full_month":   "Projected Full Month",
             }
+            # Round raw numeric columns before display
+            for _rc in ["avail_hrs", "hours_this_period", "credit_hrs", "ff_overrun_hrs"]:
+                if _rc in emp_sum_ui.columns:
+                    emp_sum_ui[_rc] = pd.to_numeric(emp_sum_ui[_rc], errors="coerce").round(2)
             show_df = emp_sum_ui[
                 [col for col in display_cols if col in emp_sum_ui.columns]
             ].rename(columns=col_labels)
@@ -2119,10 +2136,6 @@ def main():
                                 styles[idx_pos] = f"background-color:{bg};color:{fg};font-weight:600"
                 return styles
 
-            # Round numeric display columns to 2dp
-            for _rc in ["Avail Hrs (Capacity)","Hours Logged","Util Credits","FF Overrun Hrs"]:
-                if _rc in show_df.columns:
-                    show_df[_rc] = pd.to_numeric(show_df[_rc], errors="coerce").round(2)
             styled_df = show_df.style.apply(_style_util_row, axis=1)
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
 

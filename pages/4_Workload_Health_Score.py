@@ -550,8 +550,13 @@ def load_ss(file):
     rename = {c: SS_COL_MAP[c.lower()] for c in df.columns if c.lower() in SS_COL_MAP}
     df = df.rename(columns=rename)
 
-    # Capture milestone columns
-    milestone_present = [c for c in df.columns if c in MILESTONE_COLS]
+    # Capture milestone columns — check snake_case keys (post-rename) not display names
+    _MS_KEYS = [
+        "ms_intro_email", "ms_config_start", "ms_enablement",
+        "ms_session1", "ms_session2", "ms_uat_signoff",
+        "ms_prod_cutover", "ms_hypercare_start", "ms_close_out", "ms_transition",
+    ]
+    milestone_present = [c for c in df.columns if c in _MS_KEYS]
 
     # Ensure project_id is string for joining
     if "project_id" in df.columns:
@@ -603,7 +608,14 @@ def build_phase_duration(ss_df, milestone_cols):
     """
     today = pd.Timestamp.today().normalize()
 
+    from shared.constants import MILESTONE_COLS_MAP as _MCM
     df = ss_df.copy()
+
+    # Rename snake_case milestone cols → display names so _resolve() lookups work
+    _ms_rename = {k: v for k, v in _MCM.items() if k in df.columns}
+    if _ms_rename:
+        df = df.rename(columns=_ms_rename)
+        milestone_cols = [_ms_rename.get(c, c) for c in milestone_cols]
 
     # Parse all date columns
     date_cols = list(milestone_cols) + ["start_date", "go_live_date"]
@@ -1481,22 +1493,35 @@ def main():
         ss_df, milestone_cols = load_ss(ss_file) if ss_file else (_ss_from_session, [])
         ns_df, ns_min_date = load_ns(ns_file) if ns_file else ((_ns_from_session, None) if _ns_from_session is not None else (None, None))
 
-        # ── Apply consultant filter for IC role ──────────────
+        # ── Apply view_as filter (respects home_browse for managers) ──
         _session_name = st.session_state.get("consultant_name", "")
         if _session_name:
-            from shared.constants import get_role as _get_role
+            from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
+            from shared.config import EMPLOYEE_LOCATION as _EL2, PS_REGION_MAP as _RM2, PS_REGION_OVERRIDE as _RO2
+            from shared.constants import ACTIVE_EMPLOYEES as _AE2
+            _home_browse = st.session_state.get("home_browse", "— My own view —")
+            _va_name, _va_region, _is_group = resolve_view_as(
+                _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
+            )
             _role = _get_role(_session_name)
             _is_mgr = _role in ("manager", "manager_only")
-            if not _is_mgr:
-                _pm_col = next((c for c in ["project_manager", "consultant"] if c in ss_df.columns), None)
+            _pm_col = next((c for c in ["project_manager", "consultant"] if c in ss_df.columns), None)
+            if _va_region:
+                _rc = get_region_consultants(_va_region, _EL2, _RM2, _RO2, _AE2)
                 if _pm_col:
-                    _filtered_ss = ss_df[ss_df[_pm_col].astype(str).str.strip() == _session_name]
-                    if not _filtered_ss.empty:
-                        ss_df = _filtered_ss.copy()
+                    _f = ss_df[ss_df[_pm_col].astype(str).str.strip().str.lower().isin(_rc)]
+                    if not _f.empty: ss_df = _f.copy()
                 if ns_df is not None and "employee" in ns_df.columns:
-                    _filtered_ns = ns_df[ns_df["employee"].astype(str).str.strip() == _session_name]
-                    if not _filtered_ns.empty:
-                        ns_df = _filtered_ns.copy()
+                    _f = ns_df[ns_df["employee"].astype(str).str.strip().str.lower().isin(_rc)]
+                    if not _f.empty: ns_df = _f.copy()
+            elif _va_name or not _is_mgr:
+                _target = _va_name if _va_name else _session_name
+                if _pm_col:
+                    _f = ss_df[ss_df[_pm_col].astype(str).str.strip() == _target]
+                    if not _f.empty: ss_df = _f.copy()
+                if ns_df is not None and "employee" in ns_df.columns:
+                    _f = ns_df[ns_df["employee"].astype(str).str.strip() == _target]
+                    if not _f.empty: ns_df = _f.copy()
 
         scored_df = score_projects(ss_df, ns_df)
         consultant_df, missing_pm = build_consultant_summary(scored_df, ss_df=ss_df)
