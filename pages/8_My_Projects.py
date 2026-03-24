@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
     MILESTONE_COLS_MAP, get_role, is_manager,
-    get_ff_scope, resolve_name,
+    get_ff_scope, resolve_name, name_matches,
 )
 from shared.config import (
     EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
@@ -117,15 +117,7 @@ else:
     _vp = [p.strip() for p in view_as.split(",")]
     _vv = {view_as.lower(), _vp[0].lower()}
     if len(_vp) == 2: _vv.add(f"{_vp[1].strip()} {_vp[0]}".lower())
-    def _mpm(v):
-        # Resolve aliases (e.g. "Church, Jason" → "Church, Jason G")
-        v = resolve_name(str(v)).lower()
-        # Exact / boundary match first
-        if v in _vv or any(v == nv or v.startswith(nv + " ") or v.endswith(" " + nv) for nv in _vv):
-            return True
-        # Substring fallback — handles "First Last" vs "Last, First" format differences
-        return any(nv in v for nv in _vv if len(nv) > 4)
-    my_drs = df_drs[pm_col.apply(lambda v: _mpm(str(v)))].copy()
+    my_drs = df_drs[pm_col.apply(lambda v: name_matches(v, view_as))].copy()
     if my_drs.empty:
         st.info(f"No projects found for {view_as} in DRS.")
         st.stop()

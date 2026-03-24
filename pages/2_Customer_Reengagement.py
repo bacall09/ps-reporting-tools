@@ -934,7 +934,7 @@ def main():
                 df_drs = _filtered if not _filtered.empty else df_drs
             elif not is_manager or _va_name:
                 if "project_manager" in df_drs.columns:
-                    _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
+                    _filtered = df_drs[df_drs["project_manager"].apply(lambda v: name_matches(v, selected_user))]
                     df_drs = _filtered if not _filtered.empty else df_drs
         except Exception as e:
             st.error(f"Could not load DRS file: {e}")
@@ -947,14 +947,14 @@ def main():
                 df_drs = _filtered if not _filtered.empty else df_drs
             elif not is_manager or _va_name:
                 if "project_manager" in df_drs.columns:
-                    _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip() == selected_user]
+                    _filtered = df_drs[df_drs["project_manager"].apply(lambda v: name_matches(v, selected_user))]
                     df_drs = _filtered if not _filtered.empty else df_drs
 
     if ns_file:
         try:
             df_ns = load_ns_time(ns_file)
             if "employee" in df_ns.columns:
-                df_ns = df_ns[df_ns["employee"].astype(str).str.strip() == selected_user]
+                df_ns = df_ns[df_ns["employee"].apply(lambda v: name_matches(v, selected_user))]
             _ns_id_col = "project_id" if "project_id" in df_ns.columns else "project" if "project" in df_ns.columns else None
         except Exception as e:
             st.error(f"Could not load NS file: {e}")

@@ -1530,10 +1530,10 @@ def main():
             elif _va_name or not _is_mgr:
                 _target = _va_name if _va_name else _session_name
                 if _pm_col:
-                    _f = ss_df[ss_df[_pm_col].astype(str).str.strip().apply(lambda v: __import__("shared.constants", fromlist=["resolve_name"]).resolve_name(v)) == _target]
+                    _f = ss_df[ss_df[_pm_col].apply(lambda v: name_matches(v, _target))]
                     if not _f.empty: ss_df = _f.copy()
                 if ns_df is not None and "employee" in ns_df.columns:
-                    _f = ns_df[ns_df["employee"].astype(str).str.strip().apply(lambda v: __import__("shared.constants", fromlist=["resolve_name"]).resolve_name(v)) == _target]
+                    _f = ns_df[ns_df["employee"].apply(lambda v: name_matches(v, _target))]
                     if not _f.empty: ns_df = _f.copy()
 
         scored_df = score_projects(ss_df, ns_df)
