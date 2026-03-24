@@ -300,7 +300,7 @@ st.markdown('<hr class="help-divider">', unsafe_allow_html=True)
 # ── REPORTING TOOLS ──────────────────────────────────────────────────────────
 st.markdown('<div class="section-eyebrow">Reporting tools</div>', unsafe_allow_html=True)
 
-MGMT_TOOLS = [
+REPORTING_TOOLS = [
     {
         "icon": "📊",
         "title": "Utilization Report",
@@ -336,22 +336,6 @@ MGMT_TOOLS = [
         "tip": None,
     },
     {
-        "icon": "🔭",
-        "title": "Capacity Outlook",
-        "sub": "Forward-looking headcount signal for pipeline and resourcing decisions. Primarily used by managers.",
-        "steps": [
-            "Upload NetSuite and SS DRS exports on Home.",
-            "Navigate to Capacity Outlook and select the forecast window.",
-            "Review projected availability by consultant and region.",
-        ],
-        "why": [
-            "Combines current project data with expected close dates to project future bandwidth.",
-            "Helps PS and Sales align on when the team can absorb new bookings.",
-            "Consultants in learning/training are surfaced as future capacity, not current.",
-        ],
-        "tip": None,
-    },
-    {
         "icon": "🔍",
         "title": "DRS Health Check",
         "sub": "Catches data quality issues in Smartsheet DRS before they surface in reporting.",
@@ -370,7 +354,7 @@ MGMT_TOOLS = [
     },
 ]
 
-for tool in MGMT_TOOLS:
+for tool in REPORTING_TOOLS:
     steps_html = "".join(f'<li><span class="sn">{i+1}</span>{s}</li>' for i, s in enumerate(tool["steps"]))
     why_html   = "".join(f"<li>{w}</li>" for w in tool["why"])
     tip_html   = f'<div class="tip-box">💡 <strong>Tip:</strong> {tool["tip"]}</div>' if tool.get("tip") else ""
@@ -387,6 +371,43 @@ for tool in MGMT_TOOLS:
 
 
 
+
+# ── MANAGEMENT TOOLS ─────────────────────────────────────────────────────────
+st.markdown('<div class="section-eyebrow">Management tools</div>', unsafe_allow_html=True)
+
+MGMT_TOOLS = [
+    {
+        "icon": "🔭",
+        "title": "Capacity Outlook",
+        "sub": "Forward-looking headcount signal for pipeline and resourcing decisions.",
+        "steps": [
+            "Upload NetSuite and SS DRS exports on Home.",
+            "Navigate to Capacity Outlook and select the forecast window.",
+            "Review projected availability by consultant and region.",
+        ],
+        "why": [
+            "Combines current project data with expected close dates to project future bandwidth.",
+            "Helps PS and Sales align on when the team can absorb new bookings.",
+            "Consultants in learning/training are surfaced as future capacity, not current.",
+        ],
+        "tip": None,
+    },
+]
+
+for tool in MGMT_TOOLS:
+    steps_html = "".join(f'<li><span class="sn">{i+1}</span>{s}</li>' for i, s in enumerate(tool["steps"]))
+    why_html   = "".join(f"<li>{w}</li>" for w in tool["why"])
+    tip_html   = f'<div class="tip-box">💡 <strong>Tip:</strong> {tool["tip"]}</div>' if tool.get("tip") else ""
+    st.markdown(
+        f'<div class="tool-card">'
+        f'<div class="tc-header"><div class="tc-icon">{tool["icon"]}</div>'
+        f'<div><div class="tc-title">{tool["title"]}</div><div class="tc-sub">{tool["sub"]}</div></div></div>'
+        f'<div class="tc-body">'
+        f'<div><div class="col-lbl">How to use it</div><ul class="steps-list">{steps_html}</ul></div>'
+        f'<div><div class="col-lbl">Why it helps</div><ul class="why-list">{why_html}</ul>{tip_html}</div>'
+        f'</div></div>',
+        unsafe_allow_html=True
+    )
 
 # ── FOOTER ────────────────────────────────────────────────────────────────────
 st.markdown("""
