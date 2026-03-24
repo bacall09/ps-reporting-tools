@@ -19,7 +19,7 @@ st.markdown("""
         html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
         h1,h2,h3,h4,p,div,label,button { font-family: 'Manrope', sans-serif !important; }
         .sev-error   { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px;
-                       border-radius:4px; background:rgba(231,76,60,0.15); color:#E74C3C; margin-right:6px; }
+                       border-radius:4px; background:rgba(192,57,43,0.15); color:#C0392B; margin-right:6px; }
         .sev-warning { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px;
                        border-radius:4px; background:rgba(243,156,18,0.15); color:#D68910; margin-right:6px; }
         .sev-info    { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px;
@@ -40,7 +40,7 @@ st.markdown("""
 st.markdown("""
 <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
     <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-    <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
+    <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
     <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>DRS Health Check</h1>
     <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Logical consistency validator for Smartsheet DRS data — flags fields and combinations that don't align with expected project state.</p>
 </div>
@@ -407,7 +407,7 @@ with c1:
 with c2:
     st.markdown(f'<div class="summary-card"><div class="summary-val">{n_projects}</div><div class="summary-lbl">Projects with issues</div></div>', unsafe_allow_html=True)
 with c3:
-    col = "#E74C3C" if n_error > 0 else "inherit"
+    col = "#C0392B" if n_error > 0 else "inherit"
     st.markdown(f'<div class="summary-card"><div class="summary-val" style="color:{col}">{n_error}</div><div class="summary-lbl">Errors</div></div>', unsafe_allow_html=True)
 with c4:
     col = "#D68910" if n_warning > 0 else "inherit"

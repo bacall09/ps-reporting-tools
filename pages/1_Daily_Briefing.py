@@ -56,7 +56,7 @@ st.markdown("""
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
-        .badge-red   {background:rgba(231,76,60,0.15);color:#E74C3C;}
+        .badge-red   {background:rgba(192,57,43,0.15);color:#C0392B;}
         .badge-amber {background:rgba(243,156,18,0.15);color:#D68910;}
         .badge-blue  {background:rgba(68,114,196,0.15);color:#4472C4;}
         .badge-gray  {background:rgba(128,128,128,0.12);color:inherit;opacity:0.7;}
@@ -287,7 +287,7 @@ if isinstance(loc, tuple): loc = loc[0]
 region = PS_REGION_OVERRIDE.get(selected, PS_REGION_MAP.get(loc, ""))
 _region_pill = (
     f"<span style='display:inline-block;margin-top:12px;padding:4px 12px;border-radius:20px;"
-    f"background:rgba(62,207,178,0.15);border:1px solid rgba(62,207,178,0.3);color:#3ECFB2;"
+    f"background:rgba(255,75,64,0.15);border:1px solid rgba(255,75,64,0.35);color:#ff4b40;"
     f"font-size:11px;font-weight:700;letter-spacing:.5px'>{region}</span>"
 ) if region else ""
 _sub_str = " · ".join(_sub_parts)
@@ -298,7 +298,7 @@ st.markdown(
     f"<div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;"
     f"background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>"
     f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
-    f"color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Daily Briefing</div>"
+    f"color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Daily Briefing</div>"
     f"<h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>"
     f"{_greeting}, {_my_display}</h1>"
     f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>"
@@ -441,13 +441,13 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month</div></div>', unsafe_allow_html=True)
     with c3:
         if util_pct is not None:
-            col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#E74C3C")
+            col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#C0392B")
             st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %</div></div>', unsafe_allow_html=True)
     with c4:
         if overrun_pct is not None:
-            col = "#E74C3C" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
+            col = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
             st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget</div></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %</div></div>', unsafe_allow_html=True)
@@ -687,12 +687,12 @@ else:
             _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
     with snap4:
-        _col = "#E74C3C" if len(_mi) > 0 else "inherit"
+        _col = "#C0392B" if len(_mi) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email</div></div>', unsafe_allow_html=True)
         if len(_mi) > 0:
             st.markdown('<div style="font-size:13px;opacity:.55">Excl. legacy projects</div>', unsafe_allow_html=True)
     with snap5:
-        _col = "#E74C3C" if len(_stale) > 0 else "inherit"
+        _col = "#C0392B" if len(_stale) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement</div></div>', unsafe_allow_html=True)
         if len(_stale) > 0:
             st.markdown('<div style="font-size:13px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)

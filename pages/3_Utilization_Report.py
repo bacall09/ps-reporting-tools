@@ -1775,7 +1775,7 @@ def main():
         </style>
         <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
             <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
+            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
             <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Utilization Report</h1>
             <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Upload your NetSuite time detail export to generate a consistent utilization credit report across T&amp;M and Fixed Fee engagements.</p>
         </div>
@@ -1962,7 +1962,7 @@ def main():
         overrun_pct = total_proj_overrun / hours_this_period if hours_this_period else 0
         admin_pct   = total_admin        / hours_this_period if hours_this_period else 0
 
-        credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#e74c3c"
+        credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#C0392B"
         credit_label = "On target · Goal: 70%" if credit_pct >= 0.70 else "Below target · Goal: 70%" if credit_pct >= 0.60 else "At risk · Goal: 70%"
 
         # Date range banner

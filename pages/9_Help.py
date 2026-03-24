@@ -30,7 +30,7 @@ st.markdown("""
     }
     .hero-eyebrow {
         font-size: 11px; font-weight: 700; letter-spacing: 2px;
-        text-transform: uppercase; color: #3ECFB2; margin-bottom: 10px;
+        text-transform: uppercase; color: #ff4b40; margin-bottom: 10px;
     }
     .hero-title {
         font-size: 30px; font-weight: 800; color: #fff;
@@ -46,7 +46,7 @@ st.markdown("""
         display: inline-block; padding: 5px 14px; border-radius: 20px;
         font-size: 11.5px; font-weight: 600;
     }
-    .hpill-mint  { background: rgba(62,207,178,0.15); color: #3ECFB2;  border: 1px solid rgba(62,207,178,0.3); }
+    .hpill-mint  { background: rgba(255,75,64,0.15); color: #ff4b40;  border: 1px solid rgba(255,75,64,0.35); }
     .hpill-sky   { background: rgba(91,141,239,0.15);  color: #5B8DEF;  border: 1px solid rgba(91,141,239,0.3); }
     .hpill-white { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.15); }
 
@@ -127,7 +127,7 @@ st.markdown("""
         font-size: 12.5px; color: #1A2340; line-height: 1.6;
         padding-left: 18px; position: relative; margin-bottom: 7px;
     }
-    .why-list li::before { content: '✓'; position: absolute; left: 0; color: #3ECFB2; font-weight: 700; font-size: 11px; }
+    .why-list li::before { content: '✓'; position: absolute; left: 0; color: #ff4b40; font-weight: 700; font-size: 11px; }
 
     /* Tip */
     .tip-box {
@@ -143,7 +143,7 @@ st.markdown("""
         text-transform: uppercase; margin-left: 8px; vertical-align: middle;
     }
     .atag-c { background: rgba(46,92,230,0.1);  color: #2E5CE6; }
-    .atag-m { background: rgba(62,207,178,0.12); color: #1a9a80; }
+    .atag-m { background: rgba(255,75,64,0.12); color: #1a9a80; }
     .atag-a { background: rgba(139,100,220,0.1); color: #6B3FA0; }
 
     /* ── PHASE ROADMAP ── */
@@ -239,7 +239,6 @@ CONSULTANT_TOOLS = [
         ],
         "why": [
             "Surfaces the highest-priority items without scanning every project.",
-            "Replaces the morning 'let me check three sheets' routine.",
             "Consistent — same logic every day, no missed flags.",
         ],
         "tip": "Managers can use the 'View As' dropdown in the sidebar to pull any consultant's daily briefing.",

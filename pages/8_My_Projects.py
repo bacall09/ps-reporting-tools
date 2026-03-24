@@ -30,7 +30,7 @@ st.markdown("""
     .metric-lbl{font-size:12px;opacity:.6;margin-top:2px}
     .pf{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;
         border-radius:4px;margin-right:4px;margin-bottom:3px}
-    .pf-e{background:rgba(231,76,60,.15);color:#E74C3C}
+    .pf-e{background:rgba(192,57,43,0.15);color:#C0392B}
     .pf-w{background:rgba(243,156,18,.15);color:#D68910}
     .divider{border:none;border-top:1px solid rgba(128,128,128,.2);margin:20px 0}
     .eform{background:rgba(68,114,196,.06);border:1px solid rgba(68,114,196,.2);
@@ -171,7 +171,7 @@ _dn = (_va_region + " Team" if _va_region
 st.markdown(f"""
 <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
     <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-    <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · My Work</div>
+    <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · My Work</div>
     <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>My Projects — {_dn}</h1>
     <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>{today.strftime("%A, %B %-d %Y")} · {len(active)} active · {len(on_hold)} on hold</p>
 </div>

@@ -1242,7 +1242,7 @@ def main():
         </style>
         <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
             <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
+            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
             <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Capacity Outlook</h1>
             <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Consultant availability over the next 6 months — active FF projects from Smartsheet combined with unassigned closed deals from NetSuite.</p>
         </div>
@@ -1691,7 +1691,7 @@ def main():
         return f"{int(h):,} hrs" if h == int(h) else f"{h:,.1f} hrs"
 
     with m1: st.markdown(metric_card("Unassigned Projects", _combined_total,
-                _metric_sub, "#27AE60" if _metric_sub else ("#E74C3C" if _combined_total > 0 else None)), unsafe_allow_html=True)
+                _metric_sub, "#27AE60" if _metric_sub else ("#C0392B" if _combined_total > 0 else None)), unsafe_allow_html=True)
     with m2: st.markdown(metric_card("Apps Projects", _ns_apps), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Billing Projects", _ns_billing,
                 hrs=_fmt_hrs(_ns_billing_hrs) if _ns_billing_hrs > 0 else None), unsafe_allow_html=True)
@@ -1699,7 +1699,7 @@ def main():
                 hrs=_fmt_hrs(_ns_reporting_hrs) if _ns_reporting_hrs > 0 else None), unsafe_allow_html=True)
     with m5: st.markdown(metric_card("Payroll Projects", _ns_payroll,
                 hrs=_fmt_hrs(_ns_payroll_hrs) if _ns_payroll_hrs > 0 else None), unsafe_allow_html=True)
-    with m6: st.markdown(metric_card("Available Consultants", available_now, "", "#27AE60" if available_now > 0 else "#E74C3C"), unsafe_allow_html=True)
+    with m6: st.markdown(metric_card("Available Consultants", available_now, "", "#27AE60" if available_now > 0 else "#C0392B"), unsafe_allow_html=True)
 
 
     st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)

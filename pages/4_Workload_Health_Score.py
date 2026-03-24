@@ -1420,7 +1420,7 @@ def main():
         </style>
         <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
             <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3ECFB2;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
+            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
             <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Workload Health Score</h1>
             <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Weighted project scoring across active Fixed Fee engagements — by consultant and phase. Each project scored by phase weight × client health × risk multiplier.</p>
         </div>
@@ -1559,7 +1559,7 @@ def main():
 
     m1, m2, m3, m4, m5 = st.columns(5)
     with m1: st.markdown(metric_card("Consultants Scored",          f"{total:,}"),             unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Consultant High Workload",    f"{high}",    "At or over capacity",  "#e74c3c"), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Consultant High Workload",    f"{high}",    "At or over capacity",  "#C0392B"), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Consultant Medium Workload",  f"{medium}",  "Monitor for changes",  "#f39c12"), unsafe_allow_html=True)
     with m4: st.markdown(metric_card("Total FF Projects",           f"{total_projects:,}"),     unsafe_allow_html=True)
     with m5: st.markdown(metric_card("Active Projects",             f"{active_projects:,}", "Excl. On Hold", "#4472C4"), unsafe_allow_html=True)
@@ -1663,7 +1663,7 @@ A project is flagged if no time has been booked within the NS report window:
             _c1, _c2, _c3, _c4 = st.columns(4)
             with _c1: st.markdown(metric_card("14d+ No Time",  str(_counts.get("14d+", 0)), "14–29 days",        "#f39c12"), unsafe_allow_html=True)
             with _c2: st.markdown(metric_card("30d+ No Time",  str(_counts.get("30d+", 0)), "30–59 days",        "#e67e22"), unsafe_allow_html=True)
-            with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("60d+", 0)), "60+ days",          "#e74c3c"), unsafe_allow_html=True)
+            with _c3: st.markdown(metric_card("60d+ No Time",  str(_counts.get("60d+", 0)), "60+ days",          "#C0392B"), unsafe_allow_html=True)
             with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("No Entry in Period", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
             st.dataframe(stale_df, hide_index=True, use_container_width=True)
