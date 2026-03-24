@@ -820,7 +820,6 @@ def main():
         if _va_region:
             _disp = f"{_va_region} Team"
         _role_label = "Manager" if is_manager else "Consultant"
-        st.success(f"✓ Signed in as **{_session_name.split(',')[1].strip() if ',' in _session_name else _session_name}** · Viewing: **{_disp}**")
     else:
         # Not identified on Home — show Step 1 as before
         st.subheader("Step 2 — Who are you?")
