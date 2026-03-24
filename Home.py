@@ -167,14 +167,9 @@ with st.sidebar:
             _bopts.append("── Managers ──")
             _bopts.extend(_mgr_only)
 
-        # Hide Home View As on My Projects page — it has its own
-        _cur_page = pg.title if hasattr(pg, "title") else ""
-        if "My Projects" not in _cur_page:
-            st.markdown("**View as:**")
-            _browse = st.selectbox("Browse team", _bopts,
-                                   key="home_browse", label_visibility="collapsed")
-        else:
-            _browse = st.session_state.get("home_browse", _bopts[0] if _bopts else "— Select —")
+        st.markdown("**View as:**")
+        _browse = st.selectbox("Browse team", _bopts,
+                               key="home_browse", label_visibility="collapsed")
 
         _all_prods = sorted({
             p for n in _active_c
