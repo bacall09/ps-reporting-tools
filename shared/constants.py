@@ -246,3 +246,31 @@ PRODUCT_KEYWORDS = [
     "ZoneApprovals", "ZoneReconcile", "ZonePayments", "ZCapture",
     "ZApprovals", "ZReconcile",
 ]
+
+# ── Fixed Fee scope hours by project type ─────────────────────────────────────
+# Source of truth — same table used by Utilization Report engine
+DEFAULT_SCOPE = {
+    "Capture":                 20,
+    "Approvals":               17,
+    "Reconcile":               17,
+    "PSP":                     18,
+    "Payments":                30,
+    "Reconcile 2.0":           20,
+    "CC":                       6,
+    "SFTP":                    12,
+    "Premium - 10":            10,
+    "Premium - 20":            20,
+    "E-Invoicing":             15,
+    "Capture and E-Invoicing": 30,
+    "Additional Subsidiary":    2,
+}
+
+def get_ff_scope(project_type: str):
+    """Return scoped hours for a project type, or None if not found / T&M."""
+    if not project_type:
+        return None
+    pt = str(project_type).strip().lower()
+    matches = [(k, float(v)) for k, v in DEFAULT_SCOPE.items() if k.strip().lower() in pt]
+    if not matches:
+        return None
+    return max(matches, key=lambda x: len(x[0]))[1]
