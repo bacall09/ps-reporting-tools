@@ -210,7 +210,20 @@ else:
                         _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
                     except Exception:
                         pass
-        if _ns_id_col and "hours" in df_ns.columns and "billing_type" in df_ns.columns:
+        # T&M scope — read directly from the "T&M Scope" column in NS Time Detail
+        # (only populated for T&M projects — replaces the hours-sum proxy)
+        if _ns_id_col and "tm_scope" in df_ns.columns:
+            for _pid, _grp in df_ns.groupby(_ns_id_col):
+                _k = _clean_pid(_pid)
+                if _k:
+                    try:
+                        _v = _grp["tm_scope"].dropna().astype(float)
+                        if not _v.empty:
+                            _ns_tm_hrs[_k] = round(float(_v.max()), 2)
+                    except Exception:
+                        pass
+        elif _ns_id_col and "hours" in df_ns.columns and "billing_type" in df_ns.columns:
+            # Fallback: sum T&M hours if T&M Scope column not present
             _tm_mask = df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"
             for _pid, _grp in df_ns[_tm_mask].groupby(_ns_id_col):
                 _k = _clean_pid(_pid)
@@ -239,8 +252,8 @@ else:
         _ff_scope  = get_ff_scope(_ptype_raw)
         _pid_key = _clean_pid(row.get("project_id", ""))
         if _is_tm:
-            # TODO: replace with actual scoped hours per project (SFDC opportunity or DRS field)
-            # Current proxy = total NS hours logged (T&M is uncapped so no scope table exists)
+            # T&M scope from NS Time Detail "T&M Scope" column (max per project_id)
+            # Falls back to hours sum if column not present in export
             _scope = round(_ns_tm_hrs.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_tm_hrs else ""
         elif _ff_scope is not None:
             _scope = float(_ff_scope)
