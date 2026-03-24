@@ -102,6 +102,9 @@ else:
 # DEBUG — remove after confirming view_as works
 with st.sidebar:
     st.caption(f"DEBUG: selected={selected} | view_as={view_as} | _va_region={_va_region} | role={role}")
+    if st.session_state.get("df_drs") is not None:
+        _pm_sample = st.session_state["df_drs"].get("project_manager", pd.Series(dtype=str)).dropna().unique()[:5].tolist()
+        st.caption(f"DRS PM samples: {_pm_sample}")
 
 df_drs = st.session_state.get("df_drs")
 df_ns  = st.session_state.get("df_ns")
