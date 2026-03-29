@@ -264,34 +264,79 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
 
-# All months present in data, sorted
-_all_months = sorted(slices["period"].unique())
-_month_labels = {m: pd.Timestamp(m + "-01").strftime("%b %Y") for m in _all_months}
+# ── Build quarterly columnar pivot ───────────────────────────────────────────
+# Layout: Jan | Feb | Mar | Q1 | Apr | May | Jun | Q2 | ... | YTD
+# Covers all years present in data
 
-def _pivot(df, row_dim):
-    """Build a pivot: rows = row_dim, columns = month, values = usd_amount (formatted)."""
+def _pivot_quarterly(df, row_dim):
+    """Build management accounts layout: months interleaved with quarterly subtotals + YTD."""
     if df.empty or row_dim not in df.columns:
         return pd.DataFrame()
-    piv = (df.groupby([row_dim, "period"])["usd_amount"]
-             .sum()
-             .unstack(fill_value=0)
-             .reindex(columns=_all_months, fill_value=0))
-    # Add row total
-    piv["Total"] = piv.sum(axis=1)
-    # Add column total row
-    total_row = piv.sum(numeric_only=True)
-    total_row.name = "Total"
-    piv = pd.concat([piv, total_row.to_frame().T])
-    # Rename columns to friendly month labels
-    piv.columns = [_month_labels.get(m, m) if m != "Total" else "Total"
-                   for m in piv.columns]
-    # Format all values
-    piv = piv.applymap(_fmt)
-    piv.index.name = row_dim.capitalize()
-    return piv.reset_index()
 
-_piv_region  = _pivot(slices, "region")
-_piv_product = _pivot(slices, "product")
+    # All unique periods in data
+    all_periods = sorted(df["period"].unique())
+    all_years   = sorted({p[:4] for p in all_periods})
+
+    # Base pivot: rows = row_dim, columns = period
+    base = (df.groupby([row_dim, "period"])["usd_amount"]
+              .sum()
+              .unstack(fill_value=0))
+
+    # Build ordered column list with quarter subtotals
+    ordered_cols  = []   # (col_label, source_type, source_key)
+    # source_type: "month" | "quarter" | "ytd"
+
+    for year in all_years:
+        year_periods = [p for p in all_periods if p.startswith(year)]
+        year_months  = sorted(year_periods)
+
+        for q in range(1, 5):
+            q_month_nums = [(q-1)*3+1, (q-1)*3+2, (q-1)*3+3]
+            q_periods    = [f"{year}-{m:02d}" for m in q_month_nums]
+            q_present    = [p for p in q_periods if p in year_months]
+
+            if not q_present:
+                continue
+
+            # Add individual months
+            for p in q_present:
+                mo_label = pd.Timestamp(p + "-01").strftime("%b")
+                # Add year suffix only if data spans multiple years
+                if len(all_years) > 1:
+                    mo_label += f" '{year[2:]}"
+                ordered_cols.append((mo_label, "month", p))
+
+            # Add quarter subtotal if any months present
+            ordered_cols.append((f"Q{q}" + (f" '{year[2:]}" if len(all_years) > 1 else ""), "quarter", q_periods))
+
+        # Add YTD after December (or last month of year)
+        if year == all_years[-1]:
+            ordered_cols.append(("YTD", "ytd", year_periods))
+        else:
+            ordered_cols.append((f"FY{year[2:]}", "ytd", year_periods))
+
+    # Build the output DataFrame column by column
+    rows_index = base.index.tolist()
+    result = {row_dim: list(rows_index) + ["Total"]}
+
+    for col_label, ctype, key in ordered_cols:
+        col_vals = []
+        if ctype == "month":
+            vals = base[key] if key in base.columns else pd.Series(0, index=base.index)
+        else:
+            # Sum across list of periods
+            present = [p for p in key if p in base.columns]
+            vals = base[present].sum(axis=1) if present else pd.Series(0, index=base.index)
+
+        for idx in rows_index:
+            col_vals.append(float(vals.get(idx, 0)))
+        col_vals.append(sum(col_vals))  # Total row
+        result[col_label] = [_fmt(v) for v in col_vals]
+
+    return pd.DataFrame(result)
+
+_piv_region  = _pivot_quarterly(slices, "region")
+_piv_product = _pivot_quarterly(slices, "product")
 
 if not _piv_region.empty:
     st.markdown("**By Region**")
