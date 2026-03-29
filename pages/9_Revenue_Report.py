@@ -203,7 +203,7 @@ st.markdown('<div class="section-label">Monthly Trend (USD)</div>',unsafe_allow_
 _trend = slices.groupby("period")["usd_amount"].sum().reset_index()
 _trend.columns = ["Period", "Revenue (USD)"]
 _trend = _trend.sort_values("Period")
-_trend["Revenue (USD)"] = _trend["Revenue (USD)"].round(2)
+_trend["Revenue (USD)"] = pd.to_numeric(_trend["Revenue (USD)"], errors="coerce").fillna(0).round(2)
 st.dataframe(_trend, use_container_width=True, hide_index=True)
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
