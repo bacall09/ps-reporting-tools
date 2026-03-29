@@ -338,13 +338,34 @@ def _pivot_quarterly(df, row_dim):
 _piv_region  = _pivot_quarterly(slices, "region")
 _piv_product = _pivot_quarterly(slices, "product")
 
+def _style_pivot(df):
+    """Apply subtle background to quarter subtotal and FY/YTD columns."""
+    # Identify which columns are Q or FY/YTD subtotals
+    subtotal_cols = [c for c in df.columns
+                     if str(c).startswith("Q") or c in ("YTD", "FY26", "FY27", "FY28")]
+
+    def _highlight(col):
+        if col.name in subtotal_cols:
+            return ["background-color: rgba(68,114,196,0.18); font-weight: 600"] * len(col)
+        return [""] * len(col)
+
+    # Also bold the Total row
+    def _bold_total(row):
+        if str(row.iloc[0]) == "Total":
+            return ["font-weight: 700; border-top: 1px solid rgba(128,128,128,0.4)"] * len(row)
+        return [""] * len(row)
+
+    return (df.style
+              .apply(_highlight, axis=0)
+              .apply(_bold_total, axis=1))
+
 if not _piv_region.empty:
     st.markdown("**By Region**")
-    st.dataframe(_piv_region, use_container_width=True, hide_index=True)
+    st.dataframe(_style_pivot(_piv_region), use_container_width=True, hide_index=True)
 
 if not _piv_product.empty:
     st.markdown("**By Product**")
-    st.dataframe(_piv_product, use_container_width=True, hide_index=True)
+    st.dataframe(_style_pivot(_piv_product), use_container_width=True, hide_index=True)
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
