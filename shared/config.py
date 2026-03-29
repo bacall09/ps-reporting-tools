@@ -147,7 +147,30 @@ AVAIL_HOURS = {
 # Fixed fee task keywords (Case/Task/Event column)
 FF_TASKS = ["Configuration", "Enablement", "Training", "Post Go-live", "Project Management"]
 
-# ── Currency → PS Region ───────────────────────────────────────────────────────
+# ── FF Revenue Carve-Out Amounts by SKU + Currency ────────────────────────────
+# For $0 charge lines, the recognizable amount is looked up here.
+# Key: (charge_item_sku, currency) — charge_item is matched by partial string
+# Value: carve-out amount in that currency
+# Add new SKUs here as they are confirmed.
+# Note: charge_item in NS export includes prefix "SERVICES : " — matching is
+# done on the SKU portion only (after the last space-colon-space if present).
+FF_CARVE_OUT_TABLE = {
+    ("SERV-APP-ZR2-STD_IMPL", "USD"): 2500.00,
+    ("SERV-APP-ZA_STD-IMPL",  "USD"): 2205.00,
+    ("SERV-APP-ZC_STD-IMPL",  "USD"): 3000.00,
+}
+
+def get_carve_out_amount(charge_item: str, currency: str) -> float | None:
+    """Look up carve-out amount for a $0 charge line.
+    charge_item may include 'SERVICES : ' prefix — stripped for matching.
+    Returns None if not found (will fall back to Rev Carve Amount column if present).
+    """
+    ci = str(charge_item).strip()
+    # Strip 'SERVICES : ' or similar prefix
+    if " : " in ci:
+        ci = ci.split(" : ", 1)[-1].strip()
+    curr = str(currency).strip().upper()
+    return FF_CARVE_OUT_TABLE.get((ci, curr), None)
 # Used for revenue reporting where region is derived from billing currency
 CURRENCY_REGION_MAP = {
     "USD": "NOAM",

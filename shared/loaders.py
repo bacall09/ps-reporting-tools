@@ -529,11 +529,23 @@ def load_revenue(file) -> pd.DataFrame:
         if nc in df.columns:
             df[nc] = pd.to_numeric(df[nc], errors="coerce").fillna(0)
 
-    # Recognizable amount
-    df["recognizable_amount"] = df.apply(
-        lambda r: r["amount"] if r.get("amount", 0) > 0 else r.get("rev_carve_amount", 0),
-        axis=1
-    )
+    # Recognizable amount:
+    # 1. If Amount > 0 → use Amount (fully billed, recognize in full)
+    # 2. If Amount = 0 → look up carve-out table by SKU + currency
+    # 3. If not in table → fall back to Rev Carve Amount column from NS
+    from shared.config import get_carve_out_amount
+    def _rec_amount(row):
+        amt = float(row.get("amount", 0) or 0)
+        if amt > 0:
+            return amt
+        # Try SKU table first
+        tbl = get_carve_out_amount(row.get("charge_item", ""), row.get("currency", "USD"))
+        if tbl is not None:
+            return tbl
+        # Fall back to column value
+        return float(row.get("rev_carve_amount", 0) or 0)
+
+    df["recognizable_amount"] = df.apply(_rec_amount, axis=1)
 
     # Product from subscription item
     df["product"] = df.get("subscription_item", pd.Series("", index=df.index)).apply(match_product)
