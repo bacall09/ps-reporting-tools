@@ -627,11 +627,16 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "transaction":       r.get("transaction", ""),
             })
 
-    return pd.DataFrame(rows) if rows else pd.DataFrame(
+    result = pd.DataFrame(rows) if rows else pd.DataFrame(
         columns=["project_id","charge_item","subscription_item","product",
                  "region","currency","period","local_amount","usd_amount",
                  "status","transaction"]
     )
+    # Ensure numeric columns are correct dtype
+    for _nc in ("local_amount", "usd_amount"):
+        if _nc in result.columns:
+            result[_nc] = pd.to_numeric(result[_nc], errors="coerce").fillna(0)
+    return result
 
 
 
