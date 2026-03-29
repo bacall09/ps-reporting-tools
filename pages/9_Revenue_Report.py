@@ -162,12 +162,14 @@ def _region_table(df, label):
     t[label] = t[label].apply(_fmt)
     return t.sort_values("Region")
 
-_rt_ytd = _region_table(ytd_df,  "YTD")
-_rt_qtd = _region_table(qtd_df,  "QTD")
+_rt_ytd = _region_table(ytd_df,     "YTD")
+_rt_qtd = _region_table(qtd_df,     "QTD")
 _rt_mtd = _region_table(slices_mtd, "MTD")
+_rt = (_rt_ytd.merge(_rt_qtd, on="Region", how="outer")
+              .merge(_rt_mtd, on="Region", how="outer")
+              .fillna("$0")) if not _rt_ytd.empty else pd.DataFrame()
 
-if not _rt_ytd.empty:
-    _rt = _rt_ytd.merge(_rt_qtd, on="Region", how="outer").merge(_rt_mtd, on="Region", how="outer").fillna("$0")
+if not _rt.empty:
     st.dataframe(_rt, use_container_width=True, hide_index=True)
 else:
     st.info("No region data available.")
@@ -186,12 +188,14 @@ def _product_table(df, label):
     t[label] = t[label].apply(_fmt)
     return t.sort_values("Product")
 
-_pt_ytd = _product_table(ytd_df,  "YTD")
-_pt_qtd = _product_table(qtd_df,  "QTD")
+_pt_ytd = _product_table(ytd_df,     "YTD")
+_pt_qtd = _product_table(qtd_df,     "QTD")
 _pt_mtd = _product_table(slices_mtd, "MTD")
+_pt = (_pt_ytd.merge(_pt_qtd, on="Product", how="outer")
+              .merge(_pt_mtd, on="Product", how="outer")
+              .fillna("$0")) if not _pt_ytd.empty else pd.DataFrame()
 
-if not _pt_ytd.empty:
-    _pt = _pt_ytd.merge(_pt_qtd, on="Product", how="outer").merge(_pt_mtd, on="Product", how="outer").fillna("$0")
+if not _pt.empty:
     st.dataframe(_pt, use_container_width=True, hide_index=True)
 else:
     st.info("No product data available.")
