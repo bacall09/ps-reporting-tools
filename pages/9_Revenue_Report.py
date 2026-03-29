@@ -127,12 +127,37 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Total Revenue</div>',unsafe_allow_html=True)
 
+# ── Build monthly totals for trend calculations ───────────────────────────────
+# Use full-month slices (not pro-rated) for MoM and run rate
+_monthly_totals = (slices[slices["period"].isin(ytd_months)]
+                   .groupby("period")["usd_amount"].sum()
+                   .sort_index())
+
+# MoM growth: compare last two complete months
+_complete_months = [m for m in sorted(_monthly_totals.index) if m < this_month]
+if len(_complete_months) >= 2:
+    _prev_mo  = _complete_months[-2]
+    _curr_mo  = _complete_months[-1]
+    _prev_rev = _monthly_totals.get(_prev_mo, 0)
+    _curr_rev = _monthly_totals.get(_curr_mo, 0)
+    _mom_pct  = ((_curr_rev - _prev_rev) / _prev_rev * 100) if _prev_rev > 0 else None
+    _mom_label = pd.Timestamp(_curr_mo + "-01").strftime("%b")
+    _prev_label = pd.Timestamp(_prev_mo + "-01").strftime("%b")
+elif len(_complete_months) == 1:
+    _mom_pct = None; _curr_rev = _monthly_totals.iloc[0]; _mom_label = ""
+else:
+    _mom_pct = None; _curr_rev = 0; _mom_label = ""
+
+# Run rate: avg of complete months × 12
+_avg_monthly = _monthly_totals[_monthly_totals.index < this_month].mean() if len(_complete_months) >= 1 else 0
+_run_rate    = _avg_monthly * 12
+
 ytd_total  = ytd_df["usd_amount"].sum()
 qtd_total  = qtd_df["usd_amount"].sum()
 mtd_total  = slices_mtd["usd_amount"].sum()
 full_month = slices[slices["period"]==this_month]["usd_amount"].sum()
 
-c1,c2,c3,c4 = st.columns(4)
+c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
     st.markdown(
         f'<div class="metric-card"><div class="metric-val">{_fmt(ytd_total)}</div>'
@@ -156,6 +181,28 @@ with c4:
         f'<div class="metric-card"><div class="metric-val">{_fmt(full_month)}</div>'
         f'<div class="metric-sub">Full Month Forecast</div>'
         f'<div class="metric-lbl">{today.strftime("%B")} (full month)</div></div>',
+        unsafe_allow_html=True)
+with c5:
+    if _mom_pct is not None:
+        _arrow = "↑" if _mom_pct >= 0 else "↓"
+        _col   = "#27AE60" if _mom_pct >= 0 else "#E74C3C"
+        st.markdown(
+            f'<div class="metric-card">'
+            f'<div class="metric-val" style="color:{_col}">{_arrow} {abs(_mom_pct):.1f}%</div>'
+            f'<div class="metric-sub">MoM Growth</div>'
+            f'<div class="metric-lbl">{_prev_label} → {_mom_label}</div></div>',
+            unsafe_allow_html=True)
+    else:
+        st.markdown(
+            '<div class="metric-card"><div class="metric-val">—</div>'
+            '<div class="metric-sub">MoM Growth</div>'
+            '<div class="metric-lbl">Need 2+ months</div></div>',
+            unsafe_allow_html=True)
+with c6:
+    st.markdown(
+        f'<div class="metric-card"><div class="metric-val">{_fmt(_run_rate)}</div>'
+        f'<div class="metric-sub">Run Rate (ARR)</div>'
+        f'<div class="metric-lbl">Avg monthly × 12 ({len(_complete_months)} mo)</div></div>',
         unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
@@ -252,6 +299,59 @@ if not _piv_product.empty:
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SECTION — Trend Analysis
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-label">Trend Analysis</div>', unsafe_allow_html=True)
+
+# Build full monthly table with MoM delta and % change
+_trend_full = (_monthly_totals.reset_index()
+               if not _monthly_totals.empty else pd.DataFrame(columns=["period","usd_amount"]))
+_trend_full.columns = ["Period", "Revenue (USD)"]
+_trend_full["Revenue (USD)"] = pd.to_numeric(_trend_full["Revenue (USD)"], errors="coerce").fillna(0)
+_trend_full["MoM Change"]    = _trend_full["Revenue (USD)"].diff()
+_trend_full["MoM %"]         = _trend_full["Revenue (USD)"].pct_change() * 100
+_trend_full["Cumulative YTD"] = _trend_full["Revenue (USD)"].cumsum()
+
+# Format for display
+_trend_disp = _trend_full.copy()
+_trend_disp["Period"]         = _trend_disp["Period"].apply(
+    lambda m: pd.Timestamp(m + "-01").strftime("%b %Y"))
+_trend_disp["Revenue (USD)"]  = _trend_disp["Revenue (USD)"].apply(_fmt)
+_trend_disp["MoM Change"]     = _trend_disp["MoM Change"].apply(
+    lambda v: ("↑ " if v >= 0 else "↓ ") + _fmt(abs(v)) if pd.notna(v) else "—")
+_trend_disp["MoM %"]          = _trend_disp["MoM %"].apply(
+    lambda v: f"{'↑' if v >= 0 else '↓'} {abs(v):.1f}%" if pd.notna(v) else "—")
+_trend_disp["Cumulative YTD"] = _trend_disp["Cumulative YTD"].apply(_fmt)
+
+st.dataframe(_trend_disp, use_container_width=True, hide_index=True)
+
+# Region trend table
+if "region" in slices.columns and len(_complete_months) >= 2:
+    st.markdown("**MoM by Region**")
+    _rgn_trend = (slices[slices["period"].isin(_complete_months)]
+                  .groupby(["region","period"])["usd_amount"].sum()
+                  .unstack(fill_value=0)
+                  .reindex(columns=_complete_months, fill_value=0))
+    # Add MoM % for last two months
+    if len(_complete_months) >= 2:
+        _rgn_trend["MoM %"] = (
+            (_rgn_trend[_complete_months[-1]] - _rgn_trend[_complete_months[-2]])
+            / _rgn_trend[_complete_months[-2]].replace(0, float("nan")) * 100
+        ).apply(lambda v: f"{'↑' if v >= 0 else '↓'} {abs(v):.1f}%" if pd.notna(v) else "—")
+    _rgn_trend.columns = [
+        pd.Timestamp(m + "-01").strftime("%b %Y") if m != "MoM %" else "MoM %"
+        for m in _rgn_trend.columns
+    ]
+    # Format numeric columns
+    for _mc in _rgn_trend.columns:
+        if _mc != "MoM %":
+            _rgn_trend[_mc] = pd.to_numeric(_rgn_trend[_mc], errors="coerce").apply(_fmt)
+    _rgn_trend.index.name = "Region"
+    st.dataframe(_rgn_trend.reset_index(), use_container_width=True, hide_index=True)
+
+st.markdown('<hr class="divider">',unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4 — Monthly trend
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Monthly Trend (USD)</div>',unsafe_allow_html=True)
@@ -304,7 +404,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not _pt.empty:          _pt.to_excel(_xl,          sheet_name="By Product",         index=False)
     if not _piv_region.empty:  _piv_region.to_excel(_xl,  sheet_name="Region by Month",    index=False)
     if not _piv_product.empty: _piv_product.to_excel(_xl, sheet_name="Product by Month",   index=False)
-    _trend.to_excel(_xl,  sheet_name="Monthly Trend",  index=False)
+    if not _trend_disp.empty:  _trend_disp.to_excel(_xl,  sheet_name="Trend Analysis",     index=False)
     _detail.to_excel(_xl, sheet_name="Project Detail", index=False)
 
 st.download_button(
