@@ -63,8 +63,9 @@ if slices.empty or slices["usd_amount"].sum() == 0:
     st.warning(
         f"⚠️ Revenue data loaded ({len(df_rev_raw)} charge rows) but produced "
         f"{'no slices' if slices.empty else '$0 in slices'}. "
-        f"Check that Rev Rec Start / Rev Rec End dates parsed correctly. "
-        f"Sample rev_start values: {df_rev_raw.get('rev_start', pd.Series()).dropna().head(3).tolist()}"
+        f"Columns in file: {list(df_rev_raw.columns)}. "
+        f"Sample rev_start: {df_rev_raw.get('rev_start', pd.Series()).dropna().head(3).tolist()}. "
+        f"Sample recognizable_amount: {df_rev_raw.get('recognizable_amount', pd.Series()).head(3).tolist()}"
     )
 
 # ── Join DRS for project name + consultant ────────────────────────────────────
@@ -212,6 +213,45 @@ else:
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SECTION — Monthly Breakdown by Region & Product
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-label">Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
+
+# All months present in data, sorted
+_all_months = sorted(slices["period"].unique())
+_month_labels = {m: pd.Timestamp(m + "-01").strftime("%b %Y") for m in _all_months}
+
+def _pivot(df, row_dim):
+    """Build a pivot: rows = row_dim, columns = month, values = usd_amount (formatted)."""
+    if df.empty or row_dim not in df.columns:
+        return pd.DataFrame()
+    piv = (df.groupby([row_dim, "period"])["usd_amount"]
+             .sum()
+             .unstack(fill_value=0)
+             .reindex(columns=_all_months, fill_value=0))
+    # Rename columns to friendly month labels
+    piv.columns = [_month_labels.get(m, m) for m in piv.columns]
+    # Add row total
+    piv["Total"] = piv.sum(axis=1)
+    # Format all values
+    piv = piv.applymap(_fmt)
+    piv.index.name = row_dim.capitalize()
+    return piv.reset_index()
+
+_piv_region  = _pivot(slices, "region")
+_piv_product = _pivot(slices, "product")
+
+if not _piv_region.empty:
+    st.markdown("**By Region**")
+    st.dataframe(_piv_region, use_container_width=True, hide_index=True)
+
+if not _piv_product.empty:
+    st.markdown("**By Product**")
+    st.dataframe(_piv_product, use_container_width=True, hide_index=True)
+
+st.markdown('<hr class="divider">',unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4 — Monthly trend
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Monthly Trend (USD)</div>',unsafe_allow_html=True)
@@ -260,10 +300,12 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         "USD":     [round(ytd_total,2), round(qtd_total,2), round(mtd_total,2), round(full_month,2)],
     })
     _summ.to_excel(_xl, sheet_name="Summary",    index=False)
-    if not _rt.empty: _rt.to_excel(_xl, sheet_name="By Region",  index=False)
-    if not _pt.empty: _pt.to_excel(_xl, sheet_name="By Product", index=False)
-    _trend.to_excel(_xl,                          sheet_name="Monthly Trend", index=False)
-    _detail.to_excel(_xl,                         sheet_name="Project Detail", index=False)
+    if not _rt.empty:          _rt.to_excel(_xl,          sheet_name="By Region",         index=False)
+    if not _pt.empty:          _pt.to_excel(_xl,          sheet_name="By Product",         index=False)
+    if not _piv_region.empty:  _piv_region.to_excel(_xl,  sheet_name="Region by Month",    index=False)
+    if not _piv_product.empty: _piv_product.to_excel(_xl, sheet_name="Product by Month",   index=False)
+    _trend.to_excel(_xl,  sheet_name="Monthly Trend",  index=False)
+    _detail.to_excel(_xl, sheet_name="Project Detail", index=False)
 
 st.download_button(
     "⬇ Download Revenue Report (Excel)",
