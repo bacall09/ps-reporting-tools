@@ -442,9 +442,6 @@ NS_COL_MAP_OUT = {
     "quantity":             "hours",
     "hours/quantity":       "hours",
     "hours to date":        "hours_to_date",
-    "t&m scope":            "tm_scope",
-    "t&m scope hours":      "tm_scope",
-    "tm scope":             "tm_scope",
     "quantity to date":     "hours_to_date",
     "hours/quantity to date": "hours_to_date",
     "non-billable":         "non_billable",
@@ -453,5 +450,176 @@ NS_COL_MAP_OUT = {
     "non_billable":         "non_billable",
     "is non billable":      "non_billable",
 }
+
+# ── Product keyword matcher ───────────────────────────────────────────────────
+# Maps subscription item / project type text → canonical product name
+# Order matters — more specific entries first
+_PRODUCT_KEYWORDS = [
+    ("Capture and E-Invoicing", ["capture and e-invoic"]),
+    ("Reconcile 2.0",           ["reconcile 2"]),
+    ("Premium",                 ["premium"]),
+    ("E-Invoicing",             ["e-invoic", "einvoic"]),
+    ("Capture",                 ["capture", "zcapture", "zonecapture"]),
+    ("Approvals",               ["approval", "zapprovals", "zoneapprovals"]),
+    ("Reconcile",               ["reconcile", "zreconcile"]),
+    ("Payments",                ["payment", "zpayment"]),
+    ("PSP",                     ["psp"]),
+    ("SFTP",                    ["sftp"]),
+    ("CC",                      ["cc statement", "credit card"]),
+    ("Billing",                 ["billing", "zbilling"]),
+    ("Payroll",                 ["payroll", "zpayroll"]),
+    ("Reporting",               ["reporting"]),
+]
+
+def match_product(text: str) -> str:
+    """Return canonical product name from subscription item / project type text.
+    Returns 'Other' if no match found."""
+    tl = str(text).strip().lower()
+    for product, keywords in _PRODUCT_KEYWORDS:
+        if any(kw in tl for kw in keywords):
+            return product
+    return "Other"
+
+
+# ── Revenue charge loader ─────────────────────────────────────────────────────
+REV_COL_MAP = {
+    "charge item":         "charge_item",
+    "subscription item":   "subscription_item",
+    "project id":          "project_id",
+    "rev rec start":       "rev_start",
+    "rev rec end":         "rev_end",
+    "service end date":    "service_end",
+    "currency":            "currency",
+    "quantity":            "quantity",
+    "gross amount":        "gross_amount",
+    "rate":                "rate",
+    "discount":            "discount",
+    "amount":              "amount",
+    "rev carve amount":    "rev_carve_amount",
+    "status":              "status",
+    "transaction":         "transaction",
+}
+
+def load_revenue(file) -> pd.DataFrame:
+    """Load NS FF revenue charge export.
+    Derives:
+      - recognizable_amount: Amount if > 0, else Rev Carve Amount
+      - product: from subscription_item keyword match
+      - region: from currency
+      - monthly_slices: dict of {YYYY-MM: usd_amount} for straight-line recognition
+    """
+    from shared.config import CURRENCY_REGION_MAP, get_fx_rate
+
+    if hasattr(file, "name") and file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+
+    df.columns = df.columns.str.strip()
+    rename = {c: REV_COL_MAP[c.lower()] for c in df.columns if c.lower() in REV_COL_MAP}
+    df = df.rename(columns=rename)
+
+    # Parse dates
+    for dc in ("rev_start", "rev_end", "service_end"):
+        if dc in df.columns:
+            df[dc] = pd.to_datetime(df[dc], errors="coerce")
+
+    # Numeric coercion
+    for nc in ("amount", "rev_carve_amount", "gross_amount", "rate"):
+        if nc in df.columns:
+            df[nc] = pd.to_numeric(df[nc], errors="coerce").fillna(0)
+
+    # Recognizable amount
+    df["recognizable_amount"] = df.apply(
+        lambda r: r["amount"] if r.get("amount", 0) > 0 else r.get("rev_carve_amount", 0),
+        axis=1
+    )
+
+    # Product from subscription item
+    df["product"] = df.get("subscription_item", pd.Series("", index=df.index)).apply(match_product)
+
+    # Region from currency
+    df["region"] = df.get("currency", pd.Series("USD", index=df.index)).apply(
+        lambda c: CURRENCY_REGION_MAP.get(str(c).strip().upper(), "Other")
+    )
+
+    # project_id as string for joining
+    if "project_id" in df.columns:
+        df["project_id"] = df["project_id"].astype(str).str.strip().str.split(".").str[0]
+
+    return df
+
+
+def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
+    """Expand each charge row into monthly recognition slices.
+    Returns a long-format DataFrame with columns:
+      project_id, period (YYYY-MM), local_amount, usd_amount,
+      currency, region, product, charge_item, subscription_item
+    """
+    from shared.config import get_fx_rate
+    import calendar
+
+    rows = []
+    for _, r in df.iterrows():
+        start = r.get("rev_start")
+        end   = r.get("rev_end")
+        total = float(r.get("recognizable_amount", 0) or 0)
+        curr  = str(r.get("currency", "USD")).strip().upper()
+
+        if pd.isna(start) or pd.isna(end) or total == 0:
+            continue
+
+        start = pd.Timestamp(start)
+        end   = pd.Timestamp(end)
+
+        # Build list of months in the recognition window
+        months = []
+        cur = start.to_period("M")
+        end_p = end.to_period("M")
+        while cur <= end_p:
+            months.append(cur)
+            cur += 1
+
+        if not months:
+            continue
+
+        n_months = len(months)
+
+        for mp in months:
+            period_str = mp.strftime("%Y-%m")
+            mo_start   = mp.to_timestamp()
+            mo_end     = mp.to_timestamp("M")
+            days_in_mo = calendar.monthrange(mp.year, mp.month)[1]
+
+            # Pro-rate partial first / last months
+            actual_start = max(start, mo_start)
+            actual_end   = min(end, mo_end)
+            days_active  = (actual_end - actual_start).days + 1
+
+            # Monthly slice = total / n_months, scaled by days active
+            full_slice    = total / n_months
+            prorated      = full_slice * (days_active / days_in_mo)
+            fx            = get_fx_rate(curr, period_str)
+
+            rows.append({
+                "project_id":        str(r.get("project_id", "")),
+                "charge_item":       r.get("charge_item", ""),
+                "subscription_item": r.get("subscription_item", ""),
+                "product":           r.get("product", "Other"),
+                "region":            r.get("region", "Other"),
+                "currency":          curr,
+                "period":            period_str,
+                "local_amount":      round(prorated, 2),
+                "usd_amount":        round(prorated * fx, 2),
+                "status":            r.get("status", ""),
+                "transaction":       r.get("transaction", ""),
+            })
+
+    return pd.DataFrame(rows) if rows else pd.DataFrame(
+        columns=["project_id","charge_item","subscription_item","product",
+                 "region","currency","period","local_amount","usd_amount",
+                 "status","transaction"]
+    )
+
 
 

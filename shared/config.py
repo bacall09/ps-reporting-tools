@@ -75,9 +75,9 @@ EMPLOYEE_LOCATION = {
     "Hughes, Madalyn":        "USA",
     "Porangada, Suraj":       "USA",
     # ── Managers only ─────────────────────────────────────────────────────────
-    "Longi, Sameer":                  "Sydney (AU)",
-    "Prince, Trevor":                 "USA",
-    "Rusnak, Connor":                 "USA",
+    "Longi":                  "Sydney (AU)",
+    "Prince":                 "USA",
+    "Rusnak":                 "USA",
     # ── Leavers (kept for historical avail hours lookups) ─────────────────────
     "Centinaje, Rhodechild":  "Manila (PH)",
     "Chan, Joven":            "Manila (PH)",
@@ -146,6 +146,61 @@ AVAIL_HOURS = {
 
 # Fixed fee task keywords (Case/Task/Event column)
 FF_TASKS = ["Configuration", "Enablement", "Training", "Post Go-live", "Project Management"]
+
+# ── Currency → PS Region ───────────────────────────────────────────────────────
+# Used for revenue reporting where region is derived from billing currency
+CURRENCY_REGION_MAP = {
+    "USD": "NOAM",
+    "CAD": "NOAM",
+    "AUD": "APAC",
+    "NZD": "APAC",
+    "GBP": "EMEA",
+    "EUR": "EMEA",
+}
+
+# ── FX Rates → USD (monthly average) ─────────────────────────────────────────
+# Update these monthly. Format: {"YYYY-MM": rate_to_usd}
+# Rate = 1 unit of currency → USD  (e.g. 1 AUD = 0.63 USD)
+# Source: use monthly average from xe.com or your finance team's published rates
+FX_RATES_TO_USD = {
+    "AUD": {"2026-01": 0.620, "2026-02": 0.630, "2026-03": 0.628,
+            "2026-04": 0.645, "2026-05": 0.645, "2026-06": 0.645,
+            "2026-07": 0.645, "2026-08": 0.645, "2026-09": 0.645,
+            "2026-10": 0.645, "2026-11": 0.645, "2026-12": 0.645},
+    "CAD": {"2026-01": 0.695, "2026-02": 0.700, "2026-03": 0.718,
+            "2026-04": 0.720, "2026-05": 0.720, "2026-06": 0.720,
+            "2026-07": 0.720, "2026-08": 0.720, "2026-09": 0.720,
+            "2026-10": 0.720, "2026-11": 0.720, "2026-12": 0.720},
+    "NZD": {"2026-01": 0.565, "2026-02": 0.572, "2026-03": 0.570,
+            "2026-04": 0.580, "2026-05": 0.580, "2026-06": 0.580,
+            "2026-07": 0.580, "2026-08": 0.580, "2026-09": 0.580,
+            "2026-10": 0.580, "2026-11": 0.580, "2026-12": 0.580},
+    "GBP": {"2026-01": 1.240, "2026-02": 1.252, "2026-03": 1.290,
+            "2026-04": 1.295, "2026-05": 1.295, "2026-06": 1.295,
+            "2026-07": 1.295, "2026-08": 1.295, "2026-09": 1.295,
+            "2026-10": 1.295, "2026-11": 1.295, "2026-12": 1.295},
+    "EUR": {"2026-01": 1.030, "2026-02": 1.038, "2026-03": 1.082,
+            "2026-04": 1.090, "2026-05": 1.090, "2026-06": 1.090,
+            "2026-07": 1.090, "2026-08": 1.090, "2026-09": 1.090,
+            "2026-10": 1.090, "2026-11": 1.090, "2026-12": 1.090},
+    "USD": {"2026-01": 1.000, "2026-02": 1.000, "2026-03": 1.000,
+            "2026-04": 1.000, "2026-05": 1.000, "2026-06": 1.000,
+            "2026-07": 1.000, "2026-08": 1.000, "2026-09": 1.000,
+            "2026-10": 1.000, "2026-11": 1.000, "2026-12": 1.000},
+}
+
+def get_fx_rate(currency: str, period: str) -> float:
+    """Return USD conversion rate for a currency and YYYY-MM period.
+    Falls back to most recent known rate if period not found.
+    """
+    rates = FX_RATES_TO_USD.get(currency.upper(), {})
+    if period in rates:
+        return rates[period]
+    # Fall back to nearest available period
+    available = sorted(rates.keys())
+    if not available:
+        return 1.0
+    return rates[available[-1]]  # use most recent
 
 def get_avail_hours(region, period):
     """Look up available hours for a region/period. Returns None if not found."""
