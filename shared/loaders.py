@@ -519,10 +519,16 @@ def load_revenue(file) -> pd.DataFrame:
     rename = {c: REV_COL_MAP[c.lower()] for c in df.columns if c.lower() in REV_COL_MAP}
     df = df.rename(columns=rename)
 
-    # Parse dates
+    # Parse dates — handle short year format (1/1/26) and standard formats
+    def _parse_dates(series):
+        try:
+            return pd.to_datetime(series, dayfirst=False, errors="coerce")
+        except Exception:
+            return pd.to_datetime(series, errors="coerce")
+
     for dc in ("rev_start", "rev_end", "service_end"):
         if dc in df.columns:
-            df[dc] = pd.to_datetime(df[dc], errors="coerce")
+            df[dc] = _parse_dates(df[dc])
 
     # Numeric coercion
     for nc in ("amount", "rev_carve_amount", "gross_amount", "rate"):
