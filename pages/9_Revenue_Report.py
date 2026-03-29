@@ -276,10 +276,15 @@ def _pivot(df, row_dim):
              .sum()
              .unstack(fill_value=0)
              .reindex(columns=_all_months, fill_value=0))
-    # Rename columns to friendly month labels
-    piv.columns = [_month_labels.get(m, m) for m in piv.columns]
     # Add row total
     piv["Total"] = piv.sum(axis=1)
+    # Add column total row
+    total_row = piv.sum(numeric_only=True)
+    total_row.name = "Total"
+    piv = pd.concat([piv, total_row.to_frame().T])
+    # Rename columns to friendly month labels
+    piv.columns = [_month_labels.get(m, m) if m != "Total" else "Total"
+                   for m in piv.columns]
     # Format all values
     piv = piv.applymap(_fmt)
     piv.index.name = row_dim.capitalize()
