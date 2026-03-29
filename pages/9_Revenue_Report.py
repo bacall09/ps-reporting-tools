@@ -54,6 +54,9 @@ def _get_slices(df_hash):
     return calc_monthly_slices(st.session_state["df_revenue"])
 
 slices = calc_monthly_slices(df_rev_raw)
+# Guarantee numeric dtype regardless of how slices were constructed
+slices["usd_amount"]   = pd.to_numeric(slices["usd_amount"],   errors="coerce").fillna(0)
+slices["local_amount"] = pd.to_numeric(slices["local_amount"], errors="coerce").fillna(0)
 
 # ── Join DRS for project name + consultant ────────────────────────────────────
 if df_drs is not None and "project_id" in df_drs.columns:
@@ -217,8 +220,9 @@ _detail_cols = ["project_id","project_name","project_manager","product",
                 "region","currency","period","local_amount","usd_amount"]
 _detail_cols = [c for c in _detail_cols if c in slices.columns]
 _detail = slices[_detail_cols].copy()
-_detail["usd_amount"]   = _detail["usd_amount"].round(2)
-_detail["local_amount"] = _detail["local_amount"].round(2)
+for _nc in ("usd_amount", "local_amount"):
+    if _nc in _detail.columns:
+        _detail[_nc] = pd.to_numeric(_detail[_nc], errors="coerce").fillna(0).round(2)
 
 st.dataframe(_detail, use_container_width=True, hide_index=True,
              column_config={
