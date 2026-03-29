@@ -58,6 +58,15 @@ slices = calc_monthly_slices(df_rev_raw)
 slices["usd_amount"]   = pd.to_numeric(slices["usd_amount"],   errors="coerce").fillna(0)
 slices["local_amount"] = pd.to_numeric(slices["local_amount"], errors="coerce").fillna(0)
 
+# Diagnostic — shown only when $0 to help debug
+if slices.empty or slices["usd_amount"].sum() == 0:
+    st.warning(
+        f"⚠️ Revenue data loaded ({len(df_rev_raw)} charge rows) but produced "
+        f"{'no slices' if slices.empty else '$0 in slices'}. "
+        f"Check that Rev Rec Start / Rev Rec End dates parsed correctly. "
+        f"Sample rev_start values: {df_rev_raw.get('rev_start', pd.Series()).dropna().head(3).tolist()}"
+    )
+
 # ── Join DRS for project name + consultant ────────────────────────────────────
 if df_drs is not None and "project_id" in df_drs.columns:
     drs_lookup = df_drs[["project_id","project_name","project_manager","phase"]].copy()
