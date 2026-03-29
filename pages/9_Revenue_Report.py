@@ -45,25 +45,7 @@ df_rev_raw = st.session_state.get("df_revenue")
 df_drs     = st.session_state.get("df_drs")
 
 if df_rev_raw is None:
-    st.markdown('<div class="section-label">Revenue Report — Fixed Fee</div>',unsafe_allow_html=True)
     st.info("Upload the NS FF Revenue Charges export in the sidebar to load this report.")
-    st.stop()
-
-# ── Upload in sidebar if not already done ────────────────────────────────────
-# (Home handles the upload hub; this is a fallback for direct page upload)
-with st.sidebar:
-    st.markdown("**FF Revenue Export**")
-    _rev_file = st.file_uploader("NS FF Revenue Charges", type=["csv","xlsx"],
-                                  key="hub_revenue")
-    if _rev_file and "df_revenue" not in st.session_state:
-        try:
-            st.session_state["df_revenue"] = load_revenue(_rev_file)
-            st.rerun()
-        except Exception as e:
-            st.error(f"Could not load: {e}")
-
-if df_rev_raw is None:
-    st.info("Upload the NS FF Revenue Charges export in the sidebar.")
     st.stop()
 
 # ── Build monthly slices ──────────────────────────────────────────────────────
