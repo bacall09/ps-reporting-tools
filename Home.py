@@ -6,6 +6,7 @@ The login gate lives in a shared helper called by every page.
 """
 import streamlit as st
 import pandas as pd
+import streamlit_authenticator as stauth
 
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
@@ -33,6 +34,13 @@ _creds = {
 _cookie_raw = _to_dict(st.secrets.get("cookie", {}))
 _cookie = _cookie_raw or {"name": "ps_tools_auth", "key": "fallback_key", "expiry_days": 30}
 
+authenticator = stauth.Authenticate(
+    credentials        = _creds,
+    cookie_name        = _cookie.get("name", "ps_tools_auth"),
+    cookie_key         = _cookie.get("key", "fallback_key"),
+    cookie_expiry_days = int(_cookie.get("expiry_days", 30)),
+)
+
 # ── Auth state ────────────────────────────────────────────────────────────────
 _auth_user   = st.session_state.get("username", "")
 _auth_name   = st.session_state.get("name", "")
@@ -51,9 +59,11 @@ _consultant_pages = [
     st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
     st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
     # st.Page("pages/7_Vibe_Check.py",          title="Vibe Check ✨"),  # hidden
-    st.Page("pages/9_Help.py",                  title="Help & How-To"),
 ]
-_manager_pages = [st.Page("pages/5_Capacity_Outlook.py", title="Capacity Outlook")]
+_manager_pages = [
+    st.Page("pages/5_Capacity_Outlook.py",  title="Capacity Outlook"),
+    st.Page("pages/9_Revenue_Report.py",    title="Revenue Report"),
+]
 
 if _role in ("manager", "manager_only"):
     pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages})
@@ -144,10 +154,7 @@ with st.sidebar:
         _active_c = sorted([
             n for n in CONSULTANT_DROPDOWN
             if get_role(n) in ("consultant", "manager")
-            and (
-                len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
-                or EMPLOYEE_ROLES.get(n, {}).get("role", "") == "Project Manager"
-            )
+            and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
         ])
         _by_rgn = {}
         for _cn in _active_c:
@@ -186,7 +193,7 @@ with st.sidebar:
     st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
 
     ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
-    st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Time Detail Search</a>', unsafe_allow_html=True)
+    st.markdown('<a href="https://zoneandco.okta.com/login/token/redirect?stateToken=02.id.prbI267TX8pXUfua87U_XSZrrueOEhHWjPS8GEYz" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Time Detail Search</a>', unsafe_allow_html=True)
 
     sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
     st.markdown('<a href="https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SFDC Contacts (Google Drive)</a>', unsafe_allow_html=True)
@@ -198,6 +205,12 @@ with st.sidebar:
     )
     if _upload_role in ("manager","manager_only"):
         st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Unassigned Projects</a>', unsafe_allow_html=True)
+
+    rev_file = (
+        st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue",
+                         help="Required for Revenue Report")
+        if _upload_role in ("manager","manager_only") else None
+    )
     for _lbl, _key, _ldr, _f in [
         ("SS DRS","df_drs",load_drs,drs_file),
         ("NS Time","df_ns",load_ns_time,ns_file),
@@ -214,10 +227,17 @@ with st.sidebar:
                 else _pd.read_csv(ns_ua_file)
             )
         except Exception as e: st.error(f"NS Unassigned: {e}")
+    if rev_file and "df_revenue" not in st.session_state:
+        try:
+            from shared.loaders import load_revenue as _lr
+            st.session_state["df_revenue"] = _lr(rev_file)
+        except Exception as e: st.error(f"Revenue: {e}")
     st.markdown("---")
     st.markdown("**Session data**")
     _si = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
-    if _upload_role in ("manager","manager_only"): _si.append(("NS Unassigned","df_ns_unassigned"))
+    if _upload_role in ("manager","manager_only"):
+        _si.append(("NS Unassigned","df_ns_unassigned"))
+        _si.append(("FF Revenue","df_revenue"))
     for _lbl, _key in _si:
         _ok = _key in st.session_state
         st.markdown(f'<div style="font-size:12px;color:{"#27AE60" if _ok else "rgba(128,128,128,0.4)"};'
@@ -232,7 +252,7 @@ with st.sidebar:
             ]
             # Also clear any FormData/file widget state Streamlit holds internally
             for k in list(st.session_state.keys()):
-                if k in keys_to_clear or k.startswith("hub_"):
+                if k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue"] or k.startswith("hub_"):
                     del st.session_state[k]
             st.rerun()
 
