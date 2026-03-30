@@ -8,7 +8,7 @@ import pandas as pd
 import io
 from datetime import date
 
-from shared.loaders import load_revenue, calc_monthly_slices
+from shared.loaders import load_revenue, calc_monthly_slices, join_tm_to_ns
 from shared.config import CURRENCY_REGION_MAP, FX_RATES_TO_USD
 
 st.markdown("""
@@ -461,6 +461,126 @@ st.dataframe(_detail, use_container_width=True, hide_index=True,
                  "usd_amount":      st.column_config.NumberColumn("USD Amt",   width="small", format="%.2f"),
              })
 
+st.markdown('<hr class="divider">',unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION — T&M Revenue
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-label">T&M Revenue</div>', unsafe_allow_html=True)
+
+df_tm_sow = st.session_state.get("df_tm_sow")
+df_ns     = st.session_state.get("df_ns")
+
+if df_tm_sow is None:
+    st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M revenue.")
+else:
+    # Join to NS time entries if available
+    df_tm = join_tm_to_ns(df_tm_sow, df_ns)
+
+    # ── T&M summary metric cards ─────────────────────────────────────────────
+    tm_contracted  = df_tm["sow_amount_usd"].sum()
+    tm_worked      = df_tm["ns_revenue_to_date"].sum() if "ns_revenue_to_date" in df_tm.columns else 0
+    tm_hours_sold  = df_tm["sow_hours"].sum()
+    tm_hours_worked= df_tm["ns_hours_worked"].sum() if "ns_hours_worked" in df_tm.columns else 0
+    tm_matched     = df_tm["ns_project"].notna().sum() if "ns_project" in df_tm.columns else 0
+    tm_unmatched   = len(df_tm) - tm_matched
+
+    c1,c2,c3,c4 = st.columns(4)
+    with c1:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">{_fmt(tm_contracted)}</div>'
+            f'<div class="metric-sub">Contracted (YTD)</div>'
+            f'<div class="metric-lbl">{len(df_tm)} SOW opportunities</div></div>',
+            unsafe_allow_html=True)
+    with c2:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">{_fmt(tm_worked)}</div>'
+            f'<div class="metric-sub">Revenue Earned</div>'
+            f'<div class="metric-lbl">Hours worked × rate ({tm_matched} matched to NS)</div></div>',
+            unsafe_allow_html=True)
+    with c3:
+        _burn = (tm_worked / tm_contracted * 100) if tm_contracted > 0 else 0
+        _bc   = "#E74C3C" if _burn > 90 else ("#F39C12" if _burn > 70 else "inherit")
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val" style="color:{_bc}">{_burn:.1f}%</div>'
+            f'<div class="metric-sub">Burn Rate</div>'
+            f'<div class="metric-lbl">{tm_hours_worked:,.0f}h worked of {tm_hours_sold:,.0f}h sold</div></div>',
+            unsafe_allow_html=True)
+    with c4:
+        _rem = tm_contracted - tm_worked
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">{_fmt(_rem)}</div>'
+            f'<div class="metric-sub">Remaining Backlog</div>'
+            f'<div class="metric-lbl">Contracted not yet earned</div></div>',
+            unsafe_allow_html=True)
+
+    if tm_unmatched > 0:
+        st.caption(f"⚠️ {tm_unmatched} of {len(df_tm)} opportunities could not be matched to an NS project. "
+                   f"Revenue earned for unmatched rows is $0 — upload NS Time Detail to improve matching.")
+
+    st.markdown('<hr class="divider" style="margin:12px 0">',unsafe_allow_html=True)
+
+    # ── By Region ─────────────────────────────────────────────────────────────
+    st.markdown("**By Region**")
+    _tm_rgn = (df_tm.groupby("region")
+               .agg(contracted=("sow_amount_usd","sum"),
+                    earned=("ns_revenue_to_date","sum"),
+                    hours_sold=("sow_hours","sum"),
+                    hours_worked=("ns_hours_worked","sum"),
+                    opportunities=("opportunity_name","count"))
+               .reset_index())
+    _tm_rgn["Burn %"]      = (_tm_rgn["earned"] / _tm_rgn["contracted"] * 100).round(1).apply(
+                               lambda v: f"{v:.1f}%" if pd.notna(v) else "—")
+    _tm_rgn["Contracted"]  = _tm_rgn["contracted"].apply(_fmt)
+    _tm_rgn["Earned"]      = _tm_rgn["earned"].apply(_fmt)
+    _tm_rgn["Hours Sold"]  = _tm_rgn["hours_sold"].apply(lambda v: f"{v:,.0f}h")
+    _tm_rgn["Hours Worked"]= _tm_rgn["hours_worked"].apply(lambda v: f"{v:,.0f}h")
+    st.dataframe(
+        _tm_rgn[["region","Contracted","Earned","Burn %","Hours Sold","Hours Worked","opportunities"]]
+        .rename(columns={"region":"Region","opportunities":"# Opps"}),
+        use_container_width=True, hide_index=True)
+
+    # ── By Product ────────────────────────────────────────────────────────────
+    st.markdown("**By Product**")
+    _tm_prod = (df_tm.groupby("product")
+                .agg(contracted=("sow_amount_usd","sum"),
+                     earned=("ns_revenue_to_date","sum"),
+                     hours_sold=("sow_hours","sum"))
+                .reset_index()
+                .sort_values("contracted", ascending=False))
+    _tm_prod["Contracted"] = _tm_prod["contracted"].apply(_fmt)
+    _tm_prod["Earned"]     = _tm_prod["earned"].apply(_fmt)
+    _tm_prod["Hours Sold"] = _tm_prod["hours_sold"].apply(lambda v: f"{v:,.0f}h")
+    st.dataframe(
+        _tm_prod[["product","Contracted","Earned","Hours Sold"]]
+        .rename(columns={"product":"Product"}),
+        use_container_width=True, hide_index=True)
+
+    # ── Opportunity detail ────────────────────────────────────────────────────
+    with st.expander(f"Opportunity Detail ({len(df_tm)} rows)", expanded=False):
+        _tm_detail_cols = ["account_name","opportunity_name","opportunity_owner",
+                           "product","region","close_date","sow_hours",
+                           "sow_amount_usd","sow_rate_usd","ns_project",
+                           "ns_hours_worked","ns_revenue_to_date"]
+        _tm_detail = df_tm[[c for c in _tm_detail_cols if c in df_tm.columns]].copy()
+        if "close_date" in _tm_detail.columns:
+            _tm_detail["close_date"] = _tm_detail["close_date"].dt.strftime("%-d %b %Y")
+        st.dataframe(_tm_detail, use_container_width=True, hide_index=True,
+                     column_config={
+                         "account_name":        st.column_config.TextColumn("Account",       width="medium"),
+                         "opportunity_name":    st.column_config.TextColumn("Opportunity",   width="large"),
+                         "opportunity_owner":   st.column_config.TextColumn("Owner",         width="medium"),
+                         "product":             st.column_config.TextColumn("Product",       width="small"),
+                         "region":              st.column_config.TextColumn("Region",        width="small"),
+                         "close_date":          st.column_config.TextColumn("Close Date",    width="small"),
+                         "sow_hours":           st.column_config.NumberColumn("SOW Hrs",     width="small"),
+                         "sow_amount_usd":      st.column_config.NumberColumn("SOW Amt USD", width="small", format="$%.0f"),
+                         "sow_rate_usd":        st.column_config.NumberColumn("Rate USD",    width="small", format="$%.0f"),
+                         "ns_project":          st.column_config.TextColumn("NS Match",      width="medium"),
+                         "ns_hours_worked":     st.column_config.NumberColumn("Hrs Worked",  width="small"),
+                         "ns_revenue_to_date":  st.column_config.NumberColumn("Rev Earned",  width="small", format="$%.0f"),
+                     })
+
 # ── Excel download ─────────────────────────────────────────────────────────
 st.markdown("")
 _buf = io.BytesIO()
@@ -476,7 +596,13 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not _piv_region.empty:  _piv_region.to_excel(_xl,  sheet_name="Region by Month",    index=False)
     if not _piv_product.empty: _piv_product.to_excel(_xl, sheet_name="Product by Month",   index=False)
     if not _trend_disp.empty:  _trend_disp.to_excel(_xl,  sheet_name="Trend Analysis",     index=False)
-    _detail.to_excel(_xl, sheet_name="Project Detail", index=False)
+    _detail.to_excel(_xl, sheet_name="FF Project Detail", index=False)
+    if df_tm_sow is not None and not df_tm.empty:
+        df_tm[[c for c in ["account_name","opportunity_name","opportunity_owner",
+                            "product","region","close_date","sow_hours",
+                            "sow_amount_usd","sow_rate_usd","ns_project",
+                            "ns_hours_worked","ns_revenue_to_date"]
+               if c in df_tm.columns]].to_excel(_xl, sheet_name="TM Detail", index=False)
 
 st.download_button(
     "⬇ Download Revenue Report (Excel)",
