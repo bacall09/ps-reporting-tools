@@ -562,6 +562,17 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
 
     tm["hours"] = pd.to_numeric(tm.get("hours", 0), errors="coerce").fillna(0)
 
+    # Classify non-billable flag
+    if "non_billable" in tm.columns:
+        tm["_is_nb"] = tm["non_billable"].fillna("").astype(str).str.strip().str.lower().isin(
+            ["true","t","yes","1","y"])
+    else:
+        tm["_is_nb"] = False
+
+    # Flag: T&M + Non-Billable — these hours won't be invoiced, exclude from revenue
+    # but keep in the table so the mismatch is visible
+    tm["billing_flag"] = tm["_is_nb"].map({True: "⚠️ T&M / Non-Billable", False: ""})
+
     # ── Build rate lookup from SOW match results ──────────────────────────────
     # join_tm_to_ns returns ns_project + sow_rate_usd for matched rows
     rate_by_project = {}   # {ns_project_lower: rate_usd}
@@ -603,42 +614,45 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
         return PS_REGION_MAP.get(str(loc), "Other")
 
     # ── Aggregate by project + period ────────────────────────────────────────
-    agg_cols = ["project", "project_type", "period"]
+    agg_cols = ["project", "project_type", "period", "billing_flag"]
     if "project_manager" in tm.columns:
         agg_cols.append("project_manager")
     if "ns_rate" in tm.columns:
         tm["ns_rate"] = pd.to_numeric(tm["ns_rate"], errors="coerce").fillna(0)
-        # Use max rate per project-period (rates should be consistent per project)
-        grp_hrs  = tm.groupby(agg_cols, as_index=False)["hours"].sum()
-        grp_rate = tm.groupby(agg_cols, as_index=False)["ns_rate"].max()
-        grp = grp_hrs.merge(grp_rate, on=agg_cols, how="left")
+        # Separate billable from non-billable for aggregation
+        grp_bill = tm[~tm["_is_nb"]].groupby(agg_cols, as_index=False).agg(
+            hours=("hours","sum"), ns_rate=("ns_rate","max"))
+        grp_nb   = tm[tm["_is_nb"]].groupby(agg_cols, as_index=False).agg(
+            hours=("hours","sum"), ns_rate=("ns_rate","max"))
+        grp = pd.concat([grp_bill, grp_nb], ignore_index=True)
     else:
-        grp = tm.groupby(agg_cols, as_index=False)["hours"].sum()
+        grp_bill = tm[~tm["_is_nb"]].groupby(agg_cols, as_index=False)["hours"].sum()
+        grp_nb   = tm[tm["_is_nb"]].groupby(agg_cols, as_index=False)["hours"].sum()
+        grp = pd.concat([grp_bill, grp_nb], ignore_index=True)
 
     rows = []
     for _, r in grp.iterrows():
-        proj_l   = str(r["project"]).strip().lower()
-        ns_rate  = float(r.get("ns_rate", 0) or 0) if "ns_rate" in grp.columns else 0.0
+        proj_l  = str(r["project"]).strip().lower()
+        flag    = str(r.get("billing_flag", "") or "")
+        is_nb   = flag != ""
+        ns_rate = float(r.get("ns_rate", 0) or 0) if "ns_rate" in grp.columns else 0.0
 
-        if ns_rate > 0:
-            # Best source: rate directly from NS Time Detail export
-            rate   = ns_rate
-            source = "NS rate"
+        if is_nb:
+            # Non-billable T&M — show hours, zero revenue, flag it
+            rate, source = 0.0, "Non-Billable"
+        elif ns_rate > 0:
+            rate, source = ns_rate, "NS rate"
         else:
-            # Fall back to SOW project match
             rate   = rate_by_project.get(proj_l, 0.0)
             source = "Project match" if rate > 0 else ""
-
-            # Fall back to account name substring
             if rate == 0:
                 for acc, acc_rate in rate_by_account.items():
                     if acc in proj_l:
-                        rate   = acc_rate
-                        source = "Account match"
+                        rate, source = acc_rate, "Account match"
                         break
-
             if rate == 0:
                 source = "No SFDC Opp" if df_sow is not None else "No rate"
+
         pm      = r.get("project_manager", "") if "project_manager" in grp.columns else ""
         region  = _get_region(pm)
         prod    = match_product(str(r.get("project_type", "")))
@@ -653,6 +667,7 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
             "rate_usd":        rate,
             "revenue_usd":     round(hrs * rate, 2),
             "rate_source":     source,
+            "billing_flag":    flag,
         })
 
     result = pd.DataFrame(rows)
@@ -661,7 +676,42 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     return result
 
 
-def load_tm_sow(file) -> pd.DataFrame:
+def get_billing_mismatches(df_ns: pd.DataFrame) -> pd.DataFrame:
+    """Return NS time rows where billing type and non-billable flag conflict.
+
+    Flags:
+    - T&M + Non-Billable = Yes  → T&M project marked non-billable — may be misconfigured,
+                                   revenue excluded pending review
+    - Fixed Fee + Non-Billable = No → FF project with billable time entries — may appear
+                                       on an invoice, review for overage
+    """
+    if df_ns is None or df_ns.empty or "billing_type" not in df_ns.columns:
+        return pd.DataFrame()
+
+    df = df_ns.copy()
+    df["hours"] = pd.to_numeric(df.get("hours", 0), errors="coerce").fillna(0)
+
+    bt  = df["billing_type"].fillna("").str.strip().str.lower()
+    nb_raw = df.get("non_billable", pd.Series("", index=df.index)).fillna("").astype(str).str.strip().str.lower()
+    is_nb  = nb_raw.isin(["true","t","yes","1","y"])
+    is_tm  = bt.str.contains("t&m|time")
+    is_ff  = bt.str.contains("fixed fee|fixed_fee|ff")
+
+    df["mismatch_flag"] = ""
+    df.loc[is_tm &  is_nb, "mismatch_flag"] = "⚠️ T&M / Non-Billable"
+    df.loc[is_ff & ~is_nb, "mismatch_flag"] = "⚠️ FF / Billable hours"
+    # FF + Non-Billable (is_nb=True) is normal — no flag needed
+
+    mismatches = df[df["mismatch_flag"] != ""].copy()
+
+    keep_cols = ["employee","project","project_type","billing_type",
+                 "non_billable","hours","mismatch_flag"]
+    if "date" in mismatches.columns:
+        keep_cols.insert(2, "date")
+    if "project_manager" in mismatches.columns:
+        keep_cols.insert(3, "project_manager")
+
+    return mismatches[[c for c in keep_cols if c in mismatches.columns]]
     """Load SFDC T&M SOW export.
     Returns one row per opportunity with canonical fields:
       account_name, opportunity_name, opportunity_owner, close_date,
