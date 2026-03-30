@@ -486,6 +486,11 @@ else:
     df_tm = join_tm_to_ns(df_tm_sow, df_ns)
 
     # ── T&M summary metric cards ─────────────────────────────────────────────
+    # Force numeric on joined columns before any calculations
+    for _nc in ("sow_amount_usd","sow_hours","ns_revenue_to_date","ns_hours_worked"):
+        if _nc in df_tm.columns:
+            df_tm[_nc] = pd.to_numeric(df_tm[_nc], errors="coerce").fillna(0)
+
     tm_contracted  = float(df_tm["sow_amount_usd"].sum())
     tm_worked      = float(df_tm["ns_revenue_to_date"].sum()) if "ns_revenue_to_date" in df_tm.columns else 0.0
     tm_hours_sold  = float(df_tm["sow_hours"].sum())
