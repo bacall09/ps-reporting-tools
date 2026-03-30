@@ -712,6 +712,9 @@ def get_billing_mismatches(df_ns: pd.DataFrame) -> pd.DataFrame:
         keep_cols.insert(3, "project_manager")
 
     return mismatches[[c for c in keep_cols if c in mismatches.columns]]
+
+
+def load_tm_sow(file) -> pd.DataFrame:
     """Load SFDC T&M SOW export.
     Returns one row per opportunity with canonical fields:
       account_name, opportunity_name, opportunity_owner, close_date,
