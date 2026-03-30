@@ -10,17 +10,15 @@ from datetime import date
 
 from shared.loaders import load_revenue, calc_monthly_slices
 try:
-    from shared.loaders import join_tm_to_ns, calc_tm_monthly_actuals, get_billing_mismatches
+    from shared.loaders import join_tm_to_ns, calc_tm_monthly_actuals, get_billing_mismatches, get_unmatched_sow
 except ImportError:
-    def join_tm_to_ns(df_sow, df_ns):
-        df_sow["ns_project"] = None
-        df_sow["ns_hours_worked"] = 0.0
-        df_sow["ns_revenue_to_date"] = 0.0
+    def join_tm_to_ns(df_sow, df_ns, df_drs=None):
+        df_sow["ns_project"] = None; df_sow["ns_hours_worked"] = 0.0
+        df_sow["ns_revenue_to_date"] = 0.0; df_sow["match_source"] = "No NS data"
         return df_sow
-    def calc_tm_monthly_actuals(df_ns, df_sow):
-        return pd.DataFrame()
-    def get_billing_mismatches(df_ns):
-        return pd.DataFrame()
+    def calc_tm_monthly_actuals(df_ns, df_sow): return pd.DataFrame()
+    def get_billing_mismatches(df_ns): return pd.DataFrame()
+    def get_unmatched_sow(df_tm): return pd.DataFrame()
 from shared.config import CURRENCY_REGION_MAP, FX_RATES_TO_USD
 
 st.markdown("""
@@ -136,7 +134,7 @@ df_ns     = st.session_state.get("df_ns")
 df_tm     = None
 
 if df_tm_sow is not None:
-    df_tm = join_tm_to_ns(df_tm_sow, df_ns)
+    df_tm = join_tm_to_ns(df_tm_sow, df_ns, df_drs)
     # Deduplicate columns in case join produced duplicates
     df_tm = df_tm.loc[:, ~df_tm.columns.duplicated()]
     for _nc in ("sow_amount_usd","sow_hours","ns_revenue_to_date","ns_hours_worked","ns_rate"):
@@ -267,8 +265,11 @@ if df_tm is not None:
             f'<div class="metric-lbl">Avg Rate (USD) · PS SOW Rate converted</div></div>',
             unsafe_allow_html=True)
     if tm_unmatched > 0:
-        st.caption(f"⚠️ {tm_unmatched} of {len(df_tm)} opportunities could not be matched to an NS project — "
-                   f"revenue earned for unmatched rows is $0.")
+        _ns_matched  = int((df_tm.get("match_source","") == "NS match").sum()) if "match_source" in df_tm.columns else tm_matched
+        _drs_matched = int((df_tm.get("match_source","") == "DRS match (no hours yet)").sum()) if "match_source" in df_tm.columns else 0
+        st.caption(f"⚠️ {tm_unmatched} of {len(df_tm)} opportunities unmatched — "
+                   f"{_ns_matched} NS matches, {_drs_matched} DRS-only matches (no hours yet). "
+                   f"See Unmatched Opportunities expander below.")
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
@@ -403,7 +404,8 @@ if df_tm is not None:
         _tm_detail_cols = ["account_name","opportunity_name","opportunity_owner",
                            "product","region","close_date","sow_hours",
                            "sow_amount_usd","sow_rate_usd","ns_project",
-                           "ns_rate","ns_hours_worked","ns_revenue_to_date","rate_alignment"]
+                           "ns_rate","ns_hours_worked","ns_revenue_to_date",
+                           "rate_alignment","match_source"]
         _tm_detail = df_tm[[c for c in _tm_detail_cols if c in df_tm.columns]].copy()
         if "close_date" in _tm_detail.columns:
             _tm_detail["close_date"] = _tm_detail["close_date"].dt.strftime("%-d %b %Y")
@@ -423,7 +425,27 @@ if df_tm is not None:
                          "ns_hours_worked":    st.column_config.NumberColumn("Hrs Worked",   width="small"),
                          "ns_revenue_to_date": st.column_config.NumberColumn("Rev Earned",   width="small", format="$%.0f"),
                          "rate_alignment":     st.column_config.TextColumn("Rate Alignment", width="medium"),
+                         "match_source":       st.column_config.TextColumn("Match Source",   width="medium"),
                      })
+
+    # Unmatched report — for vetting match quality
+    _unmatched = get_unmatched_sow(df_tm)
+    if not _unmatched.empty:
+        with st.expander(f"⚠️ Unmatched Opportunities ({len(_unmatched)} rows) — review match quality", expanded=False):
+            st.caption("These SOW opportunities were not matched to any NS project or DRS record. "
+                       "Check account name spelling vs NS/DRS, or these may be pre-2026 SOWs with no active project.")
+            st.dataframe(_unmatched, use_container_width=True, hide_index=True,
+                         column_config={
+                             "account_name":      st.column_config.TextColumn("Account",      width="medium"),
+                             "opportunity_name":  st.column_config.TextColumn("Opportunity",  width="large"),
+                             "opportunity_owner": st.column_config.TextColumn("Owner",        width="medium"),
+                             "product":           st.column_config.TextColumn("Product",      width="small"),
+                             "region":            st.column_config.TextColumn("Region",       width="small"),
+                             "sow_hours":         st.column_config.NumberColumn("SOW Hrs",    width="small"),
+                             "sow_amount_usd":    st.column_config.NumberColumn("SOW Amt",    width="small", format="$%.0f"),
+                             "sow_rate_usd":      st.column_config.NumberColumn("Rate",       width="small", format="$%.0f"),
+                             "match_source":      st.column_config.TextColumn("Status",       width="small"),
+                         })
 elif df_tm_sow is None:
     st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
 
