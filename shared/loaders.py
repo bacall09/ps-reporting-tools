@@ -554,18 +554,29 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     # ── Build rate lookup from SOW match results ──────────────────────────────
     # join_tm_to_ns returns ns_project + sow_rate_usd for matched rows
     rate_by_project = {}   # {ns_project_lower: rate_usd}
+    rate_by_account = {}   # {account_name_lower: rate_usd} — fallback
     if df_sow is not None and not df_sow.empty:
+        # Primary: reuse join_tm_to_ns match results
         try:
             matched = join_tm_to_ns(df_sow.copy(), df_ns)
             matched["sow_rate_usd"] = pd.to_numeric(matched.get("sow_rate_usd", 0), errors="coerce").fillna(0)
             for _, r in matched.iterrows():
                 proj = str(r.get("ns_project") or "").strip().lower()
                 rate = float(r.get("sow_rate_usd", 0) or 0)
-                if proj and rate > 0:
-                    # Keep highest rate if same project matched multiple SOWs
+                # Skip nan/empty — these are unmatched SOW rows
+                if proj and proj not in ("nan", "none", "") and rate > 0:
                     rate_by_project[proj] = max(rate, rate_by_project.get(proj, 0))
         except Exception:
             pass
+
+        # Fallback: account name substring match for unmatched NS projects
+        for _, sr in df_sow.iterrows():
+            rate = float(sr.get("sow_rate_usd", 0) or 0)
+            if rate <= 0:
+                continue
+            acc = str(sr.get("account_name", "") or "").strip().lower()
+            if acc and len(acc) >= 5:
+                rate_by_account[acc] = max(rate, rate_by_account.get(acc, 0))
 
     # ── Derive region from project_manager ───────────────────────────────────
     def _get_region(pm_name):
@@ -589,9 +600,20 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
 
     rows = []
     for _, r in grp.iterrows():
-        proj_l  = str(r["project"]).strip().lower()
-        rate    = rate_by_project.get(proj_l, 0.0)
-        source  = "SOW match" if rate > 0 else "No rate"
+        proj_l = str(r["project"]).strip().lower()
+        rate   = rate_by_project.get(proj_l, 0.0)
+        source = "Project match"
+
+        # Fallback: account name substring in NS project name
+        if rate == 0:
+            for acc, acc_rate in rate_by_account.items():
+                if acc in proj_l:
+                    rate   = acc_rate
+                    source = "Account match"
+                    break
+
+        if rate == 0:
+            source = "No rate"
         pm      = r.get("project_manager", "") if "project_manager" in grp.columns else ""
         region  = _get_region(pm)
         prod    = match_product(str(r.get("project_type", "")))
