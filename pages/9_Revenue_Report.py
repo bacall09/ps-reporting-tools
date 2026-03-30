@@ -290,7 +290,7 @@ def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
     mtd_s  = _agg(df_mtd, "MTD")
     full_s = _agg(df_full_mo, "Full Month")
 
-    result = pd.concat([ytd_s, qtd_s, mtd_s, full_s], axis=1).fillna(0)
+    result = pd.concat([mtd_s, full_s, qtd_s, ytd_s], axis=1).fillna(0)
 
     # Count projects per dim
     if "project_id" in df_ytd.columns:
@@ -303,7 +303,7 @@ def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
     result = pd.concat([result, total.to_frame().T])
 
     # Format
-    for c in ["YTD","QTD","MTD","Full Month"]:
+    for c in ["MTD", "Full Month", "QTD", "YTD"]:
         if c in result.columns:
             result[c] = result[c].apply(_fmt)
     if "# Projects" in result.columns:
