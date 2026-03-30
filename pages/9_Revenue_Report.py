@@ -218,7 +218,7 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — By Region
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Revenue by Region</div>',unsafe_allow_html=True)
+st.markdown('<div class="section-label">Fixed Fee Revenue by Region</div>',unsafe_allow_html=True)
 
 def _region_table(df, label):
     if df.empty: return pd.DataFrame()
@@ -244,7 +244,7 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 3 — By Product
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Revenue by Product</div>',unsafe_allow_html=True)
+st.markdown('<div class="section-label">Fixed Fee Revenue by Product</div>',unsafe_allow_html=True)
 
 def _product_table(df, label):
     if df.empty: return pd.DataFrame()
@@ -270,7 +270,7 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION — Monthly Breakdown by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Fixed Fee Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
 
 # ── Build quarterly columnar pivot ───────────────────────────────────────────
 # Layout: Jan | Feb | Mar | Q1 | Apr | May | Jun | Q2 | ... | YTD
@@ -430,46 +430,42 @@ if "region" in slices.columns and len(_complete_months) >= 2:
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4 — Monthly trend
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Monthly Trend (USD)</div>',unsafe_allow_html=True)
-
+# ── Monthly trend and Project Detail — Excel only (removed from UI) ──────────
 _trend = slices.groupby("period")["usd_amount"].sum().reset_index()
 _trend.columns = ["Period", "Revenue (USD)"]
 _trend = _trend.sort_values("Period")
 _trend["Revenue (USD)"] = pd.to_numeric(_trend["Revenue (USD)"], errors="coerce").fillna(0).round(2)
-st.dataframe(_trend, use_container_width=True, hide_index=True)
 
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 5 — Project detail
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Project Detail</div>',unsafe_allow_html=True)
-
+# Project detail — pivot: rows = Project ID: Project Name, columns = Period
 _detail_cols = ["project_id","project_name","project_manager","product",
                 "region","currency","period","local_amount","usd_amount"]
 _detail_cols = [c for c in _detail_cols if c in slices.columns]
 _detail = slices[_detail_cols].copy()
-for _nc in ("usd_amount", "local_amount"):
+for _nc in ("usd_amount","local_amount"):
     if _nc in _detail.columns:
         _detail[_nc] = pd.to_numeric(_detail[_nc], errors="coerce").fillna(0).round(2)
 
-st.dataframe(_detail, use_container_width=True, hide_index=True,
-             column_config={
-                 "project_id":      st.column_config.TextColumn("Project ID",  width="small"),
-                 "project_name":    st.column_config.TextColumn("Project",     width="large"),
-                 "project_manager": st.column_config.TextColumn("Consultant",  width="medium"),
-                 "product":         st.column_config.TextColumn("Product",     width="small"),
-                 "region":          st.column_config.TextColumn("Region",      width="small"),
-                 "currency":        st.column_config.TextColumn("Currency",    width="small"),
-                 "period":          st.column_config.TextColumn("Period",      width="small"),
-                 "local_amount":    st.column_config.NumberColumn("Local Amt", width="small", format="%.2f"),
-                 "usd_amount":      st.column_config.NumberColumn("USD Amt",   width="small", format="%.2f"),
-             })
+# Build pivot version for Excel: rows = "Project ID: Name", columns = period (USD)
+if "project_id" in _detail.columns and "project_name" in _detail.columns:
+    _detail["_proj_label"] = (
+        _detail["project_id"].astype(str) + ": " +
+        _detail["project_name"].fillna("").astype(str)
+    )
+else:
+    _detail["_proj_label"] = _detail.get("project_id", pd.Series("", index=_detail.index)).astype(str)
 
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
+_all_periods_sorted = sorted(_detail["period"].unique()) if "period" in _detail.columns else []
+_detail_pivot = pd.DataFrame()
+if _all_periods_sorted:
+    _dp = (_detail.groupby(["_proj_label","period"])["usd_amount"]
+                  .sum()
+                  .unstack(fill_value=0)
+                  .reindex(columns=_all_periods_sorted, fill_value=0))
+    _dp.columns = [pd.Timestamp(m+"-01").strftime("%b %Y") for m in _dp.columns]
+    _dp["Total"] = _dp.sum(axis=1)
+    _dp = _dp.round(2)
+    _dp.index.name = "Project"
+    _detail_pivot = _dp.reset_index()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION — T&M Revenue
@@ -609,7 +605,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not _piv_region.empty:  _piv_region.to_excel(_xl,  sheet_name="Region by Month",    index=False)
     if not _piv_product.empty: _piv_product.to_excel(_xl, sheet_name="Product by Month",   index=False)
     if not _trend_disp.empty:  _trend_disp.to_excel(_xl,  sheet_name="Trend Analysis",     index=False)
-    _detail.to_excel(_xl, sheet_name="FF Project Detail", index=False)
+    _detail.to_excel(_xl, sheet_name="FF Project Detail (Long)", index=False)
+    if not _detail_pivot.empty: _detail_pivot.to_excel(_xl, sheet_name="FF Project Detail", index=False)
     if df_tm_sow is not None and not df_tm.empty:
         df_tm[[c for c in ["account_name","opportunity_name","opportunity_owner",
                             "product","region","close_date","sow_hours",
