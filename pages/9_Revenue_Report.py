@@ -22,16 +22,18 @@ from shared.config import CURRENCY_REGION_MAP, FX_RATES_TO_USD
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-    html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
-    .section-label{font-size:11px;font-weight:700;text-transform:uppercase;
-                   letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
-    .metric-card{border:1px solid rgba(128,128,128,.2);border-radius:8px;
-                 padding:16px 20px;margin-bottom:8px}
-    .metric-val{font-size:28px;font-weight:700}
-    .metric-sub{font-size:12px;font-weight:600;opacity:.7;margin-top:2px}
-    .metric-lbl{font-size:11px;opacity:.55;margin-top:1px}
-    .divider{border:none;border-top:1px solid rgba(128,128,128,.2);margin:20px 0}
-    .fx-note{font-size:11px;opacity:.5;font-style:italic}
+    html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
+    h1,h2,h3,h4,p,div,label,button { font-family: 'Manrope', sans-serif !important; }
+    .brief-header  { font-size: 24px; font-weight: 700; color: inherit; margin-bottom: 4px; }
+    .brief-sub     { font-size: 13px; margin-bottom: 20px; opacity: 0.6; }
+    .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                     letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
+    .metric-card   { background: transparent; border: 1px solid rgba(128,128,128,0.2);
+                     border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+    .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
+    .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+    .divider { border: none; border-top: 1px solid rgba(128,128,128,0.2); margin: 20px 0; }
+    .fx-note { font-size: 11px; opacity: 0.5; font-style: italic; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,22 +118,35 @@ qtd_df  = qtd_df[qtd_df["period"] != this_month]
 qtd_df  = pd.concat([qtd_df, slices_mtd], ignore_index=True)
 
 # ── Header ────────────────────────────────────────────────────────────────────
+st.markdown('<div class="brief-header">Revenue Report</div>', unsafe_allow_html=True)
 st.markdown(
-    f'<div style="font-size:24px;font-weight:700;margin-bottom:4px">'
-    f'Revenue Report — Fixed Fee Implementation</div>',
+    f'<div class="brief-sub">All figures in USD &nbsp;·&nbsp; {today.strftime("%A, %B %-d %Y")} &nbsp;·&nbsp; '
+    f'MTD pro-rated ({days_elapsed}/{days_in_month} days) &nbsp;·&nbsp; '
+    f'<span class="fx-note">FX rates: monthly averages — update in shared/config.py</span></div>',
     unsafe_allow_html=True)
-st.markdown(
-    f'<div style="font-size:13px;opacity:.6;margin-bottom:4px">'
-    f'All figures in USD · {today.strftime("%A, %B %-d %Y")} · '
-    f'MTD pro-rated ({days_elapsed}/{days_in_month} days)</div>',
-    unsafe_allow_html=True)
-st.markdown(
-    '<div class="fx-note">FX rates: monthly averages — update in shared/config.py</div>',
-    unsafe_allow_html=True)
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+
+# ── Pre-compute T&M metrics here so they can appear alongside FF at the top ───
+df_tm_sow = st.session_state.get("df_tm_sow")
+df_ns     = st.session_state.get("df_ns")
+df_tm     = None
+
+if df_tm_sow is not None:
+    df_tm = join_tm_to_ns(df_tm_sow, df_ns)
+    for _nc in ("sow_amount_usd","sow_hours","ns_revenue_to_date","ns_hours_worked"):
+        if _nc in df_tm.columns:
+            df_tm[_nc] = pd.to_numeric(df_tm[_nc], errors="coerce").fillna(0)
+    tm_contracted   = float(df_tm["sow_amount_usd"].sum())
+    tm_worked       = float(df_tm["ns_revenue_to_date"].sum()) if "ns_revenue_to_date" in df_tm.columns else 0.0
+    tm_hours_sold   = float(df_tm["sow_hours"].sum())
+    tm_hours_worked = float(df_tm["ns_hours_worked"].sum()) if "ns_hours_worked" in df_tm.columns else 0.0
+    tm_matched      = int(df_tm["ns_project"].notna().sum()) if "ns_project" in df_tm.columns else 0
+    tm_unmatched    = len(df_tm) - tm_matched
+    _burn           = (tm_worked / tm_contracted * 100) if tm_contracted > 0 else 0.0
+    _rem            = tm_contracted - tm_worked
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 1 — Top-line metric cards
+# SECTION 1 — Top-line metric cards (FF + T&M)
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Total Revenue</div>',unsafe_allow_html=True)
 
@@ -165,30 +180,28 @@ qtd_total  = qtd_df["usd_amount"].sum()
 mtd_total  = slices_mtd["usd_amount"].sum()
 full_month = slices[slices["period"]==this_month]["usd_amount"].sum()
 
+# ── Fixed Fee metric cards ────────────────────────────────────────────────────
+st.markdown('<div class="section-label">Fixed Fee Revenue</div>', unsafe_allow_html=True)
 c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
     st.markdown(
         f'<div class="metric-card"><div class="metric-val">{_fmt(ytd_total)}</div>'
-        f'<div class="metric-sub">YTD Revenue</div>'
-        f'<div class="metric-lbl">Jan 1 – {today.strftime("%-d %b %Y")}</div></div>',
+        f'<div class="metric-lbl">YTD · Jan 1 – {today.strftime("%-d %b %Y")}</div></div>',
         unsafe_allow_html=True)
 with c2:
     st.markdown(
         f'<div class="metric-card"><div class="metric-val">{_fmt(qtd_total)}</div>'
-        f'<div class="metric-sub">QTD Revenue</div>'
-        f'<div class="metric-lbl">Q{this_q} {today.year}</div></div>',
+        f'<div class="metric-lbl">QTD · Q{this_q} {today.year}</div></div>',
         unsafe_allow_html=True)
 with c3:
     st.markdown(
         f'<div class="metric-card"><div class="metric-val">{_fmt(mtd_total)}</div>'
-        f'<div class="metric-sub">MTD Revenue</div>'
-        f'<div class="metric-lbl">{today.strftime("%B")} (actual to date)</div></div>',
+        f'<div class="metric-lbl">MTD · {today.strftime("%B")} to date</div></div>',
         unsafe_allow_html=True)
 with c4:
     st.markdown(
         f'<div class="metric-card"><div class="metric-val">{_fmt(full_month)}</div>'
-        f'<div class="metric-sub">Full Month Forecast</div>'
-        f'<div class="metric-lbl">{today.strftime("%B")} (full month)</div></div>',
+        f'<div class="metric-lbl">Full Month · {today.strftime("%B")} forecast</div></div>',
         unsafe_allow_html=True)
 with c5:
     if _mom_pct is not None:
@@ -197,21 +210,47 @@ with c5:
         st.markdown(
             f'<div class="metric-card">'
             f'<div class="metric-val" style="color:{_col}">{_arrow} {abs(_mom_pct):.1f}%</div>'
-            f'<div class="metric-sub">MoM Growth</div>'
-            f'<div class="metric-lbl">{_prev_label} → {_mom_label}</div></div>',
+            f'<div class="metric-lbl">MoM Growth · {_prev_label} → {_mom_label}</div></div>',
             unsafe_allow_html=True)
     else:
         st.markdown(
             '<div class="metric-card"><div class="metric-val">—</div>'
-            '<div class="metric-sub">MoM Growth</div>'
-            '<div class="metric-lbl">Need 2+ months</div></div>',
+            '<div class="metric-lbl">MoM Growth · need 2+ months</div></div>',
             unsafe_allow_html=True)
 with c6:
     st.markdown(
         f'<div class="metric-card"><div class="metric-val">{_fmt(_run_rate)}</div>'
-        f'<div class="metric-sub">Run Rate (ARR)</div>'
-        f'<div class="metric-lbl">Avg monthly × 12 ({len(_complete_months)} mo)</div></div>',
+        f'<div class="metric-lbl">Run Rate (ARR) · avg × 12 ({len(_complete_months)} mo)</div></div>',
         unsafe_allow_html=True)
+
+# ── T&M metric cards ──────────────────────────────────────────────────────────
+if df_tm is not None:
+    st.markdown('<div class="section-label" style="margin-top:4px">T&amp;M Revenue</div>', unsafe_allow_html=True)
+    _bc = "#E74C3C" if _burn > 90 else ("#F39C12" if _burn > 70 else "inherit")
+    t1,t2,t3,t4 = st.columns(4)
+    with t1:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">{_fmt(tm_contracted)}</div>'
+            f'<div class="metric-lbl">Contracted YTD · {len(df_tm)} opportunities</div></div>',
+            unsafe_allow_html=True)
+    with t2:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">{_fmt(tm_worked)}</div>'
+            f'<div class="metric-lbl">Revenue Earned · {tm_matched} matched to NS</div></div>',
+            unsafe_allow_html=True)
+    with t3:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val" style="color:{_bc}">{_burn:.1f}%</div>'
+            f'<div class="metric-lbl">Burn Rate · {tm_hours_worked:,.0f}h of {tm_hours_sold:,.0f}h sold</div></div>',
+            unsafe_allow_html=True)
+    with t4:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">{_fmt(_rem)}</div>'
+            f'<div class="metric-lbl">Remaining Backlog · contracted not yet earned</div></div>',
+            unsafe_allow_html=True)
+    if tm_unmatched > 0:
+        st.caption(f"⚠️ {tm_unmatched} of {len(df_tm)} opportunities could not be matched to an NS project — "
+                   f"revenue earned for unmatched rows is $0.")
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
@@ -468,66 +507,11 @@ if _all_periods_sorted:
     _detail_pivot = _dp.reset_index()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION — T&M Revenue
+# SECTION — T&M Breakdown (tables only — metrics shown at top)
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">T&M Revenue</div>', unsafe_allow_html=True)
-
-df_tm_sow = st.session_state.get("df_tm_sow")
-df_ns     = st.session_state.get("df_ns")
-
-if df_tm_sow is None:
-    st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M revenue.")
-else:
-    # Join to NS time entries if available
-    df_tm = join_tm_to_ns(df_tm_sow, df_ns)
-
-    # ── T&M summary metric cards ─────────────────────────────────────────────
-    # Force numeric on joined columns before any calculations
-    for _nc in ("sow_amount_usd","sow_hours","ns_revenue_to_date","ns_hours_worked"):
-        if _nc in df_tm.columns:
-            df_tm[_nc] = pd.to_numeric(df_tm[_nc], errors="coerce").fillna(0)
-
-    tm_contracted  = float(df_tm["sow_amount_usd"].sum())
-    tm_worked      = float(df_tm["ns_revenue_to_date"].sum()) if "ns_revenue_to_date" in df_tm.columns else 0.0
-    tm_hours_sold  = float(df_tm["sow_hours"].sum())
-    tm_hours_worked= float(df_tm["ns_hours_worked"].sum()) if "ns_hours_worked" in df_tm.columns else 0.0
-    tm_matched     = int(df_tm["ns_project"].notna().sum()) if "ns_project" in df_tm.columns else 0
-    tm_unmatched   = len(df_tm) - tm_matched
-
-    c1,c2,c3,c4 = st.columns(4)
-    with c1:
-        st.markdown(
-            f'<div class="metric-card"><div class="metric-val">{_fmt(tm_contracted)}</div>'
-            f'<div class="metric-sub">Contracted (YTD)</div>'
-            f'<div class="metric-lbl">{len(df_tm)} SOW opportunities</div></div>',
-            unsafe_allow_html=True)
-    with c2:
-        st.markdown(
-            f'<div class="metric-card"><div class="metric-val">{_fmt(tm_worked)}</div>'
-            f'<div class="metric-sub">Revenue Earned</div>'
-            f'<div class="metric-lbl">Hours worked × rate ({tm_matched} matched to NS)</div></div>',
-            unsafe_allow_html=True)
-    with c3:
-        _burn = (tm_worked / tm_contracted * 100) if tm_contracted > 0 else 0
-        _bc   = "#E74C3C" if _burn > 90 else ("#F39C12" if _burn > 70 else "inherit")
-        st.markdown(
-            f'<div class="metric-card"><div class="metric-val" style="color:{_bc}">{_burn:.1f}%</div>'
-            f'<div class="metric-sub">Burn Rate</div>'
-            f'<div class="metric-lbl">{tm_hours_worked:,.0f}h worked of {tm_hours_sold:,.0f}h sold</div></div>',
-            unsafe_allow_html=True)
-    with c4:
-        _rem = tm_contracted - tm_worked
-        st.markdown(
-            f'<div class="metric-card"><div class="metric-val">{_fmt(_rem)}</div>'
-            f'<div class="metric-sub">Remaining Backlog</div>'
-            f'<div class="metric-lbl">Contracted not yet earned</div></div>',
-            unsafe_allow_html=True)
-
-    if tm_unmatched > 0:
-        st.caption(f"⚠️ {tm_unmatched} of {len(df_tm)} opportunities could not be matched to an NS project. "
-                   f"Revenue earned for unmatched rows is $0 — upload NS Time Detail to improve matching.")
-
-    st.markdown('<hr class="divider" style="margin:12px 0">',unsafe_allow_html=True)
+if df_tm is not None:
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">T&amp;M Revenue Breakdown</div>', unsafe_allow_html=True)
 
     # ── By Region ─────────────────────────────────────────────────────────────
     st.markdown("**By Region**")
@@ -538,12 +522,12 @@ else:
                     hours_worked=("ns_hours_worked","sum"),
                     opportunities=("opportunity_name","count"))
                .reset_index())
-    _tm_rgn["Burn %"]      = (_tm_rgn["earned"] / _tm_rgn["contracted"] * 100).round(1).apply(
-                               lambda v: f"{v:.1f}%" if pd.notna(v) else "—")
-    _tm_rgn["Contracted"]  = _tm_rgn["contracted"].apply(_fmt)
-    _tm_rgn["Earned"]      = _tm_rgn["earned"].apply(_fmt)
-    _tm_rgn["Hours Sold"]  = _tm_rgn["hours_sold"].apply(lambda v: f"{v:,.0f}h")
-    _tm_rgn["Hours Worked"]= _tm_rgn["hours_worked"].apply(lambda v: f"{v:,.0f}h")
+    _tm_rgn["Burn %"]       = (_tm_rgn["earned"] / _tm_rgn["contracted"] * 100).round(1).apply(
+                                lambda v: f"{v:.1f}%" if pd.notna(v) else "—")
+    _tm_rgn["Contracted"]   = _tm_rgn["contracted"].apply(_fmt)
+    _tm_rgn["Earned"]       = _tm_rgn["earned"].apply(_fmt)
+    _tm_rgn["Hours Sold"]   = _tm_rgn["hours_sold"].apply(lambda v: f"{v:,.0f}h")
+    _tm_rgn["Hours Worked"] = _tm_rgn["hours_worked"].apply(lambda v: f"{v:,.0f}h")
     st.dataframe(
         _tm_rgn[["region","Contracted","Earned","Burn %","Hours Sold","Hours Worked","opportunities"]]
         .rename(columns={"region":"Region","opportunities":"# Opps"}),
@@ -576,19 +560,22 @@ else:
             _tm_detail["close_date"] = _tm_detail["close_date"].dt.strftime("%-d %b %Y")
         st.dataframe(_tm_detail, use_container_width=True, hide_index=True,
                      column_config={
-                         "account_name":        st.column_config.TextColumn("Account",       width="medium"),
-                         "opportunity_name":    st.column_config.TextColumn("Opportunity",   width="large"),
-                         "opportunity_owner":   st.column_config.TextColumn("Owner",         width="medium"),
-                         "product":             st.column_config.TextColumn("Product",       width="small"),
-                         "region":              st.column_config.TextColumn("Region",        width="small"),
-                         "close_date":          st.column_config.TextColumn("Close Date",    width="small"),
-                         "sow_hours":           st.column_config.NumberColumn("SOW Hrs",     width="small"),
-                         "sow_amount_usd":      st.column_config.NumberColumn("SOW Amt USD", width="small", format="$%.0f"),
-                         "sow_rate_usd":        st.column_config.NumberColumn("Rate USD",    width="small", format="$%.0f"),
-                         "ns_project":          st.column_config.TextColumn("NS Match",      width="medium"),
-                         "ns_hours_worked":     st.column_config.NumberColumn("Hrs Worked",  width="small"),
-                         "ns_revenue_to_date":  st.column_config.NumberColumn("Rev Earned",  width="small", format="$%.0f"),
+                         "account_name":       st.column_config.TextColumn("Account",       width="medium"),
+                         "opportunity_name":   st.column_config.TextColumn("Opportunity",   width="large"),
+                         "opportunity_owner":  st.column_config.TextColumn("Owner",         width="medium"),
+                         "product":            st.column_config.TextColumn("Product",       width="small"),
+                         "region":             st.column_config.TextColumn("Region",        width="small"),
+                         "close_date":         st.column_config.TextColumn("Close Date",    width="small"),
+                         "sow_hours":          st.column_config.NumberColumn("SOW Hrs",     width="small"),
+                         "sow_amount_usd":     st.column_config.NumberColumn("SOW Amt USD", width="small", format="$%.0f"),
+                         "sow_rate_usd":       st.column_config.NumberColumn("Rate USD",    width="small", format="$%.0f"),
+                         "ns_project":         st.column_config.TextColumn("NS Match",      width="medium"),
+                         "ns_hours_worked":    st.column_config.NumberColumn("Hrs Worked",  width="small"),
+                         "ns_revenue_to_date": st.column_config.NumberColumn("Rev Earned",  width="small", format="$%.0f"),
                      })
+elif df_tm_sow is None:
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
 
 # ── Excel download ─────────────────────────────────────────────────────────
 st.markdown("")
