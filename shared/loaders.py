@@ -520,18 +520,17 @@ TM_SOW_COL_MAP = {
 }
 
 def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.DataFrame:
-    """Build monthly T&M actual revenue from NS time entries + SOW rates.
+    """Build monthly T&M actual revenue from NS time entries × matched SOW rates.
 
-    For each T&M project-month:
-      revenue = hours_worked × matched_sow_rate_usd
+    Strategy:
+    1. Run join_tm_to_ns to get the best SOW rate per NS project (reuses existing match logic)
+    2. Build {ns_project_lower: rate_usd} lookup from matched results
+    3. Apply to NS T&M rows grouped by project + month
 
-    Region derived from: Customer Region col → project_manager → EMPLOYEE_LOCATION → PS_REGION_MAP
-    Product derived from: project_type keyword match
-
-    Returns long-format DataFrame:
-      period, project, product, region, hours, rate_usd, revenue_usd, rate_source
+    Region derived from project_manager → EMPLOYEE_LOCATION → PS_REGION_MAP
+    Product derived from project_type keyword match
     """
-    from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, get_fx_rate
+    from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
 
     if df_ns is None or df_ns.empty:
         return pd.DataFrame()
@@ -545,68 +544,43 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     # Ensure period column
     if "period" not in tm.columns:
         if "date" in tm.columns:
-            tm["date"] = pd.to_datetime(tm["date"], errors="coerce")
+            tm["date"]   = pd.to_datetime(tm["date"], errors="coerce")
             tm["period"] = tm["date"].dt.strftime("%Y-%m")
         else:
             return pd.DataFrame()
 
     tm["hours"] = pd.to_numeric(tm.get("hours", 0), errors="coerce").fillna(0)
 
-    # Build rate lookup from SOW: {project_name_lower: rate_usd}
-    rate_map = {}
-    match_map = {}  # project → sow opportunity name
+    # ── Build rate lookup from SOW match results ──────────────────────────────
+    # join_tm_to_ns returns ns_project + sow_rate_usd for matched rows
+    rate_by_project = {}   # {ns_project_lower: rate_usd}
     if df_sow is not None and not df_sow.empty:
-        for _, sr in df_sow.iterrows():
-            rate = float(sr.get("sow_rate_usd", 0) or 0)
-            if rate <= 0:
-                continue
-            # Index by account name + product keywords for fuzzy matching
-            acc   = str(sr.get("account_name", "") or "").strip().lower()
-            prod  = str(sr.get("product", "") or "").strip().lower()
-            opp   = str(sr.get("opportunity_name", "") or "").strip().lower()
-            rate_map[(acc, prod)] = rate
-            if opp:
-                rate_map[("opp:" + opp[:20], "")] = rate
+        try:
+            matched = join_tm_to_ns(df_sow.copy(), df_ns)
+            matched["sow_rate_usd"] = pd.to_numeric(matched.get("sow_rate_usd", 0), errors="coerce").fillna(0)
+            for _, r in matched.iterrows():
+                proj = str(r.get("ns_project") or "").strip().lower()
+                rate = float(r.get("sow_rate_usd", 0) or 0)
+                if proj and rate > 0:
+                    # Keep highest rate if same project matched multiple SOWs
+                    rate_by_project[proj] = max(rate, rate_by_project.get(proj, 0))
+        except Exception:
+            pass
 
-    def _get_rate(project_name, project_type):
-        """Return (rate_usd, source) for a project."""
-        pn_l  = str(project_name).strip().lower()
-        pt_l  = str(project_type).strip().lower()
-        prod  = match_product(pt_l).lower()
-
-        # Try opp name prefix match
-        for (k, _), r in rate_map.items():
-            if k.startswith("opp:") and k[4:] in pn_l:
-                return r, "SOW match"
-
-        # Try account + product match (account = first part of project name)
-        proj_words = pn_l.split()
-        for (acc, p), r in rate_map.items():
-            if acc and len(acc) >= 4 and acc in pn_l:
-                if not p or p in prod or prod in p:
-                    return r, "SOW match"
-
-        return 0.0, "No rate"
-
-    # Derive region from project_manager → EMPLOYEE_LOCATION
+    # ── Derive region from project_manager ───────────────────────────────────
     def _get_region(pm_name):
         pm = str(pm_name or "").strip()
-        if pm in PS_REGION_OVERRIDE:
-            return PS_REGION_OVERRIDE[pm]
+        if pm in PS_REGION_OVERRIDE: return PS_REGION_OVERRIDE[pm]
         loc = EMPLOYEE_LOCATION.get(pm, "")
         if isinstance(loc, tuple): loc = loc[0]
-        # Try partial match
         if not loc:
             for k, v in EMPLOYEE_LOCATION.items():
                 if pm and (pm.lower() in k.lower() or k.lower() in pm.lower()):
                     loc = v[0] if isinstance(v, tuple) else v
                     break
-        region = PS_REGION_MAP.get(str(loc), "")
-        if region: return region
-        # Fall back to Customer Region column if present
-        return ""
+        return PS_REGION_MAP.get(str(loc), "Other")
 
-    # Aggregate by project + period
+    # ── Aggregate by project + period ────────────────────────────────────────
     agg_cols = ["project", "project_type", "period"]
     if "project_manager" in tm.columns:
         agg_cols.append("project_manager")
@@ -615,22 +589,23 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
 
     rows = []
     for _, r in grp.iterrows():
-        rate, source = _get_rate(r["project"], r.get("project_type", ""))
-        pm     = r.get("project_manager", "") if "project_manager" in grp.columns else ""
-        region = _get_region(pm)
-        prod   = match_product(str(r.get("project_type", "")))
-        hrs    = float(r["hours"])
-        rev    = round(hrs * rate, 2)
+        proj_l  = str(r["project"]).strip().lower()
+        rate    = rate_by_project.get(proj_l, 0.0)
+        source  = "SOW match" if rate > 0 else "No rate"
+        pm      = r.get("project_manager", "") if "project_manager" in grp.columns else ""
+        region  = _get_region(pm)
+        prod    = match_product(str(r.get("project_type", "")))
+        hrs     = float(r["hours"])
         rows.append({
-            "period":      r["period"],
-            "project":     r["project"],
-            "product":     prod,
-            "region":      region,
+            "period":          r["period"],
+            "project":         r["project"],
+            "product":         prod,
+            "region":          region,
             "project_manager": pm,
-            "hours":       hrs,
-            "rate_usd":    rate,
-            "revenue_usd": rev,
-            "rate_source": source,
+            "hours":           hrs,
+            "rate_usd":        rate,
+            "revenue_usd":     round(hrs * rate, 2),
+            "rate_source":     source,
         })
 
     result = pd.DataFrame(rows)
