@@ -10,7 +10,7 @@ from datetime import date
 
 from shared.loaders import load_revenue, calc_monthly_slices
 try:
-    from shared.loaders import join_tm_to_ns, calc_tm_monthly_actuals
+    from shared.loaders import join_tm_to_ns, calc_tm_monthly_actuals, get_billing_mismatches
 except ImportError:
     def join_tm_to_ns(df_sow, df_ns):
         df_sow["ns_project"] = None
@@ -18,6 +18,8 @@ except ImportError:
         df_sow["ns_revenue_to_date"] = 0.0
         return df_sow
     def calc_tm_monthly_actuals(df_ns, df_sow):
+        return pd.DataFrame()
+    def get_billing_mismatches(df_ns):
         return pd.DataFrame()
 from shared.config import CURRENCY_REGION_MAP, FX_RATES_TO_USD
 
@@ -670,6 +672,45 @@ else:
             if not _tm_piv_prod.empty:
                 st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
                              use_container_width=True, hide_index=True)
+
+# ── Billing Exceptions ────────────────────────────────────────────────────────
+if df_ns_session is not None:
+    _mismatches = get_billing_mismatches(df_ns_session)
+    if not _mismatches.empty:
+        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Billing Exceptions</div>', unsafe_allow_html=True)
+
+        _tm_nb  = _mismatches[_mismatches["mismatch_flag"] == "⚠️ T&M / Non-Billable"]
+        _ff_bil = _mismatches[_mismatches["mismatch_flag"] == "⚠️ FF / Billable hours"]
+
+        _tm_nb_hrs  = float(_tm_nb["hours"].sum())  if not _tm_nb.empty  else 0.0
+        _ff_bil_hrs = float(_ff_bil["hours"].sum()) if not _ff_bil.empty else 0.0
+
+        col1, col2 = st.columns(2)
+        with col1:
+            _c = "#E74C3C" if _tm_nb_hrs > 0 else "inherit"
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val" style="color:{_c}">{_tm_nb_hrs:,.1f}h</div>'
+                f'<div class="metric-lbl">T&M / Non-Billable · {len(_tm_nb)} rows · may be misconfigured in NS — review for billing</div></div>',
+                unsafe_allow_html=True)
+        with col2:
+            _c = "#F39C12" if _ff_bil_hrs > 0 else "inherit"
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val" style="color:{_c}">{_ff_bil_hrs:,.1f}h</div>'
+                f'<div class="metric-lbl">FF / Billable hours · {len(_ff_bil)} rows · may appear on invoice — review</div></div>',
+                unsafe_allow_html=True)
+
+        with st.expander(f"Billing Exception Detail ({len(_mismatches)} rows)", expanded=False):
+            st.dataframe(_mismatches, use_container_width=True, hide_index=True,
+                         column_config={
+                             "employee":       st.column_config.TextColumn("Employee",     width="medium"),
+                             "project":        st.column_config.TextColumn("Project",      width="large"),
+                             "project_type":   st.column_config.TextColumn("Project Type", width="medium"),
+                             "billing_type":   st.column_config.TextColumn("Billing Type", width="small"),
+                             "non_billable":   st.column_config.TextColumn("Non-Billable", width="small"),
+                             "hours":          st.column_config.NumberColumn("Hours",       width="small", format="%.2f"),
+                             "mismatch_flag":  st.column_config.TextColumn("Flag",         width="medium"),
+                         })
 
 # ── Excel download ─────────────────────────────────────────────────────────
 st.markdown("")
