@@ -659,6 +659,9 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     for _nc in ("hours", "rate_usd", "revenue_usd"):
         result[_nc] = pd.to_numeric(result[_nc], errors="coerce").fillna(0)
     return result
+
+
+def load_tm_sow(file) -> pd.DataFrame:
     """Load SFDC T&M SOW export.
     Returns one row per opportunity with canonical fields:
       account_name, opportunity_name, opportunity_owner, close_date,
