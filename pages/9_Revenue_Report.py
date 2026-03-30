@@ -335,8 +335,6 @@ _rt = _ff_sum_rgn.rename(columns={"region":"Region"}) if not _ff_sum_rgn.empty e
 _pt = _ff_sum_prod.rename(columns={"product":"Product"}) if not _ff_sum_prod.empty else pd.DataFrame()
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION — T&M Revenue Summary
@@ -419,9 +417,6 @@ if df_tm is not None:
                      })
 elif df_tm_sow is None:
     st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION — Monthly Breakdown by Region & Product
@@ -530,8 +525,6 @@ if not _piv_region.empty:
 if not _piv_product.empty:
     st.markdown("**By Product**")
     st.dataframe(_style_pivot(_piv_product), use_container_width=True, hide_index=True)
-
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ── Trend Analysis and MoM by Region — Excel only (removed from UI) ──────────
 _trend_full = (_monthly_totals.reset_index()
