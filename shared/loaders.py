@@ -281,6 +281,8 @@ def load_ns_time(file):
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+    if "ns_rate" in df.columns:
+        df["ns_rate"] = pd.to_numeric(df["ns_rate"], errors="coerce").fillna(0)
     # Store original cols for debug
     df.attrs["original_cols"] = list(df.columns)
     return df
@@ -449,6 +451,15 @@ NS_COL_MAP_OUT = {
     "nonbillable":          "non_billable",
     "non_billable":         "non_billable",
     "is non billable":      "non_billable",
+    # Billing rate — add to NS Time Detail export to enable direct T&M revenue calc
+    "rate":                 "ns_rate",
+    "billing rate":         "ns_rate",
+    "hourly rate":          "ns_rate",
+    "time detail rate":     "ns_rate",
+    "billing rate (foreign currency)": "ns_rate",
+    "rate (foreign currency)":         "ns_rate",
+    "cost rate":            "ns_rate",
+    "pay rate":             "ns_rate",
 }
 
 
@@ -595,25 +606,39 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     agg_cols = ["project", "project_type", "period"]
     if "project_manager" in tm.columns:
         agg_cols.append("project_manager")
-
-    grp = tm.groupby(agg_cols, as_index=False)["hours"].sum()
+    if "ns_rate" in tm.columns:
+        tm["ns_rate"] = pd.to_numeric(tm["ns_rate"], errors="coerce").fillna(0)
+        # Use max rate per project-period (rates should be consistent per project)
+        grp_hrs  = tm.groupby(agg_cols, as_index=False)["hours"].sum()
+        grp_rate = tm.groupby(agg_cols, as_index=False)["ns_rate"].max()
+        grp = grp_hrs.merge(grp_rate, on=agg_cols, how="left")
+    else:
+        grp = tm.groupby(agg_cols, as_index=False)["hours"].sum()
 
     rows = []
     for _, r in grp.iterrows():
-        proj_l = str(r["project"]).strip().lower()
-        rate   = rate_by_project.get(proj_l, 0.0)
-        source = "Project match"
+        proj_l   = str(r["project"]).strip().lower()
+        ns_rate  = float(r.get("ns_rate", 0) or 0) if "ns_rate" in grp.columns else 0.0
 
-        # Fallback: account name substring in NS project name
-        if rate == 0:
-            for acc, acc_rate in rate_by_account.items():
-                if acc in proj_l:
-                    rate   = acc_rate
-                    source = "Account match"
-                    break
+        if ns_rate > 0:
+            # Best source: rate directly from NS Time Detail export
+            rate   = ns_rate
+            source = "NS rate"
+        else:
+            # Fall back to SOW project match
+            rate   = rate_by_project.get(proj_l, 0.0)
+            source = "Project match" if rate > 0 else ""
 
-        if rate == 0:
-            source = "No rate"
+            # Fall back to account name substring
+            if rate == 0:
+                for acc, acc_rate in rate_by_account.items():
+                    if acc in proj_l:
+                        rate   = acc_rate
+                        source = "Account match"
+                        break
+
+            if rate == 0:
+                source = "No SFDC Opp" if df_sow is not None else "No rate"
         pm      = r.get("project_manager", "") if "project_manager" in grp.columns else ""
         region  = _get_region(pm)
         prod    = match_product(str(r.get("project_type", "")))
@@ -708,16 +733,22 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
         df_sow["ns_revenue_to_date"]  = 0.0
         return df_sow
 
-    # Build NS project summary: total hours per project
-    ns_proj = (df_ns[df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")]
-               .groupby("project")
+    # Build NS project summary: total hours + avg ns_rate per project
+    _tm_ns = df_ns[df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")]
+    ns_proj = (_tm_ns.groupby("project")
                .agg(hours=("hours", "sum"))
                .reset_index())
 
-    def _find_ns_project(opp_name, account_name, product, rate_usd):
-        """Return (ns_project, hours_worked, revenue) for best NS match."""
-        on_l  = str(opp_name or "").strip().lower()
-        acc_l = str(account_name or "").strip().lower()
+    # Build NS rate per project (max rate — should be consistent per project)
+    ns_rate_by_proj = {}
+    if "ns_rate" in _tm_ns.columns:
+        _rates = _tm_ns[_tm_ns["ns_rate"] > 0].groupby("project")["ns_rate"].max()
+        ns_rate_by_proj = _rates.to_dict()
+
+    def _find_ns_project(opp_name, account_name, product, sow_rate_usd):
+        """Return (ns_project, hours_worked, revenue, ns_rate, rate_flag) for best NS match."""
+        on_l   = str(opp_name or "").strip().lower()
+        acc_l  = str(account_name or "").strip().lower()
         prod_l = str(product or "").strip().lower()
 
         best_proj = None
@@ -725,7 +756,6 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
 
         for _, nr in ns_proj.iterrows():
             proj_l = str(nr["project"]).strip().lower()
-            # Score: account substring match + product substring match
             acc_score  = 1 if acc_l and acc_l[:8] in proj_l else 0
             prod_score = 1 if prod_l and prod_l in proj_l else 0
             opp_score  = 1 if on_l and on_l[:10] in proj_l else 0
@@ -735,8 +765,26 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
                     best_proj = nr["project"]
                     best_hrs  = float(nr["hours"])
 
-        rev = round(best_hrs * float(rate_usd or 0), 2) if best_proj else 0.0
-        return best_proj, round(best_hrs, 2), rev
+        if not best_proj:
+            return None, 0.0, 0.0, 0.0, ""
+
+        ns_rate = float(ns_rate_by_proj.get(best_proj, 0) or 0)
+        sow_r   = float(sow_rate_usd or 0)
+        rev     = round(best_hrs * sow_r, 2)
+
+        # Rate alignment flag
+        if ns_rate > 0 and sow_r > 0:
+            diff_pct = abs(ns_rate - sow_r) / sow_r * 100
+            if diff_pct > 5:
+                flag = f"⚠️ NS ${ns_rate:,.0f} vs SOW ${sow_r:,.0f} ({diff_pct:.0f}% diff)"
+            else:
+                flag = "✓ Rates aligned"
+        elif ns_rate > 0 and sow_r == 0:
+            flag = f"NS rate ${ns_rate:,.0f} — no SOW rate"
+        else:
+            flag = ""
+
+        return best_proj, round(best_hrs, 2), rev, ns_rate, flag
 
     results = df_sow.apply(
         lambda r: _find_ns_project(
@@ -746,7 +794,8 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
             r.get("sow_rate_usd", 0)
         ), axis=1, result_type="expand"
     )
-    results.columns = ["ns_project", "ns_hours_worked", "ns_revenue_to_date"]
+    results.columns = ["ns_project", "ns_hours_worked", "ns_revenue_to_date",
+                        "ns_rate", "rate_alignment"]
     return pd.concat([df_sow.reset_index(drop=True), results], axis=1)
 
 # ── Product keyword matcher ───────────────────────────────────────────────────
