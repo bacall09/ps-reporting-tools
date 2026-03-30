@@ -3,7 +3,6 @@ PS Utilization Credit Report — Self-contained page
 """
 import streamlit as st
 import pandas as pd
-from shared.constants import name_matches
 import io
 import os
 from datetime import datetime
@@ -449,17 +448,14 @@ def assign_credits(df, scope_map):
     _htd_col = "hours_to_date"
     prior_htd = {}
     if _htd_col in df.columns:
-        # Group by (project, project_type) — same composite key as consumed dict
-        # Prevents cross-product-type HTD bleed on multi-product accounts
-        _htd_grp_cols = [c for c in ["project", "project_type"] if c in df.columns]
-        for _key, _grp in df.groupby(_htd_grp_cols):
-            _pk = tuple(" ".join(str(k).strip().split()) for k in (_key if isinstance(_key, tuple) else (_key,)))
+        for _proj, _grp in df.groupby("project"):
+            _proj_n = " ".join(str(_proj).split())
             try:
-                _max_htd    = float(_grp[_htd_col].dropna().astype(float).max() or 0)
+                _max_htd   = float(_grp[_htd_col].dropna().astype(float).max() or 0)
                 _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
-                prior_htd[_pk] = max(0.0, _max_htd - _period_hrs)
+                prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
             except Exception:
-                prior_htd[_pk] = 0.0
+                prior_htd[_proj_n] = 0.0
 
     consumed = {}
     credit_hrs_list    = []
@@ -503,20 +499,16 @@ def assign_credits(df, scope_map):
         scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
 
         if scope_hrs is None:
-            # UNCONFIGURED: count as credited (matches Daily Briefing logic)
-            # Hours flagged separately via the no-scope banner below the metrics
-            credit_hrs_list.append(hrs); variance_hrs_list.append(0)
+            credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("UNCONFIGURED"); notes_list.append(f"Fixed Fee but no scope defined for: {ptype}")
             htd_start_list.append(0)
             continue
 
-        # Seed starting balance — composite key: (project, project_type)
-        # Prevents cross-product-type HTD bleed on multi-product accounts
-        _ck = (proj, ptype)
-        if _ck not in consumed:
-            consumed[_ck] = prior_htd.get(_ck, 0.0)
+        # Seed starting balance from pre-period hours only (not cumulative HTD)
+        if proj not in consumed:
+            consumed[proj] = prior_htd.get(proj, 0.0)
 
-        already    = consumed[_ck]
+        already    = consumed[proj]
         remaining  = scope_hrs - already
         htd_start_list.append(already)
 
@@ -524,11 +516,11 @@ def assign_credits(df, scope_map):
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("OVERRUN"); notes_list.append(f"Scope exhausted (cap: {scope_hrs:.0f}h)")
         elif hrs <= remaining:
-            consumed[_ck] = already + hrs
+            consumed[proj] = already + hrs
             credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("CREDITED"); notes_list.append(f"NB within scope ({already:.1f}/{scope_hrs:.0f}h used)")
         else:
-            consumed[_ck] = already + remaining
+            consumed[proj] = already + remaining
             credit_hrs_list.append(remaining); variance_hrs_list.append(hrs - remaining)
             credit_tag_list.append("PARTIAL")
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
@@ -1774,24 +1766,9 @@ def main():
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
         </style>
-    """, unsafe_allow_html=True)
-
-    # Dynamic title suffix from View As
-    _b = st.session_state.get("home_browse", "") or ""
-    if _b.startswith("── ") and _b.endswith(" ──"):
-        _title_sfx = f" — {_b[3:-3].strip()} Team"
-    elif _b and _b not in ("— My own view —", "— Select —", "👥 All team"):
-        _bp = [p.strip() for p in _b.split(",")]
-        _title_sfx = f" — {_bp[1] + ' ' + _bp[0] if len(_bp)==2 else _b}"
-    else:
-        _title_sfx = ""
-
-    st.markdown(f"""
-        <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
-            <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
-            <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Utilization Report{_title_sfx}</h1>
-            <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Upload your NetSuite time detail export to generate a consistent utilization credit report across T&amp;M and Fixed Fee engagements.</p>
+        <div style='background-color:#1e2c63;padding:24px 32px;border-radius:8px;margin-bottom:24px;font-family:Manrope,sans-serif'>
+            <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Professional Services Utilization Credit Report</h1>
+            <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>Upload your NetSuite time detail export to generate a utilization credit report.</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1834,6 +1811,13 @@ def main():
     # ── Upload — session state from Home takes priority ──────
     _ns_from_session = st.session_state.get("df_ns")
     uploaded = None
+
+    # Show note about data scope
+    _logged_in = st.session_state.get("consultant_name", "")
+    from shared.constants import get_role as _gr
+    if _gr(_logged_in) in ("manager","manager_only"):
+        st.info("ℹ️ This report processes **all employees in the uploaded NS file**. "
+                "To see the full team, upload a full-team NS export (all employees, not filtered by name).")
 
     if _ns_from_session is not None:
         st.success("✓ NS Time Detail loaded from Home page. Expand below to upload a different file.")
@@ -1889,30 +1873,6 @@ def main():
                 st.error(f"Could not read file: {e}"); return
     else:
         df_raw = _ns_from_session
-
-    # ── Apply view_as filter (respects home_browse for managers) ──
-    _session_name = st.session_state.get("consultant_name", "")
-    if _session_name:
-        from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
-        from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
-        from shared.constants import ACTIVE_EMPLOYEES, EMPLOYEE_ROLES
-        _home_browse = st.session_state.get("home_browse", "— My own view —")
-        _va_name, _va_region, _is_group = resolve_view_as(
-            _session_name, _home_browse, EMPLOYEE_ROLES,
-            EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES
-        )
-        _role = _get_role(_session_name)
-        _is_mgr = _role in ("manager", "manager_only")
-        if _va_region and "employee" in df_raw.columns:
-            _rc = get_region_consultants(_va_region, EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES)
-            _filtered = df_raw[df_raw["employee"].astype(str).str.strip().str.lower().isin(_rc)]
-            if not _filtered.empty: df_raw = _filtered.copy()
-        elif _va_name and "employee" in df_raw.columns:
-            _filtered = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _va_name))]
-            if not _filtered.empty: df_raw = _filtered.copy()
-        elif not _is_mgr and "employee" in df_raw.columns:
-            _filtered = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _session_name))]
-            if not _filtered.empty: df_raw = _filtered.copy()
 
     st.divider()
 
@@ -1976,25 +1936,16 @@ def main():
         overrun_pct = total_proj_overrun / hours_this_period if hours_this_period else 0
         admin_pct   = total_admin        / hours_this_period if hours_this_period else 0
 
-        credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#C0392B"
-        credit_label = "On target · Goal: 70%" if credit_pct >= 0.70 else "Below target · Goal: 70%" if credit_pct >= 0.60 else "At risk · Goal: 70%"
+        credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#e74c3c"
+        credit_label = "On target" if credit_pct >= 0.70 else "Below target" if credit_pct >= 0.60 else "At risk"
 
-        # Date range banner
+        # Max date in report
         if "date" in df.columns:
-            _dates_clean = pd.to_datetime(df["date"], errors="coerce").dropna()
-            if not _dates_clean.empty:
-                _min_date = _dates_clean.min().strftime("%-d %b %Y")
-                _max_date = _dates_clean.max().strftime("%-d %b %Y")
-                date_str  = _dates_clean.max().strftime("%-d %B %Y")
-            else:
-                _min_date = _max_date = date_str = "—"
+            max_date = pd.to_datetime(df["date"], errors="coerce").max()
+            date_str = max_date.strftime("%-d %B %Y") if pd.notna(max_date) else "—"
         else:
-            _min_date = _max_date = date_str = "—"
-        st.markdown(
-            f"<div style='font-size:12px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:12px'>"
-            f"Reporting period: <strong style='color:inherit'>{_min_date} — {_max_date}</strong></div>",
-            unsafe_allow_html=True
-        )
+            date_str = "—"
+            st.markdown(f"<div style='font-size:13px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:12px'>Data through <strong style='color:#ffffff'>{date_str}</strong></div>", unsafe_allow_html=True)
 
         def fmt_hrs(n):
             """Show 2 decimals only if needed — drops .00 and .X0 trailing zeros."""
@@ -2016,8 +1967,7 @@ def main():
         m1, m2, m3, _gap, m4, m5 = st.columns([2, 2, 2, 0.3, 2, 2])
         with m1: st.markdown(metric_card("Projects This Period", f"{df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups:,}"), unsafe_allow_html=True)
         with m2: st.markdown(metric_card("Hours This Period", fmt_hrs(hours_this_period)), unsafe_allow_html=True)
-        _cred_arrow = "↑" if credit_pct >= 0.60 else "↓"
-        with m3: st.markdown(metric_card("Utilization Credits", fmt_hrs(total_credit), f"{credit_pct:.1%} of hrs · {credit_label}", credit_color, pill_icon=_cred_arrow), unsafe_allow_html=True)
+        with m3: st.markdown(metric_card("Utilization Credits", fmt_hrs(total_credit), f"{credit_pct:.1%} of hrs · {credit_label}", credit_color), unsafe_allow_html=True)
         with m4: st.markdown(metric_card("FF Project Overrun Hrs", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "#ff4b4b", pill_icon=""), unsafe_allow_html=True)
         with m5: st.markdown(metric_card("Admin Hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs", "#808495", pill_icon="·"), unsafe_allow_html=True)
 
@@ -2106,10 +2056,6 @@ def main():
                 "util_vs_capacity":  "Util % (vs Capacity)",
                 "proj_full_month":   "Projected Full Month",
             }
-            # Round raw numeric columns before display
-            for _rc in ["avail_hrs", "hours_this_period", "credit_hrs", "ff_overrun_hrs"]:
-                if _rc in emp_sum_ui.columns:
-                    emp_sum_ui[_rc] = pd.to_numeric(emp_sum_ui[_rc], errors="coerce").round(2)
             show_df = emp_sum_ui[
                 [col for col in display_cols if col in emp_sum_ui.columns]
             ].rename(columns=col_labels)
