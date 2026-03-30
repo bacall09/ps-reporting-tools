@@ -271,7 +271,7 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — FF Summary by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Fixed Fee Revenue by Region & Product</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Fixed Fee Revenue Summary</div>', unsafe_allow_html=True)
 
 def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
     """Build FF summary table matching T&M structure."""
@@ -331,6 +331,85 @@ _rt = _ff_sum_rgn.rename(columns={"region":"Region"}) if not _ff_sum_rgn.empty e
 _pt = _ff_sum_prod.rename(columns={"product":"Product"}) if not _ff_sum_prod.empty else pd.DataFrame()
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION — T&M Revenue Summary
+# ══════════════════════════════════════════════════════════════════════════════
+if df_tm is not None:
+    st.markdown('<div class="section-label">T&amp;M Revenue Summary</div>', unsafe_allow_html=True)
+
+    def _tm_summary_table(df, dim):
+        """Build T&M summary table grouped by dim (region or product)."""
+        if df.empty or dim not in df.columns:
+            return pd.DataFrame()
+        grp = (df.groupby(dim)
+               .agg(
+                   contracted  = ("sow_amount_usd",      "sum"),
+                   earned      = ("ns_revenue_to_date",  "sum"),
+                   hours_sold  = ("sow_hours",            "sum"),
+                   hours_worked= ("ns_hours_worked",      "sum"),
+                   avg_rate    = ("sow_rate_usd",         lambda x: x.replace(0,float("nan")).mean()),
+                   n_opps      = ("opportunity_name",     "count"),
+               )
+               .reset_index())
+        # Total row
+        tot = grp[["contracted","earned","hours_sold","hours_worked","n_opps"]].sum()
+        tot["avg_rate"] = df["sow_rate_usd"].replace(0,float("nan")).mean()
+        tot[dim] = "Total"
+        grp = pd.concat([grp, tot.to_frame().T], ignore_index=True)
+
+        grp["Burn %"]      = (grp["earned"] / grp["contracted"] * 100).apply(
+                               lambda v: f"{v:.1f}%" if pd.notna(v) and v > 0 else "—")
+        grp["Remaining"]   = (grp["contracted"] - grp["earned"]).apply(_fmt)
+        grp["Contracted"]  = grp["contracted"].apply(_fmt)
+        grp["Earned"]      = grp["earned"].apply(_fmt)
+        grp["Hours Sold"]  = grp["hours_sold"].apply(lambda v: f"{v:,.0f}h")
+        grp["Avg Rate"]    = grp["avg_rate"].apply(lambda v: f"${v:,.0f}" if pd.notna(v) else "—")
+        grp["# Opps"]      = grp["n_opps"].apply(lambda v: f"{int(v):,}")
+        col_label = dim.capitalize() if dim != "region" else "Region"
+        return grp[[dim,"Contracted","Earned","Remaining","Burn %","Hours Sold","Avg Rate","# Opps"]].rename(columns={dim: col_label})
+
+    _tm_sum_rgn  = _tm_summary_table(df_tm, "region")
+    _tm_sum_prod = _tm_summary_table(df_tm, "product")
+
+    tab1, tab2 = st.tabs(["By Region", "By Product"])
+    with tab1:
+        if not _tm_sum_rgn.empty:
+            st.dataframe(_tm_sum_rgn, use_container_width=True, hide_index=True)
+    with tab2:
+        if not _tm_sum_prod.empty:
+            st.dataframe(_tm_sum_prod, use_container_width=True, hide_index=True)
+
+    with st.expander(f"Opportunity Detail ({len(df_tm)} rows)", expanded=False):
+        _tm_detail_cols = ["account_name","opportunity_name","opportunity_owner",
+                           "product","region","close_date","sow_hours",
+                           "sow_amount_usd","sow_rate_usd","ns_project",
+                           "ns_hours_worked","ns_revenue_to_date"]
+        _tm_detail = df_tm[[c for c in _tm_detail_cols if c in df_tm.columns]].copy()
+        if "close_date" in _tm_detail.columns:
+            _tm_detail["close_date"] = _tm_detail["close_date"].dt.strftime("%-d %b %Y")
+        st.dataframe(_tm_detail, use_container_width=True, hide_index=True,
+                     column_config={
+                         "account_name":       st.column_config.TextColumn("Account",       width="medium"),
+                         "opportunity_name":   st.column_config.TextColumn("Opportunity",   width="large"),
+                         "opportunity_owner":  st.column_config.TextColumn("Owner",         width="medium"),
+                         "product":            st.column_config.TextColumn("Product",       width="small"),
+                         "region":             st.column_config.TextColumn("Region",        width="small"),
+                         "close_date":         st.column_config.TextColumn("Close Date",    width="small"),
+                         "sow_hours":          st.column_config.NumberColumn("SOW Hrs",     width="small"),
+                         "sow_amount_usd":     st.column_config.NumberColumn("SOW Amt USD", width="small", format="$%.0f"),
+                         "sow_rate_usd":       st.column_config.NumberColumn("Rate USD",    width="small", format="$%.0f"),
+                         "ns_project":         st.column_config.TextColumn("NS Match",      width="medium"),
+                         "ns_hours_worked":    st.column_config.NumberColumn("Hrs Worked",  width="small"),
+                         "ns_revenue_to_date": st.column_config.NumberColumn("Rev Earned",  width="small", format="$%.0f"),
+                     })
+elif df_tm_sow is None:
+    st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
+
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION — Monthly Breakdown by Region & Product
@@ -487,81 +566,6 @@ if _all_periods_sorted:
     _dp = _dp.round(2)
     _dp.index.name = "Project"
     _detail_pivot = _dp.reset_index()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION — T&M Revenue Summary
-# ══════════════════════════════════════════════════════════════════════════════
-if df_tm is not None:
-    st.markdown('<div class="section-label">T&amp;M Revenue Summary</div>', unsafe_allow_html=True)
-
-    def _tm_summary_table(df, dim):
-        """Build T&M summary table grouped by dim (region or product)."""
-        if df.empty or dim not in df.columns:
-            return pd.DataFrame()
-        grp = (df.groupby(dim)
-               .agg(
-                   contracted  = ("sow_amount_usd",      "sum"),
-                   earned      = ("ns_revenue_to_date",  "sum"),
-                   hours_sold  = ("sow_hours",            "sum"),
-                   hours_worked= ("ns_hours_worked",      "sum"),
-                   avg_rate    = ("sow_rate_usd",         lambda x: x.replace(0,float("nan")).mean()),
-                   n_opps      = ("opportunity_name",     "count"),
-               )
-               .reset_index())
-        # Total row
-        tot = grp[["contracted","earned","hours_sold","hours_worked","n_opps"]].sum()
-        tot["avg_rate"] = df["sow_rate_usd"].replace(0,float("nan")).mean()
-        tot[dim] = "Total"
-        grp = pd.concat([grp, tot.to_frame().T], ignore_index=True)
-
-        grp["Burn %"]      = (grp["earned"] / grp["contracted"] * 100).apply(
-                               lambda v: f"{v:.1f}%" if pd.notna(v) and v > 0 else "—")
-        grp["Remaining"]   = (grp["contracted"] - grp["earned"]).apply(_fmt)
-        grp["Contracted"]  = grp["contracted"].apply(_fmt)
-        grp["Earned"]      = grp["earned"].apply(_fmt)
-        grp["Hours Sold"]  = grp["hours_sold"].apply(lambda v: f"{v:,.0f}h")
-        grp["Avg Rate"]    = grp["avg_rate"].apply(lambda v: f"${v:,.0f}" if pd.notna(v) else "—")
-        grp["# Opps"]      = grp["n_opps"].apply(lambda v: f"{int(v):,}")
-        col_label = dim.capitalize() if dim != "region" else "Region"
-        return grp[[dim,"Contracted","Earned","Remaining","Burn %","Hours Sold","Avg Rate","# Opps"]].rename(columns={dim: col_label})
-
-    _tm_sum_rgn  = _tm_summary_table(df_tm, "region")
-    _tm_sum_prod = _tm_summary_table(df_tm, "product")
-
-    tab1, tab2 = st.tabs(["By Region", "By Product"])
-    with tab1:
-        if not _tm_sum_rgn.empty:
-            st.dataframe(_tm_sum_rgn, use_container_width=True, hide_index=True)
-    with tab2:
-        if not _tm_sum_prod.empty:
-            st.dataframe(_tm_sum_prod, use_container_width=True, hide_index=True)
-
-    with st.expander(f"Opportunity Detail ({len(df_tm)} rows)", expanded=False):
-        _tm_detail_cols = ["account_name","opportunity_name","opportunity_owner",
-                           "product","region","close_date","sow_hours",
-                           "sow_amount_usd","sow_rate_usd","ns_project",
-                           "ns_hours_worked","ns_revenue_to_date"]
-        _tm_detail = df_tm[[c for c in _tm_detail_cols if c in df_tm.columns]].copy()
-        if "close_date" in _tm_detail.columns:
-            _tm_detail["close_date"] = _tm_detail["close_date"].dt.strftime("%-d %b %Y")
-        st.dataframe(_tm_detail, use_container_width=True, hide_index=True,
-                     column_config={
-                         "account_name":       st.column_config.TextColumn("Account",       width="medium"),
-                         "opportunity_name":   st.column_config.TextColumn("Opportunity",   width="large"),
-                         "opportunity_owner":  st.column_config.TextColumn("Owner",         width="medium"),
-                         "product":            st.column_config.TextColumn("Product",       width="small"),
-                         "region":             st.column_config.TextColumn("Region",        width="small"),
-                         "close_date":         st.column_config.TextColumn("Close Date",    width="small"),
-                         "sow_hours":          st.column_config.NumberColumn("SOW Hrs",     width="small"),
-                         "sow_amount_usd":     st.column_config.NumberColumn("SOW Amt USD", width="small", format="$%.0f"),
-                         "sow_rate_usd":       st.column_config.NumberColumn("Rate USD",    width="small", format="$%.0f"),
-                         "ns_project":         st.column_config.TextColumn("NS Match",      width="medium"),
-                         "ns_hours_worked":    st.column_config.NumberColumn("Hrs Worked",  width="small"),
-                         "ns_revenue_to_date": st.column_config.NumberColumn("Rev Earned",  width="small", format="$%.0f"),
-                     })
-elif df_tm_sow is None:
-    st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
-
 
 # ── T&M Monthly Actuals (from NS time entries) ───────────────────────────────
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
