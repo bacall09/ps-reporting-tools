@@ -773,88 +773,138 @@ def load_tm_sow(file) -> pd.DataFrame:
     return df
 
 
-def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
-    """Join T&M SOW opportunities to NS time entries via fuzzy account+product match.
-    
-    Match strategy (in order):
-    1. Exact project name match (opp_name ≈ NS project name)
-    2. Account name fuzzy match + product match
-    
+def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
+                  df_drs: pd.DataFrame = None) -> pd.DataFrame:
+    """Join T&M SOW opportunities to NS time entries via fuzzy match.
+
+    Match strategy:
+    1. NS: rapidfuzz partial_ratio(sfdc_account, ns_project_name) >= 85
+           + match_product(ns_project_type) == sfdc_product
+    2. DRS: same fuzzy logic against DRS project_name (no hours yet)
+
     Returns df_sow with added columns:
-      ns_project, ns_hours_worked, ns_revenue_to_date
+      ns_project, ns_hours_worked, ns_revenue_to_date, ns_rate,
+      rate_alignment, match_source
     """
+    try:
+        from rapidfuzz import fuzz as _fuzz
+        _partial = _fuzz.partial_ratio
+    except ImportError:
+        _partial = lambda a, b: (100.0 if str(a).lower() in str(b).lower() else 0.0)
+
     if df_ns is None or df_ns.empty:
-        df_sow["ns_project"]          = None
-        df_sow["ns_hours_worked"]     = 0.0
-        df_sow["ns_revenue_to_date"]  = 0.0
+        df_sow["ns_project"]         = None
+        df_sow["ns_hours_worked"]    = 0.0
+        df_sow["ns_revenue_to_date"] = 0.0
+        df_sow["ns_rate"]            = 0.0
+        df_sow["rate_alignment"]     = ""
+        df_sow["match_source"]       = "No NS data"
         return df_sow
 
-    # Build NS project summary: total hours + avg ns_rate per project
-    _tm_ns = df_ns[df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")]
-    ns_proj = (_tm_ns.groupby("project")
-               .agg(hours=("hours", "sum"))
-               .reset_index())
-
-    # Build NS rate per project (max rate — should be consistent per project)
+    # Build NS T&M project summary: hours + project_type per project
+    _tm_ns  = df_ns[df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")]
+    ns_proj = (_tm_ns.groupby(["project","project_type"], as_index=False)
+                     .agg(hours=("hours","sum")))
     ns_rate_by_proj = {}
     if "ns_rate" in _tm_ns.columns:
-        _rates = _tm_ns[_tm_ns["ns_rate"] > 0].groupby("project")["ns_rate"].max()
-        ns_rate_by_proj = _rates.to_dict()
+        ns_rate_by_proj = (_tm_ns[_tm_ns["ns_rate"] > 0]
+                           .groupby("project")["ns_rate"].max().to_dict())
+
+    # DRS project list for tier 2
+    drs_proj = []
+    if df_drs is not None and not df_drs.empty and "project_name" in df_drs.columns:
+        drs_proj = df_drs["project_name"].dropna().str.strip().tolist()
+
+    ACC_THRESHOLD = 85  # partial_ratio minimum
 
     def _find_ns_project(opp_name, account_name, product, sow_rate_usd):
-        """Return (ns_project, hours_worked, revenue, ns_rate, rate_flag) for best NS match."""
-        on_l   = str(opp_name or "").strip().lower()
-        acc_l  = str(account_name or "").strip().lower()
-        prod_l = str(product or "").strip().lower()
+        acc_l = str(account_name or "").strip().lower()
+        prod  = str(product or "").strip()   # canonical e.g. "Billing"
+        sow_r = float(sow_rate_usd or 0)
 
         best_proj = None
         best_hrs  = 0.0
+        match_src = ""
 
+        # Tier 1: NS projects
         for _, nr in ns_proj.iterrows():
-            proj_l = str(nr["project"]).strip().lower()
-            acc_score  = 1 if acc_l and acc_l[:8] in proj_l else 0
-            prod_score = 1 if prod_l and prod_l in proj_l else 0
-            opp_score  = 1 if on_l and on_l[:10] in proj_l else 0
+            proj_name = str(nr["project"])
+            proj_l    = proj_name.lower()
+            proj_type = str(nr.get("project_type", ""))
 
-            if acc_score + prod_score + opp_score >= 2:
-                if best_proj is None or nr["hours"] > best_hrs:
-                    best_proj = nr["project"]
-                    best_hrs  = float(nr["hours"])
+            # Account fuzzy match
+            if _partial(acc_l, proj_l) < ACC_THRESHOLD:
+                continue
 
-        if not best_proj:
-            return None, 0.0, 0.0, 0.0, ""
+            # Product match: NS project_type → canonical must equal SOW product
+            ns_prod = match_product(proj_type)
+            if prod and ns_prod != "Other" and ns_prod != prod:
+                continue
 
-        ns_rate = float(ns_rate_by_proj.get(best_proj, 0) or 0)
-        sow_r   = float(sow_rate_usd or 0)
-        rev     = round(best_hrs * sow_r, 2)
+            hrs = float(nr["hours"])
+            if best_proj is None or hrs > best_hrs:
+                best_proj = proj_name
+                best_hrs  = hrs
+                match_src = "NS match"
 
-        # Rate alignment flag
-        if ns_rate > 0 and sow_r > 0:
+        # Tier 2: DRS (no hours yet)
+        drs_match = None
+        if best_proj is None and drs_proj:
+            for dn in drs_proj:
+                dn_l = dn.lower()
+                if _partial(acc_l, dn_l) < ACC_THRESHOLD:
+                    continue
+                ns_prod = match_product(dn)
+                if prod and ns_prod != "Other" and ns_prod != prod:
+                    continue
+                drs_match = dn
+                match_src = "DRS match (no hours yet)"
+                break
+
+        if best_proj is None and drs_match is None:
+            return None, 0.0, 0.0, 0.0, "", "Unmatched"
+
+        ns_rate = float(ns_rate_by_proj.get(best_proj, 0) or 0) if best_proj else 0.0
+        rev     = round(best_hrs * sow_r, 2) if best_proj else 0.0
+
+        if best_proj and ns_rate > 0 and sow_r > 0:
             diff_pct = abs(ns_rate - sow_r) / sow_r * 100
-            if diff_pct > 5:
-                flag = f"⚠️ NS ${ns_rate:,.0f} vs SOW ${sow_r:,.0f} ({diff_pct:.0f}% diff)"
-            else:
-                flag = "✓ Rates aligned"
-        elif ns_rate > 0 and sow_r == 0:
+            flag = (f"⚠️ NS ${ns_rate:,.0f} vs SOW ${sow_r:,.0f} ({diff_pct:.0f}% diff)"
+                    if diff_pct > 5 else "✓ Rates aligned")
+        elif best_proj and ns_rate > 0:
             flag = f"NS rate ${ns_rate:,.0f} — no SOW rate"
+        elif drs_match:
+            flag = "No hours in NS yet"
         else:
             flag = ""
 
-        return best_proj, round(best_hrs, 2), rev, ns_rate, flag
+        result_proj = best_proj if best_proj else drs_match
+        return result_proj, round(best_hrs, 2), rev, ns_rate, flag, match_src
 
     results = df_sow.apply(
         lambda r: _find_ns_project(
-            r.get("opportunity_name",""),
-            r.get("account_name",""),
-            r.get("product",""),
+            r.get("opportunity_name", ""),
+            r.get("account_name", ""),
+            r.get("product", ""),
             r.get("sow_rate_usd", 0)
         ), axis=1, result_type="expand"
     )
-    results.columns = ["ns_project", "ns_hours_worked", "ns_revenue_to_date",
-                        "ns_rate", "rate_alignment"]
+    results.columns = ["ns_project","ns_hours_worked","ns_revenue_to_date",
+                        "ns_rate","rate_alignment","match_source"]
     out = pd.concat([df_sow.reset_index(drop=True), results], axis=1)
-    # Drop any duplicate columns produced by the join
     return out.loc[:, ~out.columns.duplicated()]
+
+
+def get_unmatched_sow(df_tm: pd.DataFrame) -> pd.DataFrame:
+    """Return SOW opportunities that weren't matched to NS or DRS.
+    Useful for vetting fuzzy match quality.
+    """
+    if df_tm is None or df_tm.empty or "match_source" not in df_tm.columns:
+        return pd.DataFrame()
+    unmatched = df_tm[df_tm["match_source"] == "Unmatched"].copy()
+    keep = ["account_name","opportunity_name","opportunity_owner","product",
+            "region","close_date","sow_hours","sow_amount_usd","sow_rate_usd","match_source"]
+    return unmatched[[c for c in keep if c in unmatched.columns]]
 
 # ── Product keyword matcher ───────────────────────────────────────────────────
 # Maps subscription item / project type text → canonical product name
