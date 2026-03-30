@@ -283,14 +283,23 @@ def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
         return pd.DataFrame()
 
     def _agg(df, col_name):
+        if df.empty or dim not in df.columns or "usd_amount" not in df.columns:
+            return pd.Series(dtype=float, name=col_name)
         return df.groupby(dim)["usd_amount"].sum().rename(col_name)
 
-    ytd_s  = _agg(df_ytd, "YTD")
-    qtd_s  = _agg(df_qtd, "QTD")
-    mtd_s  = _agg(df_mtd, "MTD")
+    ytd_s  = _agg(df_ytd,     "YTD")
+    qtd_s  = _agg(df_qtd,     "QTD")
+    mtd_s  = _agg(df_mtd,     "MTD")
     full_s = _agg(df_full_mo, "Full Month")
 
-    result = pd.concat([mtd_s, full_s, qtd_s, ytd_s], axis=1).fillna(0)
+    # Use YTD index as the base (most complete), fill missing with 0
+    idx = ytd_s.index
+    result = pd.DataFrame({
+        "MTD":        mtd_s.reindex(idx, fill_value=0),
+        "Full Month": full_s.reindex(idx, fill_value=0),
+        "QTD":        qtd_s.reindex(idx, fill_value=0),
+        "YTD":        ytd_s.reindex(idx, fill_value=0),
+    })
 
     # Count projects per dim
     if "project_id" in df_ytd.columns:
