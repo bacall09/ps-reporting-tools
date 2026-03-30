@@ -1410,6 +1410,28 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
     return buf
 
 
+# ── Name matching helper ───────────────────────────────────────────────────────
+def name_matches(val: str, target: str) -> bool:
+    """Fuzzy name match — handles 'Lastname, Firstname' vs 'Firstname Lastname' variants."""
+    v = str(val).strip().lower()
+    t = str(target).strip().lower()
+    if not v or not t:
+        return False
+    if v == t:
+        return True
+    t_parts = [p.strip() for p in t.split(",")]
+    v_parts = [p.strip() for p in v.split(",")]
+    if len(t_parts) == 2:
+        t_alt = f"{t_parts[1]} {t_parts[0]}"
+        if v == t_alt or v.startswith(t_parts[0]):
+            return True
+    if len(v_parts) == 2:
+        v_alt = f"{v_parts[1]} {v_parts[0]}"
+        if v_alt == t or v_parts[0] == t_parts[0]:
+            return True
+    return t_parts[0] in v or v_parts[0] in t
+
+
 # ── Streamlit UI ──────────────────────────────────────────────────────────────
 def main():
     st.markdown("""
