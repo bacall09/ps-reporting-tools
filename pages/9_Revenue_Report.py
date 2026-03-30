@@ -227,7 +227,9 @@ with c6:
 if df_tm is not None:
     st.markdown('<div class="section-label" style="margin-top:4px">T&amp;M Revenue</div>', unsafe_allow_html=True)
     _bc = "#E74C3C" if _burn > 90 else ("#F39C12" if _burn > 70 else "inherit")
-    t1,t2,t3,t4 = st.columns(4)
+    _avg_rate = float(df_tm["sow_rate_usd"].replace(0, float("nan")).mean()) if "sow_rate_usd" in df_tm.columns else 0.0
+    _avg_rate = 0.0 if pd.isna(_avg_rate) else _avg_rate
+    t1,t2,t3,t4,t5,t6 = st.columns(6)
     with t1:
         st.markdown(
             f'<div class="metric-card"><div class="metric-val">{_fmt(tm_contracted)}</div>'
@@ -247,6 +249,16 @@ if df_tm is not None:
         st.markdown(
             f'<div class="metric-card"><div class="metric-val">{_fmt(_rem)}</div>'
             f'<div class="metric-lbl">Remaining Backlog · contracted not yet earned</div></div>',
+            unsafe_allow_html=True)
+    with t5:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">{tm_hours_sold:,.0f}h</div>'
+            f'<div class="metric-lbl">Total Hours Sold · across all SOWs</div></div>',
+            unsafe_allow_html=True)
+    with t6:
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-val">${_avg_rate:,.0f}</div>'
+            f'<div class="metric-lbl">Avg Rate (USD) · PS SOW Rate converted</div></div>',
             unsafe_allow_html=True)
     if tm_unmatched > 0:
         st.caption(f"⚠️ {tm_unmatched} of {len(df_tm)} opportunities could not be matched to an NS project — "
@@ -416,66 +428,27 @@ if not _piv_product.empty:
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION — Trend Analysis
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Trend Analysis</div>', unsafe_allow_html=True)
-
-# Build full monthly table with MoM delta and % change
+# ── Trend Analysis and MoM by Region — Excel only (removed from UI) ──────────
 _trend_full = (_monthly_totals.reset_index()
                if not _monthly_totals.empty else pd.DataFrame(columns=["period","usd_amount"]))
 _trend_full.columns = ["Period", "Revenue (USD)"]
 _trend_full["Revenue (USD)"] = pd.to_numeric(_trend_full["Revenue (USD)"], errors="coerce").fillna(0)
 _trend_full["MoM Change"]    = _trend_full["Revenue (USD)"].diff()
 _trend_full["MoM %"]         = _trend_full["Revenue (USD)"].pct_change() * 100
-_trend_full["Cumulative YTD"] = _trend_full["Revenue (USD)"].cumsum()
-
-# Format for display
+_trend_full["Cumulative YTD"]= _trend_full["Revenue (USD)"].cumsum()
 _trend_disp = _trend_full.copy()
-_trend_disp["Period"]         = _trend_disp["Period"].apply(
-    lambda m: pd.Timestamp(m + "-01").strftime("%b %Y"))
+_trend_disp["Period"]         = _trend_disp["Period"].apply(lambda m: pd.Timestamp(m+"-01").strftime("%b %Y"))
 _trend_disp["Revenue (USD)"]  = _trend_disp["Revenue (USD)"].apply(_fmt)
-_trend_disp["MoM Change"]     = _trend_disp["MoM Change"].apply(
-    lambda v: ("↑ " if v >= 0 else "↓ ") + _fmt(abs(v)) if pd.notna(v) else "—")
-_trend_disp["MoM %"]          = _trend_disp["MoM %"].apply(
-    lambda v: f"{'↑' if v >= 0 else '↓'} {abs(v):.1f}%" if pd.notna(v) else "—")
+_trend_disp["MoM Change"]     = _trend_disp["MoM Change"].apply(lambda v: ("↑ " if v>=0 else "↓ ")+_fmt(abs(v)) if pd.notna(v) else "—")
+_trend_disp["MoM %"]          = _trend_disp["MoM %"].apply(lambda v: f"{'↑' if v>=0 else '↓'} {abs(v):.1f}%" if pd.notna(v) else "—")
 _trend_disp["Cumulative YTD"] = _trend_disp["Cumulative YTD"].apply(_fmt)
 
-st.dataframe(_trend_disp, use_container_width=True, hide_index=True)
-
-# Region trend table
-if "region" in slices.columns and len(_complete_months) >= 2:
-    st.markdown("**MoM by Region**")
-    _rgn_trend = (slices[slices["period"].isin(_complete_months)]
-                  .groupby(["region","period"])["usd_amount"].sum()
-                  .unstack(fill_value=0)
-                  .reindex(columns=_complete_months, fill_value=0))
-    # Add MoM % for last two months
-    if len(_complete_months) >= 2:
-        _rgn_trend["MoM %"] = (
-            (_rgn_trend[_complete_months[-1]] - _rgn_trend[_complete_months[-2]])
-            / _rgn_trend[_complete_months[-2]].replace(0, float("nan")) * 100
-        ).apply(lambda v: f"{'↑' if v >= 0 else '↓'} {abs(v):.1f}%" if pd.notna(v) else "—")
-    _rgn_trend.columns = [
-        pd.Timestamp(m + "-01").strftime("%b %Y") if m != "MoM %" else "MoM %"
-        for m in _rgn_trend.columns
-    ]
-    # Format numeric columns
-    for _mc in _rgn_trend.columns:
-        if _mc != "MoM %":
-            _rgn_trend[_mc] = pd.to_numeric(_rgn_trend[_mc], errors="coerce").apply(_fmt)
-    _rgn_trend.index.name = "Region"
-    st.dataframe(_rgn_trend.reset_index(), use_container_width=True, hide_index=True)
-
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
-
-# ── Monthly trend and Project Detail — Excel only (removed from UI) ──────────
+# ── Monthly trend and Project Detail — Excel only ────────────────────────────
 _trend = slices.groupby("period")["usd_amount"].sum().reset_index()
 _trend.columns = ["Period", "Revenue (USD)"]
 _trend = _trend.sort_values("Period")
 _trend["Revenue (USD)"] = pd.to_numeric(_trend["Revenue (USD)"], errors="coerce").fillna(0).round(2)
 
-# Project detail — pivot: rows = Project ID: Project Name, columns = Period
 _detail_cols = ["project_id","project_name","project_manager","product",
                 "region","currency","period","local_amount","usd_amount"]
 _detail_cols = [c for c in _detail_cols if c in slices.columns]
@@ -484,12 +457,8 @@ for _nc in ("usd_amount","local_amount"):
     if _nc in _detail.columns:
         _detail[_nc] = pd.to_numeric(_detail[_nc], errors="coerce").fillna(0).round(2)
 
-# Build pivot version for Excel: rows = "Project ID: Name", columns = period (USD)
 if "project_id" in _detail.columns and "project_name" in _detail.columns:
-    _detail["_proj_label"] = (
-        _detail["project_id"].astype(str) + ": " +
-        _detail["project_name"].fillna("").astype(str)
-    )
+    _detail["_proj_label"] = _detail["project_id"].astype(str) + ": " + _detail["project_name"].fillna("").astype(str)
 else:
     _detail["_proj_label"] = _detail.get("project_id", pd.Series("", index=_detail.index)).astype(str)
 
@@ -497,8 +466,7 @@ _all_periods_sorted = sorted(_detail["period"].unique()) if "period" in _detail.
 _detail_pivot = pd.DataFrame()
 if _all_periods_sorted:
     _dp = (_detail.groupby(["_proj_label","period"])["usd_amount"]
-                  .sum()
-                  .unstack(fill_value=0)
+                  .sum().unstack(fill_value=0)
                   .reindex(columns=_all_periods_sorted, fill_value=0))
     _dp.columns = [pd.Timestamp(m+"-01").strftime("%b %Y") for m in _dp.columns]
     _dp["Total"] = _dp.sum(axis=1)
@@ -507,49 +475,53 @@ if _all_periods_sorted:
     _detail_pivot = _dp.reset_index()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION — T&M Breakdown (tables only — metrics shown at top)
+# SECTION — T&M Revenue Summary
 # ══════════════════════════════════════════════════════════════════════════════
 if df_tm is not None:
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">T&amp;M Revenue Breakdown</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">T&amp;M Revenue Summary</div>', unsafe_allow_html=True)
 
-    # ── By Region ─────────────────────────────────────────────────────────────
-    st.markdown("**By Region**")
-    _tm_rgn = (df_tm.groupby("region")
-               .agg(contracted=("sow_amount_usd","sum"),
-                    earned=("ns_revenue_to_date","sum"),
-                    hours_sold=("sow_hours","sum"),
-                    hours_worked=("ns_hours_worked","sum"),
-                    opportunities=("opportunity_name","count"))
+    def _tm_summary_table(df, dim):
+        """Build T&M summary table grouped by dim (region or product)."""
+        if df.empty or dim not in df.columns:
+            return pd.DataFrame()
+        grp = (df.groupby(dim)
+               .agg(
+                   contracted  = ("sow_amount_usd",      "sum"),
+                   earned      = ("ns_revenue_to_date",  "sum"),
+                   hours_sold  = ("sow_hours",            "sum"),
+                   hours_worked= ("ns_hours_worked",      "sum"),
+                   avg_rate    = ("sow_rate_usd",         lambda x: x.replace(0,float("nan")).mean()),
+                   n_opps      = ("opportunity_name",     "count"),
+               )
                .reset_index())
-    _tm_rgn["Burn %"]       = (_tm_rgn["earned"] / _tm_rgn["contracted"] * 100).round(1).apply(
-                                lambda v: f"{v:.1f}%" if pd.notna(v) else "—")
-    _tm_rgn["Contracted"]   = _tm_rgn["contracted"].apply(_fmt)
-    _tm_rgn["Earned"]       = _tm_rgn["earned"].apply(_fmt)
-    _tm_rgn["Hours Sold"]   = _tm_rgn["hours_sold"].apply(lambda v: f"{v:,.0f}h")
-    _tm_rgn["Hours Worked"] = _tm_rgn["hours_worked"].apply(lambda v: f"{v:,.0f}h")
-    st.dataframe(
-        _tm_rgn[["region","Contracted","Earned","Burn %","Hours Sold","Hours Worked","opportunities"]]
-        .rename(columns={"region":"Region","opportunities":"# Opps"}),
-        use_container_width=True, hide_index=True)
+        # Total row
+        tot = grp[["contracted","earned","hours_sold","hours_worked","n_opps"]].sum()
+        tot["avg_rate"] = df["sow_rate_usd"].replace(0,float("nan")).mean()
+        tot[dim] = "Total"
+        grp = pd.concat([grp, tot.to_frame().T], ignore_index=True)
 
-    # ── By Product ────────────────────────────────────────────────────────────
-    st.markdown("**By Product**")
-    _tm_prod = (df_tm.groupby("product")
-                .agg(contracted=("sow_amount_usd","sum"),
-                     earned=("ns_revenue_to_date","sum"),
-                     hours_sold=("sow_hours","sum"))
-                .reset_index()
-                .sort_values("contracted", ascending=False))
-    _tm_prod["Contracted"] = _tm_prod["contracted"].apply(_fmt)
-    _tm_prod["Earned"]     = _tm_prod["earned"].apply(_fmt)
-    _tm_prod["Hours Sold"] = _tm_prod["hours_sold"].apply(lambda v: f"{v:,.0f}h")
-    st.dataframe(
-        _tm_prod[["product","Contracted","Earned","Hours Sold"]]
-        .rename(columns={"product":"Product"}),
-        use_container_width=True, hide_index=True)
+        grp["Burn %"]      = (grp["earned"] / grp["contracted"] * 100).apply(
+                               lambda v: f"{v:.1f}%" if pd.notna(v) and v > 0 else "—")
+        grp["Remaining"]   = (grp["contracted"] - grp["earned"]).apply(_fmt)
+        grp["Contracted"]  = grp["contracted"].apply(_fmt)
+        grp["Earned"]      = grp["earned"].apply(_fmt)
+        grp["Hours Sold"]  = grp["hours_sold"].apply(lambda v: f"{v:,.0f}h")
+        grp["Avg Rate"]    = grp["avg_rate"].apply(lambda v: f"${v:,.0f}" if pd.notna(v) else "—")
+        grp["# Opps"]      = grp["n_opps"].apply(lambda v: f"{int(v):,}")
+        col_label = dim.capitalize() if dim != "region" else "Region"
+        return grp[[dim,"Contracted","Earned","Remaining","Burn %","Hours Sold","Avg Rate","# Opps"]].rename(columns={dim: col_label})
 
-    # ── Opportunity detail ────────────────────────────────────────────────────
+    _tm_sum_rgn  = _tm_summary_table(df_tm, "region")
+    _tm_sum_prod = _tm_summary_table(df_tm, "product")
+
+    tab1, tab2 = st.tabs(["By Region", "By Product"])
+    with tab1:
+        if not _tm_sum_rgn.empty:
+            st.dataframe(_tm_sum_rgn, use_container_width=True, hide_index=True)
+    with tab2:
+        if not _tm_sum_prod.empty:
+            st.dataframe(_tm_sum_prod, use_container_width=True, hide_index=True)
+
     with st.expander(f"Opportunity Detail ({len(df_tm)} rows)", expanded=False):
         _tm_detail_cols = ["account_name","opportunity_name","opportunity_owner",
                            "product","region","close_date","sow_hours",
@@ -574,7 +546,6 @@ if df_tm is not None:
                          "ns_revenue_to_date": st.column_config.NumberColumn("Rev Earned",  width="small", format="$%.0f"),
                      })
 elif df_tm_sow is None:
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
 
 # ── Excel download ─────────────────────────────────────────────────────────
