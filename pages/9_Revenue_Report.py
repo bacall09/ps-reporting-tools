@@ -486,11 +486,11 @@ else:
     df_tm = join_tm_to_ns(df_tm_sow, df_ns)
 
     # ── T&M summary metric cards ─────────────────────────────────────────────
-    tm_contracted  = df_tm["sow_amount_usd"].sum()
-    tm_worked      = df_tm["ns_revenue_to_date"].sum() if "ns_revenue_to_date" in df_tm.columns else 0
-    tm_hours_sold  = df_tm["sow_hours"].sum()
-    tm_hours_worked= df_tm["ns_hours_worked"].sum() if "ns_hours_worked" in df_tm.columns else 0
-    tm_matched     = df_tm["ns_project"].notna().sum() if "ns_project" in df_tm.columns else 0
+    tm_contracted  = float(df_tm["sow_amount_usd"].sum())
+    tm_worked      = float(df_tm["ns_revenue_to_date"].sum()) if "ns_revenue_to_date" in df_tm.columns else 0.0
+    tm_hours_sold  = float(df_tm["sow_hours"].sum())
+    tm_hours_worked= float(df_tm["ns_hours_worked"].sum()) if "ns_hours_worked" in df_tm.columns else 0.0
+    tm_matched     = int(df_tm["ns_project"].notna().sum()) if "ns_project" in df_tm.columns else 0
     tm_unmatched   = len(df_tm) - tm_matched
 
     c1,c2,c3,c4 = st.columns(4)
