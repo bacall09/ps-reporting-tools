@@ -807,18 +807,24 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
 _PRODUCT_KEYWORDS = [
     ("Capture and E-Invoicing", ["capture and e-invoic"]),
     ("Reconcile 2.0",           ["reconcile 2"]),
-    ("Premium",                 ["premium"]),
+    # NS project_type prefixes: "ZoneBill: ZB_Premium", "ZonePay: Implementation" etc.
+    # Match on Zone* prefix first (more specific)
+    ("Billing",                 ["zonebill", "zbilling", "zab partner",
+                                  "billing", "zb_standard", "zb_premium",
+                                  "subscription services"]),
+    ("Payroll",                 ["zonepay", "zpayroll", "payroll", "zep:"]),
+    ("Reporting",               ["zonerpt", "zonerepor", "reporting",
+                                  "install, dwh", "dwh"]),
     ("E-Invoicing",             ["e-invoic", "einvoic"]),
-    ("Capture",                 ["capture", "zcapture", "zonecapture"]),
-    ("Approvals",               ["approval", "zapprovals", "zoneapprovals"]),
-    ("Reconcile",               ["reconcile", "zreconcile"]),
-    ("Payments",                ["payment", "zpayment"]),
+    ("Capture",                 ["zonecapture", "zcapture", "capture"]),
+    ("Approvals",               ["zoneapprovals", "zapprovals", "approval",
+                                  "zoneapps: consulting"]),
+    ("Reconcile",               ["zonereconcile", "zreconcile", "reconcile"]),
+    ("Payments",                ["zonepayments", "zpayment", "payment"]),
     ("PSP",                     ["psp"]),
     ("SFTP",                    ["sftp"]),
     ("CC",                      ["cc statement", "credit card"]),
-    ("Billing",                 ["billing", "zbilling"]),
-    ("Payroll",                 ["payroll", "zpayroll"]),
-    ("Reporting",               ["reporting"]),
+    ("Premium",                 ["zb_premium", "premium"]),
 ]
 
 def match_product(text: str) -> str:
