@@ -8,7 +8,15 @@ import pandas as pd
 import io
 from datetime import date
 
-from shared.loaders import load_revenue, calc_monthly_slices, join_tm_to_ns
+from shared.loaders import load_revenue, calc_monthly_slices
+try:
+    from shared.loaders import join_tm_to_ns
+except ImportError:
+    def join_tm_to_ns(df_sow, df_ns):
+        df_sow["ns_project"] = None
+        df_sow["ns_hours_worked"] = 0.0
+        df_sow["ns_revenue_to_date"] = 0.0
+        return df_sow
 from shared.config import CURRENCY_REGION_MAP, FX_RATES_TO_USD
 
 st.markdown("""
