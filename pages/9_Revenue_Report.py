@@ -10,13 +10,15 @@ from datetime import date
 
 from shared.loaders import load_revenue, calc_monthly_slices
 try:
-    from shared.loaders import join_tm_to_ns
+    from shared.loaders import join_tm_to_ns, calc_tm_monthly_actuals
 except ImportError:
     def join_tm_to_ns(df_sow, df_ns):
         df_sow["ns_project"] = None
         df_sow["ns_hours_worked"] = 0.0
         df_sow["ns_revenue_to_date"] = 0.0
         return df_sow
+    def calc_tm_monthly_actuals(df_ns, df_sow):
+        return pd.DataFrame()
 from shared.config import CURRENCY_REGION_MAP, FX_RATES_TO_USD
 
 st.markdown("""
@@ -547,6 +549,96 @@ if df_tm is not None:
                      })
 elif df_tm_sow is None:
     st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
+
+
+# ── T&M Monthly Actuals (from NS time entries) ───────────────────────────────
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">T&amp;M Monthly Actuals (from NS Time Detail)</div>',
+            unsafe_allow_html=True)
+
+df_ns_session = st.session_state.get("df_ns")
+_tm_actuals   = pd.DataFrame()
+
+if df_ns_session is None:
+    st.info("Upload NS Time Detail in the sidebar to see monthly T&M actuals.")
+else:
+    _tm_actuals = calc_tm_monthly_actuals(df_ns_session, df_tm_sow)
+
+    if _tm_actuals.empty:
+        st.info("No T&M time entries found in the NS file.")
+    else:
+        _matched_pct  = (_tm_actuals["rate_usd"] > 0).mean() * 100
+        _total_tm_rev = float(_tm_actuals["revenue_usd"].sum())
+        _total_tm_hrs = float(_tm_actuals["hours"].sum())
+        _unrated      = int((_tm_actuals["rate_usd"] == 0).sum())
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val">{_fmt(_total_tm_rev)}</div>'
+                f'<div class="metric-lbl">T&M Actual Revenue · NS hours × rate</div></div>',
+                unsafe_allow_html=True)
+        with c2:
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val">{_total_tm_hrs:,.1f}h</div>'
+                f'<div class="metric-lbl">T&M Hours Worked · all projects</div></div>',
+                unsafe_allow_html=True)
+        with c3:
+            _rc = "#F39C12" if _matched_pct < 80 else "inherit"
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val" style="color:{_rc}">{_matched_pct:.0f}%</div>'
+                f'<div class="metric-lbl">Rate Match · {_unrated} rows at $0 rate</div></div>',
+                unsafe_allow_html=True)
+
+        if _unrated > 0:
+            st.caption(f"\u26a0\ufe0f {_unrated} project-month rows have no matched SOW rate — "
+                       f"revenue shown as $0. Upload SFDC T&M SOW to improve matching.")
+
+        def _tm_actuals_pivot(df, dim):
+            if df.empty or dim not in df.columns: return pd.DataFrame()
+            all_periods = sorted(df["period"].unique())
+            all_years   = sorted({p[:4] for p in all_periods})
+            base = (df.groupby([dim,"period"])["revenue_usd"]
+                      .sum().unstack(fill_value=0))
+            ordered_cols = []
+            for year in all_years:
+                year_periods = [p for p in all_periods if p.startswith(year)]
+                for q in range(1, 5):
+                    q_ps = [f"{year}-{m:02d}" for m in range((q-1)*3+1,(q-1)*3+4)]
+                    q_present = [p for p in q_ps if p in year_periods]
+                    if not q_present: continue
+                    for p in q_present:
+                        ml = pd.Timestamp(p+"-01").strftime("%b")
+                        if len(all_years)>1: ml += f" '{year[2:]}"
+                        ordered_cols.append((ml,"month",p))
+                    ordered_cols.append((f"Q{q}"+(f" '{year[2:]}" if len(all_years)>1 else ""),"quarter",q_ps))
+                ytd_label = "YTD" if year==all_years[-1] else f"FY{year[2:]}"
+                ordered_cols.append((ytd_label,"ytd",year_periods))
+            rows_index = base.index.tolist()
+            result = {dim: list(rows_index)+["Total"]}
+            for col_label, ctype, key in ordered_cols:
+                if ctype == "month":
+                    vals = base[key] if key in base.columns else pd.Series(0,index=base.index)
+                else:
+                    present = [p for p in key if p in base.columns]
+                    vals = base[present].sum(axis=1) if present else pd.Series(0,index=base.index)
+                col_vals = [float(vals.get(idx,0)) for idx in rows_index]
+                col_vals.append(sum(col_vals))
+                result[col_label] = [_fmt(v) for v in col_vals]
+            return pd.DataFrame(result)
+
+        _tm_piv_rgn  = _tm_actuals_pivot(_tm_actuals, "region")
+        _tm_piv_prod = _tm_actuals_pivot(_tm_actuals, "product")
+
+        tab1, tab2 = st.tabs(["By Region", "By Product"])
+        with tab1:
+            if not _tm_piv_rgn.empty:
+                st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
+                             use_container_width=True, hide_index=True)
+        with tab2:
+            if not _tm_piv_prod.empty:
+                st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
+                             use_container_width=True, hide_index=True)
 
 # ── Excel download ─────────────────────────────────────────────────────────
 st.markdown("")
