@@ -788,9 +788,25 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
     """
     try:
         from rapidfuzz import fuzz as _fuzz
-        _partial = _fuzz.partial_ratio
+        def _acc_score(acc_l, target_l):
+            """Score account name against a project/DRS name.
+            Strips legal suffixes (Ltd, HQ, Inc etc.) and uses best of
+            partial_ratio on stripped name vs WRatio on full name.
+            """
+            import re as _re
+            stripped = _re.sub(
+                r'\b(ltd|llc|inc|corp|hq|plc|pty|gmbh|srl|bv|ag|sa|nv|co\.?|'
+                r'limited|incorporated|holding|holdings|group|international|'
+                r'solutions|services|technologies|technology)\b\.?,?',
+                '', acc_l, flags=_re.IGNORECASE
+            )
+            stripped = _re.sub(r'\s+', ' ', stripped).strip().strip(',').strip()
+            s1 = _fuzz.partial_ratio(stripped, target_l) if stripped else 0
+            s2 = _fuzz.WRatio(acc_l, target_l)
+            return max(s1, s2)
     except ImportError:
-        _partial = lambda a, b: (100.0 if str(a).lower() in str(b).lower() else 0.0)
+        def _acc_score(acc_l, target_l):
+            return 100.0 if acc_l.split()[0] in target_l else 0.0
 
     if df_ns is None or df_ns.empty:
         df_sow["ns_project"]         = None
@@ -815,11 +831,11 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
     if df_drs is not None and not df_drs.empty and "project_name" in df_drs.columns:
         drs_proj = df_drs["project_name"].dropna().str.strip().tolist()
 
-    ACC_THRESHOLD = 85  # partial_ratio minimum
+    ACC_THRESHOLD = 88  # tuned: passes real matches, blocks short-name false positives
 
     def _find_ns_project(opp_name, account_name, product, sow_rate_usd):
         acc_l = str(account_name or "").strip().lower()
-        prod  = str(product or "").strip()   # canonical e.g. "Billing"
+        prod  = str(product or "").strip()
         sow_r = float(sow_rate_usd or 0)
 
         best_proj = None
@@ -832,8 +848,8 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
             proj_l    = proj_name.lower()
             proj_type = str(nr.get("project_type", ""))
 
-            # Account fuzzy match
-            if _partial(acc_l, proj_l) < ACC_THRESHOLD:
+            # Account fuzzy match (strips legal suffixes, uses WRatio fallback)
+            if _acc_score(acc_l, proj_l) < ACC_THRESHOLD:
                 continue
 
             # Product match: NS project_type → canonical must equal SOW product
@@ -852,7 +868,7 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
         if best_proj is None and drs_proj:
             for dn in drs_proj:
                 dn_l = dn.lower()
-                if _partial(acc_l, dn_l) < ACC_THRESHOLD:
+                if _acc_score(acc_l, dn_l) < ACC_THRESHOLD:
                     continue
                 ns_prod = match_product(dn)
                 if prod and ns_prod != "Other" and ns_prod != prod:
