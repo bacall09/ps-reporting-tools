@@ -240,7 +240,7 @@ if df_tm is not None:
     with t2:
         st.markdown(
             f'<div class="metric-card"><div class="metric-val">{_fmt(tm_worked)}</div>'
-            f'<div class="metric-lbl">Revenue Earned · {tm_matched} matched to NS</div></div>',
+            f'<div class="metric-lbl">SOW-matched Earned · {tm_matched} opps matched to NS</div></div>',
             unsafe_allow_html=True)
     with t3:
         st.markdown(
@@ -269,54 +269,66 @@ if df_tm is not None:
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 2 — By Region
+# SECTION 2 — FF Summary by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Fixed Fee Revenue by Region</div>',unsafe_allow_html=True)
+st.markdown('<div class="section-label">Fixed Fee Revenue by Region & Product</div>', unsafe_allow_html=True)
 
-def _region_table(df, label):
-    if df.empty: return pd.DataFrame()
-    t = df.groupby("region")["usd_amount"].sum().reset_index()
-    t.columns = ["Region", label]
-    t[label] = t[label].apply(_fmt)
-    return t.sort_values("Region")
+def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
+    """Build FF summary table matching T&M structure."""
+    if df_ytd.empty or dim not in df_ytd.columns:
+        return pd.DataFrame()
 
-_rt_ytd = _region_table(ytd_df,     "YTD")
-_rt_qtd = _region_table(qtd_df,     "QTD")
-_rt_mtd = _region_table(slices_mtd, "MTD")
-_rt = (_rt_ytd.merge(_rt_qtd, on="Region", how="outer")
-              .merge(_rt_mtd, on="Region", how="outer")
-              .fillna("$0")) if not _rt_ytd.empty else pd.DataFrame()
+    def _agg(df, col_name):
+        return df.groupby(dim)["usd_amount"].sum().rename(col_name)
 
-if not _rt.empty:
-    st.dataframe(_rt, use_container_width=True, hide_index=True)
-else:
-    st.info("No region data available.")
+    ytd_s  = _agg(df_ytd, "YTD")
+    qtd_s  = _agg(df_qtd, "QTD")
+    mtd_s  = _agg(df_mtd, "MTD")
+    full_s = _agg(df_full_mo, "Full Month")
 
-st.markdown('<hr class="divider">',unsafe_allow_html=True)
+    result = pd.concat([ytd_s, qtd_s, mtd_s, full_s], axis=1).fillna(0)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3 — By Product
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Fixed Fee Revenue by Product</div>',unsafe_allow_html=True)
+    # Count projects per dim
+    if "project_id" in df_ytd.columns:
+        proj_counts = df_ytd.groupby(dim)["project_id"].nunique().rename("# Projects")
+        result = result.join(proj_counts, how="left").fillna(0)
 
-def _product_table(df, label):
-    if df.empty: return pd.DataFrame()
-    t = df.groupby("product")["usd_amount"].sum().reset_index()
-    t.columns = ["Product", label]
-    t[label] = t[label].apply(_fmt)
-    return t.sort_values("Product")
+    # Total row
+    total = result.sum(numeric_only=True)
+    total.name = "Total"
+    result = pd.concat([result, total.to_frame().T])
 
-_pt_ytd = _product_table(ytd_df,     "YTD")
-_pt_qtd = _product_table(qtd_df,     "QTD")
-_pt_mtd = _product_table(slices_mtd, "MTD")
-_pt = (_pt_ytd.merge(_pt_qtd, on="Product", how="outer")
-              .merge(_pt_mtd, on="Product", how="outer")
-              .fillna("$0")) if not _pt_ytd.empty else pd.DataFrame()
+    # Format
+    for c in ["YTD","QTD","MTD","Full Month"]:
+        if c in result.columns:
+            result[c] = result[c].apply(_fmt)
+    if "# Projects" in result.columns:
+        result["# Projects"] = result["# Projects"].apply(lambda v: f"{int(v):,}")
 
-if not _pt.empty:
-    st.dataframe(_pt, use_container_width=True, hide_index=True)
-else:
-    st.info("No product data available.")
+    result.index.name = dim.capitalize()
+    return result.reset_index()
+
+_ff_full_mo_df = slices[slices["period"] == this_month].copy()
+_ff_sum_rgn  = _ff_summary_table(ytd_df, qtd_df, slices_mtd, _ff_full_mo_df, "region")
+_ff_sum_prod = _ff_summary_table(ytd_df, qtd_df, slices_mtd, _ff_full_mo_df, "product")
+
+_tab1, _tab2 = st.tabs(["By Region", "By Product"])
+with _tab1:
+    if not _ff_sum_rgn.empty:
+        st.dataframe(_ff_sum_rgn.rename(columns={"region":"Region"}),
+                     use_container_width=True, hide_index=True)
+    else:
+        st.info("No region data available.")
+with _tab2:
+    if not _ff_sum_prod.empty:
+        st.dataframe(_ff_sum_prod.rename(columns={"product":"Product"}),
+                     use_container_width=True, hide_index=True)
+    else:
+        st.info("No product data available.")
+
+# Keep for Excel export
+_rt = _ff_sum_rgn.rename(columns={"region":"Region"}) if not _ff_sum_rgn.empty else pd.DataFrame()
+_pt = _ff_sum_prod.rename(columns={"product":"Product"}) if not _ff_sum_prod.empty else pd.DataFrame()
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
@@ -576,7 +588,7 @@ else:
         with c1:
             st.markdown(
                 f'<div class="metric-card"><div class="metric-val">{_fmt(_total_tm_rev)}</div>'
-                f'<div class="metric-lbl">T&M Actual Revenue · NS hours × rate</div></div>',
+                f'<div class="metric-lbl">NS-driven Actual Revenue · hours logged × matched rate</div></div>',
                 unsafe_allow_html=True)
         with c2:
             st.markdown(
