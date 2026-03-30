@@ -211,6 +211,11 @@ with st.sidebar:
                          help="Required for Revenue Report")
         if _upload_role in ("manager","manager_only") else None
     )
+    tm_sow_file = (
+        st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow",
+                         help="Required for T&M Revenue Report")
+        if _upload_role in ("manager","manager_only") else None
+    )
     for _lbl, _key, _ldr, _f in [
         ("SS DRS","df_drs",load_drs,drs_file),
         ("NS Time","df_ns",load_ns_time,ns_file),
@@ -232,12 +237,18 @@ with st.sidebar:
             from shared.loaders import load_revenue as _lr
             st.session_state["df_revenue"] = _lr(rev_file)
         except Exception as e: st.error(f"Revenue: {e}")
+    if tm_sow_file and "df_tm_sow" not in st.session_state:
+        try:
+            from shared.loaders import load_tm_sow as _ltm
+            st.session_state["df_tm_sow"] = _ltm(tm_sow_file)
+        except Exception as e: st.error(f"T&M SOW: {e}")
     st.markdown("---")
     st.markdown("**Session data**")
     _si = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
     if _upload_role in ("manager","manager_only"):
         _si.append(("NS Unassigned","df_ns_unassigned"))
         _si.append(("FF Revenue","df_revenue"))
+        _si.append(("T&M SOW","df_tm_sow"))
     for _lbl, _key in _si:
         _ok = _key in st.session_state
         st.markdown(f'<div style="font-size:12px;color:{"#27AE60" if _ok else "rgba(128,128,128,0.4)"};'
@@ -252,7 +263,7 @@ with st.sidebar:
             ]
             # Also clear any FormData/file widget state Streamlit holds internally
             for k in list(st.session_state.keys()):
-                if k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue"] or k.startswith("hub_"):
+                if k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue","df_tm_sow"] or k.startswith("hub_"):
                     del st.session_state[k]
             st.rerun()
 
