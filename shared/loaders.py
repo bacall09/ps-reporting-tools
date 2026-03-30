@@ -519,7 +519,124 @@ TM_SOW_COL_MAP = {
     "created date":                         "created_date",
 }
 
-def load_tm_sow(file) -> pd.DataFrame:
+def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.DataFrame:
+    """Build monthly T&M actual revenue from NS time entries + SOW rates.
+
+    For each T&M project-month:
+      revenue = hours_worked × matched_sow_rate_usd
+
+    Region derived from: Customer Region col → project_manager → EMPLOYEE_LOCATION → PS_REGION_MAP
+    Product derived from: project_type keyword match
+
+    Returns long-format DataFrame:
+      period, project, product, region, hours, rate_usd, revenue_usd, rate_source
+    """
+    from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, get_fx_rate
+
+    if df_ns is None or df_ns.empty:
+        return pd.DataFrame()
+
+    # Filter T&M rows
+    tm = df_ns[df_ns.get("billing_type", pd.Series(dtype=str))
+               .fillna("").str.lower().str.contains("t&m|time")].copy()
+    if tm.empty:
+        return pd.DataFrame()
+
+    # Ensure period column
+    if "period" not in tm.columns:
+        if "date" in tm.columns:
+            tm["date"] = pd.to_datetime(tm["date"], errors="coerce")
+            tm["period"] = tm["date"].dt.strftime("%Y-%m")
+        else:
+            return pd.DataFrame()
+
+    tm["hours"] = pd.to_numeric(tm.get("hours", 0), errors="coerce").fillna(0)
+
+    # Build rate lookup from SOW: {project_name_lower: rate_usd}
+    rate_map = {}
+    match_map = {}  # project → sow opportunity name
+    if df_sow is not None and not df_sow.empty:
+        for _, sr in df_sow.iterrows():
+            rate = float(sr.get("sow_rate_usd", 0) or 0)
+            if rate <= 0:
+                continue
+            # Index by account name + product keywords for fuzzy matching
+            acc   = str(sr.get("account_name", "") or "").strip().lower()
+            prod  = str(sr.get("product", "") or "").strip().lower()
+            opp   = str(sr.get("opportunity_name", "") or "").strip().lower()
+            rate_map[(acc, prod)] = rate
+            if opp:
+                rate_map[("opp:" + opp[:20], "")] = rate
+
+    def _get_rate(project_name, project_type):
+        """Return (rate_usd, source) for a project."""
+        pn_l  = str(project_name).strip().lower()
+        pt_l  = str(project_type).strip().lower()
+        prod  = match_product(pt_l).lower()
+
+        # Try opp name prefix match
+        for (k, _), r in rate_map.items():
+            if k.startswith("opp:") and k[4:] in pn_l:
+                return r, "SOW match"
+
+        # Try account + product match (account = first part of project name)
+        proj_words = pn_l.split()
+        for (acc, p), r in rate_map.items():
+            if acc and len(acc) >= 4 and acc in pn_l:
+                if not p or p in prod or prod in p:
+                    return r, "SOW match"
+
+        return 0.0, "No rate"
+
+    # Derive region from project_manager → EMPLOYEE_LOCATION
+    def _get_region(pm_name):
+        pm = str(pm_name or "").strip()
+        if pm in PS_REGION_OVERRIDE:
+            return PS_REGION_OVERRIDE[pm]
+        loc = EMPLOYEE_LOCATION.get(pm, "")
+        if isinstance(loc, tuple): loc = loc[0]
+        # Try partial match
+        if not loc:
+            for k, v in EMPLOYEE_LOCATION.items():
+                if pm and (pm.lower() in k.lower() or k.lower() in pm.lower()):
+                    loc = v[0] if isinstance(v, tuple) else v
+                    break
+        region = PS_REGION_MAP.get(str(loc), "")
+        if region: return region
+        # Fall back to Customer Region column if present
+        return ""
+
+    # Aggregate by project + period
+    agg_cols = ["project", "project_type", "period"]
+    if "project_manager" in tm.columns:
+        agg_cols.append("project_manager")
+
+    grp = tm.groupby(agg_cols, as_index=False)["hours"].sum()
+
+    rows = []
+    for _, r in grp.iterrows():
+        rate, source = _get_rate(r["project"], r.get("project_type", ""))
+        pm     = r.get("project_manager", "") if "project_manager" in grp.columns else ""
+        region = _get_region(pm)
+        prod   = match_product(str(r.get("project_type", "")))
+        hrs    = float(r["hours"])
+        rev    = round(hrs * rate, 2)
+        rows.append({
+            "period":      r["period"],
+            "project":     r["project"],
+            "product":     prod,
+            "region":      region,
+            "project_manager": pm,
+            "hours":       hrs,
+            "rate_usd":    rate,
+            "revenue_usd": rev,
+            "rate_source": source,
+        })
+
+    result = pd.DataFrame(rows)
+    for _nc in ("hours", "rate_usd", "revenue_usd"):
+        result[_nc] = pd.to_numeric(result[_nc], errors="coerce").fillna(0)
+    return result
     """Load SFDC T&M SOW export.
     Returns one row per opportunity with canonical fields:
       account_name, opportunity_name, opportunity_owner, close_date,
