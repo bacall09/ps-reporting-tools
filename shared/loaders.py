@@ -849,7 +849,9 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
     )
     results.columns = ["ns_project", "ns_hours_worked", "ns_revenue_to_date",
                         "ns_rate", "rate_alignment"]
-    return pd.concat([df_sow.reset_index(drop=True), results], axis=1)
+    out = pd.concat([df_sow.reset_index(drop=True), results], axis=1)
+    # Drop any duplicate columns produced by the join
+    return out.loc[:, ~out.columns.duplicated()]
 
 # ── Product keyword matcher ───────────────────────────────────────────────────
 # Maps subscription item / project type text → canonical product name
