@@ -451,6 +451,181 @@ NS_COL_MAP_OUT = {
     "is non billable":      "non_billable",
 }
 
+
+# ── Product family mapping (SFDC → canonical) ────────────────────────────────
+_PRODUCT_FAMILY_MAP = [
+    # Specific Zone-prefixed first (longer match wins)
+    ("zoneapprovals",  "Approvals"),
+    ("zonecapture",    "Capture"),
+    ("zonereporting",  "Reporting"),
+    ("zonebilling",    "Billing"),
+    ("zonereconcile",  "Reconcile"),
+    ("zonepayroll",    "Payroll"),
+    ("zonepayments",   "Payments"),
+    ("zonepsp",        "PSP"),
+    ("zonesftp",       "SFTP"),
+    # Without prefix
+    ("e-invoicing",    "E-Invoicing"),
+    ("einvoicing",     "E-Invoicing"),
+    ("approvals",      "Approvals"),
+    ("capture",        "Capture"),
+    ("reporting",      "Reporting"),
+    ("billing",        "Billing"),
+    ("reconcile",      "Reconcile"),
+    ("payroll",        "Payroll"),
+    ("payments",       "Payments"),
+    ("psp",            "PSP"),
+    ("sftp",           "SFTP"),
+]
+
+def match_product_family(product_family: str, products_text: str = "") -> str:
+    """Map SFDC Product Family → canonical product name.
+    Falls back to Products free-text if Product Family is blank or 'Other'.
+    """
+    pf = str(product_family or "").strip().lower().replace(" ", "")
+    if pf and pf != "other":
+        for key, val in _PRODUCT_FAMILY_MAP:
+            if key in pf:
+                return val
+
+    # Fall back to Products free-text
+    pt = str(products_text or "").strip().lower()
+    for key, val in _PRODUCT_FAMILY_MAP:
+        if key in pt:
+            return val
+    return "Other"
+
+
+# ── T&M SOW loader ────────────────────────────────────────────────────────────
+TM_SOW_COL_MAP = {
+    "opportunity owner":                    "opportunity_owner",
+    "account name":                         "account_name",
+    "opportunity name":                     "opportunity_name",
+    "stage":                                "stage",
+    "fiscal period":                        "fiscal_period",
+    "probability (%)":                      "probability",
+    "close date":                           "close_date",
+    "ps sow hours":                         "sow_hours",
+    "ps sow amount (converted) currency":   "sow_amount_currency",
+    "ps sow amount (converted)":            "sow_amount_usd",
+    "ps sow rate (converted) currency":     "sow_rate_converted_currency",
+    "ps sow rate (converted)":              "sow_rate_usd",
+    "ps sow rate currency":                 "sow_rate_local_currency",
+    "ps sow rate":                          "sow_rate_local",
+    "products":                             "products_text",
+    "product family":                       "product_family",
+    "region":                               "region",
+    "zzz_arr (converted)":                  "arr_usd",
+    "created date":                         "created_date",
+}
+
+def load_tm_sow(file) -> pd.DataFrame:
+    """Load SFDC T&M SOW export.
+    Returns one row per opportunity with canonical fields:
+      account_name, opportunity_name, opportunity_owner, close_date,
+      sow_hours, sow_amount_usd, sow_rate_usd, sow_rate_local,
+      sow_rate_local_currency, product, region, fiscal_period
+    """
+    if hasattr(file, "name") and file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+
+    df.columns = df.columns.str.strip()
+    rename = {c: TM_SOW_COL_MAP[c.lower()] for c in df.columns if c.lower() in TM_SOW_COL_MAP}
+    df = df.rename(columns=rename)
+
+    # Parse dates
+    for dc in ("close_date", "created_date"):
+        if dc in df.columns:
+            df[dc] = pd.to_datetime(df[dc], dayfirst=False, errors="coerce")
+
+    # Numeric coercion
+    for nc in ("sow_hours", "sow_amount_usd", "sow_rate_usd", "sow_rate_local", "arr_usd", "probability"):
+        if nc in df.columns:
+            df[nc] = pd.to_numeric(df[nc], errors="coerce").fillna(0)
+
+    # Canonical product
+    df["product"] = df.apply(
+        lambda r: match_product_family(
+            r.get("product_family", ""),
+            r.get("products_text", "")
+        ), axis=1
+    )
+
+    # Region — already NOAM/EMEA/APAC in SFDC report, just clean it
+    if "region" in df.columns:
+        df["region"] = df["region"].fillna("Other").str.strip()
+
+    # Fiscal period → YYYY-MM for the close month (used for period bucketing)
+    if "close_date" in df.columns:
+        df["period"] = df["close_date"].dt.strftime("%Y-%m")
+
+    # Opportunity owner name normalisation — "First Last" → keep as-is,
+    # matching done at join time via name_matches pattern
+    if "opportunity_owner" in df.columns:
+        df["opportunity_owner"] = df["opportunity_owner"].fillna("").str.strip()
+
+    return df
+
+
+def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame) -> pd.DataFrame:
+    """Join T&M SOW opportunities to NS time entries via fuzzy account+product match.
+    
+    Match strategy (in order):
+    1. Exact project name match (opp_name ≈ NS project name)
+    2. Account name fuzzy match + product match
+    
+    Returns df_sow with added columns:
+      ns_project, ns_hours_worked, ns_revenue_to_date
+    """
+    if df_ns is None or df_ns.empty:
+        df_sow["ns_project"]          = None
+        df_sow["ns_hours_worked"]     = 0.0
+        df_sow["ns_revenue_to_date"]  = 0.0
+        return df_sow
+
+    # Build NS project summary: total hours per project
+    ns_proj = (df_ns[df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")]
+               .groupby("project")
+               .agg(hours=("hours", "sum"))
+               .reset_index())
+
+    def _find_ns_project(opp_name, account_name, product, rate_usd):
+        """Return (ns_project, hours_worked, revenue) for best NS match."""
+        on_l  = str(opp_name or "").strip().lower()
+        acc_l = str(account_name or "").strip().lower()
+        prod_l = str(product or "").strip().lower()
+
+        best_proj = None
+        best_hrs  = 0.0
+
+        for _, nr in ns_proj.iterrows():
+            proj_l = str(nr["project"]).strip().lower()
+            # Score: account substring match + product substring match
+            acc_score  = 1 if acc_l and acc_l[:8] in proj_l else 0
+            prod_score = 1 if prod_l and prod_l in proj_l else 0
+            opp_score  = 1 if on_l and on_l[:10] in proj_l else 0
+
+            if acc_score + prod_score + opp_score >= 2:
+                if best_proj is None or nr["hours"] > best_hrs:
+                    best_proj = nr["project"]
+                    best_hrs  = float(nr["hours"])
+
+        rev = round(best_hrs * float(rate_usd or 0), 2) if best_proj else 0.0
+        return best_proj, round(best_hrs, 2), rev
+
+    results = df_sow.apply(
+        lambda r: _find_ns_project(
+            r.get("opportunity_name",""),
+            r.get("account_name",""),
+            r.get("product",""),
+            r.get("sow_rate_usd", 0)
+        ), axis=1, result_type="expand"
+    )
+    results.columns = ["ns_project", "ns_hours_worked", "ns_revenue_to_date"]
+    return pd.concat([df_sow.reset_index(drop=True), results], axis=1)
+
 # ── Product keyword matcher ───────────────────────────────────────────────────
 # Maps subscription item / project type text → canonical product name
 # Order matters — more specific entries first
@@ -483,21 +658,52 @@ def match_product(text: str) -> str:
 
 # ── Revenue charge loader ─────────────────────────────────────────────────────
 REV_COL_MAP = {
-    "charge item":         "charge_item",
-    "subscription item":   "subscription_item",
-    "project id":          "project_id",
-    "rev rec start":       "rev_start",
-    "rev rec end":         "rev_end",
-    "service end date":    "service_end",
-    "currency":            "currency",
-    "quantity":            "quantity",
-    "gross amount":        "gross_amount",
-    "rate":                "rate",
-    "discount":            "discount",
-    "amount":              "amount",
-    "rev carve amount":    "rev_carve_amount",
-    "status":              "status",
-    "transaction":         "transaction",
+    # Charge / SKU
+    "charge item":              "charge_item",
+    "charge":                   "charge_item",
+    "item":                     "charge_item",
+    # Subscription item
+    "subscription item":        "subscription_item",
+    "subscription":             "subscription_item",
+    "item name":                "subscription_item",
+    "service item":             "subscription_item",
+    # Project
+    "project id":               "project_id",
+    "project":                  "project_id",
+    "job":                      "project_id",
+    # Revenue dates
+    "rev rec start":            "rev_start",
+    "rev rec start date":       "rev_start",
+    "revenue recognition start":"rev_start",
+    "rev start":                "rev_start",
+    "rev start date":           "rev_start",
+    "start date":               "rev_start",
+    "rev rec end":              "rev_end",
+    "rev rec end date":         "rev_end",
+    "revenue recognition end":  "rev_end",
+    "rev end":                  "rev_end",
+    "rev end date":             "rev_end",
+    "end date":                 "rev_end",
+    "service end date":         "service_end",
+    "service end":              "service_end",
+    # Currency + amounts
+    "currency":                 "currency",
+    "quantity":                 "quantity",
+    "gross amount":             "gross_amount",
+    "gross":                    "gross_amount",
+    "rate":                     "rate",
+    "discount":                 "discount",
+    "amount":                   "amount",
+    "net amount":               "amount",
+    "rev carve amount":         "rev_carve_amount",
+    "rev carve":                "rev_carve_amount",
+    "carve out amount":         "rev_carve_amount",
+    "carve amount":             "rev_carve_amount",
+    "carve out":                "rev_carve_amount",
+    # Status / transaction
+    "status":                   "status",
+    "transaction":              "transaction",
+    "invoice":                  "transaction",
 }
 
 def load_revenue(file) -> pd.DataFrame:
