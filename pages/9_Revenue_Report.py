@@ -383,27 +383,35 @@ if df_tm is not None:
             st.dataframe(_tm_sum_prod, use_container_width=True, hide_index=True)
 
     with st.expander(f"Opportunity Detail ({len(df_tm)} rows)", expanded=False):
+        # Rate alignment summary — show before detail table
+        if "rate_alignment" in df_tm.columns:
+            _mismatches = df_tm[df_tm["rate_alignment"].str.startswith("⚠️", na=False)]
+            if not _mismatches.empty:
+                st.warning(f"⚠️ {len(_mismatches)} matched opportunities have a rate mismatch between NS and SFDC SOW — see Rate Alignment column below.")
+
         _tm_detail_cols = ["account_name","opportunity_name","opportunity_owner",
                            "product","region","close_date","sow_hours",
                            "sow_amount_usd","sow_rate_usd","ns_project",
-                           "ns_hours_worked","ns_revenue_to_date"]
+                           "ns_rate","ns_hours_worked","ns_revenue_to_date","rate_alignment"]
         _tm_detail = df_tm[[c for c in _tm_detail_cols if c in df_tm.columns]].copy()
         if "close_date" in _tm_detail.columns:
             _tm_detail["close_date"] = _tm_detail["close_date"].dt.strftime("%-d %b %Y")
         st.dataframe(_tm_detail, use_container_width=True, hide_index=True,
                      column_config={
-                         "account_name":       st.column_config.TextColumn("Account",       width="medium"),
-                         "opportunity_name":   st.column_config.TextColumn("Opportunity",   width="large"),
-                         "opportunity_owner":  st.column_config.TextColumn("Owner",         width="medium"),
-                         "product":            st.column_config.TextColumn("Product",       width="small"),
-                         "region":             st.column_config.TextColumn("Region",        width="small"),
-                         "close_date":         st.column_config.TextColumn("Close Date",    width="small"),
-                         "sow_hours":          st.column_config.NumberColumn("SOW Hrs",     width="small"),
-                         "sow_amount_usd":     st.column_config.NumberColumn("SOW Amt USD", width="small", format="$%.0f"),
-                         "sow_rate_usd":       st.column_config.NumberColumn("Rate USD",    width="small", format="$%.0f"),
-                         "ns_project":         st.column_config.TextColumn("NS Match",      width="medium"),
-                         "ns_hours_worked":    st.column_config.NumberColumn("Hrs Worked",  width="small"),
-                         "ns_revenue_to_date": st.column_config.NumberColumn("Rev Earned",  width="small", format="$%.0f"),
+                         "account_name":       st.column_config.TextColumn("Account",        width="medium"),
+                         "opportunity_name":   st.column_config.TextColumn("Opportunity",    width="large"),
+                         "opportunity_owner":  st.column_config.TextColumn("Owner",          width="medium"),
+                         "product":            st.column_config.TextColumn("Product",        width="small"),
+                         "region":             st.column_config.TextColumn("Region",         width="small"),
+                         "close_date":         st.column_config.TextColumn("Close Date",     width="small"),
+                         "sow_hours":          st.column_config.NumberColumn("SOW Hrs",      width="small"),
+                         "sow_amount_usd":     st.column_config.NumberColumn("SOW Amt USD",  width="small", format="$%.0f"),
+                         "sow_rate_usd":       st.column_config.NumberColumn("SOW Rate",     width="small", format="$%.0f"),
+                         "ns_project":         st.column_config.TextColumn("NS Match",       width="medium"),
+                         "ns_rate":            st.column_config.NumberColumn("NS Rate",      width="small", format="$%.0f"),
+                         "ns_hours_worked":    st.column_config.NumberColumn("Hrs Worked",   width="small"),
+                         "ns_revenue_to_date": st.column_config.NumberColumn("Rev Earned",   width="small", format="$%.0f"),
+                         "rate_alignment":     st.column_config.TextColumn("Rate Alignment", width="medium"),
                      })
 elif df_tm_sow is None:
     st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
@@ -587,6 +595,7 @@ else:
         _total_tm_rev = float(_tm_actuals["revenue_usd"].sum())
         _total_tm_hrs = float(_tm_actuals["hours"].sum())
         _unrated      = int((_tm_actuals["rate_usd"] == 0).sum())
+        _no_sfdc      = int((_tm_actuals.get("rate_source", pd.Series()) == "No SFDC Opp").sum())
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -606,9 +615,15 @@ else:
                 f'<div class="metric-lbl">Rate Match · {_unrated} rows at $0 rate</div></div>',
                 unsafe_allow_html=True)
 
-        if _unrated > 0:
-            st.caption(f"\u26a0\ufe0f {_unrated} project-month rows have no matched SOW rate — "
-                       f"revenue shown as $0. Upload SFDC T&M SOW to improve matching.")
+        if _no_sfdc > 0:
+            st.caption(
+                f"ℹ️ {_no_sfdc} project-month rows are T&M in NS but have no matching SFDC opportunity — "
+                f"likely pre-2026 SOWs or projects created without an Opp. "
+                f"Add a Rate column to your NS Time Detail export to calculate revenue for these rows "
+                f"without needing a SFDC match."
+            )
+        elif _unrated > 0:
+            st.caption(f"⚠️ {_unrated} project-month rows have no matched rate — revenue shown as $0.")
 
         def _tm_actuals_pivot(df, dim):
             if df.empty or dim not in df.columns: return pd.DataFrame()
