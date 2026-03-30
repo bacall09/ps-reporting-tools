@@ -527,7 +527,16 @@ def load_tm_sow(file) -> pd.DataFrame:
       sow_rate_local_currency, product, region, fiscal_period
     """
     if hasattr(file, "name") and file.name.endswith(".csv"):
-        df = pd.read_csv(file)
+        for _enc in ("utf-8", "utf-8-sig", "windows-1252", "latin-1"):
+            try:
+                file.seek(0)
+                df = pd.read_csv(file, encoding=_enc)
+                break
+            except (UnicodeDecodeError, AttributeError):
+                continue
+        else:
+            file.seek(0)
+            df = pd.read_csv(file, encoding="latin-1")
     else:
         df = pd.read_excel(file)
 
