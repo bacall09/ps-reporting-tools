@@ -137,7 +137,9 @@ df_tm     = None
 
 if df_tm_sow is not None:
     df_tm = join_tm_to_ns(df_tm_sow, df_ns)
-    for _nc in ("sow_amount_usd","sow_hours","ns_revenue_to_date","ns_hours_worked"):
+    # Deduplicate columns in case join produced duplicates
+    df_tm = df_tm.loc[:, ~df_tm.columns.duplicated()]
+    for _nc in ("sow_amount_usd","sow_hours","ns_revenue_to_date","ns_hours_worked","ns_rate"):
         if _nc in df_tm.columns:
             df_tm[_nc] = pd.to_numeric(df_tm[_nc], errors="coerce").fillna(0)
     tm_contracted   = float(df_tm["sow_amount_usd"].sum())
