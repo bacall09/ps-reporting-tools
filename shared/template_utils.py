@@ -170,6 +170,8 @@ def extract_placeholders(text):
 # ── SS DRS column map ────────────────────────────────────────────────────────
 SS_COL_MAP_OUT = {
     "project name":           "project_name",
+    "name":                   "project_name",   # fallback: exports where header is just "Name"
+    "project":                "project_name",   # fallback: exports where header is "Project"
     "project id":             "project_id",
     "project phase":          "phase",
     "project type":           "project_type",

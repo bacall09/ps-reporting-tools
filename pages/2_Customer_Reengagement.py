@@ -447,6 +447,8 @@ def extract_placeholders(text):
 # ── SS DRS column map ────────────────────────────────────────────────────────
 SS_COL_MAP_OUT = {
     "project name":           "project_name",
+    "name":                   "project_name",   # fallback: exports where header is just "Name"
+    "project":                "project_name",   # fallback: exports where header is "Project"
     "project id":             "project_id",
     "project phase":          "phase",
     "project type":           "project_type",
@@ -970,6 +972,16 @@ def main():
         except Exception as e:
             st.warning(f"Could not calculate inactivity from NS data: {e}")
 
+    # ── Debug: column map verification (remove once column issues are resolved) ──
+    with st.expander("🔍 Debug: DRS column check", expanded=False):
+        if df_drs is not None:
+            st.write("**Columns present:**", df_drs.columns.tolist())
+            st.write("**project_name present:**", "project_name" in df_drs.columns)
+            if "project_name" not in df_drs.columns:
+                st.error("⚠️ `project_name` column is missing. Check that your DRS export has a 'Project Name' column header.")
+        else:
+            st.write("df_drs is None — no DRS data loaded.")
+
     # ── Summary metrics ───────────────────────────────────────────────────
     msg_parts = []
     if df_sfdc is not None:
@@ -1074,7 +1086,10 @@ Used when no NS entries and no milestones are present.
 
             _action_df["Suggested Tier"] = _action_df["days_inactive"].apply(_tier_short)
             _all_log_entries = _load_log()  # still used for prior outreach indicator
-            _action_df["⚠️ Recent"] = _action_df["project_name"].isin(_logged_projects)
+            if "project_name" in _action_df.columns:
+                _action_df["⚠️ Recent"] = _action_df["project_name"].isin(_logged_projects)
+            else:
+                _action_df["⚠️ Recent"] = False
             # Flag escalated projects
             if "risk_level" in _action_df.columns:
                 _action_df["⚠️ Risk"] = _action_df["risk_level"].astype(str).str.strip().str.lower().apply(

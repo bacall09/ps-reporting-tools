@@ -116,6 +116,13 @@ if _session_name:
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
+# ── Debug: column map verification (remove once column issues are resolved) ──
+with st.expander("🔍 Debug: DRS column check", expanded=False):
+    st.write("**Columns present:**", df_drs.columns.tolist())
+    st.write("**project_name present:**", "project_name" in df_drs.columns)
+    if "project_name" not in df_drs.columns:
+        st.error("⚠️ `project_name` column is missing. Check that your DRS export has a 'Project Name' column header.")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # RULE ENGINE
 # ══════════════════════════════════════════════════════════════════════════════
