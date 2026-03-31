@@ -1086,8 +1086,12 @@ Used when no NS entries and no milestones are present.
 
             _action_df["Suggested Tier"] = _action_df["days_inactive"].apply(_tier_short)
             _all_log_entries = _load_log()  # still used for prior outreach indicator
-            if "project_name" in _action_df.columns:
-                _action_df["⚠️ Recent"] = _action_df["project_name"].isin(_logged_projects)
+            # Use project_id as stable key for recent-log matching; fall back to project_name
+            _recent_key = "project_id" if "project_id" in _action_df.columns else                           "project_name" if "project_name" in _action_df.columns else None
+            if _recent_key:
+                _action_df["⚠️ Recent"] = _action_df[_recent_key].astype(str).isin(
+                    {str(p) for p in _logged_projects}
+                )
             else:
                 _action_df["⚠️ Recent"] = False
             # Flag escalated projects
@@ -1145,7 +1149,7 @@ Used when no NS entries and no milestones are present.
             if "⚠️ Risk" in _action_df.columns:
                 _escalated = _action_df[_action_df["⚠️ Risk"].str.contains("Escalat", na=False)]
                 if not _escalated.empty:
-                    _esc_names = ", ".join(_escalated["project_name"].astype(str).tolist()[:3])
+                    _esc_names = ", ".join(_escalated["project_name"].astype(str).tolist()[:3]) if "project_name" in _escalated.columns else "—"
                     st.warning(f"⚠️ **{len(_escalated)} project(s) marked as Escalated** — check with CS before sending: {_esc_names}")
 
         else:
@@ -1165,20 +1169,24 @@ Used when no NS entries and no milestones are present.
         prod_col = "product"          if "product"          in df.columns else None
         name_key = opp_col
     else:
-        opp_col  = "project_name"     if "project_name"     in df.columns else df.columns[0]
+        # Use project_id as the stable key; fall back to project_name only if project_id absent
+        opp_col  = "project_id"       if "project_id"       in df.columns else \
+                   "project_name"     if "project_name"     in df.columns else df.columns[0]
         acc_col  = "account"          if "account"          in df.columns else None
         prod_col = "project_type"     if "project_type"     in df.columns else None
         name_key = opp_col
+        # Display label column — always prefer project_name for readability in dropdown
+        _disp_col = "project_name" if "project_name" in df.columns else opp_col
 
-    # Build project list — concat Account : Project for clarity
+    # Build project list — concat Account : Project Name for clarity
     if acc_col and acc_col in df.columns:
         df["_proj_label"] = (
             df[acc_col].fillna("").astype(str).str.strip()
             + "  —  "
-            + df[opp_col].fillna("").astype(str).str.strip()
+            + df[_disp_col if mode == "drs" else opp_col].fillna("").astype(str).str.strip()
         )
     else:
-        df["_proj_label"] = df[opp_col].fillna("").astype(str).str.strip()
+        df["_proj_label"] = df[_disp_col if mode == "drs" else opp_col].fillna("").astype(str).str.strip()
 
     label_to_opp  = df[["_proj_label", opp_col]].drop_duplicates().set_index("_proj_label")[opp_col].to_dict()
 
