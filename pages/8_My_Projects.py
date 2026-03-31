@@ -109,8 +109,8 @@ if _va_region and role == "manager":
     if my_drs.empty:
         st.info(f"No projects found for the {_va_region} region in DRS.")
         st.stop()
-elif view_as == selected and is_manager(selected):
-    # Manager viewing their own — show nothing (they have no projects)
+elif view_as == selected and role == "manager_only":
+    # Pure manager (no own projects) — prompt to use View As
     st.info(f"You are logged in as a manager. Use 'View as' to browse a consultant or region.")
     st.stop()
 else:

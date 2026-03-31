@@ -205,7 +205,7 @@ def _phase_idx(phase_str):
 findings = []  # list of dicts: {project, severity, category, rule, description, expected}
 
 for _, row in df_drs.iterrows():
-    proj   = _get(row, "project_name", "Unknown project")
+    proj   = _get(row, "project_name") or _get(row, "project_id") or "Unknown project"
     phase  = _get(row, "phase", "")
     status = str(_get(row, "status", "") or "").strip().lower()
     rag    = str(_get(row, "rag",    "") or "").strip().upper()[:1]
