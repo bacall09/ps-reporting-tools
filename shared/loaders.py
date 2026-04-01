@@ -423,8 +423,11 @@ def suggest_tier_from_days(days):
 
 
 NS_COL_MAP_OUT = {
+    # ── Employee ──────────────────────────────────────────────────────────────
     "employee":             "employee",
     "name":                 "employee",
+    "time by employee":     "employee",       # Finance report header
+    # ── Project ──────────────────────────────────────────────────────────────
     "project":              "project",
     "project name":         "project",
     "project id":           "project_id",
@@ -434,30 +437,43 @@ NS_COL_MAP_OUT = {
     "projectid":            "project_id",
     "project internal id":  "project_id",
     "job":                  "project_id",
+    # ── Billing ──────────────────────────────────────────────────────────────
     "billing type":         "billing_type",
     "project type":         "project_type",
     "type":                 "project_type",
-    "project manager":      "project_manager",
-    "date":                 "date",
-    "transaction date":     "date",
-    "hours":                "hours",
-    "quantity":             "hours",
-    "hours/quantity":       "hours",
-    "hours to date":        "hours_to_date",
-    "quantity to date":     "hours_to_date",
-    "hours/quantity to date": "hours_to_date",
     "non-billable":         "non_billable",
     "non billable":         "non_billable",
     "nonbillable":          "non_billable",
     "non_billable":         "non_billable",
     "is non billable":      "non_billable",
-    # Billing rate — add to NS Time Detail export to enable direct T&M revenue calc
+    # ── Time entry ───────────────────────────────────────────────────────────
+    "date":                 "date",
+    "transaction date":     "date",
+    "time entry date":      "date",           # Finance report header
+    "hours":                "hours",
+    "quantity":             "hours",
+    "hours/quantity":       "hours",
+    "time entry duration":  "hours",          # Finance report header
+    "hours to date":        "hours_to_date",
+    "quantity to date":     "hours_to_date",
+    "hours/quantity to date": "hours_to_date",
+    # ── Rate / revenue ───────────────────────────────────────────────────────
     "rate":                 "ns_rate",
     "billing rate":         "ns_rate",
     "hourly rate":          "ns_rate",
     "time detail rate":     "ns_rate",
+    "time entry rate":      "ns_rate",        # Finance report header
+    "blended rate":         "blended_rate",   # Finance report — keep separate from SOW rate
+    "amount billed":        "amount_billed",  # Finance report — actual billed amount
     "billing rate (foreign currency)": "ns_rate",
     "rate (foreign currency)":         "ns_rate",
+    # ── Project manager / meta ───────────────────────────────────────────────
+    "project manager":      "project_manager",
+    "territory":            "territory",
+    "project phase":        "phase",
+    "customer":             "account",        # Finance report account name
+    "time entry status":    "entry_status",   # Billed / Unbilled
+    "time entry memo":      "memo",
     "cost rate":            "ns_rate",
     "pay rate":             "ns_rate",
 }
@@ -556,7 +572,7 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
 
     _is_tm = _bt.str.contains("t&m|time", na=False)
     _is_ff_billable = (
-        _bt.str.contains("fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
+        _bt.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
         & ~_is_nb_all
     )
 
@@ -583,7 +599,7 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
 
     # Determine billing_type mask on filtered tm
     _tm_bt = tm.get("billing_type", pd.Series("", index=tm.index)).fillna("").str.lower()
-    _tm_is_ff = _tm_bt.str.contains("fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
+    _tm_is_ff = _tm_bt.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
 
     # Flags:
     #   ⚠️ T&M / Non-Billable  — T&M row marked non-billable: exclude from revenue, flag for review
@@ -715,7 +731,7 @@ def get_billing_mismatches(df_ns: pd.DataFrame) -> pd.DataFrame:
     nb_raw = df.get("non_billable", pd.Series("", index=df.index)).fillna("").astype(str).str.strip().str.lower()
     is_nb  = nb_raw.isin(["true","t","yes","1","y"])
     is_tm  = bt.str.contains("t&m|time")
-    is_ff  = bt.str.contains("fixed fee|fixed_fee|ff")
+    is_ff  = bt.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b")
 
     df["mismatch_flag"] = ""
     df.loc[is_tm &  is_nb, "mismatch_flag"] = "⚠️ T&M / Non-Billable"
@@ -845,7 +861,7 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
         _nb_j   = df_ns.get("non_billable", pd.Series("", index=df_ns.index)).fillna("").astype(str).str.strip().str.lower()
         _is_nb_j = _nb_j.isin(["true","t","yes","1","y"])
         _is_tm_j = _bt_j.str.contains("t&m|time", na=False)
-        _is_ff_bill_j = _bt_j.str.contains("fixed.fee|fixed_fee|\bff\b", na=False, regex=True) & ~_is_nb_j
+        _is_ff_bill_j = _bt_j.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True) & ~_is_nb_j
         _tm_ns = df_ns[_is_tm_j | _is_ff_bill_j].copy()
     else:
         _tm_ns = df_ns.copy()

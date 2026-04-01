@@ -616,6 +616,17 @@ if df_ns_session is None:
 else:
     _tm_actuals = calc_tm_monthly_actuals(df_ns_session, df_tm_sow)
 
+    with st.expander("🔍 Debug: NS file columns & billing type values", expanded=_tm_actuals.empty):
+        st.write("**Columns:**", df_ns_session.columns.tolist())
+        if "billing_type" in df_ns_session.columns:
+            st.write("**billing_type unique values:**", df_ns_session["billing_type"].dropna().unique().tolist())
+        else:
+            st.warning("`billing_type` column not found — check NS export includes 'Billing Type' column")
+        if "non_billable" in df_ns_session.columns:
+            st.write("**non_billable unique values:**", df_ns_session["non_billable"].dropna().unique().tolist())
+        else:
+            st.write("`non_billable` column not present")
+
     if _tm_actuals.empty:
         st.info("No T&M time entries found in the NS file.")
     else:
