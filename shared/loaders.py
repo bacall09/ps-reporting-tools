@@ -546,9 +546,21 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     if df_ns is None or df_ns.empty:
         return pd.DataFrame()
 
-    # Filter T&M rows
-    tm = df_ns[df_ns.get("billing_type", pd.Series(dtype=str))
-               .fillna("").str.lower().str.contains("t&m|time")].copy()
+    # ── T&M row selection ────────────────────────────────────────────────────
+    # Primary: explicit T&M billing type
+    # Secondary: Fixed Fee projects with BILLABLE time entries — these count as T&M
+    #            revenue (e.g. change order overages) but are flagged for Finance review
+    _bt = df_ns.get("billing_type", pd.Series("", index=df_ns.index)).fillna("").str.lower()
+    _nb_raw = df_ns.get("non_billable", pd.Series("", index=df_ns.index)).fillna("").astype(str).str.strip().str.lower()
+    _is_nb_all = _nb_raw.isin(["true","t","yes","1","y"])
+
+    _is_tm = _bt.str.contains("t&m|time", na=False)
+    _is_ff_billable = (
+        _bt.str.contains("fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
+        & ~_is_nb_all
+    )
+
+    tm = df_ns[_is_tm | _is_ff_billable].copy()
     if tm.empty:
         return pd.DataFrame()
 
@@ -562,16 +574,23 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
 
     tm["hours"] = pd.to_numeric(tm.get("hours", 0), errors="coerce").fillna(0)
 
-    # Classify non-billable flag
+    # Classify non-billable flag (recalculate on filtered set)
     if "non_billable" in tm.columns:
         tm["_is_nb"] = tm["non_billable"].fillna("").astype(str).str.strip().str.lower().isin(
             ["true","t","yes","1","y"])
     else:
         tm["_is_nb"] = False
 
-    # Flag: T&M + Non-Billable — these hours won't be invoiced, exclude from revenue
-    # but keep in the table so the mismatch is visible
-    tm["billing_flag"] = tm["_is_nb"].map({True: "⚠️ T&M / Non-Billable", False: ""})
+    # Determine billing_type mask on filtered tm
+    _tm_bt = tm.get("billing_type", pd.Series("", index=tm.index)).fillna("").str.lower()
+    _tm_is_ff = _tm_bt.str.contains("fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
+
+    # Flags:
+    #   ⚠️ T&M / Non-Billable  — T&M row marked non-billable: exclude from revenue, flag for review
+    #   ⚠️ FF / Billable hours — FF project with billable time: counts as T&M revenue, flag for Finance
+    tm["billing_flag"] = ""
+    tm.loc[~_tm_is_ff &  tm["_is_nb"], "billing_flag"] = "⚠️ T&M / Non-Billable"
+    tm.loc[ _tm_is_ff & ~tm["_is_nb"], "billing_flag"] = "⚠️ FF / Billable hours"
 
     # ── Build rate lookup from SOW match results ──────────────────────────────
     # join_tm_to_ns returns ns_project + sow_rate_usd for matched rows
@@ -634,7 +653,8 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     for _, r in grp.iterrows():
         proj_l  = str(r["project"]).strip().lower()
         flag    = str(r.get("billing_flag", "") or "")
-        is_nb   = flag != ""
+        # Only zero revenue for T&M/Non-Billable — FF/Billable hours still earn revenue
+        is_nb   = flag == "⚠️ T&M / Non-Billable"
         ns_rate = float(r.get("ns_rate", 0) or 0) if "ns_rate" in grp.columns else 0.0
 
         if is_nb:
@@ -818,9 +838,29 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
         return df_sow
 
     # Build NS T&M project summary: hours + project_type per project
-    _tm_ns  = df_ns[df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")]
-    ns_proj = (_tm_ns.groupby(["project","project_type"], as_index=False)
-                     .agg(hours=("hours","sum")))
+    # Includes: explicit T&M rows + FF projects with billable time (counts as T&M revenue)
+    # billing_type absent → include all rows
+    if "billing_type" in df_ns.columns:
+        _bt_j   = df_ns["billing_type"].fillna("").str.lower()
+        _nb_j   = df_ns.get("non_billable", pd.Series("", index=df_ns.index)).fillna("").astype(str).str.strip().str.lower()
+        _is_nb_j = _nb_j.isin(["true","t","yes","1","y"])
+        _is_tm_j = _bt_j.str.contains("t&m|time", na=False)
+        _is_ff_bill_j = _bt_j.str.contains("fixed.fee|fixed_fee|\bff\b", na=False, regex=True) & ~_is_nb_j
+        _tm_ns = df_ns[_is_tm_j | _is_ff_bill_j].copy()
+    else:
+        _tm_ns = df_ns.copy()
+    _grp_cols = [c for c in ["project", "project_type"] if c in _tm_ns.columns]
+    if not _grp_cols:
+        df_sow["ns_project"]         = None
+        df_sow["ns_hours_worked"]    = 0.0
+        df_sow["ns_revenue_to_date"] = 0.0
+        df_sow["ns_rate"]            = 0.0
+        df_sow["rate_alignment"]     = ""
+        df_sow["match_source"]       = "No NS project column"
+        return df_sow
+    ns_proj = (_tm_ns.groupby(_grp_cols, as_index=False)
+                     .agg(hours=("hours","sum")) if "hours" in _tm_ns.columns
+               else _tm_ns[_grp_cols].drop_duplicates().assign(hours=0.0))
     ns_rate_by_proj = {}
     if "ns_rate" in _tm_ns.columns:
         ns_rate_by_proj = (_tm_ns[_tm_ns["ns_rate"] > 0]
