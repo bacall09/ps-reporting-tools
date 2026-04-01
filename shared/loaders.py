@@ -709,7 +709,7 @@ def get_billing_mismatches(df_ns: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = df_ns.copy()
-    df["hours"] = pd.to_numeric(df.get("hours", 0), errors="coerce").fillna(0)
+    df["hours"] = pd.to_numeric(df["hours"] if "hours" in df.columns else pd.Series(0, index=df.index), errors="coerce").fillna(0)
 
     bt  = df["billing_type"].fillna("").str.strip().str.lower()
     nb_raw = df.get("non_billable", pd.Series("", index=df.index)).fillna("").astype(str).str.strip().str.lower()
