@@ -155,11 +155,26 @@ if df_tm_sow is not None:
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">Total Revenue</div>',unsafe_allow_html=True)
 
-# ── Build monthly totals for trend calculations ───────────────────────────────
-# Use full-month slices (not pro-rated) for MoM and run rate
-_monthly_totals = (slices[slices["period"].isin(ytd_months)]
-                   .groupby("period")["usd_amount"].sum()
-                   .sort_index())
+# ── Pre-compute T&M actuals here so they feed top-line totals ────────────────
+# (full computation happens later; this gives us monthly totals for the bubbles)
+_tm_monthly_early = pd.Series(dtype=float)
+if df_ns is not None:
+    try:
+        _tma_early = calc_tm_monthly_actuals(df_ns, df_tm_sow)
+        if not _tma_early.empty and "period" in _tma_early.columns:
+            _tm_monthly_early = (
+                _tma_early[_tma_early["period"].isin(ytd_months)]
+                .groupby("period")["revenue_usd"].sum()
+            )
+    except Exception:
+        pass
+
+# ── Build monthly totals — FF + T&M combined ─────────────────────────────────
+_ff_monthly = (slices[slices["period"].isin(ytd_months)]
+               .groupby("period")["usd_amount"].sum()
+               .sort_index()) if not slices.empty else pd.Series(dtype=float)
+
+_monthly_totals = _ff_monthly.add(_tm_monthly_early, fill_value=0).sort_index()
 
 # MoM growth: compare last two complete months
 _complete_months = [m for m in sorted(_monthly_totals.index) if m < this_month]
@@ -180,10 +195,22 @@ else:
 _avg_monthly = _monthly_totals[_monthly_totals.index < this_month].mean() if len(_complete_months) >= 1 else 0
 _run_rate    = _avg_monthly * 12
 
-ytd_total  = ytd_df["usd_amount"].sum()
-qtd_total  = qtd_df["usd_amount"].sum()
-mtd_total  = slices_mtd["usd_amount"].sum()
-full_month = slices[slices["period"]==this_month]["usd_amount"].sum()
+# FF component
+_ff_ytd   = ytd_df["usd_amount"].sum()   if not ytd_df.empty   else 0.0
+_ff_qtd   = qtd_df["usd_amount"].sum()   if not qtd_df.empty   else 0.0
+_ff_mtd   = slices_mtd["usd_amount"].sum() if not slices_mtd.empty else 0.0
+_ff_full  = slices[slices["period"]==this_month]["usd_amount"].sum() if not slices.empty else 0.0
+
+# T&M component (from early pre-computation)
+_tm_ytd   = float(_tm_monthly_early[_tm_monthly_early.index.isin(ytd_months)].sum())
+_tm_qtd   = float(_tm_monthly_early[_tm_monthly_early.index.isin(q_months)].sum())
+_tm_mtd   = float(_tm_monthly_early.get(this_month, 0) * mtd_scale)
+_tm_full  = float(_tm_monthly_early.get(this_month, 0))
+
+ytd_total  = _ff_ytd  + _tm_ytd
+qtd_total  = _ff_qtd  + _tm_qtd
+mtd_total  = _ff_mtd  + _tm_mtd
+full_month = _ff_full + _tm_full
 
 # ── Fixed Fee metric cards ────────────────────────────────────────────────────
 if df_rev_raw is not None:
