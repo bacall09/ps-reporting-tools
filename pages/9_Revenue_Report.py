@@ -650,6 +650,18 @@ else:
             else:
                 st.warning("⚠️ No FF/Billable rows found in _tm_actuals — they may not be passing the billing type filter")
 
+        # Extra: show raw tm row counts before groupby by checking df_ns directly
+        if df_ns_session is not None and "billing_type" in df_ns_session.columns:
+            _bt_chk = df_ns_session["billing_type"].fillna("").str.lower()
+            _nb_chk = df_ns_session.get("non_billable", pd.Series("", index=df_ns_session.index)).fillna("").str.strip().str.lower()
+            _ff_bill_chk = _bt_chk.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True) & ~_nb_chk.isin(["true","t","yes","1","y"])
+            _tm_chk = _bt_chk.str.contains("t&m|time", na=False)
+            st.write(f"**Raw NS rows — T&M eligible:** {_tm_chk.sum()} · **FF/Billable eligible:** {_ff_bill_chk.sum()}")
+            if "period" in df_ns_session.columns:
+                st.write("**Period sample (first 3):**", df_ns_session["period"].dropna().head(3).tolist())
+            elif "date" in df_ns_session.columns:
+                st.write("**Date sample (first 3 raw):**", df_ns_session["date"].head(3).tolist())
+
     if _tm_actuals.empty:
         st.info("No T&M time entries found in the NS file.")
     else:

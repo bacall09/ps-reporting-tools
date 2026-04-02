@@ -728,6 +728,10 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
         lambda r: pd.Series(_row_revenue(r)), axis=1)
 
     # ── Aggregate by project + period ────────────────────────────────────────
+    # Ensure period has no NaT/None — groupby silently drops those rows
+    if "period" in tm.columns:
+        tm["period"] = tm["period"].fillna("").astype(str)
+        tm["period"] = tm["period"].replace({"": "unknown", "NaT": "unknown", "nan": "unknown", "None": "unknown"})
     agg_cols = ["project", "project_type", "period", "billing_flag"] + (["currency"] if "currency" in tm.columns else [])
     if "project_manager" in tm.columns:
         agg_cols.append("project_manager")
