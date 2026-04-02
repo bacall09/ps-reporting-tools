@@ -67,6 +67,8 @@ _manager_pages = [
 
 if _role in ("manager", "manager_only"):
     pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages})
+elif _role == "reporting_only":
+    pg = st.navigation({"Management": _manager_pages})
 else:
     pg = st.navigation({"My Tools": _consultant_pages})
 
