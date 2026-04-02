@@ -203,20 +203,20 @@ with st.sidebar:
     ns_ua_file = (
         st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
                          help="Required for Capacity Outlook")
-        if _upload_role in ("manager","manager_only") else None
+        if _upload_role in ("manager","manager_only","reporting_only") else None
     )
-    if _upload_role in ("manager","manager_only"):
+    if _upload_role in ("manager","manager_only","reporting_only"):
         st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Unassigned Projects</a>', unsafe_allow_html=True)
 
     rev_file = (
         st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue",
                          help="Required for Revenue Report")
-        if _upload_role in ("manager","manager_only") else None
+        if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     tm_sow_file = (
         st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow",
                          help="Required for T&M Revenue Report")
-        if _upload_role in ("manager","manager_only") else None
+        if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     for _lbl, _key, _ldr, _f in [
         ("SS DRS","df_drs",load_drs,drs_file),
