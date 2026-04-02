@@ -734,6 +734,10 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     if "period" in tm.columns:
         tm["period"] = tm["period"].fillna("").astype(str)
         tm["period"] = tm["period"].replace({"": "unknown", "NaT": "unknown", "nan": "unknown", "None": "unknown"})
+    # Also ensure all groupby key columns have no NaN — groupby silently drops NaN keys
+    for _gc in ["billing_flag", "project", "project_type", "currency", "project_manager"]:
+        if _gc in tm.columns:
+            tm[_gc] = tm[_gc].fillna("").astype(str)
     agg_cols = ["project", "project_type", "period", "billing_flag"] + (["currency"] if "currency" in tm.columns else [])
     if "project_manager" in tm.columns:
         agg_cols.append("project_manager")
@@ -743,6 +747,18 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
                   revenue_usd=("_revenue_usd", "sum"),
                   rate_local=("_rate_local", "max"),     # max for display only
                   rate_source=("_rate_source", "first")))
+
+    # Debug: store counts in a module-level var accessible from outside
+    import shared.loaders as _self_mod
+    _self_mod._last_debug = {
+        "tm_rows": len(tm),
+        "grp_rows": len(grp),
+        "agg_cols": agg_cols,
+        "tm_cols": list(tm.columns),
+        "period_sample": tm["period"].head(3).tolist() if "period" in tm.columns else [],
+        "billing_flag_sample": tm["billing_flag"].head(3).tolist() if "billing_flag" in tm.columns else [],
+        "billing_flag_nulls": int(tm["billing_flag"].isna().sum()) if "billing_flag" in tm.columns else -1,
+    }
 
     rows = []
     for _, r in grp.iterrows():

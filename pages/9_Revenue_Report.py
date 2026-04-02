@@ -665,6 +665,19 @@ else:
         else:
             st.warning("billing_flag not in _tm_actuals — FF/Billable rows may be missing from result")
 
+        # Show module-level groupby debug
+        try:
+            from shared import loaders as _ldr
+            _ld = getattr(_ldr, "_last_debug", {})
+            if _ld:
+                st.write(f"**tm rows before groupby:** {_ld.get('tm_rows')} → **grp rows after:** {_ld.get('grp_rows')}")
+                st.write(f"**agg_cols:** {_ld.get('agg_cols')}")
+                st.write(f"**period sample:** {_ld.get('period_sample')}")
+                st.write(f"**billing_flag sample:** {_ld.get('billing_flag_sample')}")
+                st.write(f"**billing_flag nulls:** {_ld.get('billing_flag_nulls')}")
+        except Exception as _e:
+            st.write(f"Debug read error: {_e}")
+
         # Extra: show raw tm row counts before groupby by checking df_ns directly
         if df_ns_session is not None and "billing_type" in df_ns_session.columns:
             _bt_chk = df_ns_session["billing_type"].fillna("").str.lower()
