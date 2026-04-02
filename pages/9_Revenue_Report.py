@@ -632,10 +632,23 @@ else:
             st.write("**non_billable unique values:**", df_ns_session["non_billable"].dropna().unique().tolist())
         if not _tm_actuals.empty and "billing_flag" in _tm_actuals.columns:
             st.write("**Revenue by billing_flag in _tm_actuals:**")
-            _flag_summary = _tm_actuals.groupby("billing_flag")["revenue_usd"].sum().reset_index()
-            _flag_summary.columns = ["billing_flag", "revenue_usd"]
+            _flag_summary = _tm_actuals.groupby("billing_flag").agg(
+                rows=("revenue_usd","count"),
+                revenue_usd=("revenue_usd","sum"),
+                hours=("hours","sum")
+            ).reset_index()
             st.dataframe(_flag_summary, hide_index=True)
             st.write(f"**Total revenue_usd in _tm_actuals:** ${_tm_actuals['revenue_usd'].sum():,.2f}")
+            # Check rate_source for FF/Billable rows specifically
+            _ff_rows = _tm_actuals[_tm_actuals["billing_flag"] == "⚠️ FF / Billable hours"]
+            if not _ff_rows.empty:
+                st.write(f"**FF/Billable rows:** {len(_ff_rows)} · revenue: ${_ff_rows['revenue_usd'].sum():,.2f}")
+                if "rate_source" in _ff_rows.columns:
+                    st.write("**FF/Billable rate_source values:**", _ff_rows["rate_source"].value_counts().to_dict())
+                if "rate_local" in _ff_rows.columns:
+                    st.write("**FF/Billable rate_local sample:**", _ff_rows["rate_local"].head(5).tolist())
+            else:
+                st.warning("⚠️ No FF/Billable rows found in _tm_actuals — they may not be passing the billing type filter")
 
     if _tm_actuals.empty:
         st.info("No T&M time entries found in the NS file.")
@@ -827,15 +840,23 @@ if df_ns_session is not None:
     # Build a copy of NS with date properly parsed and period derived
     _det = df_ns_session.copy()
 
-    # Parse dates — handle Unix ms timestamps from Excel exports
+    # Parse dates — handle Unix second and millisecond timestamps from NS exports
     if "date" in _det.columns:
         _raw = _det["date"]
         try:
-            _num = pd.to_numeric(_raw, errors="coerce")
-            _is_ms = _num.notna() & (_num > 1e11)
-            if _is_ms.any():
-                _det["date"] = pd.to_datetime(_num.where(_is_ms), unit="ms", errors="coerce").fillna(
-                    pd.to_datetime(_raw.where(~_is_ms), errors="coerce"))
+            _num    = pd.to_numeric(_raw, errors="coerce")
+            _is_ms  = _num.notna() & (_num > 1e11)
+            _is_sec = _num.notna() & (_num > 1e8) & ~_is_ms
+            if _is_ms.any() or _is_sec.any():
+                _dt = pd.Series(pd.NaT, index=_det.index)
+                if _is_ms.any():
+                    _dt = _dt.where(~_is_ms, pd.to_datetime(_num.where(_is_ms), unit="ms", errors="coerce"))
+                if _is_sec.any():
+                    _dt = _dt.where(~_is_sec, pd.to_datetime(_num.where(_is_sec), unit="s", errors="coerce"))
+                _remaining = ~(_is_ms | _is_sec)
+                if _remaining.any():
+                    _dt = _dt.where(~_remaining, pd.to_datetime(_raw.where(_remaining), errors="coerce"))
+                _det["date"] = _dt
             else:
                 _det["date"] = pd.to_datetime(_raw, errors="coerce")
         except Exception:
