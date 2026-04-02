@@ -727,6 +727,8 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     tm[["_rate_local", "_revenue_usd", "_rate_source"]] = tm.apply(
         lambda r: pd.Series(_row_revenue(r)), axis=1)
 
+
+
     # ── Aggregate by project + period ────────────────────────────────────────
     # Ensure period has no NaT/None — groupby silently drops those rows
     if "period" in tm.columns:

@@ -622,6 +622,13 @@ if df_ns_session is None:
 else:
     _tm_actuals = calc_tm_monthly_actuals(df_ns_session, df_tm_sow)
 
+    # Store for debug
+    if not _tm_actuals.empty and "billing_flag" in _tm_actuals.columns:
+        st.session_state["_debug_actuals_flags"] = (
+            _tm_actuals.groupby("billing_flag")[["hours","revenue_usd"]]
+            .sum().reset_index().to_dict("records")
+        )
+
     with st.expander("🔍 Debug: NS file columns & T&M classification", expanded=_tm_actuals.empty):
         st.write("**Columns:**", df_ns_session.columns.tolist())
         if "billing_type" in df_ns_session.columns:
@@ -649,6 +656,14 @@ else:
                     st.write("**FF/Billable rate_local sample:**", _ff_rows["rate_local"].head(5).tolist())
             else:
                 st.warning("⚠️ No FF/Billable rows found in _tm_actuals — they may not be passing the billing type filter")
+
+        # Show _tm_actuals billing_flag breakdown
+        _dbg_flags = st.session_state.get("_debug_actuals_flags", [])
+        if _dbg_flags:
+            st.write("**_tm_actuals revenue by billing_flag:**")
+            st.dataframe(pd.DataFrame(_dbg_flags), hide_index=True)
+        else:
+            st.warning("billing_flag not in _tm_actuals — FF/Billable rows may be missing from result")
 
         # Extra: show raw tm row counts before groupby by checking df_ns directly
         if df_ns_session is not None and "billing_type" in df_ns_session.columns:
