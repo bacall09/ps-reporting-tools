@@ -670,57 +670,6 @@ else:
         elif _unrated > 0:
             st.caption(f"⚠️ {_unrated} project-month rows have no matched rate — revenue shown as $0.")
 
-        # ── Currency breakdown table ──────────────────────────────────────────
-        if "currency" in _tm_actuals.columns:
-            from shared.config import get_fx_rate, FX_RATES_TO_USD
-            _all_periods = sorted(_tm_actuals["period"].unique())
-
-            # Build pivot: rows = currency, cols = months
-            _cur_grp = (_tm_actuals[_tm_actuals["revenue_usd"] > 0]
-                        .groupby(["currency", "period"])
-                        .agg(revenue_local=("rate_local", lambda x: (x * _tm_actuals.loc[x.index, "hours"]).sum())
-                             if "rate_local" in _tm_actuals.columns
-                             else ("revenue_usd", "sum"),
-                             revenue_usd=("revenue_usd", "sum"),
-                             hours=("hours", "sum"))
-                        .reset_index())
-
-            # Simpler: group hours × rate_local for local, revenue_usd for converted
-            _cur_rows = []
-            for _cur, _cdf in _tm_actuals[_tm_actuals["revenue_usd"] > 0].groupby("currency"):
-                _row = {"Currency": _cur}
-                _total_usd = 0
-                for _p in _all_periods:
-                    _pdf = _cdf[_cdf["period"] == _p]
-                    _rev_usd = float(_pdf["revenue_usd"].sum())
-                    _rev_local = float((_pdf["rate_local"] * _pdf["hours"]).sum()) if "rate_local" in _pdf.columns else _rev_usd
-                    _fx = get_fx_rate(_cur, _p)
-                    _mo = pd.Timestamp(_p + "-01").strftime("%b")
-                    _row[_mo] = f"${_rev_usd:,.0f}" + (f" ({_cur} {_rev_local:,.0f})" if _cur != "USD" else "")
-                    _total_usd += _rev_usd
-                _row["Total USD"] = f"${_total_usd:,.0f}"
-                _cur_rows.append(_row)
-
-            # Add FX reference row
-            if _cur_rows:
-                _fx_row = {"Currency": "FX Rate used"}
-                for _p in _all_periods:
-                    _mo = pd.Timestamp(_p + "-01").strftime("%b")
-                    _rates = []
-                    for _cur in [r["Currency"] for r in _cur_rows if r["Currency"] != "USD"]:
-                        _fx = get_fx_rate(_cur, _p)
-                        if _fx != 1.0:
-                            _rates.append(f"{_cur}: {_fx:.4f}")
-                    _fx_row[_mo] = " · ".join(_rates) if _rates else "—"
-                _fx_row["Total USD"] = ""
-                _cur_rows.append(_fx_row)
-
-                with st.expander("💱 Revenue by Currency (with FX conversion)", expanded=False):
-                    st.caption("All revenue converted to USD using monthly average FX rates from shared/config.py. "
-                               "Local currency amounts shown in brackets.")
-                    _cur_df = pd.DataFrame(_cur_rows)
-                    st.dataframe(_cur_df, use_container_width=True, hide_index=True)
-
         def _tm_actuals_pivot(df, dim):
             if df.empty or dim not in df.columns: return pd.DataFrame()
             all_periods = sorted(df["period"].unique())
@@ -757,7 +706,40 @@ else:
         _tm_piv_rgn  = _tm_actuals_pivot(_tm_actuals, "region")
         _tm_piv_prod = _tm_actuals_pivot(_tm_actuals, "product")
 
-        tab1, tab2 = st.tabs(["By Region", "By Product"])
+        # ── Currency pivot ────────────────────────────────────────────────────
+        _tm_piv_cur = pd.DataFrame()
+        if "currency" in _tm_actuals.columns:
+            from shared.config import get_fx_rate
+            _all_periods = sorted(_tm_actuals["period"].unique())
+            _cur_rows = []
+            for _cur, _cdf in _tm_actuals[_tm_actuals["revenue_usd"] > 0].groupby("currency"):
+                _row = {"Currency": _cur}
+                _total_usd = 0
+                for _p in _all_periods:
+                    _pdf = _cdf[_cdf["period"] == _p]
+                    _rev_usd   = float(_pdf["revenue_usd"].sum())
+                    _rev_local = float((_pdf["rate_local"] * _pdf["hours"]).sum()) if "rate_local" in _pdf.columns else _rev_usd
+                    _mo = pd.Timestamp(_p + "-01").strftime("%b")
+                    _row[_mo] = f"${_rev_usd:,.0f}" + (f" ({_cur} {_rev_local:,.0f})" if _cur != "USD" else "")
+                    _total_usd += _rev_usd
+                _row["Total USD"] = f"${_total_usd:,.0f}"
+                _cur_rows.append(_row)
+            # FX reference row
+            _fx_row = {"Currency": "— FX Rate —"}
+            for _p in _all_periods:
+                _mo = pd.Timestamp(_p + "-01").strftime("%b")
+                _rates = []
+                for _cr in [r["Currency"] for r in _cur_rows if r["Currency"] != "USD"]:
+                    _fx = get_fx_rate(_cr, _p)
+                    if _fx != 1.0:
+                        _rates.append(f"{_cr}: {_fx:.4f}")
+                _fx_row[_mo] = " · ".join(_rates) if _rates else "—"
+            _fx_row["Total USD"] = ""
+            _cur_rows.append(_fx_row)
+            _tm_piv_cur = pd.DataFrame(_cur_rows)
+
+        _cur_tab_label = "By Currency 💱" if not _tm_piv_cur.empty else "By Currency"
+        tab1, tab2, tab3 = st.tabs(["By Region", "By Product", _cur_tab_label])
         with tab1:
             if not _tm_piv_rgn.empty:
                 st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
@@ -766,6 +748,13 @@ else:
             if not _tm_piv_prod.empty:
                 st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
                              use_container_width=True, hide_index=True)
+        with tab3:
+            if not _tm_piv_cur.empty:
+                st.caption("Revenue converted to USD using monthly average FX rates (shared/config.py). "
+                           "Local currency amounts shown in brackets.")
+                st.dataframe(_tm_piv_cur, use_container_width=True, hide_index=True)
+            else:
+                st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
 
 # ── Billing Exceptions ────────────────────────────────────────────────────────
 if df_ns_session is not None:
