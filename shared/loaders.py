@@ -278,7 +278,30 @@ def load_ns_time(file):
     rename = {col: NS_COL_MAP_OUT[col.strip().lower()] for col in df.columns if col.strip().lower() in NS_COL_MAP_OUT}
     df = df.rename(columns=rename)
     if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        # Handle Unix timestamps from NS exports:
+        #   - Unix seconds (10 digits, ~1e9): e.g. 1767225600 = 2026-01-01
+        #   - Unix milliseconds (13 digits, ~1e12): e.g. 1767225600000
+        #   - String dates: "3/11/26", "2026-03-11" etc.
+        _date_raw = df["date"]
+        try:
+            _parsed = pd.to_numeric(_date_raw, errors="coerce")
+            _is_ms  = _parsed.notna() & (_parsed > 1e11)   # 13-digit ms timestamps
+            _is_sec = _parsed.notna() & (_parsed > 1e8) & ~_is_ms  # 10-digit second timestamps
+            if _is_ms.any() or _is_sec.any():
+                _dt = pd.Series(pd.NaT, index=df.index)
+                if _is_ms.any():
+                    _dt = _dt.where(~_is_ms, pd.to_datetime(_parsed.where(_is_ms), unit="ms", errors="coerce"))
+                if _is_sec.any():
+                    _dt = _dt.where(~_is_sec, pd.to_datetime(_parsed.where(_is_sec), unit="s", errors="coerce"))
+                # Fill remaining with string parse
+                _remaining = ~(_is_ms | _is_sec)
+                if _remaining.any():
+                    _dt = _dt.where(~_remaining, pd.to_datetime(_date_raw.where(_remaining), errors="coerce"))
+                df["date"] = _dt
+            else:
+                df["date"] = pd.to_datetime(_date_raw, errors="coerce")
+        except Exception:
+            df["date"] = pd.to_datetime(_date_raw, errors="coerce")
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     if "ns_rate" in df.columns:
@@ -587,10 +610,25 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     if tm.empty:
         return pd.DataFrame()
 
-    # Ensure period column
+    # Ensure period column — handle Unix second/ms timestamps
     if "period" not in tm.columns:
         if "date" in tm.columns:
-            tm["date"]   = pd.to_datetime(tm["date"], errors="coerce")
+            _d_raw  = tm["date"]
+            _d_num  = pd.to_numeric(_d_raw, errors="coerce")
+            _d_ms   = _d_num.notna() & (_d_num > 1e11)
+            _d_sec  = _d_num.notna() & (_d_num > 1e8) & ~_d_ms
+            if _d_ms.any() or _d_sec.any():
+                _dt = pd.Series(pd.NaT, index=tm.index)
+                if _d_ms.any():
+                    _dt = _dt.where(~_d_ms, pd.to_datetime(_d_num.where(_d_ms), unit="ms", errors="coerce"))
+                if _d_sec.any():
+                    _dt = _dt.where(~_d_sec, pd.to_datetime(_d_num.where(_d_sec), unit="s", errors="coerce"))
+                _rem = ~(_d_ms | _d_sec)
+                if _rem.any():
+                    _dt = _dt.where(~_rem, pd.to_datetime(_d_raw.where(_rem), errors="coerce"))
+                tm["date"] = _dt
+            else:
+                tm["date"] = pd.to_datetime(_d_raw, errors="coerce")
             tm["period"] = tm["date"].dt.strftime("%Y-%m")
         else:
             return pd.DataFrame()
@@ -655,37 +693,20 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
                     break
         return PS_REGION_MAP.get(str(loc), "Other")
 
-    # ── Aggregate by project + period ────────────────────────────────────────
-    agg_cols = ["project", "project_type", "period", "billing_flag"] + (["currency"] if "currency" in tm.columns else [])
-    if "project_manager" in tm.columns:
-        agg_cols.append("project_manager")
+    # ── Calculate revenue per row BEFORE grouping to avoid rate aggregation errors ──
+    # Using max(rate) across a group then multiplying by sum(hours) is wrong when
+    # employees on the same project have different rates in the same period.
+    from shared.config import get_fx_rate as _get_fx
+
     if "ns_rate" in tm.columns:
         tm["ns_rate"] = pd.to_numeric(tm["ns_rate"], errors="coerce").fillna(0)
-        # Separate billable from non-billable for aggregation
-        grp_bill = tm[~tm["_is_nb"]].groupby(agg_cols, as_index=False).agg(
-            hours=("hours","sum"), ns_rate=("ns_rate","max"))
-        grp_nb   = tm[tm["_is_nb"]].groupby(agg_cols, as_index=False).agg(
-            hours=("hours","sum"), ns_rate=("ns_rate","max"))
-        grp = pd.concat([grp_bill, grp_nb], ignore_index=True)
-    else:
-        grp_bill = tm[~tm["_is_nb"]].groupby(agg_cols, as_index=False)["hours"].sum()
-        grp_nb   = tm[tm["_is_nb"]].groupby(agg_cols, as_index=False)["hours"].sum()
-        grp = pd.concat([grp_bill, grp_nb], ignore_index=True)
 
-    rows = []
-    for _, r in grp.iterrows():
-        proj_l  = str(r["project"]).strip().lower()
-        flag    = str(r.get("billing_flag", "") or "")
-        # Only zero revenue for T&M/Non-Billable — FF/Billable hours still earn revenue
-        is_nb   = flag == "⚠️ T&M / Non-Billable"
-        ns_rate = float(r.get("ns_rate", 0) or 0) if "ns_rate" in grp.columns else 0.0
-
-        if is_nb:
-            # Non-billable T&M — show hours, zero revenue, flag it
-            rate, source = 0.0, "Non-Billable"
-        elif ns_rate > 0:
-            rate, source = ns_rate, "NS rate"
-        else:
+    def _row_revenue(row):
+        if row["_is_nb"]:
+            return 0.0, 0.0, "Non-Billable"
+        rate  = float(row.get("ns_rate", 0) or 0)
+        if rate == 0:
+            proj_l = str(row.get("project", "")).strip().lower()
             rate   = rate_by_project.get(proj_l, 0.0)
             source = "Project match" if rate > 0 else ""
             if rate == 0:
@@ -695,35 +716,58 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
                         break
             if rate == 0:
                 source = "No SFDC Opp" if df_sow is not None else "No rate"
-
-        pm       = r.get("project_manager", "") if "project_manager" in grp.columns else ""
-        region   = _get_region(pm)
-        prod     = match_product(str(r.get("project_type", "")))
-        hrs      = float(r["hours"])
-        currency = str(r.get("currency", "USD") or "USD").strip().upper() if "currency" in grp.columns else "USD"
-        period   = str(r["period"])
-
-        # Apply FX conversion if rate is in local currency
-        if currency != "USD" and rate > 0:
-            from shared.config import get_fx_rate
-            fx       = get_fx_rate(currency, period)
-            rate_usd = rate * fx
-            source   = source + f" (×{fx:.4f} {currency}→USD)"
         else:
-            rate_usd = rate
+            source = "NS rate"
+        cur = str(row.get("currency", "USD") or "USD").strip().upper()
+        per = str(row.get("period", ""))
+        fx  = _get_fx(cur, per) if cur != "USD" else 1.0
+        rev = round(float(row["hours"]) * rate * fx, 2)
+        return rate, rev, source + (f" (×{fx:.4f} {cur}→USD)" if cur != "USD" and fx != 1.0 else "")
+
+    tm[["_rate_local", "_revenue_usd", "_rate_source"]] = tm.apply(
+        lambda r: pd.Series(_row_revenue(r)), axis=1)
+
+
+
+    # ── Aggregate by project + period ────────────────────────────────────────
+    # Ensure period has no NaT/None — groupby silently drops those rows
+    if "period" in tm.columns:
+        tm["period"] = tm["period"].fillna("").astype(str)
+        tm["period"] = tm["period"].replace({"": "unknown", "NaT": "unknown", "nan": "unknown", "None": "unknown"})
+    # Also ensure all groupby key columns have no NaN — groupby silently drops NaN keys
+    for _gc in ["billing_flag", "project", "project_type", "currency", "project_manager"]:
+        if _gc in tm.columns:
+            tm[_gc] = tm[_gc].fillna("").astype(str)
+    agg_cols = ["project", "project_type", "period", "billing_flag"] + (["currency"] if "currency" in tm.columns else [])
+    if "project_manager" in tm.columns:
+        agg_cols.append("project_manager")
+
+    grp = (tm.groupby(agg_cols, as_index=False)
+             .agg(hours=("hours", "sum"),
+                  revenue_usd=("_revenue_usd", "sum"),
+                  rate_local=("_rate_local", "max"),     # max for display only
+                  rate_source=("_rate_source", "first")))
+
+    rows = []
+    for _, r in grp.iterrows():
+        flag    = str(r.get("billing_flag", "") or "")
+        pm      = r.get("project_manager", "") if "project_manager" in grp.columns else ""
+        region  = _get_region(pm)
+        prod    = match_product(str(r.get("project_type", "")))
+        cur     = str(r.get("currency", "USD") or "USD").strip().upper() if "currency" in grp.columns else "USD"
 
         rows.append({
-            "period":          period,
+            "period":          str(r["period"]),
             "project":         r["project"],
             "product":         prod,
             "region":          region,
             "project_manager": pm,
-            "currency":        currency,
-            "hours":           hrs,
-            "rate_local":      rate,
-            "rate_usd":        round(rate_usd, 4),
-            "revenue_usd":     round(hrs * rate_usd, 2),
-            "rate_source":     source,
+            "currency":        cur,
+            "hours":           float(r["hours"]),
+            "rate_local":      float(r.get("rate_local", 0) or 0),
+            "rate_usd":        float(r.get("rate_local", 0) or 0),
+            "revenue_usd":     round(float(r["revenue_usd"]), 2),
+            "rate_source":     str(r.get("rate_source", "") or ""),
             "billing_flag":    flag,
         })
 

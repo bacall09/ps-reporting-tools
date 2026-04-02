@@ -625,14 +625,22 @@ else:
     with st.expander("🔍 Debug: NS file columns & billing type values", expanded=_tm_actuals.empty):
         st.write("**Columns:**", df_ns_session.columns.tolist())
         if "billing_type" in df_ns_session.columns:
+            _bt_chk = df_ns_session["billing_type"].fillna("").str.lower()
+            _nb_chk = df_ns_session.get("non_billable", pd.Series("", index=df_ns_session.index)).fillna("").str.strip().str.lower()
+            _ff_chk = _bt_chk.str.contains("fixed fee|fixed.fee|fixed_fee|\\bff\\b", na=False, regex=True) & ~_nb_chk.isin(["true","t","yes","1","y"])
+            _tm_chk = _bt_chk.str.contains("t&m|time", na=False)
             st.write("**billing_type unique values:**", df_ns_session["billing_type"].dropna().unique().tolist())
+            st.write(f"**T&M eligible rows:** {_tm_chk.sum()} · **FF/Billable eligible rows:** {_ff_chk.sum()}")
         else:
             st.warning("`billing_type` column not found — check NS export includes 'Billing Type' column")
         if "non_billable" in df_ns_session.columns:
             st.write("**non_billable unique values:**", df_ns_session["non_billable"].dropna().unique().tolist())
-        else:
-            st.write("`non_billable` column not present")
-
+        if not _tm_actuals.empty and "billing_flag" in _tm_actuals.columns:
+            _flag_summary = _tm_actuals.groupby("billing_flag").agg(
+                rows=("revenue_usd","count"), revenue_usd=("revenue_usd","sum"), hours=("hours","sum")
+            ).reset_index()
+            st.write("**Revenue by billing_flag:**")
+            st.dataframe(_flag_summary, hide_index=True)
     if _tm_actuals.empty:
         st.info("No T&M time entries found in the NS file.")
     else:
@@ -820,11 +828,34 @@ if df_ns_session is not None:
         "billing_flag":   "Flag",
     }
 
-    # Build a copy of NS with period derived if not present
+    # Build a copy of NS with date properly parsed and period derived
     _det = df_ns_session.copy()
+
+    # Parse dates — handle Unix second and millisecond timestamps from NS exports
+    if "date" in _det.columns:
+        _raw = _det["date"]
+        try:
+            _num    = pd.to_numeric(_raw, errors="coerce")
+            _is_ms  = _num.notna() & (_num > 1e11)
+            _is_sec = _num.notna() & (_num > 1e8) & ~_is_ms
+            if _is_ms.any() or _is_sec.any():
+                _dt = pd.Series(pd.NaT, index=_det.index)
+                if _is_ms.any():
+                    _dt = _dt.where(~_is_ms, pd.to_datetime(_num.where(_is_ms), unit="ms", errors="coerce"))
+                if _is_sec.any():
+                    _dt = _dt.where(~_is_sec, pd.to_datetime(_num.where(_is_sec), unit="s", errors="coerce"))
+                _remaining = ~(_is_ms | _is_sec)
+                if _remaining.any():
+                    _dt = _dt.where(~_remaining, pd.to_datetime(_raw.where(_remaining), errors="coerce"))
+                _det["date"] = _dt
+            else:
+                _det["date"] = pd.to_datetime(_raw, errors="coerce")
+        except Exception:
+            _det["date"] = pd.to_datetime(_raw, errors="coerce")
+        _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
+
     if "period" not in _det.columns and "date" in _det.columns:
-        _det["date"]   = pd.to_datetime(_det["date"], errors="coerce")
-        _det["period"] = _det["date"].dt.strftime("%Y-%m")
+        _det["period"] = _det["date"].str[:7]  # YYYY-MM from already-formatted string
 
     # Derive classification column
     _bt_d  = _det.get("billing_type", pd.Series("", index=_det.index)).fillna("").str.lower()
@@ -844,16 +875,16 @@ if df_ns_session is not None:
     # Revenue column
     _det["hours"]   = pd.to_numeric(_det.get("hours",   0), errors="coerce").fillna(0)
     _det["ns_rate"] = pd.to_numeric(_det.get("ns_rate", 0), errors="coerce").fillna(0)
-    _det["_rev_local"] = (_det["hours"] * _det["ns_rate"]).round(2)
 
-    # FX to USD
+    # FX to USD — single step, same logic as calc_tm_monthly_actuals to avoid rounding drift
     from shared.config import get_fx_rate
     def _to_usd(row):
         cur = str(row.get("currency", "USD") or "USD").strip().upper()
-        per = str(row.get("period", "")) 
+        per = str(row.get("period", ""))
         fx  = get_fx_rate(cur, per) if cur != "USD" else 1.0
-        return round(row["_rev_local"] * fx, 2)
-    _det["_rev_usd"] = _det.apply(_to_usd, axis=1)
+        return round(row["hours"] * row["ns_rate"] * fx, 2)
+    _det["_rev_local"] = (_det["hours"] * _det["ns_rate"]).round(2)
+    _det["_rev_usd"]   = _det.apply(_to_usd, axis=1)
 
     _det_cols = {**_detail_cols, "_classification": "Classification", "_rev_local": "Revenue (Local)", "_rev_usd": "Revenue (USD)"}
     _show_cols = [c for c in _det_cols.keys() if c in _det.columns]
