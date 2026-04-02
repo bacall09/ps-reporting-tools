@@ -278,30 +278,28 @@ def load_ns_time(file):
     rename = {col: NS_COL_MAP_OUT[col.strip().lower()] for col in df.columns if col.strip().lower() in NS_COL_MAP_OUT}
     df = df.rename(columns=rename)
     if "date" in df.columns:
-        # Handle Unix timestamps from NS exports:
-        #   - Unix seconds (10 digits, ~1e9): e.g. 1767225600 = 2026-01-01
-        #   - Unix milliseconds (13 digits, ~1e12): e.g. 1767225600000
-        #   - String dates: "3/11/26", "2026-03-11" etc.
-        _date_raw = df["date"]
-        try:
-            _parsed = pd.to_numeric(_date_raw, errors="coerce")
-            _is_ms  = _parsed.notna() & (_parsed > 1e11)   # 13-digit ms timestamps
-            _is_sec = _parsed.notna() & (_parsed > 1e8) & ~_is_ms  # 10-digit second timestamps
-            if _is_ms.any() or _is_sec.any():
-                _dt = pd.Series(pd.NaT, index=df.index)
-                if _is_ms.any():
-                    _dt = _dt.where(~_is_ms, pd.to_datetime(_parsed.where(_is_ms), unit="ms", errors="coerce"))
-                if _is_sec.any():
-                    _dt = _dt.where(~_is_sec, pd.to_datetime(_parsed.where(_is_sec), unit="s", errors="coerce"))
-                # Fill remaining with string parse
-                _remaining = ~(_is_ms | _is_sec)
-                if _remaining.any():
-                    _dt = _dt.where(~_remaining, pd.to_datetime(_date_raw.where(_remaining), errors="coerce"))
-                df["date"] = _dt
-            else:
+        # Handle Unix timestamps from NS exports (seconds or ms) as well as string dates
+        # Skip if already datetime
+        if not pd.api.types.is_datetime64_any_dtype(df["date"]):
+            _date_raw = df["date"]
+            try:
+                _parsed = pd.to_numeric(_date_raw, errors="coerce")
+                _is_ms  = _parsed.notna() & (_parsed > 1e11)
+                _is_sec = _parsed.notna() & (_parsed > 1e8) & ~_is_ms
+                if _is_ms.any() or _is_sec.any():
+                    _dt = pd.Series(pd.NaT, index=df.index)
+                    if _is_ms.any():
+                        _dt[_is_ms] = pd.to_datetime(_parsed[_is_ms], unit="ms", errors="coerce")
+                    if _is_sec.any():
+                        _dt[_is_sec] = pd.to_datetime(_parsed[_is_sec], unit="s", errors="coerce")
+                    _remaining = ~(_is_ms | _is_sec)
+                    if _remaining.any():
+                        _dt[_remaining] = pd.to_datetime(_date_raw[_remaining], errors="coerce")
+                    df["date"] = _dt
+                else:
+                    df["date"] = pd.to_datetime(_date_raw, errors="coerce")
+            except Exception:
                 df["date"] = pd.to_datetime(_date_raw, errors="coerce")
-        except Exception:
-            df["date"] = pd.to_datetime(_date_raw, errors="coerce")
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     if "ns_rate" in df.columns:
@@ -610,28 +608,31 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     if tm.empty:
         return pd.DataFrame()
 
-    # Ensure period column — handle Unix second/ms timestamps
+    # Ensure period column
     if "period" not in tm.columns:
-        if "date" in tm.columns:
-            _d_raw  = tm["date"]
-            _d_num  = pd.to_numeric(_d_raw, errors="coerce")
-            _d_ms   = _d_num.notna() & (_d_num > 1e11)
-            _d_sec  = _d_num.notna() & (_d_num > 1e8) & ~_d_ms
+        if "date" not in tm.columns:
+            return pd.DataFrame()
+        # If already a datetime dtype, use directly
+        if pd.api.types.is_datetime64_any_dtype(tm["date"]):
+            tm["period"] = tm["date"].dt.strftime("%Y-%m")
+        else:
+            _d_raw = tm["date"]
+            _d_num = pd.to_numeric(_d_raw, errors="coerce")
+            _d_ms  = _d_num.notna() & (_d_num > 1e11)
+            _d_sec = _d_num.notna() & (_d_num > 1e8) & ~_d_ms
             if _d_ms.any() or _d_sec.any():
                 _dt = pd.Series(pd.NaT, index=tm.index)
                 if _d_ms.any():
-                    _dt = _dt.where(~_d_ms, pd.to_datetime(_d_num.where(_d_ms), unit="ms", errors="coerce"))
+                    _dt[_d_ms] = pd.to_datetime(_d_num[_d_ms], unit="ms", errors="coerce")
                 if _d_sec.any():
-                    _dt = _dt.where(~_d_sec, pd.to_datetime(_d_num.where(_d_sec), unit="s", errors="coerce"))
+                    _dt[_d_sec] = pd.to_datetime(_d_num[_d_sec], unit="s", errors="coerce")
                 _rem = ~(_d_ms | _d_sec)
                 if _rem.any():
-                    _dt = _dt.where(~_rem, pd.to_datetime(_d_raw.where(_rem), errors="coerce"))
+                    _dt[_rem] = pd.to_datetime(_d_raw[_rem], errors="coerce")
                 tm["date"] = _dt
             else:
                 tm["date"] = pd.to_datetime(_d_raw, errors="coerce")
             tm["period"] = tm["date"].dt.strftime("%Y-%m")
-        else:
-            return pd.DataFrame()
 
     tm["hours"] = pd.to_numeric(tm.get("hours", 0), errors="coerce").fillna(0)
 

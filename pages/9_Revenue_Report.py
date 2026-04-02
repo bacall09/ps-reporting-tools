@@ -831,28 +831,31 @@ if df_ns_session is not None:
     # Build a copy of NS with date properly parsed and period derived
     _det = df_ns_session.copy()
 
-    # Parse dates — handle Unix second and millisecond timestamps from NS exports
+    # Parse dates — handle Unix second/ms timestamps or already-parsed datetimes
     if "date" in _det.columns:
-        _raw = _det["date"]
-        try:
-            _num    = pd.to_numeric(_raw, errors="coerce")
-            _is_ms  = _num.notna() & (_num > 1e11)
-            _is_sec = _num.notna() & (_num > 1e8) & ~_is_ms
-            if _is_ms.any() or _is_sec.any():
-                _dt = pd.Series(pd.NaT, index=_det.index)
-                if _is_ms.any():
-                    _dt = _dt.where(~_is_ms, pd.to_datetime(_num.where(_is_ms), unit="ms", errors="coerce"))
-                if _is_sec.any():
-                    _dt = _dt.where(~_is_sec, pd.to_datetime(_num.where(_is_sec), unit="s", errors="coerce"))
-                _remaining = ~(_is_ms | _is_sec)
-                if _remaining.any():
-                    _dt = _dt.where(~_remaining, pd.to_datetime(_raw.where(_remaining), errors="coerce"))
-                _det["date"] = _dt
-            else:
+        if pd.api.types.is_datetime64_any_dtype(_det["date"]):
+            _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
+        else:
+            _raw = _det["date"]
+            try:
+                _num    = pd.to_numeric(_raw, errors="coerce")
+                _is_ms  = _num.notna() & (_num > 1e11)
+                _is_sec = _num.notna() & (_num > 1e8) & ~_is_ms
+                if _is_ms.any() or _is_sec.any():
+                    _dt = pd.Series(pd.NaT, index=_det.index)
+                    if _is_ms.any():
+                        _dt[_is_ms] = pd.to_datetime(_num[_is_ms], unit="ms", errors="coerce")
+                    if _is_sec.any():
+                        _dt[_is_sec] = pd.to_datetime(_num[_is_sec], unit="s", errors="coerce")
+                    _remaining = ~(_is_ms | _is_sec)
+                    if _remaining.any():
+                        _dt[_remaining] = pd.to_datetime(_raw[_remaining], errors="coerce")
+                    _det["date"] = _dt
+                else:
+                    _det["date"] = pd.to_datetime(_raw, errors="coerce")
+            except Exception:
                 _det["date"] = pd.to_datetime(_raw, errors="coerce")
-        except Exception:
-            _det["date"] = pd.to_datetime(_raw, errors="coerce")
-        _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
+            _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
 
     if "period" not in _det.columns and "date" in _det.columns:
         _det["period"] = _det["date"].str[:7]  # YYYY-MM from already-formatted string
