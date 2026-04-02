@@ -708,7 +708,7 @@ else:
                     vals = base[present].sum(axis=1) if present else pd.Series(0,index=base.index)
                 col_vals = [float(vals.get(idx,0)) for idx in rows_index]
                 col_vals.append(sum(col_vals))
-                result[col_label] = [_fmt(v) for v in col_vals]
+                result[col_label] = [f"${v:,.0f}" for v in col_vals]
             return pd.DataFrame(result)
 
         _tm_piv_rgn  = _tm_actuals_pivot(_tm_actuals, "region")
@@ -805,14 +805,56 @@ if df_ns_session is not None:
                              "mismatch_flag":  st.column_config.TextColumn("Flag",         width="medium"),
                          })
 
-# ── Itemized Time Entry Detail ───────────────────────────────────────────────
+# ── Itemized Time Entry Detail (Excel only) ──────────────────────────────────
+# Build _det for Excel sheet — no UI rendering
+_det_excel = pd.DataFrame()
 if df_ns_session is not None:
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">Itemized Time Entry Detail</div>', unsafe_allow_html=True)
-    st.caption("All time entries from NS with their classification — use Internal ID to reconcile 1:1 against your NS report.")
+    _det = df_ns_session.copy()
 
-    # Build itemized view from raw NS session data
-    _detail_cols = {
+    # Format dates
+    if "date" in _det.columns:
+        if pd.api.types.is_datetime64_any_dtype(_det["date"]):
+            _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
+        else:
+            try:
+                _det["date"] = pd.to_datetime(_det["date"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("")
+            except Exception:
+                _det["date"] = _det["date"].astype(str)
+
+    if "period" not in _det.columns and "date" in _det.columns:
+        _det["period"] = _det["date"].astype(str).str[:7]
+
+    # Classification
+    _bt_d  = _det.get("billing_type", pd.Series("", index=_det.index)).fillna("").str.lower()
+    _nb_d  = _det.get("non_billable", pd.Series("", index=_det.index)).fillna("").astype(str).str.strip().str.lower()
+    _is_nb_d  = _nb_d.isin(["true","t","yes","1","y"])
+    _is_tm_d  = _bt_d.str.contains("t&m|time", na=False)
+    _is_ff_d  = _bt_d.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
+    _is_int_d = _bt_d.str.contains("internal", na=False)
+
+    _det["_classification"] = "Other / Unclassified"
+    _det.loc[_is_int_d,              "_classification"] = "Internal"
+    _det.loc[_is_ff_d  &  _is_nb_d, "_classification"] = "FF / Non-Billable"
+    _det.loc[_is_ff_d  & ~_is_nb_d, "_classification"] = "FF / Billable ⚠️"
+    _det.loc[_is_tm_d  &  _is_nb_d, "_classification"] = "T&M / Non-Billable ⚠️"
+    _det.loc[_is_tm_d  & ~_is_nb_d, "_classification"] = "T&M / Billable ✓"
+
+    # Revenue
+    _det["hours"]   = pd.to_numeric(_det.get("hours",   0), errors="coerce").fillna(0)
+    _det["ns_rate"] = pd.to_numeric(_det.get("ns_rate", 0), errors="coerce").fillna(0)
+
+    from shared.config import get_fx_rate as _gfx
+    def _to_usd_det(row):
+        cur = str(row.get("currency", "USD") or "USD").strip().upper()
+        per = str(row.get("period", ""))
+        fx  = _gfx(cur, per) if cur != "USD" else 1.0
+        return round(row["hours"] * row["ns_rate"] * fx, 2)
+
+    _det["_rev_local"] = (_det["hours"] * _det["ns_rate"]).round(2)
+    _det["_rev_usd"]   = _det.apply(_to_usd_det, axis=1)
+
+    # Build display DataFrame
+    _det_col_map = {
         "internal_id":    "Internal ID",
         "project_id":     "Project ID",
         "project":        "Project",
@@ -826,112 +868,13 @@ if df_ns_session is not None:
         "ns_rate":        "Rate (Local)",
         "entry_status":   "Entry Status",
         "billing_flag":   "Flag",
+        "_classification":"Classification",
+        "_rev_local":     "Revenue (Local)",
+        "_rev_usd":       "Revenue (USD)",
     }
+    _show = [c for c in _det_col_map if c in _det.columns]
+    _det_excel = _det[_show].rename(columns=_det_col_map).copy()
 
-    # Build a copy of NS with date properly parsed and period derived
-    _det = df_ns_session.copy()
-
-    # Parse dates — handle Unix second/ms timestamps or already-parsed datetimes
-    if "date" in _det.columns:
-        if pd.api.types.is_datetime64_any_dtype(_det["date"]):
-            _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
-        else:
-            _raw = _det["date"]
-            try:
-                _num    = pd.to_numeric(_raw, errors="coerce")
-                _is_ms  = _num.notna() & (_num > 1e11)
-                _is_sec = _num.notna() & (_num > 1e8) & ~_is_ms
-                if _is_ms.any() or _is_sec.any():
-                    _dt = pd.Series(pd.NaT, index=_det.index)
-                    if _is_ms.any():
-                        _dt[_is_ms] = pd.to_datetime(_num[_is_ms], unit="ms", errors="coerce")
-                    if _is_sec.any():
-                        _dt[_is_sec] = pd.to_datetime(_num[_is_sec], unit="s", errors="coerce")
-                    _remaining = ~(_is_ms | _is_sec)
-                    if _remaining.any():
-                        _dt[_remaining] = pd.to_datetime(_raw[_remaining], errors="coerce")
-                    _det["date"] = _dt
-                else:
-                    _det["date"] = pd.to_datetime(_raw, errors="coerce")
-            except Exception:
-                _det["date"] = pd.to_datetime(_raw, errors="coerce")
-            _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
-
-    if "period" not in _det.columns and "date" in _det.columns:
-        _det["period"] = _det["date"].str[:7]  # YYYY-MM from already-formatted string
-
-    # Derive classification column
-    _bt_d  = _det.get("billing_type", pd.Series("", index=_det.index)).fillna("").str.lower()
-    _nb_d  = _det.get("non_billable", pd.Series("", index=_det.index)).fillna("").astype(str).str.strip().str.lower()
-    _is_nb_d  = _nb_d.isin(["true","t","yes","1","y"])
-    _is_tm_d  = _bt_d.str.contains("t&m|time", na=False)
-    _is_ff_d  = _bt_d.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
-    _is_int_d = _bt_d.str.contains("internal", na=False)
-
-    _det["_classification"] = "Other / Unclassified"
-    _det.loc[_is_int_d,                  "_classification"] = "Internal"
-    _det.loc[_is_ff_d  &  _is_nb_d,     "_classification"] = "FF / Non-Billable"
-    _det.loc[_is_ff_d  & ~_is_nb_d,     "_classification"] = "FF / Billable ⚠️"
-    _det.loc[_is_tm_d  &  _is_nb_d,     "_classification"] = "T&M / Non-Billable ⚠️"
-    _det.loc[_is_tm_d  & ~_is_nb_d,     "_classification"] = "T&M / Billable ✓"
-
-    # Revenue column
-    _det["hours"]   = pd.to_numeric(_det.get("hours",   0), errors="coerce").fillna(0)
-    _det["ns_rate"] = pd.to_numeric(_det.get("ns_rate", 0), errors="coerce").fillna(0)
-
-    # FX to USD — single step, same logic as calc_tm_monthly_actuals to avoid rounding drift
-    from shared.config import get_fx_rate
-    def _to_usd(row):
-        cur = str(row.get("currency", "USD") or "USD").strip().upper()
-        per = str(row.get("period", ""))
-        fx  = get_fx_rate(cur, per) if cur != "USD" else 1.0
-        return round(row["hours"] * row["ns_rate"] * fx, 2)
-    _det["_rev_local"] = (_det["hours"] * _det["ns_rate"]).round(2)
-    _det["_rev_usd"]   = _det.apply(_to_usd, axis=1)
-
-    _det_cols = {**_detail_cols, "_classification": "Classification", "_rev_local": "Revenue (Local)", "_rev_usd": "Revenue (USD)"}
-    _show_cols = [c for c in _det_cols.keys() if c in _det.columns]
-    _det_display = _det[_show_cols].rename(columns=_det_cols).copy()
-
-    # Filters
-    _fc1, _fc2, _fc3 = st.columns(3)
-    with _fc1:
-        _class_opts = ["All"] + sorted(_det["_classification"].unique().tolist())
-        _class_filter = st.selectbox("Classification", _class_opts, key="det_class_filter")
-    with _fc2:
-        _period_opts = ["All"] + sorted(_det["period"].dropna().unique().tolist()) if "period" in _det.columns else ["All"]
-        _period_filter = st.selectbox("Period", _period_opts, key="det_period_filter")
-    with _fc3:
-        _cur_opts = ["All"] + sorted(_det["currency"].dropna().unique().tolist()) if "currency" in _det.columns else ["All"]
-        _cur_filter = st.selectbox("Currency", _cur_opts, key="det_cur_filter")
-
-    _det_filtered = _det_display.copy()
-    if _class_filter  != "All": _det_filtered = _det_filtered[_det_filtered["Classification"] == _class_filter]
-    if _period_filter != "All": _det_filtered = _det_filtered[_det_filtered["Period"] == _period_filter]
-    if _cur_filter    != "All" and "Currency" in _det_filtered.columns:
-        _det_filtered = _det_filtered[_det_filtered["Currency"] == _cur_filter]
-
-    st.caption(f"{len(_det_filtered):,} rows · Revenue (Local): {_det_filtered['Revenue (Local)'].sum():,.2f} · Revenue (USD): ${_det_filtered['Revenue (USD)'].sum():,.2f}")
-
-    with st.expander(f"Show {len(_det_filtered):,} rows", expanded=False):
-        st.dataframe(_det_filtered, use_container_width=True, hide_index=True,
-                     column_config={
-                         "Internal ID":      st.column_config.TextColumn("Internal ID",    width="small"),
-                         "Project ID":       st.column_config.TextColumn("Project ID",     width="small"),
-                         "Project":          st.column_config.TextColumn("Project",        width="large"),
-                         "Employee":         st.column_config.TextColumn("Employee",       width="medium"),
-                         "Date":             st.column_config.TextColumn("Date",           width="small"),
-                         "Period":           st.column_config.TextColumn("Period",         width="small"),
-                         "Billing Type":     st.column_config.TextColumn("Billing Type",   width="small"),
-                         "Non-Billable":     st.column_config.TextColumn("Non-Billable",   width="small"),
-                         "Currency":         st.column_config.TextColumn("Currency",       width="small"),
-                         "Hours":            st.column_config.NumberColumn("Hours",        width="small",  format="%.2f"),
-                         "Rate (Local)":     st.column_config.NumberColumn("Rate (Local)", width="small",  format="%.2f"),
-                         "Revenue (Local)":  st.column_config.NumberColumn("Rev (Local)",  width="small",  format="%.2f"),
-                         "Revenue (USD)":    st.column_config.NumberColumn("Rev (USD)",    width="small",  format="%.2f"),
-                         "Classification":   st.column_config.TextColumn("Classification", width="medium"),
-                         "Flag":             st.column_config.TextColumn("Flag",           width="medium"),
-                     })
 
 # ── Excel download ─────────────────────────────────────────────────────────
 st.markdown("")
@@ -956,6 +899,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
                             "sow_amount_usd","sow_rate_usd","ns_project",
                             "ns_hours_worked","ns_revenue_to_date"]
                if c in df_tm.columns]].to_excel(_xl, sheet_name="TM Detail", index=False)
+    if not _det_excel.empty:
+        _det_excel.to_excel(_xl, sheet_name="Time Entry Detail", index=False)
 
 st.download_button(
     "⬇ Download Revenue Report (Excel)",
