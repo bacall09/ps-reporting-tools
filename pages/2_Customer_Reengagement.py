@@ -971,17 +971,7 @@ def main():
         except Exception as e:
             st.warning(f"Could not calculate inactivity from NS data: {e}")
 
-    # ── Debug: column map verification (remove once column issues are resolved) ──
-    with st.expander("🔍 Debug: DRS column check", expanded=False):
-        if df_drs is not None:
-            st.write("**Columns present:**", df_drs.columns.tolist())
-            st.write("**project_name present:**", "project_name" in df_drs.columns)
-            if "project_name" not in df_drs.columns:
-                st.error("⚠️ `project_name` column is missing. Check that your DRS export has a 'Project Name' column header.")
-        else:
-            st.write("df_drs is None — no DRS data loaded.")
-
-    # ── Summary metrics ───────────────────────────────────────────────────
+        # ── Summary metrics ───────────────────────────────────────────────────
     msg_parts = []
     if df_sfdc is not None:
         msg_parts.append(f"SFDC: {df_sfdc['account'].nunique() if 'account' in df_sfdc.columns else '?'} accounts · {df_sfdc['opportunity'].nunique() if 'opportunity' in df_sfdc.columns else '?'} opportunities")
@@ -1557,12 +1547,7 @@ Used when no NS entries and no milestones are present.
                 cc_emails = cc_emails + [_extra_cc.strip()]
         else:
             st.warning("Email and/or contact name columns not detected. Check your export headers.")
-            with st.expander("🔍 Debug — columns found in your SFDC file"):
-                st.caption("These are the column names after mapping. If you see your email/name columns below under a different name, let your admin know to add it to the column map.")
-                st.write(sorted(proj_rows.columns.tolist()) if not proj_rows.empty else "No rows matched for this project")
-                if df_sfdc is not None:
-                    st.caption("All columns in loaded SFDC file:")
-                    st.write(sorted(df_sfdc.columns.tolist()))
+
             to_emails = []
             cc_emails = []
 

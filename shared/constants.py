@@ -26,6 +26,12 @@ MANAGER_CONSULTANTS = [
     "Swanson, Patti",      # Consultant & Director of PS
 ]
 
+# Reporting only: access to management reports, do NOT appear in consultant dropdowns
+REPORTING_ONLY = [
+    "Soares, Erica",    # Finance — reporting access only
+    "Lindahl, Jenni",   # Reporting access only
+]
+
 # No access (leavers or no Streamlit access)
 NO_ACCESS = [
     "Alam, Laisa",          # No longer employed
@@ -37,11 +43,13 @@ NO_ACCESS = [
 ]
 
 def get_role(name: str) -> str:
-    """Return 'manager_only' | 'manager' | 'consultant' | 'no_access'."""
+    """Return 'manager_only' | 'manager' | 'consultant' | 'reporting_only' | 'no_access'."""
     if any(name.startswith(m) for m in MANAGERS_ONLY):
         return "manager_only"
     if name in NO_ACCESS:
         return "no_access"
+    if name in REPORTING_ONLY:
+        return "reporting_only"
     if name in MANAGER_CONSULTANTS:
         return "manager"
     return "consultant"
@@ -55,6 +63,9 @@ def is_consultant(name: str) -> bool:
 # ── Employee roster ────────────────────────────────────────────────────────────
 # util_exempt: True = no utilisation targets (managers, solution architects etc.)
 EMPLOYEE_ROLES = {
+    # ── Reporting Only (Finance / external reporting access) ─────────────────
+    "Soares, Erica":          {"role": "Reporting",  "products": [], "learning": [], "util_exempt": True},
+    "Lindahl, Jenni":         {"role": "Reporting",  "products": [], "learning": [], "util_exempt": True},
     # ── Project Managers (no product delivery) ────────────────────────────────
     "Barrio, Nairobi":        {"role": "Project Manager",    "products": [], "learning": []},
     "Cadelina, Macoy":        {"role": "Project Manager",    "products": [], "learning": [], "note": "New as of March 3 2026"},

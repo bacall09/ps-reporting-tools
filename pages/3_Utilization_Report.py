@@ -1815,7 +1815,7 @@ def main():
     # Show note about data scope
     _logged_in = st.session_state.get("consultant_name", "")
     from shared.constants import get_role as _gr
-    if _gr(_logged_in) in ("manager","manager_only"):
+    if _gr(_logged_in) in ("manager","manager_only","reporting_only"):
         st.info("ℹ️ This report processes **all employees in the uploaded NS file**. "
                 "To see the full team, upload a full-team NS export (all employees, not filtered by name).")
 

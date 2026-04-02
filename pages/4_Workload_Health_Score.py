@@ -1539,7 +1539,7 @@ def main():
                 _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
             )
             _role = _get_role(_session_name)
-            _is_mgr = _role in ("manager", "manager_only")
+            _is_mgr = _role in ("manager", "manager_only", "reporting_only")
             _pm_col = next((c for c in ["project_manager", "consultant"] if c in ss_df.columns), None)
             if _va_region:
                 _rc = get_region_consultants(_va_region, _EL2, _RM2, _RO2, _AE2)

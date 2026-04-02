@@ -42,8 +42,8 @@ st.markdown("""
 # ── Identity / access ─────────────────────────────────────────────────────────
 from shared.constants import get_role
 _role = get_role(st.session_state.get("consultant_name",""))
-if _role not in ("manager","manager_only"):
-    st.warning("This page is available to managers only.")
+if _role not in ("manager", "manager_only", "reporting_only"):
+    st.warning("This page is available to managers and reporting users only.")
     st.stop()
 
 today      = pd.Timestamp.today().normalize()
@@ -622,25 +622,7 @@ if df_ns_session is None:
 else:
     _tm_actuals = calc_tm_monthly_actuals(df_ns_session, df_tm_sow)
 
-    with st.expander("🔍 Debug: NS file columns & billing type values", expanded=_tm_actuals.empty):
-        st.write("**Columns:**", df_ns_session.columns.tolist())
-        if "billing_type" in df_ns_session.columns:
-            _bt_chk = df_ns_session["billing_type"].fillna("").str.lower()
-            _nb_chk = df_ns_session.get("non_billable", pd.Series("", index=df_ns_session.index)).fillna("").str.strip().str.lower()
-            _ff_chk = _bt_chk.str.contains("fixed fee|fixed.fee|fixed_fee|\\bff\\b", na=False, regex=True) & ~_nb_chk.isin(["true","t","yes","1","y"])
-            _tm_chk = _bt_chk.str.contains("t&m|time", na=False)
-            st.write("**billing_type unique values:**", df_ns_session["billing_type"].dropna().unique().tolist())
-            st.write(f"**T&M eligible rows:** {_tm_chk.sum()} · **FF/Billable eligible rows:** {_ff_chk.sum()}")
-        else:
-            st.warning("`billing_type` column not found — check NS export includes 'Billing Type' column")
-        if "non_billable" in df_ns_session.columns:
-            st.write("**non_billable unique values:**", df_ns_session["non_billable"].dropna().unique().tolist())
-        if not _tm_actuals.empty and "billing_flag" in _tm_actuals.columns:
-            _flag_summary = _tm_actuals.groupby("billing_flag").agg(
-                rows=("revenue_usd","count"), revenue_usd=("revenue_usd","sum"), hours=("hours","sum")
-            ).reset_index()
-            st.write("**Revenue by billing_flag:**")
-            st.dataframe(_flag_summary, hide_index=True)
+
     if _tm_actuals.empty:
         st.info("No T&M time entries found in the NS file.")
     else:
