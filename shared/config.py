@@ -35,14 +35,14 @@ UTIL_EXEMPT_EMPLOYEES = ["swanson"]  # case-insensitive match
 
 # ── Employee → Location lookup (drives avail hours + PS region) ──────────────
 EMPLOYEE_LOCATION = {
+    # ── Consultants ───────────────────────────────────────────────────────────
     "Arestarkhov, Yaroslav":  "Czech Republic",
     "Carpen, Anamaria":       "Spain",
-    "Centinaje, Rhodechild":  "Manila (PH)",
-    "Dolha, Madalina":         "Faroe Islands",
-    "Dolha":                    "Faroe Islands",
-    "Cooke, Ellen":             "Northern Ireland",
+    "Cooke, Ellen":           "Northern Ireland",
     "Cruz, Daniel":           "Manila (PH)",
     "DiMarco, Nicole R":      "USA",
+    "Dolha, Madalina":        "Faroe Islands",
+    "Finalle-Newton, Jesse":  "USA",
     "Gardner, Cheryll L":     "USA",
     "Hopkins, Chris":         "USA",
     "Ickler, Georganne":      "USA",
@@ -51,30 +51,54 @@ EMPLOYEE_LOCATION = {
     "Lappin, Thomas":         "Northern Ireland",
     "Longalong, Santiago":    "Manila (PH)",
     "Mohammad, Manaan":       "Canada",
-    "Morris, Lisa":           "Sydney (NSW)",
-    "Pallone, Daniel":        "Sydney (NSW)",
+    "Morris, Lisa":           "Sydney (AU)",
     "NAQVI, SYED":            "Canada",
+    "Olson, Austin D":        "USA",
+    "Pallone, Daniel":        "Sydney (AU)",
     "Raykova, Silvia":        "Netherlands",
     "Selvakumar, Sajithan":   "Canada",
     "Snee, Stefanie J":       "USA",
-    "Stone, Matt":            "USA",
+    "Swanson, Patti":         "UK",
     "Tuazon, Carol":          "Manila (PH)",
     "Zoric, Ivan":            "Serbia",
-    "Murphy, Conor":          "USA",
+    # ── Solution Architects ───────────────────────────────────────────────────
     "Bell, Stuart":           "USA",
-    "Cloete":                 "South Africa",  # location TBD — flagged
-    "Hamilton C":             "USA",           # location TBD — flagged
-    "Swanson":                "USA",           # util-exempt
+    "Murphy, Conor":          "USA",
+    # ── Developers ────────────────────────────────────────────────────────────
+    "Church, Jason G":        "USA",
+    "Dunn, Steven":           "USA",
+    "Law, Brandon":           "USA",
+    "Quiambao, Generalyn":    "Manila (PH)",
+    # ── Project Managers ──────────────────────────────────────────────────────
+    "Barrio, Nairobi":        "USA",
+    "Cadelina, Macoy":        "Manila (PH)",
+    "Hughes, Madalyn":        "USA",
+    "Porangada, Suraj":       "USA",
+    # ── Managers only ─────────────────────────────────────────────────────────
+    "Longi":                  "Sydney (AU)",
+    "Prince":                 "USA",
+    "Rusnak":                 "USA",
+    # ── Leavers (kept for historical avail hours lookups) ─────────────────────
+    "Centinaje, Rhodechild":  "Manila (PH)",
+    "Chan, Joven":            "Manila (PH)",
+    "Cloete, Bronwyn":        "Netherlands",  # was Capture/Approvals — left Feb 2026
+    "Hamilton, Julie C":      "USA",
+    "Hernandez, Camila":      "USA",
+    "Rushbrook, Emma C":      "Sydney (AU)",
+    "Stone, Matt":            "USA",
+    "Strauss, John W":        "USA",
 }
 
 # ── PS Region overrides (employee name → region, bypasses location mapping) ──
 PS_REGION_OVERRIDE = {
-    "NAQVI, SYED":  "EMEA",  # Canada-based but reports into EMEA
-    "Cruz, Daniel": "NOAM",  # Manila-based but reports into NOAM
+    "NAQVI, SYED":         "EMEA",  # Canada-based but reports into EMEA
+    "Cruz, Daniel":        "NOAM",  # Manila-based but reports into NOAM
+    "Quiambao, Generalyn": "NOAM",  # Manila-based but reports into NOAM
+    "Cadelina, Macoy":     "NOAM",  # Manila-based but reports into NOAM
 }
 
 PS_REGION_MAP = {
-    "Sydney (NSW)":     "APAC",
+    "Sydney (AU)":      "APAC",
     "Manila (PH)":      "APAC",
     "UK":               "EMEA",
     "Spain":            "EMEA",
@@ -116,12 +140,90 @@ AVAIL_HOURS = {
     "Serbia":           {"2026-01":152.00,"2026-02":152.00,"2026-03":176.00,"2026-04":160.00,"2026-05":160.00,"2026-06":176.00,"2026-07":184.00,"2026-08":168.00,"2026-09":176.00,"2026-10":176.00,"2026-11":160.00,"2026-12":184.00},
     "Canada":           {"2026-01":168.00,"2026-02":160.00,"2026-03":176.00,"2026-04":168.00,"2026-05":160.00,"2026-06":176.00,"2026-07":176.00,"2026-08":160.00,"2026-09":160.00,"2026-10":168.00,"2026-11":160.00,"2026-12":168.00},
     "USA":              {"2026-01":160.00,"2026-02":152.00,"2026-03":176.00,"2026-04":176.00,"2026-05":160.00,"2026-06":168.00,"2026-07":176.00,"2026-08":168.00,"2026-09":168.00,"2026-10":168.00,"2026-11":152.00,"2026-12":176.00},
-    "Sydney (NSW)":     {"2026-01":152.00,"2026-02":152.00,"2026-03":167.20,"2026-04":144.40,"2026-05":159.60,"2026-06":159.60,"2026-07":174.80,"2026-08":152.00,"2026-09":167.20,"2026-10":159.60,"2026-11":159.60,"2026-12":159.60},
+    "Sydney (AU)":     {"2026-01":152.00,"2026-02":152.00,"2026-03":167.20,"2026-04":144.40,"2026-05":159.60,"2026-06":159.60,"2026-07":174.80,"2026-08":152.00,"2026-09":167.20,"2026-10":159.60,"2026-11":159.60,"2026-12":159.60},
     "Manila (PH)":      {"2026-01":168.00,"2026-02":152.00,"2026-03":176.00,"2026-04":152.00,"2026-05":160.00,"2026-06":168.00,"2026-07":184.00,"2026-08":152.00,"2026-09":176.00,"2026-10":176.00,"2026-11":152.00,"2026-12":144.00},
 }
 
 # Fixed fee task keywords (Case/Task/Event column)
 FF_TASKS = ["Configuration", "Enablement", "Training", "Post Go-live", "Project Management"]
+
+# ── FF Revenue Carve-Out Amounts by SKU + Currency ────────────────────────────
+# For $0 charge lines, the recognizable amount is looked up here.
+# Key: (charge_item_sku, currency) — charge_item is matched by partial string
+# Value: carve-out amount in that currency
+# Add new SKUs here as they are confirmed.
+# Note: charge_item in NS export includes prefix "SERVICES : " — matching is
+# done on the SKU portion only (after the last space-colon-space if present).
+FF_CARVE_OUT_TABLE = {
+    ("SERV-APP-ZR2-STD_IMPL", "USD"): 2500.00,
+    ("SERV-APP-ZA_STD-IMPL",  "USD"): 2205.00,
+    ("SERV-APP-ZC_STD-IMPL",  "USD"): 3000.00,
+}
+
+def get_carve_out_amount(charge_item: str, currency: str) -> float | None:
+    """Look up carve-out amount for a $0 charge line.
+    charge_item may include 'SERVICES : ' prefix — stripped for matching.
+    Returns None if not found (will fall back to Rev Carve Amount column if present).
+    """
+    ci = str(charge_item).strip()
+    # Strip 'SERVICES : ' or similar prefix
+    if " : " in ci:
+        ci = ci.split(" : ", 1)[-1].strip()
+    curr = str(currency).strip().upper()
+    return FF_CARVE_OUT_TABLE.get((ci, curr), None)
+# Used for revenue reporting where region is derived from billing currency
+CURRENCY_REGION_MAP = {
+    "USD": "NOAM",
+    "CAD": "NOAM",
+    "AUD": "APAC",
+    "NZD": "APAC",
+    "GBP": "EMEA",
+    "EUR": "EMEA",
+}
+
+# ── FX Rates → USD (monthly average) ─────────────────────────────────────────
+# Update these monthly. Format: {"YYYY-MM": rate_to_usd}
+# Rate = 1 unit of currency → USD  (e.g. 1 AUD = 0.63 USD)
+# Source: use monthly average from xe.com or your finance team's published rates
+FX_RATES_TO_USD = {
+    "AUD": {"2026-01": 0.620, "2026-02": 0.630, "2026-03": 0.628,
+            "2026-04": 0.645, "2026-05": 0.645, "2026-06": 0.645,
+            "2026-07": 0.645, "2026-08": 0.645, "2026-09": 0.645,
+            "2026-10": 0.645, "2026-11": 0.645, "2026-12": 0.645},
+    "CAD": {"2026-01": 0.695, "2026-02": 0.700, "2026-03": 0.718,
+            "2026-04": 0.720, "2026-05": 0.720, "2026-06": 0.720,
+            "2026-07": 0.720, "2026-08": 0.720, "2026-09": 0.720,
+            "2026-10": 0.720, "2026-11": 0.720, "2026-12": 0.720},
+    "NZD": {"2026-01": 0.565, "2026-02": 0.572, "2026-03": 0.570,
+            "2026-04": 0.580, "2026-05": 0.580, "2026-06": 0.580,
+            "2026-07": 0.580, "2026-08": 0.580, "2026-09": 0.580,
+            "2026-10": 0.580, "2026-11": 0.580, "2026-12": 0.580},
+    "GBP": {"2026-01": 1.240, "2026-02": 1.252, "2026-03": 1.290,
+            "2026-04": 1.295, "2026-05": 1.295, "2026-06": 1.295,
+            "2026-07": 1.295, "2026-08": 1.295, "2026-09": 1.295,
+            "2026-10": 1.295, "2026-11": 1.295, "2026-12": 1.295},
+    "EUR": {"2026-01": 1.030, "2026-02": 1.038, "2026-03": 1.082,
+            "2026-04": 1.090, "2026-05": 1.090, "2026-06": 1.090,
+            "2026-07": 1.090, "2026-08": 1.090, "2026-09": 1.090,
+            "2026-10": 1.090, "2026-11": 1.090, "2026-12": 1.090},
+    "USD": {"2026-01": 1.000, "2026-02": 1.000, "2026-03": 1.000,
+            "2026-04": 1.000, "2026-05": 1.000, "2026-06": 1.000,
+            "2026-07": 1.000, "2026-08": 1.000, "2026-09": 1.000,
+            "2026-10": 1.000, "2026-11": 1.000, "2026-12": 1.000},
+}
+
+def get_fx_rate(currency: str, period: str) -> float:
+    """Return USD conversion rate for a currency and YYYY-MM period.
+    Falls back to most recent known rate if period not found.
+    """
+    rates = FX_RATES_TO_USD.get(currency.upper(), {})
+    if period in rates:
+        return rates[period]
+    # Fall back to nearest available period
+    available = sorted(rates.keys())
+    if not available:
+        return 1.0
+    return rates[available[-1]]  # use most recent
 
 def get_avail_hours(region, period):
     """Look up available hours for a region/period. Returns None if not found."""
