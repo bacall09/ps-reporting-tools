@@ -719,23 +719,25 @@ else:
                     _pdf = _cdf[_cdf["period"] == _p]
                     _rev_usd   = float(_pdf["revenue_usd"].sum())
                     _rev_local = float((_pdf["rate_local"] * _pdf["hours"]).sum()) if "rate_local" in _pdf.columns else _rev_usd
-                    _mo = pd.Timestamp(_p + "-01").strftime("%b")
-                    _row[_mo] = f"${_rev_usd:,.0f}" + (f" ({_cur} {_rev_local:,.0f})" if _cur != "USD" else "")
+                    _fx        = get_fx_rate(_cur, _p)
+                    _mo        = pd.Timestamp(_p + "-01").strftime("%b")
+                    if _cur != "USD":
+                        _row[_mo] = f"${_rev_usd:,.0f} ({_cur} {_rev_local:,.0f} · FX: {_fx:.4f})"
+                    else:
+                        _row[_mo] = f"${_rev_usd:,.0f}"
                     _total_usd += _rev_usd
                 _row["Total USD"] = f"${_total_usd:,.0f}"
                 _cur_rows.append(_row)
-            # FX reference row
-            _fx_row = {"Currency": "— FX Rate —"}
+            # Total row — sum of all currencies converted to USD
+            _total_row = {"Currency": "Total"}
+            _grand_total = 0
             for _p in _all_periods:
                 _mo = pd.Timestamp(_p + "-01").strftime("%b")
-                _rates = []
-                for _cr in [r["Currency"] for r in _cur_rows if r["Currency"] != "USD"]:
-                    _fx = get_fx_rate(_cr, _p)
-                    if _fx != 1.0:
-                        _rates.append(f"{_cr}: {_fx:.4f}")
-                _fx_row[_mo] = " · ".join(_rates) if _rates else "—"
-            _fx_row["Total USD"] = ""
-            _cur_rows.append(_fx_row)
+                _p_total = float(_tm_actuals[_tm_actuals["period"] == _p]["revenue_usd"].sum())
+                _total_row[_mo] = f"${_p_total:,.0f}"
+                _grand_total += _p_total
+            _total_row["Total USD"] = f"${_grand_total:,.0f}"
+            _cur_rows.append(_total_row)
             _tm_piv_cur = pd.DataFrame(_cur_rows)
 
         _cur_tab_label = "By Currency 💱" if not _tm_piv_cur.empty else "By Currency"
