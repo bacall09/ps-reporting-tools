@@ -474,6 +474,10 @@ NS_COL_MAP_OUT = {
     "customer":             "account",        # Finance report account name
     "time entry status":    "entry_status",   # Billed / Unbilled
     "time entry memo":      "memo",
+    # ── Currency ──────────────────────────────────────────────────────────────
+    "currency":             "currency",       # e.g. USD, GBP, EUR, AUD
+    "cur":                  "currency",       # NS abbreviation
+    "foreign currency":     "currency",
     "cost rate":            "ns_rate",
     "pay rate":             "ns_rate",
 }
@@ -649,7 +653,7 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
         return PS_REGION_MAP.get(str(loc), "Other")
 
     # ── Aggregate by project + period ────────────────────────────────────────
-    agg_cols = ["project", "project_type", "period", "billing_flag"]
+    agg_cols = ["project", "project_type", "period", "billing_flag"] + (["currency"] if "currency" in tm.columns else [])
     if "project_manager" in tm.columns:
         agg_cols.append("project_manager")
     if "ns_rate" in tm.columns:
@@ -689,26 +693,41 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
             if rate == 0:
                 source = "No SFDC Opp" if df_sow is not None else "No rate"
 
-        pm      = r.get("project_manager", "") if "project_manager" in grp.columns else ""
-        region  = _get_region(pm)
-        prod    = match_product(str(r.get("project_type", "")))
-        hrs     = float(r["hours"])
+        pm       = r.get("project_manager", "") if "project_manager" in grp.columns else ""
+        region   = _get_region(pm)
+        prod     = match_product(str(r.get("project_type", "")))
+        hrs      = float(r["hours"])
+        currency = str(r.get("currency", "USD") or "USD").strip().upper() if "currency" in grp.columns else "USD"
+        period   = str(r["period"])
+
+        # Apply FX conversion if rate is in local currency
+        if currency != "USD" and rate > 0:
+            from shared.config import get_fx_rate
+            fx       = get_fx_rate(currency, period)
+            rate_usd = rate * fx
+            source   = source + f" (×{fx:.4f} {currency}→USD)"
+        else:
+            rate_usd = rate
+
         rows.append({
-            "period":          r["period"],
+            "period":          period,
             "project":         r["project"],
             "product":         prod,
             "region":          region,
             "project_manager": pm,
+            "currency":        currency,
             "hours":           hrs,
-            "rate_usd":        rate,
-            "revenue_usd":     round(hrs * rate, 2),
+            "rate_local":      rate,
+            "rate_usd":        round(rate_usd, 4),
+            "revenue_usd":     round(hrs * rate_usd, 2),
             "rate_source":     source,
             "billing_flag":    flag,
         })
 
     result = pd.DataFrame(rows)
-    for _nc in ("hours", "rate_usd", "revenue_usd"):
-        result[_nc] = pd.to_numeric(result[_nc], errors="coerce").fillna(0)
+    for _nc in ("hours", "rate_local", "rate_usd", "revenue_usd"):
+        if _nc in result.columns:
+            result[_nc] = pd.to_numeric(result[_nc], errors="coerce").fillna(0)
     return result
 
 

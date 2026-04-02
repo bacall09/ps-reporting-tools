@@ -57,38 +57,40 @@ df_rev_raw = st.session_state.get("df_revenue")
 df_drs     = st.session_state.get("df_drs")
 
 if df_rev_raw is None:
-    st.info("Upload the NS FF Revenue Charges export in the sidebar to load this report.")
-    st.stop()
+    st.info("ℹ️ Upload the NS FF Revenue Charges export in the sidebar to see the Fixed Fee section.")
+    # Don't stop — T&M section still loads from NS Time Detail alone
 
-# ── Build monthly slices ──────────────────────────────────────────────────────
+# ── Build monthly slices (FF only — skipped if FF Revenue Charges not loaded) ──
 @st.cache_data(show_spinner=False)
 def _get_slices(df_hash):
     return calc_monthly_slices(st.session_state["df_revenue"])
 
-slices = calc_monthly_slices(df_rev_raw)
-# Guarantee numeric dtype regardless of how slices were constructed
-slices["usd_amount"]   = pd.to_numeric(slices["usd_amount"],   errors="coerce").fillna(0)
-slices["local_amount"] = pd.to_numeric(slices["local_amount"], errors="coerce").fillna(0)
+if df_rev_raw is not None:
+    slices = calc_monthly_slices(df_rev_raw)
+    slices["usd_amount"]   = pd.to_numeric(slices["usd_amount"],   errors="coerce").fillna(0)
+    slices["local_amount"] = pd.to_numeric(slices["local_amount"], errors="coerce").fillna(0)
 
-# Diagnostic — shown only when $0 to help debug
-if slices.empty or slices["usd_amount"].sum() == 0:
-    st.warning(
-        f"⚠️ Revenue data loaded ({len(df_rev_raw)} charge rows) but produced "
-        f"{'no slices' if slices.empty else '$0 in slices'}. "
-        f"Columns in file: {list(df_rev_raw.columns)}. "
-        f"Sample rev_start: {df_rev_raw.get('rev_start', pd.Series()).dropna().head(3).tolist()}. "
-        f"Sample recognizable_amount: {df_rev_raw.get('recognizable_amount', pd.Series()).head(3).tolist()}"
-    )
+    if slices.empty or slices["usd_amount"].sum() == 0:
+        st.warning(
+            f"⚠️ Revenue data loaded ({len(df_rev_raw)} charge rows) but produced "
+            f"{'no slices' if slices.empty else '$0 in slices'}. "
+            f"Columns in file: {list(df_rev_raw.columns)}. "
+            f"Sample rev_start: {df_rev_raw.get('rev_start', pd.Series()).dropna().head(3).tolist()}. "
+            f"Sample recognizable_amount: {df_rev_raw.get('recognizable_amount', pd.Series()).head(3).tolist()}"
+        )
 
-# ── Join DRS for project name + consultant ────────────────────────────────────
-if df_drs is not None and "project_id" in df_drs.columns:
-    drs_lookup = df_drs[["project_id","project_name","project_manager","phase"]].copy()
-    drs_lookup["project_id"] = drs_lookup["project_id"].astype(str).str.strip().str.split(".").str[0]
-    slices = slices.merge(drs_lookup, on="project_id", how="left")
+    # ── Join DRS for project name + consultant ────────────────────────────────
+    if df_drs is not None and "project_id" in df_drs.columns:
+        drs_lookup = df_drs[["project_id","project_name","project_manager","phase"]].copy()
+        drs_lookup["project_id"] = drs_lookup["project_id"].astype(str).str.strip().str.split(".").str[0]
+        slices = slices.merge(drs_lookup, on="project_id", how="left")
+    else:
+        slices["project_name"]    = slices["project_id"]
+        slices["project_manager"] = ""
+        slices["phase"]           = ""
 else:
-    slices["project_name"]    = slices["project_id"]
-    slices["project_manager"] = ""
-    slices["phase"]           = ""
+    slices = pd.DataFrame(columns=["period","project_id","project_name","project_manager",
+                                    "phase","usd_amount","local_amount"])
 
 # ── Period helpers ────────────────────────────────────────────────────────────
 def _sum(df, periods, col="usd_amount"):
@@ -107,15 +109,14 @@ days_elapsed  = today.day
 days_in_month = pd.Timestamp(today.year, today.month, 1).days_in_month
 mtd_scale     = days_elapsed / days_in_month
 
-slices_mtd = slices[slices["period"] == this_month].copy()
-slices_mtd["usd_amount"] = slices_mtd["usd_amount"] * mtd_scale
+slices_mtd = slices[slices["period"] == this_month].copy() if not slices.empty else pd.DataFrame(columns=["period","usd_amount"])
+slices_mtd["usd_amount"] = slices_mtd["usd_amount"] * mtd_scale if not slices_mtd.empty else 0
 
-ytd_df  = slices[slices["period"].isin(ytd_months)].copy()
-# Replace current month in YTD with pro-rated MTD
+ytd_df  = slices[slices["period"].isin(ytd_months)].copy() if not slices.empty else pd.DataFrame(columns=["period","usd_amount"])
 ytd_df  = ytd_df[ytd_df["period"] != this_month]
 ytd_df  = pd.concat([ytd_df, slices_mtd], ignore_index=True)
 
-qtd_df  = slices[slices["period"].isin(q_months)].copy()
+qtd_df  = slices[slices["period"].isin(q_months)].copy() if not slices.empty else pd.DataFrame(columns=["period","usd_amount"])
 qtd_df  = qtd_df[qtd_df["period"] != this_month]
 qtd_df  = pd.concat([qtd_df, slices_mtd], ignore_index=True)
 
@@ -185,7 +186,8 @@ mtd_total  = slices_mtd["usd_amount"].sum()
 full_month = slices[slices["period"]==this_month]["usd_amount"].sum()
 
 # ── Fixed Fee metric cards ────────────────────────────────────────────────────
-st.markdown('<div class="section-label">Fixed Fee Revenue</div>', unsafe_allow_html=True)
+if df_rev_raw is not None:
+    st.markdown('<div class="section-label">Fixed Fee Revenue</div>', unsafe_allow_html=True)
 c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
     st.markdown(
@@ -276,7 +278,8 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — FF Summary by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Fixed Fee Revenue Summary</div>', unsafe_allow_html=True)
+if df_rev_raw is not None:
+    st.markdown('<div class="section-label">Fixed Fee Revenue Summary</div>', unsafe_allow_html=True)
 
 def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
     """Build FF summary table matching T&M structure."""
@@ -452,7 +455,8 @@ elif df_tm_sow is None:
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION — Monthly Breakdown by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Fixed Fee Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
+if df_rev_raw is not None:
+    st.markdown('<div class="section-label">Fixed Fee Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
 
 # ── Build quarterly columnar pivot ───────────────────────────────────────────
 # Layout: Jan | Feb | Mar | Q1 | Apr | May | Jun | Q2 | ... | YTD
@@ -607,6 +611,27 @@ if _all_periods_sorted:
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.markdown('<div class="section-label">T&amp;M Monthly Actuals (from NS Time Detail)</div>',
             unsafe_allow_html=True)
+
+with st.expander("ℹ️ Reconciliation notes vs Finance (Tab Master)", expanded=False):
+    st.markdown("""
+**Revenue calculation:** `Time Duration × Time Entry Rate` — consistent with Finance's Amount Billed calculation.
+
+**Known variance drivers vs Tab Master (Erica's report):**
+
+| | PS Tool (this report) | Tab Master (Finance) |
+|---|---|---|
+| Approval Status | Approved, Open, Pending | No filter (includes Rejected) |
+| Billing Address | No filter | Customer Default Billing Address = true |
+| Department | All (remove PS-only filter from NS export) | All |
+
+**Key finding (Q1 2026 analysis):**
+- Tab Master excludes 9 customers missing a Default Billing Address in NS
+- 2 of those customers have billable T&M time — **$8,375 excluded from Finance view**
+- PS Tool includes these rows; Tab Master does not
+- Recommendation: Finance to revisit the Default Billing Address filter — not a reliable proxy for billable customers
+
+**FF / Billable hours flag:** Fixed Fee projects with billable time entries are included in T&M revenue and flagged ⚠️ for Finance review — these may represent uncontracted overages or change orders not yet formalised.
+    """)
 
 df_ns_session = st.session_state.get("df_ns")
 _tm_actuals   = pd.DataFrame()
