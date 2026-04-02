@@ -612,26 +612,7 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.markdown('<div class="section-label">T&amp;M Monthly Actuals (from NS Time Detail)</div>',
             unsafe_allow_html=True)
 
-with st.expander("ℹ️ Reconciliation notes vs Finance (Tab Master)", expanded=False):
-    st.markdown("""
-**Revenue calculation:** `Time Duration × Time Entry Rate` — consistent with Finance's Amount Billed calculation.
-
-**Known variance drivers vs Tab Master (Erica's report):**
-
-| | PS Tool (this report) | Tab Master (Finance) |
-|---|---|---|
-| Approval Status | Approved, Open, Pending | No filter (includes Rejected) |
-| Billing Address | No filter | Customer Default Billing Address = true |
-| Department | All (remove PS-only filter from NS export) | All |
-
-**Key finding (Q1 2026 analysis):**
-- Tab Master excludes 9 customers missing a Default Billing Address in NS
-- 2 of those customers have billable T&M time — **$8,375 excluded from Finance view**
-- PS Tool includes these rows; Tab Master does not
-- Recommendation: Finance to revisit the Default Billing Address filter — not a reliable proxy for billable customers
-
-**FF / Billable hours flag:** Fixed Fee projects with billable time entries are included in T&M revenue and flagged ⚠️ for Finance review — these may represent uncontracted overages or change orders not yet formalised.
-    """)
+# Currency breakdown table injected after _tm_actuals is built — placeholder rendered below
 
 df_ns_session = st.session_state.get("df_ns")
 _tm_actuals   = pd.DataFrame()
@@ -688,6 +669,57 @@ else:
             )
         elif _unrated > 0:
             st.caption(f"⚠️ {_unrated} project-month rows have no matched rate — revenue shown as $0.")
+
+        # ── Currency breakdown table ──────────────────────────────────────────
+        if "currency" in _tm_actuals.columns:
+            from shared.config import get_fx_rate, FX_RATES_TO_USD
+            _all_periods = sorted(_tm_actuals["period"].unique())
+
+            # Build pivot: rows = currency, cols = months
+            _cur_grp = (_tm_actuals[_tm_actuals["revenue_usd"] > 0]
+                        .groupby(["currency", "period"])
+                        .agg(revenue_local=("rate_local", lambda x: (x * _tm_actuals.loc[x.index, "hours"]).sum())
+                             if "rate_local" in _tm_actuals.columns
+                             else ("revenue_usd", "sum"),
+                             revenue_usd=("revenue_usd", "sum"),
+                             hours=("hours", "sum"))
+                        .reset_index())
+
+            # Simpler: group hours × rate_local for local, revenue_usd for converted
+            _cur_rows = []
+            for _cur, _cdf in _tm_actuals[_tm_actuals["revenue_usd"] > 0].groupby("currency"):
+                _row = {"Currency": _cur}
+                _total_usd = 0
+                for _p in _all_periods:
+                    _pdf = _cdf[_cdf["period"] == _p]
+                    _rev_usd = float(_pdf["revenue_usd"].sum())
+                    _rev_local = float((_pdf["rate_local"] * _pdf["hours"]).sum()) if "rate_local" in _pdf.columns else _rev_usd
+                    _fx = get_fx_rate(_cur, _p)
+                    _mo = pd.Timestamp(_p + "-01").strftime("%b")
+                    _row[_mo] = f"${_rev_usd:,.0f}" + (f" ({_cur} {_rev_local:,.0f})" if _cur != "USD" else "")
+                    _total_usd += _rev_usd
+                _row["Total USD"] = f"${_total_usd:,.0f}"
+                _cur_rows.append(_row)
+
+            # Add FX reference row
+            if _cur_rows:
+                _fx_row = {"Currency": "FX Rate used"}
+                for _p in _all_periods:
+                    _mo = pd.Timestamp(_p + "-01").strftime("%b")
+                    _rates = []
+                    for _cur in [r["Currency"] for r in _cur_rows if r["Currency"] != "USD"]:
+                        _fx = get_fx_rate(_cur, _p)
+                        if _fx != 1.0:
+                            _rates.append(f"{_cur}: {_fx:.4f}")
+                    _fx_row[_mo] = " · ".join(_rates) if _rates else "—"
+                _fx_row["Total USD"] = ""
+                _cur_rows.append(_fx_row)
+
+                with st.expander("💱 Revenue by Currency (with FX conversion)", expanded=False):
+                    st.caption("All revenue converted to USD using monthly average FX rates from shared/config.py. "
+                               "Local currency amounts shown in brackets.")
+                    _cur_df = pd.DataFrame(_cur_rows)
+                    st.dataframe(_cur_df, use_container_width=True, hide_index=True)
 
         def _tm_actuals_pivot(df, dim):
             if df.empty or dim not in df.columns: return pd.DataFrame()
