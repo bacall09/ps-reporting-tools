@@ -474,6 +474,9 @@ NS_COL_MAP_OUT = {
     "customer":             "account",        # Finance report account name
     "time entry status":    "entry_status",   # Billed / Unbilled
     "time entry memo":      "memo",
+    # ── NS internal row ID (time entry ID — for 1:1 reconciliation) ──────────
+    "internal id":          "internal_id",    # NS time entry internal ID
+    "id":                   "internal_id",    # short form
     # ── Currency ──────────────────────────────────────────────────────────────
     "currency":             "currency",       # e.g. USD, GBP, EUR, AUD
     "cur":                  "currency",       # NS abbreviation
