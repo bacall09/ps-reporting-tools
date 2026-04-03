@@ -1098,6 +1098,9 @@ REV_COL_MAP = {
     "project id":               "project_id",
     "project":                  "project_id",
     "job":                      "project_id",
+    "project name":             "project_name",
+    "name":                     "project_name",
+    "customer":                 "project_name",
     # Revenue dates
     "rev rec start":            "rev_start",
     "rev rec start date":       "rev_start",
@@ -1381,12 +1384,15 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
 
             rows.append({
                 "project_id":        str(r.get("project_id", "")),
+                "project_name":      r.get("project_name", ""),
                 "charge_item":       r.get("charge_item", ""),
                 "subscription_item": r.get("subscription_item", ""),
                 "subscription_id":   r.get("subscription_id", ""),
                 "product":           r.get("product", "Other"),
                 "region":            r.get("region", "Other"),
                 "currency":          curr,
+                "rev_start":         str(r.get("rev_start", ""))[:10] if pd.notna(r.get("rev_start")) else "",
+                "rev_end":           str(r.get("rev_end", "") or r.get("service_end", ""))[:10],
                 "period":            period_str,
                 "local_amount":      round(prorated, 2),
                 "usd_amount":        round(prorated * fx, 2),

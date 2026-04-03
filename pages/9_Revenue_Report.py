@@ -913,6 +913,41 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not _piv_region.empty:  _piv_region.to_excel(_xl,  sheet_name="Region by Month",    index=False)
     if not _piv_product.empty: _piv_product.to_excel(_xl, sheet_name="Product by Month",   index=False)
     if not _trend_disp.empty:  _trend_disp.to_excel(_xl,  sheet_name="Trend Analysis",     index=False)
+    # ── FF Revenue by Project × Month pivot ─────────────────────────────────
+    if not slices.empty:
+        # Meta columns — take first value per project_id + charge_item combo
+        _meta_cols = ["project_id", "project_name", "product", "subscription_id",
+                      "subscription_item", "currency", "rev_start", "rev_end"]
+        _meta_cols = [c for c in _meta_cols if c in slices.columns]
+        _meta = (slices.groupby(["project_id","charge_item"])[_meta_cols]
+                 .first().reset_index())
+
+        # Monthly revenue pivot
+        _all_periods = sorted(slices["period"].unique())
+        _piv = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
+                .sum().unstack(fill_value=0).reset_index())
+        _piv.columns.name = None
+
+        # Rename month columns to readable labels
+        _month_rename = {p: pd.Timestamp(p + "-01").strftime("%b %Y") for p in _all_periods}
+        _piv = _piv.rename(columns=_month_rename)
+
+        # Add YTD total
+        _month_cols = [_month_rename[p] for p in _all_periods if _month_rename[p] in _piv.columns]
+        _piv["Total USD"] = _piv[_month_cols].sum(axis=1)
+
+        # Merge meta onto pivot
+        _ff_proj_pivot = _meta.merge(_piv[["project_id","charge_item"] + _month_cols + ["Total USD"]],
+                                      on=["project_id","charge_item"], how="left")
+
+        # Clean up column order
+        _ordered = [c for c in ["project_id","project_name","product","subscription_id",
+                                  "subscription_item","currency","rev_start","rev_end"]
+                    if c in _ff_proj_pivot.columns]
+        _ordered += _month_cols + ["Total USD"]
+        _ff_proj_pivot = _ff_proj_pivot[[c for c in _ordered if c in _ff_proj_pivot.columns]]
+        _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project", index=False)
+
     _detail.to_excel(_xl, sheet_name="FF Project Detail (Long)", index=False)
     if not _detail_pivot.empty: _detail_pivot.to_excel(_xl, sheet_name="FF Project Detail", index=False)
     if df_tm_sow is not None and not df_tm.empty:
