@@ -916,7 +916,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     # ── FF Revenue by Project × Month pivot ─────────────────────────────────
     if not slices.empty:
         # Meta columns — take first value per project_id + charge_item combo
-        _meta_cols = ["project_id", "project_name", "product", "subscription_id",
+        _meta_cols = ["project_name", "product", "subscription_id",
                       "subscription_item", "currency", "rev_start", "rev_end"]
         _meta_cols = [c for c in _meta_cols if c in slices.columns]
         _meta = (slices.groupby(["project_id","charge_item"])[_meta_cols]
