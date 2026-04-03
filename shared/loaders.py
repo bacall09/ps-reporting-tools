@@ -1214,18 +1214,22 @@ def load_revenue(file) -> pd.DataFrame:
 
 
 def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply Reconcile-specific carve-out logic to an FF revenue charge DataFrame.
+    """Apply Reconcile carve-out logic to FF revenue charge DataFrame.
 
     For each SERV-APP-ZR2-STD_IMPL (Implementation) row:
-      1. Find a matching Reconcile License row on the same subscription_id
-      2. Annualise the license gross_amount if the license period > 1 year (exact)
-      3. Convert license cost to USD if non-USD using FX rate for the license start period
-      4. carve_amount = min(RECONCILE_LICENSE_CARVE[license_sku], license_cost_annual_usd)
-      5. Override the Implementation row's recognizable_amount with carve_amount
-      6. Flag anomalies
-
-    Returns df with updated recognizable_amount and a new reconcile_flag column.
+      1. Derive rev_rec_start and rev_rec_end from Service Start Date (rev_start):
+           - If rev_start is 1st of month → rev_rec_end = last day of following month
+           - If rev_start is after 1st     → rev_rec_end = last day of 3rd month from start
+      2. Find all Reconcile License rows with same subscription_id
+      3. Calculate annual license cost: sum of each license row's gross_amount
+         pro-rated to the 12-month window starting from impl rev_start
+      4. Convert annual license cost to USD if non-USD
+      5. carve_amount = min(table_max[license_sku], annual_license_cost_usd)
+         If no license rows: carve = 0.00, flag
+      6. Override recognizable_amount on impl row with carve_amount
+      7. Set rev_rec_start / rev_rec_end on impl row
     """
+    import calendar as _cal
     from shared.config import (RECONCILE_LICENSE_CARVE, RECONCILE_IMPL_SKU,
                                 RECONCILE_LICENSE_SKUS, get_fx_rate)
 
@@ -1233,115 +1237,157 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = df.copy()
-    df["reconcile_flag"] = ""
+    df["reconcile_flag"]      = ""
+    df["license_sku"]         = ""
+    df["license_cost_usd"]    = None
+    df["carve_max"]           = None
+    df["impl_gross_amount"]   = None
+    df["rev_rec_start"]       = None
+    df["rev_rec_end"]         = None
+    df["_exclude_from_slices"] = False
 
-    # Normalise charge_item — strip "SERVICES : " prefix for matching
     def _strip_sku(s):
         s = str(s).strip()
         return s.split(" : ", 1)[-1].strip() if " : " in s else s
 
     df["_sku"] = df["charge_item"].apply(_strip_sku)
 
-    # Identify impl and license rows
     impl_mask    = df["_sku"] == RECONCILE_IMPL_SKU
     license_mask = df["_sku"].isin(RECONCILE_LICENSE_SKUS)
 
     if not impl_mask.any():
+        df["_exclude_from_slices"] = license_mask
         df.drop(columns=["_sku"], inplace=True)
         return df
 
-    # Build license lookup: subscription_id → list of license rows
     license_rows = df[license_mask].copy()
     impl_rows    = df[impl_mask].copy()
 
-    # Flag licenses with no matching implementation
+    def _derive_rev_rec_window(rev_start):
+        """Derive rev_rec_start and rev_rec_end from service start date."""
+        try:
+            ts = pd.Timestamp(rev_start)
+            rrs = ts  # rev_rec_start = service start
+            if ts.day == 1:
+                # 1st of month → end of following month
+                next_mo = ts + pd.DateOffset(months=1)
+                rre = pd.Timestamp(next_mo.year, next_mo.month,
+                                   _cal.monthrange(next_mo.year, next_mo.month)[1])
+            else:
+                # After 1st → end of 3rd month from start
+                third_mo = ts + pd.DateOffset(months=2)
+                rre = pd.Timestamp(third_mo.year, third_mo.month,
+                                   _cal.monthrange(third_mo.year, third_mo.month)[1])
+            return rrs, rre
+        except Exception:
+            return None, None
+
+    def _annual_license_cost(license_rows_sub, impl_start):
+        """Sum license gross amounts pro-rated to the 12-month window from impl_start."""
+        window_start = pd.Timestamp(impl_start)
+        window_end   = window_start + pd.DateOffset(years=1) - pd.Timedelta(days=1)
+        total = 0.0
+        for _, lr in license_rows_sub.iterrows():
+            lic_start = lr.get("rev_start")
+            lic_end   = lr.get("service_end") or lr.get("rev_end")
+            gross     = float(lr.get("gross_amount", 0) or 0)
+            if pd.isna(lic_start) or lic_end is None or pd.isna(lic_end):
+                total += gross  # can't pro-rate, include in full
+                continue
+            ls = pd.Timestamp(lic_start)
+            le = pd.Timestamp(lic_end)
+            lic_days    = max((le - ls).days, 1)
+            overlap_s   = max(ls, window_start)
+            overlap_e   = min(le, window_end)
+            overlap_days = max((overlap_e - overlap_s).days, 0)
+            total += gross * (overlap_days / lic_days)
+        return total
+
+    # Flag orphan licenses (no matching impl)
     if "subscription_id" in df.columns:
         impl_subs    = set(impl_rows["subscription_id"].dropna().astype(str))
         license_subs = set(license_rows["subscription_id"].dropna().astype(str))
-        orphan_licenses = license_subs - impl_subs
-        if orphan_licenses:
-            df.loc[license_mask & df["subscription_id"].astype(str).isin(orphan_licenses),
+        orphan       = license_subs - impl_subs
+        if orphan:
+            df.loc[license_mask & df["subscription_id"].astype(str).isin(orphan),
                    "reconcile_flag"] = "⚠️ License: no matching Implementation SKU"
 
     # Process each implementation row
     for idx, impl_row in impl_rows.iterrows():
+        impl_start = impl_row.get("rev_start")
+        impl_gross = float(impl_row.get("gross_amount", 0) or 0)
+
+        # Store original impl gross for reviewer reference
+        df.at[idx, "impl_gross_amount"] = impl_gross
+
+        # Step 1: derive rev rec window
+        rrs, rre = _derive_rev_rec_window(impl_start) if pd.notna(impl_start) else (None, None)
+        df.at[idx, "rev_rec_start"] = rrs.strftime("%Y-%m-%d") if rrs else ""
+        df.at[idx, "rev_rec_end"]   = rre.strftime("%Y-%m-%d") if rre else ""
+
+        # Step 2: find license rows
         sub_id = str(impl_row.get("subscription_id", "")) if "subscription_id" in impl_row.index else ""
-
-        # Find license rows for this subscription
         if sub_id and "subscription_id" in df.columns:
-            matched_licenses = license_rows[
-                license_rows["subscription_id"].astype(str) == sub_id
-            ]
+            matched = license_rows[license_rows["subscription_id"].astype(str) == sub_id]
         else:
-            matched_licenses = pd.DataFrame()
+            matched = pd.DataFrame()
 
-        if matched_licenses.empty:
-            df.at[idx, "reconcile_flag"] = "⚠️ Implementation: no matching Reconcile License SKU"
+        if matched.empty:
+            df.at[idx, "recognizable_amount"] = 0.0
+            df.at[idx, "carve_max"]           = 0.0
+            df.at[idx, "reconcile_flag"]      = "⚠️ No License SKU found — carve set to $0"
             continue
 
-        if len(matched_licenses) > 1:
-            df.at[idx, "reconcile_flag"] = "⚠️ Multiple License SKUs on same subscription — review"
-            # Still process using first found
-            lic_row = matched_licenses.iloc[0]
+        # Identify license SKU — use earliest rev_start row; flag if mixed SKUs
+        matched_sorted = matched.sort_values("rev_start") if "rev_start" in matched.columns else matched
+        year1_lic      = matched_sorted.iloc[0]
+        lic_sku        = str(year1_lic["_sku"])
+
+        unique_skus = matched_sorted["_sku"].unique()
+        mixed_flag  = len(unique_skus) > 1
+
+        max_carve = RECONCILE_LICENSE_CARVE.get(lic_sku, 0.0)
+
+        # Step 3: annual license cost (pro-rated 12-month window)
+        if pd.notna(impl_start):
+            annual_gross = _annual_license_cost(matched, impl_start)
         else:
-            lic_row = matched_licenses.iloc[0]
+            annual_gross = float(year1_lic.get("gross_amount", 0) or 0)
 
-        lic_sku     = str(lic_row["_sku"])
-        max_carve   = RECONCILE_LICENSE_CARVE.get(lic_sku, 0.0)
-        gross       = float(lic_row.get("gross_amount", 0) or 0)
-        lic_cur     = str(lic_row.get("currency", "USD") or "USD").strip().upper()
-        lic_start   = lic_row.get("rev_start")
-        lic_end     = lic_row.get("service_end") or lic_row.get("rev_end")
-
-        # Step 4: annualise if multi-year
-        annual_gross = gross
-        if pd.notna(lic_start) and pd.notna(lic_end):
-            try:
-                ts  = pd.Timestamp(lic_start)
-                te  = pd.Timestamp(lic_end)
-                years = (te - ts).days / 365.25
-                if years > 1.0:
-                    annual_gross = gross / years
-            except Exception:
-                pass
-
-        # Step 5: convert to USD
+        # Step 4: convert to USD
+        lic_cur = str(year1_lic.get("currency", "USD") or "USD").strip().upper()
         if lic_cur != "USD" and annual_gross > 0:
-            period_str = ""
-            if pd.notna(lic_start):
-                try:
-                    period_str = pd.Timestamp(lic_start).strftime("%Y-%m")
-                except Exception:
-                    pass
-            fx = get_fx_rate(lic_cur, period_str)
-            annual_gross_usd = annual_gross * fx
+            try:
+                period_str = pd.Timestamp(year1_lic.get("rev_start")).strftime("%Y-%m")
+            except Exception:
+                period_str = ""
+            annual_gross_usd = annual_gross * get_fx_rate(lic_cur, period_str)
         else:
             annual_gross_usd = annual_gross
 
-        # Step 6: carve = min(table max, actual annual license cost USD)
-        carve_amount = min(max_carve, annual_gross_usd) if annual_gross_usd > 0 else max_carve
+        # Step 5: carve = min(table max, annual license cost USD)
+        carve_amount  = min(max_carve, annual_gross_usd) if annual_gross_usd > 0 else max_carve
+        discount_flag = annual_gross_usd > 0 and annual_gross_usd < max_carve
 
-        # Discount flag: carve was capped by actual license cost
-        discount_flag = (annual_gross_usd > 0 and annual_gross_usd < max_carve)
-
-        # Apply to implementation row — add license reference columns
+        # Step 6: apply
         df.at[idx, "recognizable_amount"] = round(carve_amount, 2)
         df.at[idx, "license_sku"]         = lic_sku
         df.at[idx, "license_cost_usd"]    = round(annual_gross_usd, 2)
         df.at[idx, "carve_max"]           = max_carve
-        if discount_flag:
-            df.at[idx, "reconcile_flag"] = (
-                f"⚠️ Discount applied — carve capped at ${annual_gross_usd:,.2f} "
-                f"(table max ${max_carve:,.2f}) · {lic_sku}"
-            )
-        elif not df.at[idx, "reconcile_flag"]:
-            df.at[idx, "reconcile_flag"] = f"Reconcile carve · {lic_sku} · ${carve_amount:,.2f}"
 
-    # Exclude License rows from slices — they are reference data only, not impl revenue
-    df["_exclude_from_slices"] = license_mask
+        flags = []
+        if mixed_flag:
+            flags.append(f"⚠️ Mixed License SKUs: {', '.join(unique_skus)} — using earliest ({lic_sku})")
+        if discount_flag:
+            flags.append(f"⚠️ Discount — carve capped at ${annual_gross_usd:,.2f} (table max ${max_carve:,.2f})")
+        if not flags:
+            flags.append(f"Reconcile carve · {lic_sku} · ${carve_amount:,.2f}")
+        df.at[idx, "reconcile_flag"] = " | ".join(flags)
+
+    # Mark license rows for exclusion from slices
+    df["_exclude_from_slices"] = df["_sku"].isin(RECONCILE_LICENSE_SKUS)
     df.drop(columns=["_sku"], inplace=True)
     return df
-
 
 def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
     """Expand each charge row into monthly recognition slices.
@@ -1357,9 +1403,12 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
         # Skip license rows — reference only, revenue recognised on impl row
         if r.get("_exclude_from_slices", False):
             continue
-        start = r.get("rev_start")
-        # Fall back to service_end if rev_end not present
-        end   = r.get("rev_end") if pd.notna(r.get("rev_end")) else r.get("service_end")
+        # Use script-derived rev_rec window if available (Reconcile carve-out)
+        # Otherwise fall back to rev_start / service_end from NS export
+        _has_rr = pd.notna(r.get("rev_rec_start")) and pd.notna(r.get("rev_rec_end"))
+        start = r.get("rev_rec_start") if _has_rr else r.get("rev_start")
+        end   = r.get("rev_rec_end")   if _has_rr else (
+                r.get("rev_end") if pd.notna(r.get("rev_end")) else r.get("service_end"))
         total = float(r.get("recognizable_amount", 0) or 0)
         curr  = str(r.get("currency", "USD")).strip().upper()
 
@@ -1418,6 +1467,9 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "license_sku":        r.get("license_sku", ""),
                 "license_cost_usd":   r.get("license_cost_usd", ""),
                 "carve_max":          r.get("carve_max", ""),
+                "impl_gross_amount":  r.get("impl_gross_amount", ""),
+                "rev_rec_start":      str(r.get("rev_rec_start", ""))[:10] if pd.notna(r.get("rev_rec_start")) else "",
+                "rev_rec_end":        str(r.get("rev_rec_end", ""))[:10]   if pd.notna(r.get("rev_rec_end"))   else "",
             })
 
     result = pd.DataFrame(rows) if rows else pd.DataFrame(
