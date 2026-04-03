@@ -1092,6 +1092,8 @@ REV_COL_MAP = {
     "subscription":             "subscription_item",
     "item name":                "subscription_item",
     "service item":             "subscription_item",
+    "subscription id":          "subscription_id",
+    "subscription_id":          "subscription_id",
     # Project
     "project id":               "project_id",
     "project":                  "project_id",
@@ -1103,6 +1105,7 @@ REV_COL_MAP = {
     "rev start":                "rev_start",
     "rev start date":           "rev_start",
     "start date":               "rev_start",
+    "service start date":       "rev_start",   # Finance report header
     "rev rec end":              "rev_end",
     "rev rec end date":         "rev_end",
     "revenue recognition end":  "rev_end",
@@ -1175,14 +1178,22 @@ def load_revenue(file) -> pd.DataFrame:
         amt = float(row.get("amount", 0) or 0)
         if amt > 0:
             return amt
-        # Try SKU table first
+        # Try SKU carve-out table
         tbl = get_carve_out_amount(row.get("charge_item", ""), row.get("currency", "USD"))
         if tbl is not None:
             return tbl
-        # Fall back to column value
-        return float(row.get("rev_carve_amount", 0) or 0)
+        # Fall back to rev_carve_amount column
+        carve = float(row.get("rev_carve_amount", 0) or 0)
+        if carve > 0:
+            return carve
+        # Last resort: gross_amount (Finance report uses this as the billed amount)
+        return float(row.get("gross_amount", 0) or 0)
 
     df["recognizable_amount"] = df.apply(_rec_amount, axis=1)
+
+    # ── Apply product-specific carve-out logic ────────────────────────────────
+    # Reconcile: license-based carve-out (must run before slicing)
+    df = calc_reconcile_carveout(df)
 
     # Product from subscription item
     df["product"] = df.get("subscription_item", pd.Series("", index=df.index)).apply(match_product)
@@ -1199,6 +1210,123 @@ def load_revenue(file) -> pd.DataFrame:
     return df
 
 
+def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply Reconcile-specific carve-out logic to an FF revenue charge DataFrame.
+
+    For each SERV-APP-ZR2-STD_IMPL (Implementation) row:
+      1. Find a matching Reconcile License row on the same subscription_id
+      2. Annualise the license gross_amount if the license period > 1 year (exact)
+      3. Convert license cost to USD if non-USD using FX rate for the license start period
+      4. carve_amount = min(RECONCILE_LICENSE_CARVE[license_sku], license_cost_annual_usd)
+      5. Override the Implementation row's recognizable_amount with carve_amount
+      6. Flag anomalies
+
+    Returns df with updated recognizable_amount and a new reconcile_flag column.
+    """
+    from shared.config import (RECONCILE_LICENSE_CARVE, RECONCILE_IMPL_SKU,
+                                RECONCILE_LICENSE_SKUS, get_fx_rate)
+
+    if df is None or df.empty:
+        return df
+
+    df = df.copy()
+    df["reconcile_flag"] = ""
+
+    # Normalise charge_item — strip "SERVICES : " prefix for matching
+    def _strip_sku(s):
+        s = str(s).strip()
+        return s.split(" : ", 1)[-1].strip() if " : " in s else s
+
+    df["_sku"] = df["charge_item"].apply(_strip_sku)
+
+    # Identify impl and license rows
+    impl_mask    = df["_sku"] == RECONCILE_IMPL_SKU
+    license_mask = df["_sku"].isin(RECONCILE_LICENSE_SKUS)
+
+    if not impl_mask.any():
+        df.drop(columns=["_sku"], inplace=True)
+        return df
+
+    # Build license lookup: subscription_id → list of license rows
+    license_rows = df[license_mask].copy()
+    impl_rows    = df[impl_mask].copy()
+
+    # Flag licenses with no matching implementation
+    if "subscription_id" in df.columns:
+        impl_subs    = set(impl_rows["subscription_id"].dropna().astype(str))
+        license_subs = set(license_rows["subscription_id"].dropna().astype(str))
+        orphan_licenses = license_subs - impl_subs
+        if orphan_licenses:
+            df.loc[license_mask & df["subscription_id"].astype(str).isin(orphan_licenses),
+                   "reconcile_flag"] = "⚠️ License: no matching Implementation SKU"
+
+    # Process each implementation row
+    for idx, impl_row in impl_rows.iterrows():
+        sub_id = str(impl_row.get("subscription_id", "")) if "subscription_id" in impl_row.index else ""
+
+        # Find license rows for this subscription
+        if sub_id and "subscription_id" in df.columns:
+            matched_licenses = license_rows[
+                license_rows["subscription_id"].astype(str) == sub_id
+            ]
+        else:
+            matched_licenses = pd.DataFrame()
+
+        if matched_licenses.empty:
+            df.at[idx, "reconcile_flag"] = "⚠️ Implementation: no matching Reconcile License SKU"
+            continue
+
+        if len(matched_licenses) > 1:
+            df.at[idx, "reconcile_flag"] = "⚠️ Multiple License SKUs on same subscription — review"
+            # Still process using first found
+            lic_row = matched_licenses.iloc[0]
+        else:
+            lic_row = matched_licenses.iloc[0]
+
+        lic_sku     = str(lic_row["_sku"])
+        max_carve   = RECONCILE_LICENSE_CARVE.get(lic_sku, 0.0)
+        gross       = float(lic_row.get("gross_amount", 0) or 0)
+        lic_cur     = str(lic_row.get("currency", "USD") or "USD").strip().upper()
+        lic_start   = lic_row.get("rev_start")
+        lic_end     = lic_row.get("service_end") or lic_row.get("rev_end")
+
+        # Step 4: annualise if multi-year
+        annual_gross = gross
+        if pd.notna(lic_start) and pd.notna(lic_end):
+            try:
+                ts  = pd.Timestamp(lic_start)
+                te  = pd.Timestamp(lic_end)
+                years = (te - ts).days / 365.25
+                if years > 1.0:
+                    annual_gross = gross / years
+            except Exception:
+                pass
+
+        # Step 5: convert to USD
+        if lic_cur != "USD" and annual_gross > 0:
+            period_str = ""
+            if pd.notna(lic_start):
+                try:
+                    period_str = pd.Timestamp(lic_start).strftime("%Y-%m")
+                except Exception:
+                    pass
+            fx = get_fx_rate(lic_cur, period_str)
+            annual_gross_usd = annual_gross * fx
+        else:
+            annual_gross_usd = annual_gross
+
+        # Step 6: carve = min(table max, actual annual license cost USD)
+        carve_amount = min(max_carve, annual_gross_usd) if annual_gross_usd > 0 else max_carve
+
+        # Apply to implementation row
+        df.at[idx, "recognizable_amount"] = round(carve_amount, 2)
+        if not df.at[idx, "reconcile_flag"]:
+            df.at[idx, "reconcile_flag"] = f"Reconcile carve · {lic_sku} · ${carve_amount:,.2f}"
+
+    df.drop(columns=["_sku"], inplace=True)
+    return df
+
+
 def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
     """Expand each charge row into monthly recognition slices.
     Returns a long-format DataFrame with columns:
@@ -1211,11 +1339,12 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for _, r in df.iterrows():
         start = r.get("rev_start")
-        end   = r.get("rev_end")
+        # Fall back to service_end if rev_end not present
+        end   = r.get("rev_end") if pd.notna(r.get("rev_end")) else r.get("service_end")
         total = float(r.get("recognizable_amount", 0) or 0)
         curr  = str(r.get("currency", "USD")).strip().upper()
 
-        if pd.isna(start) or pd.isna(end) or total == 0:
+        if pd.isna(start) or end is None or pd.isna(end) or total == 0:
             continue
 
         start = pd.Timestamp(start)
@@ -1254,6 +1383,7 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "project_id":        str(r.get("project_id", "")),
                 "charge_item":       r.get("charge_item", ""),
                 "subscription_item": r.get("subscription_item", ""),
+                "subscription_id":   r.get("subscription_id", ""),
                 "product":           r.get("product", "Other"),
                 "region":            r.get("region", "Other"),
                 "currency":          curr,
@@ -1262,12 +1392,13 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "usd_amount":        round(prorated * fx, 2),
                 "status":            r.get("status", ""),
                 "transaction":       r.get("transaction", ""),
+                "reconcile_flag":    r.get("reconcile_flag", ""),
             })
 
     result = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=["project_id","charge_item","subscription_item","product",
-                 "region","currency","period","local_amount","usd_amount",
-                 "status","transaction"]
+        columns=["project_id","charge_item","subscription_item","subscription_id",
+                 "product","region","currency","period","local_amount","usd_amount",
+                 "status","transaction","reconcile_flag"]
     )
     # Ensure numeric columns are correct dtype
     for _nc in ("local_amount", "usd_amount"):

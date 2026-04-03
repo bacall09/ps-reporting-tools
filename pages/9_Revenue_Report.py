@@ -775,6 +775,19 @@ else:
             else:
                 st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
 
+# ── Reconcile Carve-Out Flags ────────────────────────────────────────────────
+if df_rev_raw is not None and "reconcile_flag" in df_rev_raw.columns:
+    _rec_flags = df_rev_raw[df_rev_raw["reconcile_flag"].str.startswith("⚠️", na=False)]
+    if not _rec_flags.empty:
+        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Reconcile Carve-Out Flags</div>', unsafe_allow_html=True)
+        st.caption(f"{len(_rec_flags)} charge rows require review — see details below.")
+        _flag_cols = [c for c in ["charge_item","subscription_id","subscription_item",
+                                   "gross_amount","currency","rev_start","service_end",
+                                   "reconcile_flag"] if c in _rec_flags.columns]
+        with st.expander(f"⚠️ Reconcile Flags ({len(_rec_flags)} rows)", expanded=True):
+            st.dataframe(_rec_flags[_flag_cols], use_container_width=True, hide_index=True)
+
 # ── Billing Exceptions ────────────────────────────────────────────────────────
 if df_ns_session is not None:
     _mismatches = get_billing_mismatches(df_ns_session)
@@ -910,6 +923,14 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
                if c in df_tm.columns]].to_excel(_xl, sheet_name="TM Detail", index=False)
     if not _det_excel.empty:
         _det_excel.to_excel(_xl, sheet_name="Time Entry Detail", index=False)
+    if df_rev_raw is not None and "reconcile_flag" in df_rev_raw.columns:
+        _rec_xl = df_rev_raw[df_rev_raw["reconcile_flag"] != ""].copy()
+        if not _rec_xl.empty:
+            _rec_xl_cols = [c for c in ["charge_item","subscription_id","subscription_item",
+                                         "project_id","gross_amount","currency",
+                                         "rev_start","service_end","recognizable_amount",
+                                         "reconcile_flag"] if c in _rec_xl.columns]
+            _rec_xl[_rec_xl_cols].to_excel(_xl, sheet_name="Reconcile Carve Flags", index=False)
 
 st.download_button(
     "⬇ Download Revenue Report (Excel)",
