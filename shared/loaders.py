@@ -1153,7 +1153,7 @@ def load_revenue(file) -> pd.DataFrame:
         df = pd.read_excel(file)
 
     df.columns = df.columns.str.strip()
-    rename = {c: REV_COL_MAP[c.lower()] for c in df.columns if c.lower() in REV_COL_MAP}
+    rename = {c: REV_COL_MAP[c.strip().lower()] for c in df.columns if c.strip().lower() in REV_COL_MAP}
     df = df.rename(columns=rename)
 
     # Parse dates — handle short year format (1/1/26) and standard formats
@@ -1321,11 +1321,24 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
         # Step 6: carve = min(table max, actual annual license cost USD)
         carve_amount = min(max_carve, annual_gross_usd) if annual_gross_usd > 0 else max_carve
 
-        # Apply to implementation row
+        # Discount flag: carve was capped by actual license cost
+        discount_flag = (annual_gross_usd > 0 and annual_gross_usd < max_carve)
+
+        # Apply to implementation row — add license reference columns
         df.at[idx, "recognizable_amount"] = round(carve_amount, 2)
-        if not df.at[idx, "reconcile_flag"]:
+        df.at[idx, "license_sku"]         = lic_sku
+        df.at[idx, "license_cost_usd"]    = round(annual_gross_usd, 2)
+        df.at[idx, "carve_max"]           = max_carve
+        if discount_flag:
+            df.at[idx, "reconcile_flag"] = (
+                f"⚠️ Discount applied — carve capped at ${annual_gross_usd:,.2f} "
+                f"(table max ${max_carve:,.2f}) · {lic_sku}"
+            )
+        elif not df.at[idx, "reconcile_flag"]:
             df.at[idx, "reconcile_flag"] = f"Reconcile carve · {lic_sku} · ${carve_amount:,.2f}"
 
+    # Exclude License rows from slices — they are reference data only, not impl revenue
+    df["_exclude_from_slices"] = license_mask
     df.drop(columns=["_sku"], inplace=True)
     return df
 
@@ -1341,6 +1354,9 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
     for _, r in df.iterrows():
+        # Skip license rows — reference only, revenue recognised on impl row
+        if r.get("_exclude_from_slices", False):
+            continue
         start = r.get("rev_start")
         # Fall back to service_end if rev_end not present
         end   = r.get("rev_end") if pd.notna(r.get("rev_end")) else r.get("service_end")
@@ -1399,12 +1415,16 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "status":            r.get("status", ""),
                 "transaction":       r.get("transaction", ""),
                 "reconcile_flag":    r.get("reconcile_flag", ""),
+                "license_sku":        r.get("license_sku", ""),
+                "license_cost_usd":   r.get("license_cost_usd", ""),
+                "carve_max":          r.get("carve_max", ""),
             })
 
     result = pd.DataFrame(rows) if rows else pd.DataFrame(
         columns=["project_id","charge_item","subscription_item","subscription_id",
                  "product","region","currency","period","local_amount","usd_amount",
-                 "status","transaction","reconcile_flag"]
+                 "status","transaction","reconcile_flag","license_sku",
+                 "license_cost_usd","carve_max"]
     )
     # Ensure numeric columns are correct dtype
     for _nc in ("local_amount", "usd_amount"):

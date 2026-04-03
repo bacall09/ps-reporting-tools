@@ -917,7 +917,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not slices.empty:
         # Meta columns — take first value per project_id + charge_item combo
         _meta_cols = ["project_name", "product", "subscription_id",
-                      "subscription_item", "currency", "rev_start", "rev_end"]
+                      "subscription_item", "currency", "rev_start", "rev_end",
+                      "license_sku", "license_cost_usd", "carve_max", "reconcile_flag"]
         _meta_cols = [c for c in _meta_cols if c in slices.columns]
         _meta = (slices.groupby(["project_id","charge_item"])[_meta_cols]
                  .first().reset_index())
@@ -942,7 +943,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
 
         # Clean up column order
         _ordered = [c for c in ["project_id","project_name","product","subscription_id",
-                                  "subscription_item","currency","rev_start","rev_end"]
+                                  "subscription_item","currency","rev_start","rev_end",
+                                  "license_sku","license_cost_usd","carve_max","reconcile_flag"]
                     if c in _ff_proj_pivot.columns]
         _ordered += _month_cols + ["Total USD"]
         _ff_proj_pivot = _ff_proj_pivot[[c for c in _ordered if c in _ff_proj_pivot.columns]]
