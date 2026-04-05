@@ -1012,7 +1012,28 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
                                   "notes","Rev Amount"] if c in _ff_proj_pivot.columns]
         _ord_all += _month_cols
         _ff_proj_pivot = _ff_proj_pivot[[c for c in _ord_all if c in _ff_proj_pivot.columns]]
-        _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project", index=False)
+        _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project (Rolling)", index=False)
+
+        # ── FF Rev by Project YTD ────────────────────────────────────────────
+        _ytd_start     = f"{_today.year}-01"
+        _ytd_end       = _today.strftime("%Y-%m")
+        _display_p_ytd = [p for p in _all_periods_all if _ytd_start <= p <= _ytd_end]
+        _piv_ytd = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
+                    .sum().unstack(fill_value=0).reset_index())
+        _piv_ytd.columns.name = None
+        _piv_ytd["Rev Amount"] = _piv_ytd[[p for p in _all_periods_all if p in _piv_ytd.columns]].sum(axis=1)
+        _mo_ytd = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_ytd}
+        _piv_ytd = _piv_ytd.rename(columns=_mo_ytd)
+        _mc_ytd = [_mo_ytd[p] for p in _display_p_ytd if _mo_ytd[p] in _piv_ytd.columns]
+        _ff_proj_ytd = _meta_all.merge(
+            _piv_ytd[["project_id","charge_item","Rev Amount"] + _mc_ytd],
+            on=["project_id","charge_item"], how="left")
+        _ord_ytd = [c for c in ["project_id","project_name","region","product","subscription_id",
+                                  "subscription_item","currency","rev_start","rev_end",
+                                  "notes","Rev Amount"] if c in _ff_proj_ytd.columns]
+        _ord_ytd += _mc_ytd
+        _ff_proj_ytd = _ff_proj_ytd[[c for c in _ord_ytd if c in _ff_proj_ytd.columns]]
+        _ff_proj_ytd.to_excel(_xl, sheet_name="FF Rev by Project YTD", index=False)
 
     # FF Project Detail tabs removed — superseded by FF Rev by Project and Reconcile Carve Detail
     if df_tm_sow is not None and not df_tm.empty:

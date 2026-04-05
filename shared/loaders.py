@@ -1196,11 +1196,24 @@ def load_revenue(file) -> pd.DataFrame:
     # 2. If Amount = 0 → look up carve-out table by SKU + currency
     # 3. If not in table → fall back to Rev Carve Amount column from NS
     from shared.config import get_carve_out_amount
+    from shared.config import (CAPTURE_IMPL_SKU, APPROVALS_IMPL_SKU,
+                                RECONCILE_IMPL_SKU as _RIMPL)
+    _CARVE_HANDLED_SKUS = {CAPTURE_IMPL_SKU, APPROVALS_IMPL_SKU, _RIMPL}
+
+    def _strip_ci(s):
+        s = str(s).strip()
+        return s.split(" : ")[-1].strip() if " : " in s else s
+
     def _rec_amount(row):
         amt = float(row.get("amount", 0) or 0)
         if amt > 0:
             return amt
-        # Try SKU carve-out table
+        # Skip carve table for SKUs handled by dedicated carve-out functions
+        ci = _strip_ci(row.get("charge_item", ""))
+        if ci in _CARVE_HANDLED_SKUS:
+            # Will be set by product-specific carve function; use gross_amount as placeholder
+            return float(row.get("gross_amount", 0) or 0)
+        # Try SKU carve-out table for other SKUs
         tbl = get_carve_out_amount(row.get("charge_item", ""), row.get("currency", "USD"))
         if tbl is not None:
             return tbl
@@ -1208,7 +1221,7 @@ def load_revenue(file) -> pd.DataFrame:
         carve = float(row.get("rev_carve_amount", 0) or 0)
         if carve > 0:
             return carve
-        # Last resort: gross_amount (Finance report uses this as the billed amount)
+        # Last resort: gross_amount
         return float(row.get("gross_amount", 0) or 0)
 
     df["recognizable_amount"] = df.apply(_rec_amount, axis=1)
@@ -1449,6 +1462,10 @@ def calc_capture_approvals_carveout(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     if "notes" not in df.columns:
         df["notes"] = ""
+    if "rev_rec_start" not in df.columns:
+        df["rev_rec_start"] = None
+    if "rev_rec_end" not in df.columns:
+        df["rev_rec_end"] = None
 
     def _strip_sku(s):
         s = str(s).strip()
@@ -1511,6 +1528,24 @@ def calc_capture_approvals_carveout(df: pd.DataFrame) -> pd.DataFrame:
         gross      = float(impl_row.get("gross_amount", 0) or 0)
         impl_start = impl_row.get("rev_start")
         notes_parts = []
+
+        # Derive rev rec window for all impl rows (same rule as all FF)
+        if pd.notna(impl_start):
+            try:
+                import calendar as _cal2
+                ts = pd.Timestamp(impl_start)
+                if ts.day == 1:
+                    tgt_mo = ts.month + 1; tgt_yr = ts.year
+                    if tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                    rre = pd.Timestamp(tgt_yr, tgt_mo, _cal2.monthrange(tgt_yr, tgt_mo)[1])
+                else:
+                    tgt_mo = ts.month + 2; tgt_yr = ts.year
+                    while tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                    rre = pd.Timestamp(tgt_yr, tgt_mo, _cal2.monthrange(tgt_yr, tgt_mo)[1])
+                df.at[idx, "rev_rec_start"] = ts.strftime("%Y-%m-%d")
+                df.at[idx, "rev_rec_end"]   = rre.strftime("%Y-%m-%d")
+            except Exception:
+                pass
 
         # Step 1: gross_amount > 0 → use directly
         if gross > 0:
