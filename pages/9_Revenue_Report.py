@@ -1081,27 +1081,38 @@ try:
     _dash_region = []
     if not _rt.empty:
         for _, _rrow in _rt.iterrows():
+            try:
+                _rv = float(str(_rrow.get("YTD", 0)).replace("$","").replace(",","") or 0)
+            except Exception:
+                _rv = 0.0
+            _pct = f"{_rv/max(float(ytd_total),1)*100:.1f}%" if ytd_total else "0.0%"
             _dash_region.append({
-                "Region": _rrow.get("Region", ""),
-                "YTD (USD)": _rrow.get("YTD", 0),
-                "% of Total": f"{_rrow.get('YTD',0)/max(ytd_total,1)*100:.1f}%"
+                "Region": str(_rrow.get("Region", "")),
+                "YTD (USD)": f"${_rv:,.0f}",
+                "% of Total": _pct,
             })
 
     # By Product summary rows for dashboard
     _dash_product = []
     if not _pt.empty:
         for _, _prow in _pt.iterrows():
+            try:
+                _pv = float(str(_prow.get("YTD", 0)).replace("$","").replace(",","") or 0)
+            except Exception:
+                _pv = 0.0
+            _pct = f"{_pv/max(float(ytd_total),1)*100:.1f}%" if ytd_total else "0.0%"
             _dash_product.append({
-                "Product": _prow.get("Product", ""),
-                "YTD (USD)": _prow.get("YTD", 0),
-                "% of Total": f"{_prow.get('YTD',0)/max(ytd_total,1)*100:.1f}%"
+                "Product": str(_prow.get("Product", "")),
+                "YTD (USD)": f"${_pv:,.0f}",
+                "% of Total": _pct,
             })
 
-    # Trend rows for dashboard
+    # Trend rows for dashboard — stringify all values for safe Excel writing
     _dash_trend = []
     if not _trend_disp.empty:
         for _, _trow in _trend_disp.head(12).iterrows():
-            _dash_trend.append(_trow.to_dict())
+            _dash_trend.append({k: (f"${float(v):,.0f}" if isinstance(v, (int, float)) and k != "Period"
+                                    else str(v)) for k, v in _trow.items()})
 
     _flag_count = 0
     if df_rev_raw is not None and "notes" in df_rev_raw.columns:
@@ -1117,19 +1128,23 @@ try:
 
     _mom_display = f"{_mom_pct:+.1f}%" if _mom_pct is not None else "—"
 
+    def _fmt_usd(v):
+        try: return f"${float(v):,.0f}"
+        except Exception: return "$0"
+
     _dash_metrics = {
-        "ytd":         ytd_total,
-        "qtd":         qtd_total,
-        "mtd":         mtd_total,
-        "full_mo":     full_month,
-        "run_rate":    _run_rate,
+        "ytd":         _fmt_usd(ytd_total),
+        "qtd":         _fmt_usd(qtd_total),
+        "mtd":         _fmt_usd(mtd_total),
+        "full_mo":     _fmt_usd(full_month),
+        "run_rate":    _fmt_usd(_run_rate),
         "mom":         _mom_display,
-        "ff_ytd":      _ff_ytd,
-        "tm_ytd":      _tm_ytd,
-        "recon_ytd":   _recon_ytd,
-        "ff_projects": len(slices["project_id"].unique()) if not slices.empty else 0,
-        "tm_projects": len(df_tm["ns_project"].dropna().unique()) if df_tm is not None and not df_tm.empty else 0,
-        "flag_count":  _flag_count,
+        "ff_ytd":      _fmt_usd(_ff_ytd),
+        "tm_ytd":      _fmt_usd(_tm_ytd),
+        "recon_ytd":   _fmt_usd(_recon_ytd),
+        "ff_projects": int(slices["project_id"].nunique()) if not slices.empty else 0,
+        "tm_projects": int(df_tm["ns_project"].dropna().nunique()) if df_tm is not None and not df_tm.empty else 0,
+        "flag_count":  int(_flag_count),
         "trend_rows":  _dash_trend,
         "region_rows": _dash_region,
         "product_rows":_dash_product,
