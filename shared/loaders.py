@@ -1153,7 +1153,26 @@ def load_revenue(file) -> pd.DataFrame:
         df = pd.read_excel(file)
 
     df.columns = df.columns.str.strip()
-    rename = {c: REV_COL_MAP[c.strip().lower()] for c in df.columns if c.strip().lower() in REV_COL_MAP}
+    # Build rename map — if multiple columns map to the same target, prefer more specific names
+    _col_lower = {c: c.strip().lower() for c in df.columns}
+    _seen_targets = set()
+    _priority_order = ["project name", "project id", "subscription id", "service start date",
+                       "service end date", "gross amount", "charge item", "subscription item"]
+    # First pass: priority columns
+    rename = {}
+    for c, cl in _col_lower.items():
+        if cl in _priority_order and cl in REV_COL_MAP:
+            target = REV_COL_MAP[cl]
+            rename[c] = target
+            _seen_targets.add(target)
+    # Second pass: remaining columns (skip if target already claimed)
+    for c, cl in _col_lower.items():
+        if c in rename: continue
+        if cl in REV_COL_MAP:
+            target = REV_COL_MAP[cl]
+            if target not in _seen_targets:
+                rename[c] = target
+                _seen_targets.add(target)
     df = df.rename(columns=rename)
 
     # Parse dates — handle short year format (1/1/26) and standard formats
@@ -1445,7 +1464,14 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
             # The rev rec window is already correctly defined — each month gets equal share
             _is_reconcile_row = pd.notna(r.get("rev_rec_start")) and str(r.get("rev_rec_start", "")) != ""
             if _is_reconcile_row:
-                prorated = total / n_months
+                # Equal split — last month absorbs rounding remainder
+                _mo_idx  = months.index(mp)
+                _is_last = (_mo_idx == n_months - 1)
+                if _is_last:
+                    _already = round(total / n_months, 2) * (n_months - 1)
+                    prorated = round(total - _already, 2)
+                else:
+                    prorated = round(total / n_months, 2)
             else:
                 # Pro-rate partial first / last months for standard FF rows
                 actual_start = max(start, mo_start)

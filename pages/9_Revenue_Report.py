@@ -937,10 +937,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _meta_cols = [c for c in _meta_cols if c in _recon_slices.columns]
             _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
                        .first().reset_index())
-            # Cap months at Dec 2026
-            _all_p_r = sorted([p for p in _recon_slices["period"].unique() if p <= "2026-12"])
-            _piv_r = (_recon_slices[_recon_slices["period"] <= "2026-12"]
-                      .groupby(["project_id","charge_item","period"])["usd_amount"]
+            _all_p_r = sorted(_recon_slices["period"].unique())
+            _piv_r = (_recon_slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                       .sum().unstack(fill_value=0).reset_index())
             _piv_r.columns.name = None
             _mo_r = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _all_p_r}
