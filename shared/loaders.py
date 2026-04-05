@@ -1248,7 +1248,9 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
 
     def _strip_sku(s):
         s = str(s).strip()
-        return s.split(" : ", 1)[-1].strip() if " : " in s else s
+        # Split on all " : " separators and take the last segment
+        # Handles "SERVICES : SERV-APP-ZR2-STD_IMPL" and "ZRR : BUNDLES : PROD-APP-ZR2_START15"
+        return s.split(" : ")[-1].strip() if " : " in s else s
 
     df["_sku"] = df["charge_item"].apply(_strip_sku)
 

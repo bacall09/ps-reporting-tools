@@ -915,42 +915,70 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not _trend_disp.empty:  _trend_disp.to_excel(_xl,  sheet_name="Trend Analysis",     index=False)
     # ── FF Revenue by Project × Month pivot ─────────────────────────────────
     if not slices.empty:
-        # Meta columns — take first value per project_id + charge_item combo
-        _meta_cols = ["project_name", "product", "subscription_id",
-                      "subscription_item", "currency", "rev_start", "rev_end",
-                      "rev_rec_start", "rev_rec_end",
-                      "impl_gross_amount", "license_sku", "license_cost_usd", "carve_max",
-                      "reconcile_flag"]
-        _meta_cols = [c for c in _meta_cols if c in slices.columns]
-        _meta = (slices.groupby(["project_id","charge_item"])[_meta_cols]
-                 .first().reset_index())
+        from shared.config import RECONCILE_IMPL_SKU as _RIMPL
 
-        # Monthly revenue pivot
+        # Separate Reconcile impl rows from all other FF rows
+        def _is_reconcile_impl(ci):
+            s = str(ci).strip()
+            return s.split(" : ")[-1].strip() == _RIMPL
+
+        _recon_slices = slices[slices["charge_item"].apply(_is_reconcile_impl)].copy()
+        _other_slices = slices[~slices["charge_item"].apply(_is_reconcile_impl)].copy()
+
+        # ── Reconcile Implementation pivot ───────────────────────────────────
+        _recon_pivot = pd.DataFrame()
+        if not _recon_slices.empty:
+            _meta_cols = ["project_name", "product", "subscription_id",
+                          "subscription_item", "currency", "rev_start",
+                          "rev_rec_start", "rev_rec_end",
+                          "impl_gross", "license_sku", "license_cost_usd",
+                          "carve_max", "reconcile_flag"]
+            _meta_cols = [c for c in _meta_cols if c in _recon_slices.columns]
+            _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
+                       .first().reset_index())
+            _all_p_r = sorted(_recon_slices["period"].unique())
+            _piv_r = (_recon_slices.groupby(["project_id","charge_item","period"])["usd_amount"]
+                      .sum().unstack(fill_value=0).reset_index())
+            _piv_r.columns.name = None
+            _mo_r = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _all_p_r}
+            _piv_r = _piv_r.rename(columns=_mo_r)
+            _mc_r = [_mo_r[p] for p in _all_p_r if _mo_r[p] in _piv_r.columns]
+            _piv_r["Total USD"] = _piv_r[_mc_r].sum(axis=1)
+            _recon_pivot = _meta_r.merge(
+                _piv_r[["project_id","charge_item"] + _mc_r + ["Total USD"]],
+                on=["project_id","charge_item"], how="left")
+            _ord_r = [c for c in ["project_id","project_name","product","subscription_id",
+                                    "subscription_item","currency","rev_start",
+                                    "rev_rec_start","rev_rec_end","impl_gross",
+                                    "license_sku","license_cost_usd","carve_max",
+                                    "reconcile_flag"] if c in _recon_pivot.columns]
+            _ord_r += _mc_r + ["Total USD"]
+            _recon_pivot = _recon_pivot[[c for c in _ord_r if c in _recon_pivot.columns]]
+            _recon_pivot.to_excel(_xl, sheet_name="Reconcile Carve Detail", index=False)
+
+        # ── All FF rows pivot (standard) ─────────────────────────────────────
         _all_periods = sorted(slices["period"].unique())
+        _meta_cols_all = ["project_name", "product", "subscription_id",
+                          "subscription_item", "currency", "rev_start", "rev_end",
+                          "reconcile_flag"]
+        _meta_cols_all = [c for c in _meta_cols_all if c in slices.columns]
+        _meta_all = (slices.groupby(["project_id","charge_item"])[_meta_cols_all]
+                     .first().reset_index())
         _piv = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                 .sum().unstack(fill_value=0).reset_index())
         _piv.columns.name = None
-
-        # Rename month columns to readable labels
-        _month_rename = {p: pd.Timestamp(p + "-01").strftime("%b %Y") for p in _all_periods}
+        _month_rename = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _all_periods}
         _piv = _piv.rename(columns=_month_rename)
-
-        # Add YTD total
         _month_cols = [_month_rename[p] for p in _all_periods if _month_rename[p] in _piv.columns]
         _piv["Total USD"] = _piv[_month_cols].sum(axis=1)
-
-        # Merge meta onto pivot
-        _ff_proj_pivot = _meta.merge(_piv[["project_id","charge_item"] + _month_cols + ["Total USD"]],
-                                      on=["project_id","charge_item"], how="left")
-
-        # Clean up column order
-        _ordered = [c for c in ["project_id","project_name","product","subscription_id",
+        _ff_proj_pivot = _meta_all.merge(
+            _piv[["project_id","charge_item"] + _month_cols + ["Total USD"]],
+            on=["project_id","charge_item"], how="left")
+        _ord_all = [c for c in ["project_id","project_name","product","subscription_id",
                                   "subscription_item","currency","rev_start","rev_end",
-                                  "rev_rec_start","rev_rec_end","impl_gross_amount",
-                                  "license_sku","license_cost_usd","carve_max","reconcile_flag"]
-                    if c in _ff_proj_pivot.columns]
-        _ordered += _month_cols + ["Total USD"]
-        _ff_proj_pivot = _ff_proj_pivot[[c for c in _ordered if c in _ff_proj_pivot.columns]]
+                                  "reconcile_flag"] if c in _ff_proj_pivot.columns]
+        _ord_all += _month_cols + ["Total USD"]
+        _ff_proj_pivot = _ff_proj_pivot[[c for c in _ord_all if c in _ff_proj_pivot.columns]]
         _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project", index=False)
 
     _detail.to_excel(_xl, sheet_name="FF Project Detail (Long)", index=False)
