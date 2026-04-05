@@ -1374,8 +1374,8 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
         # Step 6: apply
         df.at[idx, "recognizable_amount"] = round(carve_amount, 2)
         df.at[idx, "license_sku"]         = lic_sku
-        df.at[idx, "license_cost_local"]  = round(annual_gross_local, 2)
-        df.at[idx, "license_currency"]    = annual_currency
+        df.at[idx, "license_cost_local"]  = round(annual_gross, 2)
+        df.at[idx, "license_currency"]    = lic_cur
         df.at[idx, "license_cost_usd"]    = round(annual_gross_usd, 2)
         df.at[idx, "carve_max"]           = max_carve
 
