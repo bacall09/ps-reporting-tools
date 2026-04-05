@@ -1012,7 +1012,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
 
         # ── FF Rev by Project YTD ────────────────────────────────────────────
         _ytd_start     = f"{_today.year}-01"
-        _ytd_end       = _today.strftime("%Y-%m")
+        _ytd_end       = f"{_today.year}-12"
         _display_p_ytd = [p for p in _all_periods_all if _ytd_start <= p <= _ytd_end]
         _piv_ytd = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                     .sum().unstack(fill_value=0).reset_index())
