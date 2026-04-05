@@ -1578,7 +1578,7 @@ def calc_capture_approvals_carveout(df: pd.DataFrame) -> pd.DataFrame:
                     f"Carve USD 3,000.00 → {curr} {carve_local:,.2f} @ FX {fx_used:.4f}"
                 )
             else:
-                carve_usd = carve_local / fx_used if fx_used > 0 else carve_local
+                carve_usd = carve_local * fx_used
                 notes_parts.append(
                     f"Carve {curr} {carve_local:,.2f} → USD {carve_usd:,.2f} @ FX {fx_used:.4f}"
                 )
@@ -1772,6 +1772,8 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "product":           r.get("product", "Other"),
                 "region":            r.get("region", "Other"),
                 "currency":          curr,
+                "service_start":     str(r.get("rev_start", ""))[:10] if pd.notna(r.get("rev_start")) else "",
+                "service_end_orig":  str(r.get("service_end", "") or r.get("rev_end", ""))[:10],
                 "rev_start":         str(r.get("rev_start", ""))[:10] if pd.notna(r.get("rev_start")) else "",
                 "rev_end":           str(r.get("rev_end", "") or r.get("service_end", ""))[:10],
                 "period":            period_str,

@@ -945,7 +945,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         _recon_pivot = pd.DataFrame()
         if not _recon_slices.empty:
             _meta_cols = ["project_name", "product", "subscription_id",
-                          "subscription_item", "currency", "rev_start",
+                          "subscription_item", "currency",
+                          "service_start", "service_end_orig",
                           "rev_rec_start", "rev_rec_end",
                           "impl_gross", "license_sku",
                           "license_cost_local", "license_currency", "license_cost_usd",
@@ -976,8 +977,12 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             # Rename rev_start → charge_start_date for clarity
             if "rev_start" in _recon_pivot.columns:
                 _recon_pivot = _recon_pivot.rename(columns={"rev_start": "charge_start_date"})
+            # Rename service_start → charge_start_date for Reconcile tab
+            if "service_start" in _recon_pivot.columns:
+                _recon_pivot = _recon_pivot.rename(columns={"service_start": "charge_start_date",
+                                                             "service_end_orig": "service_end"})
             _ord_r = [c for c in ["project_id","project_name","product","subscription_id",
-                                    "subscription_item","currency","charge_start_date",
+                                    "subscription_item","currency","charge_start_date","service_end",
                                     "rev_rec_start","rev_rec_end","impl_gross",
                                     "license_sku","license_cost_local","license_currency",
                                     "license_cost_usd","carve_max","notes"]
@@ -990,8 +995,9 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         _all_periods_all  = sorted(slices["period"].unique())
         _display_p_all    = [p for p in _all_periods_all if _roll_start <= p <= _roll_end]
         _meta_cols_all = ["project_name", "region", "product", "subscription_id",
-                          "subscription_item", "currency", "rev_start", "rev_end",
-                          "notes"]
+                          "subscription_item", "currency",
+                          "service_start", "service_end_orig",
+                          "rev_rec_start", "rev_rec_end", "notes"]
         _meta_cols_all = [c for c in _meta_cols_all if c in slices.columns]
         _meta_all = (slices.groupby(["project_id","charge_item"])[_meta_cols_all]
                      .first().reset_index())
@@ -1008,7 +1014,9 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _piv[["project_id","charge_item","Rev Amount"] + _month_cols],
             on=["project_id","charge_item"], how="left")
         _ord_all = [c for c in ["project_id","project_name","region","product","subscription_id",
-                                  "subscription_item","currency","rev_start","rev_end",
+                                  "subscription_item","currency",
+                                  "service_start","service_end_orig",
+                                  "rev_rec_start","rev_rec_end",
                                   "notes","Rev Amount"] if c in _ff_proj_pivot.columns]
         _ord_all += _month_cols
         _ff_proj_pivot = _ff_proj_pivot[[c for c in _ord_all if c in _ff_proj_pivot.columns]]
@@ -1029,7 +1037,9 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _piv_ytd[["project_id","charge_item","Rev Amount"] + _mc_ytd],
             on=["project_id","charge_item"], how="left")
         _ord_ytd = [c for c in ["project_id","project_name","region","product","subscription_id",
-                                  "subscription_item","currency","rev_start","rev_end",
+                                  "subscription_item","currency",
+                                  "service_start","service_end_orig",
+                                  "rev_rec_start","rev_rec_end",
                                   "notes","Rev Amount"] if c in _ff_proj_ytd.columns]
         _ord_ytd += _mc_ytd
         _ff_proj_ytd = _ff_proj_ytd[[c for c in _ord_ytd if c in _ff_proj_ytd.columns]]
