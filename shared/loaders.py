@@ -1484,7 +1484,9 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 days_active  = (actual_end - actual_start).days + 1
                 full_slice   = total / n_months
                 prorated     = full_slice * (days_active / days_in_mo)
-            fx = get_fx_rate(curr, period_str)
+            # Reconcile carve is already in USD — no FX conversion needed
+            # Standard FF rows need FX conversion from local currency to USD
+            fx = 1.0 if _is_reconcile_row else get_fx_rate(curr, period_str)
 
             rows.append({
                 "project_id":        str(r.get("project_id", "")),
