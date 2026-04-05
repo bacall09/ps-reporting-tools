@@ -910,6 +910,12 @@ if df_ns_session is not None:
 
 # ── Excel download ─────────────────────────────────────────────────────────
 st.markdown("")
+
+# Rolling 15-month window for all pivot columns
+_today       = pd.Timestamp.today()
+_roll_start  = _today.strftime("%Y-%m")
+_roll_end    = ((_today + pd.DateOffset(months=14))
+                .strftime("%Y-%m"))
 _buf = io.BytesIO()
 with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     # Summary sheet
@@ -948,9 +954,9 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
                        .first().reset_index())
             _all_p_r     = sorted(_recon_slices["period"].unique())
-            _display_p_r = [p for p in _all_p_r if p <= "2026-12"]  # show through Dec 2026
+            _display_p_r = [p for p in _all_p_r if _roll_start <= p <= _roll_end]
 
-            # Pivot all periods first so Total Carve reflects full recognition window
+            # Pivot all periods — Total Carve reflects full recognition window
             _piv_r = (_recon_slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                       .sum().unstack(fill_value=0).reset_index())
             _piv_r.columns.name = None
@@ -959,7 +965,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _all_amt_cols = [p for p in _all_p_r if p in _piv_r.columns]
             _piv_r["Total Carve"] = _piv_r[_all_amt_cols].sum(axis=1)
 
-            # Rename only display periods for column headers
+            # Rename only rolling window periods for column headers
             _mo_r = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_r}
             _piv_r = _piv_r.rename(columns=_mo_r)
             _mc_r = [_mo_r[p] for p in _display_p_r if _mo_r[p] in _piv_r.columns]
@@ -980,9 +986,9 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _recon_pivot = _recon_pivot[[c for c in _ord_r if c in _recon_pivot.columns]]
             _recon_pivot.to_excel(_xl, sheet_name="Reconcile Carve Detail", index=False)
 
-        # ── All FF rows pivot (standard) — capped at Dec 2026 ──────────────────
+        # ── All FF rows pivot (standard) — rolling 15-month window ─────────────
         _all_periods_all  = sorted(slices["period"].unique())
-        _display_p_all    = [p for p in _all_periods_all if p <= "2026-12"]
+        _display_p_all    = [p for p in _all_periods_all if _roll_start <= p <= _roll_end]
         _meta_cols_all = ["project_name", "region", "product", "subscription_id",
                           "subscription_item", "currency", "rev_start", "rev_end",
                           "reconcile_flag"]
@@ -992,19 +998,19 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         _piv = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                 .sum().unstack(fill_value=0).reset_index())
         _piv.columns.name = None
-        # Total USD = full window, display cols = Jan–Dec 2026
+        # Rev Amount = Total USD = sum across ALL periods (full window)
         _all_amt_all = [p for p in _all_periods_all if p in _piv.columns]
-        _piv["Total USD"] = _piv[_all_amt_all].sum(axis=1)
+        _piv["Rev Amount"] = _piv[_all_amt_all].sum(axis=1)
         _month_rename = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_all}
         _piv = _piv.rename(columns=_month_rename)
         _month_cols = [_month_rename[p] for p in _display_p_all if _month_rename[p] in _piv.columns]
         _ff_proj_pivot = _meta_all.merge(
-            _piv[["project_id","charge_item"] + _month_cols + ["Total USD"]],
+            _piv[["project_id","charge_item","Rev Amount"] + _month_cols],
             on=["project_id","charge_item"], how="left")
         _ord_all = [c for c in ["project_id","project_name","region","product","subscription_id",
                                   "subscription_item","currency","rev_start","rev_end",
-                                  "reconcile_flag"] if c in _ff_proj_pivot.columns]
-        _ord_all += _month_cols + ["Total USD"]
+                                  "reconcile_flag","Rev Amount"] if c in _ff_proj_pivot.columns]
+        _ord_all += _month_cols
         _ff_proj_pivot = _ff_proj_pivot[[c for c in _ord_all if c in _ff_proj_pivot.columns]]
         _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project", index=False)
 
@@ -1023,9 +1029,12 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         if not _rec_xl.empty:
             _rec_xl_cols = [c for c in ["charge_item","subscription_id","subscription_item",
                                          "project_id","gross_amount","currency",
-                                         "rev_start","service_end","recognizable_amount",
+                                         "rev_start","service_end",
                                          "reconcile_flag"] if c in _rec_xl.columns]
-            _rec_xl[_rec_xl_cols].to_excel(_xl, sheet_name="Reconcile Carve Flags", index=False)
+            _rec_xl_out = _rec_xl[_rec_xl_cols].copy()
+            if "rev_start" in _rec_xl_out.columns:
+                _rec_xl_out = _rec_xl_out.rename(columns={"rev_start": "service_start"})
+            _rec_xl_out.to_excel(_xl, sheet_name="Reconcile Carve Flags", index=False)
 
 st.download_button(
     "⬇ Download Revenue Report (Excel)",

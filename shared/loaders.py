@@ -1426,21 +1426,90 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
     from shared.config import get_fx_rate
     import calendar
 
+    import calendar as _cal
+
+    def _derive_ff_window(rev_start_val):
+        """Derive rev rec start/end from service start date.
+        1st of month → end of following month (2-month window)
+        After 1st    → end of 3rd month from start (3-month window)
+        Returns (rev_rec_start, rev_rec_end) as Timestamps, or (None, None) if invalid.
+        """
+        try:
+            ts = pd.Timestamp(rev_start_val)
+            if ts.day == 1:
+                # End of following month
+                if ts.month == 12:
+                    rre = pd.Timestamp(ts.year + 1, 2, 1) - pd.Timedelta(days=1)
+                else:
+                    next_mo = ts.month + 1
+                    yr = ts.year
+                    last = _cal.monthrange(yr, next_mo)[1]
+                    rre = pd.Timestamp(yr, next_mo, last)
+            else:
+                # End of 3rd month from start
+                target_mo = ts.month + 2
+                target_yr = ts.year
+                while target_mo > 12:
+                    target_mo -= 12
+                    target_yr += 1
+                last = _cal.monthrange(target_yr, target_mo)[1]
+                rre = pd.Timestamp(target_yr, target_mo, last)
+            return ts, rre
+        except Exception:
+            return None, None
+
     rows = []
     for _, r in df.iterrows():
         # Skip license rows — reference only, revenue recognised on impl row
         if r.get("_exclude_from_slices", False):
             continue
-        # Use script-derived rev_rec window if available (Reconcile carve-out)
-        # Otherwise fall back to rev_start / service_end from NS export
-        _has_rr = pd.notna(r.get("rev_rec_start")) and pd.notna(r.get("rev_rec_end"))
-        start = r.get("rev_rec_start") if _has_rr else r.get("rev_start")
-        end   = r.get("rev_rec_end")   if _has_rr else (
-                r.get("rev_end") if pd.notna(r.get("rev_end")) else r.get("service_end"))
+
         total = float(r.get("recognizable_amount", 0) or 0)
         curr  = str(r.get("currency", "USD")).strip().upper()
+        rev_start_raw = r.get("rev_start")
 
-        if pd.isna(start) or end is None or pd.isna(end) or total == 0:
+        # If rev_start is missing — flag, skip rev calc
+        if pd.isna(rev_start_raw) or str(rev_start_raw).strip() == "":
+            rows.append({
+                "project_id":    str(r.get("project_id", "")),
+                "project_name":  r.get("project_name", ""),
+                "charge_item":   r.get("charge_item", ""),
+                "subscription_item": r.get("subscription_item", ""),
+                "subscription_id":   r.get("subscription_id", ""),
+                "product":       r.get("product", "Other"),
+                "region":        r.get("region", "Other"),
+                "currency":      curr,
+                "rev_start":     "",
+                "rev_end":       "",
+                "period":        "missing_start",
+                "local_amount":  0.0,
+                "usd_amount":    0.0,
+                "status":        r.get("status", ""),
+                "transaction":   r.get("transaction", ""),
+                "reconcile_flag": "⚠️ Missing rev_start — no rev calc until resolved",
+                "license_sku":   r.get("license_sku", ""),
+                "license_cost_local": r.get("license_cost_local", ""),
+                "license_currency":   r.get("license_currency", ""),
+                "license_cost_usd":   r.get("license_cost_usd", ""),
+                "carve_max":     r.get("carve_max", ""),
+                "impl_gross":    r.get("impl_gross", ""),
+                "rev_rec_start": "",
+                "rev_rec_end":   "",
+            })
+            continue
+
+        # Use Reconcile-derived window if already set, otherwise derive for all FF rows
+        _has_rr = (pd.notna(r.get("rev_rec_start")) and
+                   str(r.get("rev_rec_start", "")).strip() not in ("", "NaT"))
+        if _has_rr:
+            start = pd.Timestamp(r.get("rev_rec_start"))
+            end   = pd.Timestamp(r.get("rev_rec_end"))
+        else:
+            start, end = _derive_ff_window(rev_start_raw)
+            if start is None:
+                continue
+
+        if total == 0:
             continue
 
         start = pd.Timestamp(start)
@@ -1465,27 +1534,17 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
             mo_end     = mp.to_timestamp("M")
             days_in_mo = calendar.monthrange(mp.year, mp.month)[1]
 
-            # For Reconcile carve rows (rev_rec_start set): equal split, no pro-ration
-            # The rev rec window is already correctly defined — each month gets equal share
-            _is_reconcile_row = pd.notna(r.get("rev_rec_start")) and str(r.get("rev_rec_start", "")) != ""
-            if _is_reconcile_row:
-                # Equal split — last month absorbs rounding remainder
-                _mo_idx  = months.index(mp)
-                _is_last = (_mo_idx == n_months - 1)
-                if _is_last:
-                    _already = round(total / n_months, 2) * (n_months - 1)
-                    prorated = round(total - _already, 2)
-                else:
-                    prorated = round(total / n_months, 2)
+            # All FF rows: equal split across derived window, last month absorbs rounding
+            # Reconcile rows already in USD (fx=1.0); others converted per period
+            _is_reconcile_row = (pd.notna(r.get("rev_rec_start")) and
+                                  str(r.get("rev_rec_start", "")).strip() not in ("", "NaT"))
+            _mo_idx  = months.index(mp)
+            _is_last = (_mo_idx == n_months - 1)
+            if _is_last:
+                _already = round(total / n_months, 2) * (n_months - 1)
+                prorated = round(total - _already, 2)
             else:
-                # Pro-rate partial first / last months for standard FF rows
-                actual_start = max(start, mo_start)
-                actual_end   = min(end, mo_end)
-                days_active  = (actual_end - actual_start).days + 1
-                full_slice   = total / n_months
-                prorated     = full_slice * (days_active / days_in_mo)
-            # Reconcile carve is already in USD — no FX conversion needed
-            # Standard FF rows need FX conversion from local currency to USD
+                prorated = round(total / n_months, 2)
             fx = 1.0 if _is_reconcile_row else get_fx_rate(curr, period_str)
 
             rows.append({
