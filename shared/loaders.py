@@ -1262,6 +1262,39 @@ def load_revenue(file) -> pd.DataFrame:
         else:
             impl_df.drop(columns=["_rev_start_sort"], inplace=True)
 
+    # ── Derive rev rec window for ALL rows that don't have one yet ───────────
+    import calendar as _cal_lr
+    if "rev_rec_start" not in df.columns:
+        df["rev_rec_start"] = None
+    if "rev_rec_end" not in df.columns:
+        df["rev_rec_end"] = None
+
+    def _derive_window_lr(rev_start_val):
+        try:
+            ts = pd.Timestamp(rev_start_val)
+            if ts.day == 1:
+                tgt_mo = ts.month + 1; tgt_yr = ts.year
+                if tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                rre = pd.Timestamp(tgt_yr, tgt_mo, _cal_lr.monthrange(tgt_yr, tgt_mo)[1])
+            else:
+                tgt_mo = ts.month + 2; tgt_yr = ts.year
+                while tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                rre = pd.Timestamp(tgt_yr, tgt_mo, _cal_lr.monthrange(tgt_yr, tgt_mo)[1])
+            return ts.strftime("%Y-%m-%d"), rre.strftime("%Y-%m-%d")
+        except Exception:
+            return None, None
+
+    _needs_window = (
+        df["rev_rec_start"].isna() | (df["rev_rec_start"].astype(str).str.strip().isin(["", "None", "NaT"]))
+    )
+    for _idx in df[_needs_window].index:
+        _rs = df.at[_idx, "rev_start"]
+        if pd.notna(_rs) and str(_rs).strip() not in ("", "NaT"):
+            _rrs, _rre = _derive_window_lr(_rs)
+            if _rrs:
+                df.at[_idx, "rev_rec_start"] = _rrs
+                df.at[_idx, "rev_rec_end"]   = _rre
+
     # Rename reconcile_flag → notes for unified audit trail
     if "reconcile_flag" in df.columns and "notes" not in df.columns:
         df = df.rename(columns={"reconcile_flag": "notes"})
