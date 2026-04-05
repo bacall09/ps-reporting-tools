@@ -947,14 +947,23 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _meta_cols = [c for c in _meta_cols if c in _recon_slices.columns]
             _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
                        .first().reset_index())
-            _all_p_r = sorted(_recon_slices["period"].unique())
+            _all_p_r     = sorted(_recon_slices["period"].unique())
+            _display_p_r = [p for p in _all_p_r if p <= "2026-12"]  # show through Dec 2026
+
+            # Pivot all periods first so Total Carve reflects full recognition window
             _piv_r = (_recon_slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                       .sum().unstack(fill_value=0).reset_index())
             _piv_r.columns.name = None
-            _mo_r = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _all_p_r}
+
+            # Total Carve = sum across ALL periods
+            _all_amt_cols = [p for p in _all_p_r if p in _piv_r.columns]
+            _piv_r["Total Carve"] = _piv_r[_all_amt_cols].sum(axis=1)
+
+            # Rename only display periods for column headers
+            _mo_r = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_r}
             _piv_r = _piv_r.rename(columns=_mo_r)
-            _mc_r = [_mo_r[p] for p in _all_p_r if _mo_r[p] in _piv_r.columns]
-            _piv_r["Total Carve"] = _piv_r[_mc_r].sum(axis=1)
+            _mc_r = [_mo_r[p] for p in _display_p_r if _mo_r[p] in _piv_r.columns]
+
             _recon_pivot = _meta_r.merge(
                 _piv_r[["project_id","charge_item"] + _mc_r + ["Total Carve"]],
                 on=["project_id","charge_item"], how="left")

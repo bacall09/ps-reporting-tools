@@ -1402,9 +1402,14 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
         if mixed_flag:
             flags.append(f"⚠️ Mixed License SKUs: {', '.join(unique_skus)} — using earliest ({lic_sku})")
         if discount_flag:
-            flags.append(f"⚠️ Discount — carve capped at ${annual_gross_usd:,.2f} (table max ${max_carve:,.2f})")
+            flags.append(
+                f"License: {lic_sku} · License Cost USD ${annual_gross_usd:,.2f} · "
+                f"⚠️ Discount — Carve ${carve_amount:,.2f} (table max ${max_carve:,.2f})"
+            )
         if not flags:
-            flags.append(f"Reconcile carve · {lic_sku} · ${carve_amount:,.2f}")
+            flags.append(
+                f"License: {lic_sku} · License Cost USD ${annual_gross_usd:,.2f} · Carve ${carve_amount:,.2f}"
+            )
         df.at[idx, "reconcile_flag"] = " | ".join(flags)
 
     # Mark license rows for exclusion from slices
