@@ -163,7 +163,7 @@ if df_tm_sow is not None:
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 1 — Top-line metric cards (FF + T&M)
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Total Revenue</div>',unsafe_allow_html=True)
+st.markdown('<div class="section-label">Total Revenue (FF + T&M)</div>',unsafe_allow_html=True)
 
 # ── Pre-compute T&M actuals here so they feed top-line totals ────────────────
 # (full computation happens later; this gives us monthly totals for the bubbles)
@@ -223,8 +223,8 @@ mtd_total  = _ff_mtd  + _tm_mtd
 full_month = _ff_full + _tm_full
 
 # ── Fixed Fee metric cards ────────────────────────────────────────────────────
-if df_rev_raw is not None:
-    st.markdown('<div class="section-label">Fixed Fee Revenue</div>', unsafe_allow_html=True)
+# Total Revenue cards — combined FF + T&M
+_has_tm_data = df_ns is not None and not _tm_monthly_early.empty
 c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
     st.markdown(
@@ -268,7 +268,7 @@ with c6:
 
 # ── T&M metric cards ──────────────────────────────────────────────────────────
 if df_tm is not None:
-    st.markdown('<div class="section-label" style="margin-top:4px">T&amp;M Revenue</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label" style="margin-top:4px">T&amp;M Pipeline (from SFDC SOW)</div>', unsafe_allow_html=True)
     _bc = "#E74C3C" if _burn > 90 else ("#F39C12" if _burn > 70 else "inherit")
     _avg_rate = float(df_tm["sow_rate_usd"].replace(0, float("nan")).mean()) if "sow_rate_usd" in df_tm.columns else 0.0
     _avg_rate = 0.0 if pd.isna(_avg_rate) else _avg_rate
@@ -315,8 +315,7 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — FF Summary by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-if df_rev_raw is not None:
-    st.markdown('<div class="section-label">Fixed Fee Revenue Summary</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Revenue Summary by Region &amp; Product</div>', unsafe_allow_html=True)
 
 def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
     """Build FF summary table matching T&M structure."""
@@ -489,163 +488,6 @@ if df_tm is not None:
 elif df_tm_sow is None:
     st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION — Monthly Breakdown by Region & Product
-# ══════════════════════════════════════════════════════════════════════════════
-if df_rev_raw is not None:
-    st.markdown('<div class="section-label">Fixed Fee Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
-
-# ── Build quarterly columnar pivot ───────────────────────────────────────────
-# Layout: Jan | Feb | Mar | Q1 | Apr | May | Jun | Q2 | ... | YTD
-# Covers all years present in data
-
-def _pivot_quarterly(df, row_dim):
-    """Build management accounts layout: months interleaved with quarterly subtotals + YTD."""
-    if df.empty or row_dim not in df.columns:
-        return pd.DataFrame()
-
-    # All unique periods in data
-    all_periods = sorted(df["period"].unique())
-    all_years   = sorted({p[:4] for p in all_periods})
-
-    # Base pivot: rows = row_dim, columns = period
-    base = (df.groupby([row_dim, "period"])["usd_amount"]
-              .sum()
-              .unstack(fill_value=0))
-
-    # Build ordered column list with quarter subtotals
-    ordered_cols  = []   # (col_label, source_type, source_key)
-    # source_type: "month" | "quarter" | "ytd"
-
-    for year in all_years:
-        year_periods = [p for p in all_periods if p.startswith(year)]
-        year_months  = sorted(year_periods)
-
-        for q in range(1, 5):
-            q_month_nums = [(q-1)*3+1, (q-1)*3+2, (q-1)*3+3]
-            q_periods    = [f"{year}-{m:02d}" for m in q_month_nums]
-            q_present    = [p for p in q_periods if p in year_months]
-
-            if not q_present:
-                continue
-
-            # Add individual months
-            for p in q_present:
-                mo_label = pd.Timestamp(p + "-01").strftime("%b")
-                # Add year suffix only if data spans multiple years
-                if len(all_years) > 1:
-                    mo_label += f" '{year[2:]}"
-                ordered_cols.append((mo_label, "month", p))
-
-            # Add quarter subtotal if any months present
-            ordered_cols.append((f"Q{q}" + (f" '{year[2:]}" if len(all_years) > 1 else ""), "quarter", q_periods))
-
-        # Add YTD after December (or last month of year)
-        if year == all_years[-1]:
-            ordered_cols.append(("YTD", "ytd", year_periods))
-        else:
-            ordered_cols.append((f"FY{year[2:]}", "ytd", year_periods))
-
-    # Build the output DataFrame column by column
-    rows_index = base.index.tolist()
-    result = {row_dim: list(rows_index) + ["Total"]}
-
-    for col_label, ctype, key in ordered_cols:
-        col_vals = []
-        if ctype == "month":
-            vals = base[key] if key in base.columns else pd.Series(0, index=base.index)
-        else:
-            # Sum across list of periods
-            present = [p for p in key if p in base.columns]
-            vals = base[present].sum(axis=1) if present else pd.Series(0, index=base.index)
-
-        for idx in rows_index:
-            col_vals.append(float(vals.get(idx, 0)))
-        col_vals.append(sum(col_vals))  # Total row
-        result[col_label] = [_fmt(v) for v in col_vals]
-
-    return pd.DataFrame(result)
-
-_piv_region  = _pivot_quarterly(slices, "region")
-_piv_product = _pivot_quarterly(slices, "product")
-
-def _style_pivot(df):
-    """Apply subtle background to quarter subtotal and FY/YTD columns."""
-    # Identify which columns are Q or FY/YTD subtotals
-    subtotal_cols = [c for c in df.columns
-                     if str(c).startswith("Q") or c in ("YTD", "FY26", "FY27", "FY28")]
-
-    def _highlight(col):
-        if col.name in subtotal_cols:
-            return ["background-color: rgba(68,114,196,0.18); font-weight: 600"] * len(col)
-        return [""] * len(col)
-
-    # Also bold the Total row
-    def _bold_total(row):
-        if str(row.iloc[0]) == "Total":
-            return ["font-weight: 700; border-top: 1px solid rgba(128,128,128,0.4)"] * len(row)
-        return [""] * len(row)
-
-    return (df.style
-              .apply(_highlight, axis=0)
-              .apply(_bold_total, axis=1))
-
-if not _piv_region.empty:
-    st.markdown("**By Region**")
-    st.dataframe(_style_pivot(_piv_region), use_container_width=True, hide_index=True)
-
-if not _piv_product.empty:
-    st.markdown("**By Product**")
-    st.dataframe(_style_pivot(_piv_product), use_container_width=True, hide_index=True)
-
-# ── Trend Analysis and MoM by Region — Excel only (removed from UI) ──────────
-_trend_full = (_monthly_totals.reset_index()
-               if not _monthly_totals.empty else pd.DataFrame(columns=["period","usd_amount"]))
-_trend_full.columns = ["Period", "Revenue (USD)"]
-_trend_full["Revenue (USD)"] = pd.to_numeric(_trend_full["Revenue (USD)"], errors="coerce").fillna(0)
-_trend_full["MoM Change"]    = _trend_full["Revenue (USD)"].diff()
-_trend_full["MoM %"]         = _trend_full["Revenue (USD)"].pct_change() * 100
-_trend_full["Cumulative YTD"]= _trend_full["Revenue (USD)"].cumsum()
-_trend_disp = _trend_full.copy()
-_trend_disp["Period"]         = _trend_disp["Period"].apply(lambda m: pd.Timestamp(m+"-01").strftime("%b %Y"))
-_trend_disp["Revenue (USD)"]  = _trend_disp["Revenue (USD)"].apply(_fmt)
-_trend_disp["MoM Change"]     = _trend_disp["MoM Change"].apply(lambda v: ("↑ " if v>=0 else "↓ ")+_fmt(abs(v)) if pd.notna(v) else "—")
-_trend_disp["MoM %"]          = _trend_disp["MoM %"].apply(lambda v: f"{'↑' if v>=0 else '↓'} {abs(v):.1f}%" if pd.notna(v) else "—")
-_trend_disp["Cumulative YTD"] = _trend_disp["Cumulative YTD"].apply(_fmt)
-
-# ── Monthly trend and Project Detail — Excel only ────────────────────────────
-_trend = slices.groupby("period")["usd_amount"].sum().reset_index()
-_trend.columns = ["Period", "Revenue (USD)"]
-_trend = _trend.sort_values("Period")
-_trend["Revenue (USD)"] = pd.to_numeric(_trend["Revenue (USD)"], errors="coerce").fillna(0).round(2)
-
-_detail_cols = ["project_id","project_name","project_manager","product",
-                "region","currency","period","local_amount","usd_amount"]
-_detail_cols = [c for c in _detail_cols if c in slices.columns]
-_detail = slices[_detail_cols].copy()
-for _nc in ("usd_amount","local_amount"):
-    if _nc in _detail.columns:
-        _detail[_nc] = pd.to_numeric(_detail[_nc], errors="coerce").fillna(0).round(2)
-
-if "project_id" in _detail.columns and "project_name" in _detail.columns:
-    _detail["_proj_label"] = _detail["project_id"].astype(str) + ": " + _detail["project_name"].fillna("").astype(str)
-else:
-    _detail["_proj_label"] = _detail.get("project_id", pd.Series("", index=_detail.index)).astype(str)
-
-_all_periods_sorted = sorted(_detail["period"].unique()) if "period" in _detail.columns else []
-_detail_pivot = pd.DataFrame()
-if _all_periods_sorted:
-    _dp = (_detail.groupby(["_proj_label","period"])["usd_amount"]
-                  .sum().unstack(fill_value=0)
-                  .reindex(columns=_all_periods_sorted, fill_value=0))
-    _dp.columns = [pd.Timestamp(m+"-01").strftime("%b %Y") for m in _dp.columns]
-    _dp["Total"] = _dp.sum(axis=1)
-    _dp = _dp.round(2)
-    _dp.index.name = "Project"
-    _detail_pivot = _dp.reset_index()
-
-# ── T&M Monthly Actuals (from NS time entries) ───────────────────────────────
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.markdown('<div class="section-label">T&amp;M Monthly Actuals (from NS Time Detail)</div>',
             unsafe_allow_html=True)
 
@@ -767,24 +609,194 @@ else:
             _cur_rows.append(_total_row)
             _tm_piv_cur = pd.DataFrame(_cur_rows)
 
-        _cur_tab_label = "By Currency 💱" if not _tm_piv_cur.empty else "By Currency"
-        tab1, tab2, tab3 = st.tabs(["By Region", "By Product", _cur_tab_label])
-        with tab1:
-            if not _tm_piv_rgn.empty:
-                st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
-                             use_container_width=True, hide_index=True)
-        with tab2:
-            if not _tm_piv_prod.empty:
-                st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
-                             use_container_width=True, hide_index=True)
-        with tab3:
-            if not _tm_piv_cur.empty:
-                st.caption("Revenue converted to USD using monthly average FX rates (shared/config.py). "
-                           "Local currency amounts shown in brackets.")
-                st.dataframe(_tm_piv_cur, use_container_width=True, hide_index=True)
-            else:
-                st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
 
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">T&amp;M Actuals Summary (from NS Time Detail)</div>', unsafe_allow_html=True)
+_cur_tab_label = "By Currency 💱" if not _tm_piv_cur.empty else "By Currency"
+tab1, tab2, tab3 = st.tabs(["By Region", "By Product", _cur_tab_label])
+with tab1:
+    if not _tm_piv_rgn.empty:
+        st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
+                     use_container_width=True, hide_index=True)
+with tab2:
+    if not _tm_piv_prod.empty:
+        st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
+                     use_container_width=True, hide_index=True)
+with tab3:
+    if not _tm_piv_cur.empty:
+        st.caption("Revenue converted to USD using monthly average FX rates (shared/config.py). "
+                   "Local currency amounts shown in brackets.")
+        st.dataframe(_tm_piv_cur, use_container_width=True, hide_index=True)
+    else:
+        st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION — Monthly Breakdown by Region & Product
+# ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-label">Monthly Revenue Breakdown — FF + T&amp;M (USD)</div>', unsafe_allow_html=True)
+
+# ── Build quarterly columnar pivot ───────────────────────────────────────────
+# Layout: Jan | Feb | Mar | Q1 | Apr | May | Jun | Q2 | ... | YTD
+# Covers all years present in data
+
+def _pivot_quarterly(df, row_dim):
+    """Build management accounts layout: months interleaved with quarterly subtotals + YTD."""
+    if df.empty or row_dim not in df.columns:
+        return pd.DataFrame()
+
+    # All unique periods in data
+    all_periods = sorted(df["period"].unique())
+    all_years   = sorted({p[:4] for p in all_periods})
+
+    # Base pivot: rows = row_dim, columns = period
+    base = (df.groupby([row_dim, "period"])["usd_amount"]
+              .sum()
+              .unstack(fill_value=0))
+
+    # Build ordered column list with quarter subtotals
+    ordered_cols  = []   # (col_label, source_type, source_key)
+    # source_type: "month" | "quarter" | "ytd"
+
+    for year in all_years:
+        year_periods = [p for p in all_periods if p.startswith(year)]
+        year_months  = sorted(year_periods)
+
+        for q in range(1, 5):
+            q_month_nums = [(q-1)*3+1, (q-1)*3+2, (q-1)*3+3]
+            q_periods    = [f"{year}-{m:02d}" for m in q_month_nums]
+            q_present    = [p for p in q_periods if p in year_months]
+
+            if not q_present:
+                continue
+
+            # Add individual months
+            for p in q_present:
+                mo_label = pd.Timestamp(p + "-01").strftime("%b")
+                # Add year suffix only if data spans multiple years
+                if len(all_years) > 1:
+                    mo_label += f" '{year[2:]}"
+                ordered_cols.append((mo_label, "month", p))
+
+            # Add quarter subtotal if any months present
+            ordered_cols.append((f"Q{q}" + (f" '{year[2:]}" if len(all_years) > 1 else ""), "quarter", q_periods))
+
+        # Add YTD after December (or last month of year)
+        if year == all_years[-1]:
+            ordered_cols.append(("YTD", "ytd", year_periods))
+        else:
+            ordered_cols.append((f"FY{year[2:]}", "ytd", year_periods))
+
+    # Build the output DataFrame column by column
+    rows_index = base.index.tolist()
+    result = {row_dim: list(rows_index) + ["Total"]}
+
+    for col_label, ctype, key in ordered_cols:
+        col_vals = []
+        if ctype == "month":
+            vals = base[key] if key in base.columns else pd.Series(0, index=base.index)
+        else:
+            # Sum across list of periods
+            present = [p for p in key if p in base.columns]
+            vals = base[present].sum(axis=1) if present else pd.Series(0, index=base.index)
+
+        for idx in rows_index:
+            col_vals.append(float(vals.get(idx, 0)))
+        col_vals.append(sum(col_vals))  # Total row
+        result[col_label] = [_fmt(v) for v in col_vals]
+
+    return pd.DataFrame(result)
+
+_piv_region  = _pivot_quarterly(slices, "region")
+_piv_product = _pivot_quarterly(slices, "product")
+
+def _style_pivot(df):
+    """Apply subtle background to quarter subtotal and FY/YTD columns."""
+    # Identify which columns are Q or FY/YTD subtotals
+    subtotal_cols = [c for c in df.columns
+                     if str(c).startswith("Q") or c in ("YTD", "FY26", "FY27", "FY28")]
+
+    def _highlight(col):
+        if col.name in subtotal_cols:
+            return ["background-color: rgba(68,114,196,0.18); font-weight: 600"] * len(col)
+        return [""] * len(col)
+
+    # Also bold the Total row
+    def _bold_total(row):
+        if str(row.iloc[0]) == "Total":
+            return ["font-weight: 700; border-top: 1px solid rgba(128,128,128,0.4)"] * len(row)
+        return [""] * len(row)
+
+    return (df.style
+              .apply(_highlight, axis=0)
+              .apply(_bold_total, axis=1))
+
+if not _piv_region.empty:
+    st.markdown("**By Region**")
+    st.dataframe(_style_pivot(_piv_region), use_container_width=True, hide_index=True)
+
+if not _piv_product.empty:
+    st.markdown("**By Product**")
+    st.dataframe(_style_pivot(_piv_product), use_container_width=True, hide_index=True)
+
+# ── T&M Monthly Actuals pivot — appended to monthly breakdown section ────────
+if not _tm_actuals.empty:
+    st.markdown("**T&M By Region**")
+    if not _tm_piv_rgn.empty:
+        st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
+                     use_container_width=True, hide_index=True)
+    st.markdown("**T&M By Product**")
+    if not _tm_piv_prod.empty:
+        st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
+                     use_container_width=True, hide_index=True)
+
+# ── Trend Analysis and MoM by Region — Excel only (removed from UI) ──────────
+_trend_full = (_monthly_totals.reset_index()
+               if not _monthly_totals.empty else pd.DataFrame(columns=["period","usd_amount"]))
+_trend_full.columns = ["Period", "Revenue (USD)"]
+_trend_full["Revenue (USD)"] = pd.to_numeric(_trend_full["Revenue (USD)"], errors="coerce").fillna(0)
+_trend_full["MoM Change"]    = _trend_full["Revenue (USD)"].diff()
+_trend_full["MoM %"]         = _trend_full["Revenue (USD)"].pct_change() * 100
+_trend_full["Cumulative YTD"]= _trend_full["Revenue (USD)"].cumsum()
+_trend_disp = _trend_full.copy()
+_trend_disp["Period"]         = _trend_disp["Period"].apply(lambda m: pd.Timestamp(m+"-01").strftime("%b %Y"))
+_trend_disp["Revenue (USD)"]  = _trend_disp["Revenue (USD)"].apply(_fmt)
+_trend_disp["MoM Change"]     = _trend_disp["MoM Change"].apply(lambda v: ("↑ " if v>=0 else "↓ ")+_fmt(abs(v)) if pd.notna(v) else "—")
+_trend_disp["MoM %"]          = _trend_disp["MoM %"].apply(lambda v: f"{'↑' if v>=0 else '↓'} {abs(v):.1f}%" if pd.notna(v) else "—")
+_trend_disp["Cumulative YTD"] = _trend_disp["Cumulative YTD"].apply(_fmt)
+
+# ── Monthly trend and Project Detail — Excel only ────────────────────────────
+_trend = slices.groupby("period")["usd_amount"].sum().reset_index()
+_trend.columns = ["Period", "Revenue (USD)"]
+_trend = _trend.sort_values("Period")
+_trend["Revenue (USD)"] = pd.to_numeric(_trend["Revenue (USD)"], errors="coerce").fillna(0).round(2)
+
+_detail_cols = ["project_id","project_name","project_manager","product",
+                "region","currency","period","local_amount","usd_amount"]
+_detail_cols = [c for c in _detail_cols if c in slices.columns]
+_detail = slices[_detail_cols].copy()
+for _nc in ("usd_amount","local_amount"):
+    if _nc in _detail.columns:
+        _detail[_nc] = pd.to_numeric(_detail[_nc], errors="coerce").fillna(0).round(2)
+
+if "project_id" in _detail.columns and "project_name" in _detail.columns:
+    _detail["_proj_label"] = _detail["project_id"].astype(str) + ": " + _detail["project_name"].fillna("").astype(str)
+else:
+    _detail["_proj_label"] = _detail.get("project_id", pd.Series("", index=_detail.index)).astype(str)
+
+_all_periods_sorted = sorted(_detail["period"].unique()) if "period" in _detail.columns else []
+_detail_pivot = pd.DataFrame()
+if _all_periods_sorted:
+    _dp = (_detail.groupby(["_proj_label","period"])["usd_amount"]
+                  .sum().unstack(fill_value=0)
+                  .reindex(columns=_all_periods_sorted, fill_value=0))
+    _dp.columns = [pd.Timestamp(m+"-01").strftime("%b %Y") for m in _dp.columns]
+    _dp["Total"] = _dp.sum(axis=1)
+    _dp = _dp.round(2)
+    _dp.index.name = "Project"
+    _detail_pivot = _dp.reset_index()
+
+# ── T&M Monthly Actuals (from NS time entries) ───────────────────────────────
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ── Billing Exceptions ────────────────────────────────────────────────────────
 if df_ns_session is not None:
