@@ -931,28 +931,32 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _meta_cols = ["project_name", "product", "subscription_id",
                           "subscription_item", "currency", "rev_start",
                           "rev_rec_start", "rev_rec_end",
-                          "impl_gross", "license_sku", "license_cost_usd",
+                          "impl_gross", "license_sku",
+                          "license_cost_local", "license_currency", "license_cost_usd",
                           "carve_max", "reconcile_flag"]
             _meta_cols = [c for c in _meta_cols if c in _recon_slices.columns]
             _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
                        .first().reset_index())
-            _all_p_r = sorted(_recon_slices["period"].unique())
-            _piv_r = (_recon_slices.groupby(["project_id","charge_item","period"])["usd_amount"]
+            # Cap months at Dec 2026
+            _all_p_r = sorted([p for p in _recon_slices["period"].unique() if p <= "2026-12"])
+            _piv_r = (_recon_slices[_recon_slices["period"] <= "2026-12"]
+                      .groupby(["project_id","charge_item","period"])["usd_amount"]
                       .sum().unstack(fill_value=0).reset_index())
             _piv_r.columns.name = None
             _mo_r = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _all_p_r}
             _piv_r = _piv_r.rename(columns=_mo_r)
             _mc_r = [_mo_r[p] for p in _all_p_r if _mo_r[p] in _piv_r.columns]
-            _piv_r["Total USD"] = _piv_r[_mc_r].sum(axis=1)
+            _piv_r["Total Carve"] = _piv_r[_mc_r].sum(axis=1)
             _recon_pivot = _meta_r.merge(
-                _piv_r[["project_id","charge_item"] + _mc_r + ["Total USD"]],
+                _piv_r[["project_id","charge_item"] + _mc_r + ["Total Carve"]],
                 on=["project_id","charge_item"], how="left")
             _ord_r = [c for c in ["project_id","project_name","product","subscription_id",
                                     "subscription_item","currency","rev_start",
                                     "rev_rec_start","rev_rec_end","impl_gross",
-                                    "license_sku","license_cost_usd","carve_max",
-                                    "reconcile_flag"] if c in _recon_pivot.columns]
-            _ord_r += _mc_r + ["Total USD"]
+                                    "license_sku","license_cost_local","license_currency",
+                                    "license_cost_usd","carve_max","reconcile_flag"]
+                      if c in _recon_pivot.columns]
+            _ord_r += _mc_r + ["Total Carve"]
             _recon_pivot = _recon_pivot[[c for c in _ord_r if c in _recon_pivot.columns]]
             _recon_pivot.to_excel(_xl, sheet_name="Reconcile Carve Detail", index=False)
 

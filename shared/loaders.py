@@ -1241,7 +1241,7 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
     df["license_sku"]         = ""
     df["license_cost_usd"]    = None
     df["carve_max"]           = None
-    df["impl_gross_amount"]   = None
+    df["impl_gross"]          = None
     df["rev_rec_start"]       = None
     df["rev_rec_end"]         = None
     df["_exclude_from_slices"] = False
@@ -1320,7 +1320,7 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
         impl_gross = float(impl_row.get("gross_amount", 0) or 0)
 
         # Store original impl gross for reviewer reference
-        df.at[idx, "impl_gross_amount"] = impl_gross
+        df.at[idx, "impl_gross"]        = impl_gross
 
         # Step 1: derive rev rec window
         rrs, rre = _derive_rev_rec_window(impl_start) if pd.notna(impl_start) else (None, None)
@@ -1374,6 +1374,8 @@ def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
         # Step 6: apply
         df.at[idx, "recognizable_amount"] = round(carve_amount, 2)
         df.at[idx, "license_sku"]         = lic_sku
+        df.at[idx, "license_cost_local"]  = round(annual_gross_local, 2)
+        df.at[idx, "license_currency"]    = annual_currency
         df.at[idx, "license_cost_usd"]    = round(annual_gross_usd, 2)
         df.at[idx, "carve_max"]           = max_carve
 
@@ -1439,15 +1441,19 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
             mo_end     = mp.to_timestamp("M")
             days_in_mo = calendar.monthrange(mp.year, mp.month)[1]
 
-            # Pro-rate partial first / last months
-            actual_start = max(start, mo_start)
-            actual_end   = min(end, mo_end)
-            days_active  = (actual_end - actual_start).days + 1
-
-            # Monthly slice = total / n_months, scaled by days active
-            full_slice    = total / n_months
-            prorated      = full_slice * (days_active / days_in_mo)
-            fx            = get_fx_rate(curr, period_str)
+            # For Reconcile carve rows (rev_rec_start set): equal split, no pro-ration
+            # The rev rec window is already correctly defined — each month gets equal share
+            _is_reconcile_row = pd.notna(r.get("rev_rec_start")) and str(r.get("rev_rec_start", "")) != ""
+            if _is_reconcile_row:
+                prorated = total / n_months
+            else:
+                # Pro-rate partial first / last months for standard FF rows
+                actual_start = max(start, mo_start)
+                actual_end   = min(end, mo_end)
+                days_active  = (actual_end - actual_start).days + 1
+                full_slice   = total / n_months
+                prorated     = full_slice * (days_active / days_in_mo)
+            fx = get_fx_rate(curr, period_str)
 
             rows.append({
                 "project_id":        str(r.get("project_id", "")),
@@ -1465,13 +1471,15 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "usd_amount":        round(prorated * fx, 2),
                 "status":            r.get("status", ""),
                 "transaction":       r.get("transaction", ""),
-                "reconcile_flag":    r.get("reconcile_flag", ""),
-                "license_sku":        r.get("license_sku", ""),
-                "license_cost_usd":   r.get("license_cost_usd", ""),
-                "carve_max":          r.get("carve_max", ""),
-                "impl_gross_amount":  r.get("impl_gross_amount", ""),
-                "rev_rec_start":      str(r.get("rev_rec_start", ""))[:10] if pd.notna(r.get("rev_rec_start")) else "",
-                "rev_rec_end":        str(r.get("rev_rec_end", ""))[:10]   if pd.notna(r.get("rev_rec_end"))   else "",
+                "reconcile_flag":     r.get("reconcile_flag", ""),
+                "license_sku":         r.get("license_sku", ""),
+                "license_cost_local":  r.get("license_cost_local", ""),
+                "license_currency":    r.get("license_currency", ""),
+                "license_cost_usd":    r.get("license_cost_usd", ""),
+                "carve_max":           r.get("carve_max", ""),
+                "impl_gross":          r.get("impl_gross", ""),
+                "rev_rec_start":       str(r.get("rev_rec_start", ""))[:10] if pd.notna(r.get("rev_rec_start")) else "",
+                "rev_rec_end":         str(r.get("rev_rec_end", ""))[:10]   if pd.notna(r.get("rev_rec_end"))   else "",
             })
 
     result = pd.DataFrame(rows) if rows else pd.DataFrame(

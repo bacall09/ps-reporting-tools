@@ -64,13 +64,16 @@ _manager_pages = [
     st.Page("pages/5_Capacity_Outlook.py",  title="Capacity Outlook"),
     st.Page("pages/9_Revenue_Report.py",    title="Revenue Report"),
 ]
+_help_pages = [
+    st.Page("pages/9_Help.py", title="Help"),
+]
 
 if _role in ("manager", "manager_only"):
-    pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages})
+    pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages, "Info": _help_pages})
 elif _role == "reporting_only":
     pg = st.navigation({"Management": _manager_pages})
 else:
-    pg = st.navigation({"My Tools": _consultant_pages})
+    pg = st.navigation({"My Tools": _consultant_pages, "Info": _help_pages})
 
 # ── Login gate (shown instead of page content when not authenticated) ─────────
 if not st.session_state.get("authentication_status"):
