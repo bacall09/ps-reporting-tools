@@ -967,8 +967,11 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _recon_pivot = _meta_r.merge(
                 _piv_r[["project_id","charge_item"] + _mc_r + ["Total Carve"]],
                 on=["project_id","charge_item"], how="left")
+            # Rename rev_start → charge_start_date for clarity
+            if "rev_start" in _recon_pivot.columns:
+                _recon_pivot = _recon_pivot.rename(columns={"rev_start": "charge_start_date"})
             _ord_r = [c for c in ["project_id","project_name","product","subscription_id",
-                                    "subscription_item","currency","rev_start",
+                                    "subscription_item","currency","charge_start_date",
                                     "rev_rec_start","rev_rec_end","impl_gross",
                                     "license_sku","license_cost_local","license_currency",
                                     "license_cost_usd","carve_max","reconcile_flag"]
@@ -977,9 +980,10 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _recon_pivot = _recon_pivot[[c for c in _ord_r if c in _recon_pivot.columns]]
             _recon_pivot.to_excel(_xl, sheet_name="Reconcile Carve Detail", index=False)
 
-        # ── All FF rows pivot (standard) ─────────────────────────────────────
-        _all_periods = sorted(slices["period"].unique())
-        _meta_cols_all = ["project_name", "product", "subscription_id",
+        # ── All FF rows pivot (standard) — capped at Dec 2026 ──────────────────
+        _all_periods_all  = sorted(slices["period"].unique())
+        _display_p_all    = [p for p in _all_periods_all if p <= "2026-12"]
+        _meta_cols_all = ["project_name", "region", "product", "subscription_id",
                           "subscription_item", "currency", "rev_start", "rev_end",
                           "reconcile_flag"]
         _meta_cols_all = [c for c in _meta_cols_all if c in slices.columns]
@@ -988,22 +992,23 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         _piv = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                 .sum().unstack(fill_value=0).reset_index())
         _piv.columns.name = None
-        _month_rename = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _all_periods}
+        # Total USD = full window, display cols = Jan–Dec 2026
+        _all_amt_all = [p for p in _all_periods_all if p in _piv.columns]
+        _piv["Total USD"] = _piv[_all_amt_all].sum(axis=1)
+        _month_rename = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_all}
         _piv = _piv.rename(columns=_month_rename)
-        _month_cols = [_month_rename[p] for p in _all_periods if _month_rename[p] in _piv.columns]
-        _piv["Total USD"] = _piv[_month_cols].sum(axis=1)
+        _month_cols = [_month_rename[p] for p in _display_p_all if _month_rename[p] in _piv.columns]
         _ff_proj_pivot = _meta_all.merge(
             _piv[["project_id","charge_item"] + _month_cols + ["Total USD"]],
             on=["project_id","charge_item"], how="left")
-        _ord_all = [c for c in ["project_id","project_name","product","subscription_id",
+        _ord_all = [c for c in ["project_id","project_name","region","product","subscription_id",
                                   "subscription_item","currency","rev_start","rev_end",
                                   "reconcile_flag"] if c in _ff_proj_pivot.columns]
         _ord_all += _month_cols + ["Total USD"]
         _ff_proj_pivot = _ff_proj_pivot[[c for c in _ord_all if c in _ff_proj_pivot.columns]]
         _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project", index=False)
 
-    _detail.to_excel(_xl, sheet_name="FF Project Detail (Long)", index=False)
-    if not _detail_pivot.empty: _detail_pivot.to_excel(_xl, sheet_name="FF Project Detail", index=False)
+    # FF Project Detail tabs removed — superseded by FF Rev by Project and Reconcile Carve Detail
     if df_tm_sow is not None and not df_tm.empty:
         df_tm[[c for c in ["account_name","opportunity_name","opportunity_owner",
                             "product","region","close_date","sow_hours",
@@ -1013,7 +1018,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not _det_excel.empty:
         _det_excel.to_excel(_xl, sheet_name="Time Entry Detail", index=False)
     if df_rev_raw is not None and "reconcile_flag" in df_rev_raw.columns:
-        _rec_xl = df_rev_raw[df_rev_raw["reconcile_flag"] != ""].copy()
+        # Only show rows with warning flags — exclude successfully matched rows
+        _rec_xl = df_rev_raw[df_rev_raw["reconcile_flag"].str.startswith("⚠️", na=False)].copy()
         if not _rec_xl.empty:
             _rec_xl_cols = [c for c in ["charge_item","subscription_id","subscription_item",
                                          "project_id","gross_amount","currency",
