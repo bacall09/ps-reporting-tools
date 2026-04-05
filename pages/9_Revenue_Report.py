@@ -83,9 +83,19 @@ if df_rev_raw is not None:
     if df_drs is not None and "project_id" in df_drs.columns:
         drs_lookup = df_drs[["project_id","project_name","project_manager","phase"]].copy()
         drs_lookup["project_id"] = drs_lookup["project_id"].astype(str).str.strip().str.split(".").str[0]
+        # Preserve project_name already in slices (from FF loader) before merge
+        _existing_pname = slices.get("project_name", pd.Series(dtype=str)).copy() if "project_name" in slices.columns else None
         slices = slices.merge(drs_lookup, on="project_id", how="left")
+        # Restore FF-loaded project_name where DRS didn't fill it
+        if _existing_pname is not None and "project_name" in slices.columns:
+            slices["project_name"] = slices["project_name"].fillna("").where(
+                slices["project_name"].fillna("") != "",
+                _existing_pname.reindex(slices.index).fillna("")
+            )
     else:
-        slices["project_name"]    = slices["project_id"]
+        # Don't overwrite project_name if already populated from FF loader
+        if "project_name" not in slices.columns or slices["project_name"].fillna("").eq("").all():
+            slices["project_name"] = slices["project_id"]
         slices["project_manager"] = ""
         slices["phase"]           = ""
 else:

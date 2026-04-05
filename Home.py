@@ -14,6 +14,9 @@ from shared.constants import (
 )
 from shared.loaders import load_drs, load_ns_time, load_sfdc
 
+# Increment this when loaders change — forces session cache to invalidate
+_LOADER_VERSION = "v20260405"
+
 st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
 
 # ── Build credentials ─────────────────────────────────────────────────────────
@@ -221,6 +224,14 @@ with st.sidebar:
                          help="Required for T&M Revenue Report")
         if _upload_role in ("manager","manager_only","reporting_only") else None
     )
+    # Clear stale versioned caches on new deploy
+    for _vk in [f"df_ns_{_LOADER_VERSION}", f"df_drs_{_LOADER_VERSION}"]:
+        if _vk not in st.session_state:
+            for _ok in [k for k in list(st.session_state.keys())
+                        if k.startswith(_vk.split("_v")[0]) and k != _vk.split("_v")[0]
+                        and "_v20" in k]:
+                del st.session_state[_ok]
+
     for _lbl, _key, _ldr, _f in [
         ("SS DRS","df_drs",load_drs,drs_file),
         ("NS Time","df_ns",load_ns_time,ns_file),
@@ -237,10 +248,16 @@ with st.sidebar:
                 else _pd.read_csv(ns_ua_file)
             )
         except Exception as e: st.error(f"NS Unassigned: {e}")
-    if rev_file and "df_revenue" not in st.session_state:
+    _rev_key = f"df_revenue_{_LOADER_VERSION}"
+    # Clear old version if present
+    if _rev_key not in st.session_state:
+        for _ok in [k for k in st.session_state if k.startswith("df_revenue")]:
+            del st.session_state[_ok]
+    if rev_file and _rev_key not in st.session_state:
         try:
             from shared.loaders import load_revenue as _lr
             st.session_state["df_revenue"] = _lr(rev_file)
+            st.session_state[_rev_key] = True
         except Exception as e: st.error(f"Revenue: {e}")
     if tm_sow_file and "df_tm_sow" not in st.session_state:
         try:
@@ -250,7 +267,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Session data**")
     _si = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
-    if _upload_role in ("manager","manager_only"):
+    if _upload_role in ("manager","manager_only","reporting_only"):
         _si.append(("NS Unassigned","df_ns_unassigned"))
         _si.append(("FF Revenue","df_revenue"))
         _si.append(("T&M SOW","df_tm_sow"))
@@ -259,7 +276,7 @@ with st.sidebar:
         st.markdown(f'<div style="font-size:12px;color:{"#27AE60" if _ok else "rgba(128,128,128,0.4)"};'
                     f'padding:3px 0">{"✓" if _ok else "○"}&nbsp; {_lbl}</div>',
                     unsafe_allow_html=True)
-    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]):
+    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue","df_tm_sow"]):
         if st.button("Clear loaded data", use_container_width=True, key="home_clear"):
             # Clear dataframes and uploader widget states
             keys_to_clear = [
