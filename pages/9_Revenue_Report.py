@@ -223,6 +223,10 @@ mtd_total  = _ff_mtd  + _tm_mtd
 full_month = _ff_full + _tm_full
 
 # ── Total Revenue metric cards (FF + T&M combined) ───────────────────────────
+# Composition: FF = slices (recognizable_amount straight-lined over rev rec window)
+#              T&M = calc_tm_monthly_actuals (NS hours × matched rate, converted to USD)
+_ff_pct = f"{(_ff_ytd/ytd_total*100):.0f}%" if ytd_total > 0 else "—"
+_tm_pct = f"{(_tm_ytd/ytd_total*100):.0f}%" if ytd_total > 0 else "—"
 c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
     st.markdown(
@@ -263,6 +267,13 @@ with c6:
         f'<div class="metric-card"><div class="metric-val">{_fmt(_run_rate)}</div>'
         f'<div class="metric-lbl">Run Rate (ARR) · avg × 12 ({len(_complete_months)} mo)</div></div>',
         unsafe_allow_html=True)
+
+if df_rev_raw is not None or df_ns is not None:
+    st.caption(
+        f"Composition: FF = {_fmt(_ff_ytd)} ({_ff_pct} of YTD) · "
+        f"T&M Actuals = {_fmt(_tm_ytd)} ({_tm_pct} of YTD) · "
+        f"T&M figures = NS hours × matched rate (not SFDC SOW estimate)"
+    )
 
 # ── T&M metric cards ──────────────────────────────────────────────────────────
 if df_tm is not None:
