@@ -786,15 +786,15 @@ else:
                 st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
 
 # ── Reconcile Carve-Out Flags ────────────────────────────────────────────────
-if df_rev_raw is not None and "reconcile_flag" in df_rev_raw.columns:
-    _rec_flags = df_rev_raw[df_rev_raw["reconcile_flag"].str.startswith("⚠️", na=False)]
+if df_rev_raw is not None and "notes" in df_rev_raw.columns:
+    _rec_flags = df_rev_raw[df_rev_raw["notes"].str.startswith("⚠️", na=False)]
     if not _rec_flags.empty:
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.markdown('<div class="section-label">Reconcile Carve-Out Flags</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Revenue Carve-Out Flags</div>', unsafe_allow_html=True)
         st.caption(f"{len(_rec_flags)} charge rows require review — see details below.")
         _flag_cols = [c for c in ["charge_item","subscription_id","subscription_item",
                                    "gross_amount","currency","rev_start","service_end",
-                                   "reconcile_flag"] if c in _rec_flags.columns]
+                                   "notes"] if c in _rec_flags.columns]
         with st.expander(f"⚠️ Reconcile Flags ({len(_rec_flags)} rows)", expanded=True):
             st.dataframe(_rec_flags[_flag_cols], use_container_width=True, hide_index=True)
 
@@ -949,7 +949,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
                           "rev_rec_start", "rev_rec_end",
                           "impl_gross", "license_sku",
                           "license_cost_local", "license_currency", "license_cost_usd",
-                          "carve_max", "reconcile_flag"]
+                          "carve_max", "notes"]
             _meta_cols = [c for c in _meta_cols if c in _recon_slices.columns]
             _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
                        .first().reset_index())
@@ -980,7 +980,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
                                     "subscription_item","currency","charge_start_date",
                                     "rev_rec_start","rev_rec_end","impl_gross",
                                     "license_sku","license_cost_local","license_currency",
-                                    "license_cost_usd","carve_max","reconcile_flag"]
+                                    "license_cost_usd","carve_max","notes"]
                       if c in _recon_pivot.columns]
             _ord_r += _mc_r + ["Total Carve"]
             _recon_pivot = _recon_pivot[[c for c in _ord_r if c in _recon_pivot.columns]]
@@ -991,7 +991,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         _display_p_all    = [p for p in _all_periods_all if _roll_start <= p <= _roll_end]
         _meta_cols_all = ["project_name", "region", "product", "subscription_id",
                           "subscription_item", "currency", "rev_start", "rev_end",
-                          "reconcile_flag"]
+                          "notes"]
         _meta_cols_all = [c for c in _meta_cols_all if c in slices.columns]
         _meta_all = (slices.groupby(["project_id","charge_item"])[_meta_cols_all]
                      .first().reset_index())
@@ -1009,7 +1009,7 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             on=["project_id","charge_item"], how="left")
         _ord_all = [c for c in ["project_id","project_name","region","product","subscription_id",
                                   "subscription_item","currency","rev_start","rev_end",
-                                  "reconcile_flag","Rev Amount"] if c in _ff_proj_pivot.columns]
+                                  "notes","Rev Amount"] if c in _ff_proj_pivot.columns]
         _ord_all += _month_cols
         _ff_proj_pivot = _ff_proj_pivot[[c for c in _ord_all if c in _ff_proj_pivot.columns]]
         _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project", index=False)
@@ -1023,18 +1023,18 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
                if c in df_tm.columns]].to_excel(_xl, sheet_name="TM Detail", index=False)
     if not _det_excel.empty:
         _det_excel.to_excel(_xl, sheet_name="Time Entry Detail", index=False)
-    if df_rev_raw is not None and "reconcile_flag" in df_rev_raw.columns:
+    if df_rev_raw is not None and "notes" in df_rev_raw.columns:
         # Only show rows with warning flags — exclude successfully matched rows
-        _rec_xl = df_rev_raw[df_rev_raw["reconcile_flag"].str.startswith("⚠️", na=False)].copy()
+        _rec_xl = df_rev_raw[df_rev_raw["notes"].str.startswith("⚠️", na=False)].copy()
         if not _rec_xl.empty:
             _rec_xl_cols = [c for c in ["charge_item","subscription_id","subscription_item",
                                          "project_id","gross_amount","currency",
                                          "rev_start","service_end",
-                                         "reconcile_flag"] if c in _rec_xl.columns]
+                                         "notes"] if c in _rec_xl.columns]
             _rec_xl_out = _rec_xl[_rec_xl_cols].copy()
             if "rev_start" in _rec_xl_out.columns:
                 _rec_xl_out = _rec_xl_out.rename(columns={"rev_start": "service_start"})
-            _rec_xl_out.to_excel(_xl, sheet_name="Reconcile Carve Flags", index=False)
+            _rec_xl_out.to_excel(_xl, sheet_name="Carve Flags", index=False)
 
 st.download_button(
     "⬇ Download Revenue Report (Excel)",
