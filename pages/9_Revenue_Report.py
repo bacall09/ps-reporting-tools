@@ -222,9 +222,7 @@ qtd_total  = _ff_qtd  + _tm_qtd
 mtd_total  = _ff_mtd  + _tm_mtd
 full_month = _ff_full + _tm_full
 
-# ── Fixed Fee metric cards ────────────────────────────────────────────────────
-# Total Revenue cards — combined FF + T&M
-_has_tm_data = df_ns is not None and not _tm_monthly_early.empty
+# ── Total Revenue metric cards (FF + T&M combined) ───────────────────────────
 c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
     st.markdown(
@@ -495,6 +493,9 @@ st.markdown('<div class="section-label">T&amp;M Monthly Actuals (from NS Time De
 
 df_ns_session = st.session_state.get("df_ns")
 _tm_actuals   = pd.DataFrame()
+_tm_piv_rgn   = pd.DataFrame()
+_tm_piv_prod  = pd.DataFrame()
+_tm_piv_cur   = pd.DataFrame()
 
 if df_ns_session is None:
     st.info("Upload NS Time Detail in the sidebar to see monthly T&M actuals.")
