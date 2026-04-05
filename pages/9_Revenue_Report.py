@@ -1055,10 +1055,98 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
                 _rec_xl_out = _rec_xl_out.rename(columns={"rev_start": "service_start"})
             _rec_xl_out.to_excel(_xl, sheet_name="Carve Flags", index=False)
 
+# ── Apply Zone brand formatting ──────────────────────────────────────────────
+try:
+    from shared.excel_formatter import apply_zone_formatting
+
+    # Collect metrics for Dashboard
+    _ns_date_str = ""
+    if df_ns is not None and "date" in df_ns.columns:
+        _ns_latest = df_ns["date"].dropna().max()
+        try:
+            _ns_date_str = pd.Timestamp(_ns_latest).strftime("%-d %B %Y")
+        except Exception:
+            _ns_date_str = str(_ns_latest)[:10]
+
+    _blurb = (
+        "This report calculates PS revenue recognition from NetSuite charge exports and "
+        "NS Time Detail. Fixed Fee projects: revenue recognised straight-line across a "
+        "2–3 month window from service start. Reconcile, Capture and Approvals "
+        "implementations apply a license-based carve-out capped at the Year 1 license "
+        "cost. T&M projects: revenue = hours logged × billing rate, converted to USD "
+        "using monthly average FX rates. Carve flags are surfaced for Finance review."
+    )
+
+    # By Region summary rows for dashboard
+    _dash_region = []
+    if not _rt.empty:
+        for _, _rrow in _rt.iterrows():
+            _dash_region.append({
+                "Region": _rrow.get("Region", ""),
+                "YTD (USD)": _rrow.get("YTD", 0),
+                "% of Total": f"{_rrow.get('YTD',0)/max(ytd_total,1)*100:.1f}%"
+            })
+
+    # By Product summary rows for dashboard
+    _dash_product = []
+    if not _pt.empty:
+        for _, _prow in _pt.iterrows():
+            _dash_product.append({
+                "Product": _prow.get("Product", ""),
+                "YTD (USD)": _prow.get("YTD", 0),
+                "% of Total": f"{_prow.get('YTD',0)/max(ytd_total,1)*100:.1f}%"
+            })
+
+    # Trend rows for dashboard
+    _dash_trend = []
+    if not _trend_disp.empty:
+        for _, _trow in _trend_disp.head(12).iterrows():
+            _dash_trend.append(_trow.to_dict())
+
+    _flag_count = 0
+    if df_rev_raw is not None and "notes" in df_rev_raw.columns:
+        _flag_count = int(df_rev_raw["notes"].str.startswith("⚠️", na=False).sum())
+
+    _ff_ytd  = float(ytd_df["usd_amount"].sum()) if not ytd_df.empty else 0.0
+    _tm_ytd  = float(_tm_monthly_early.sum()) if not _tm_monthly_early.empty else 0.0
+    _recon_ytd = 0.0
+    if not slices.empty and "notes" in slices.columns:
+        from shared.config import RECONCILE_IMPL_SKU as _RDASH
+        _recon_mask = slices["charge_item"].str.contains(_RDASH, na=False)
+        _recon_ytd  = float(slices.loc[_recon_mask & slices["period"].isin(ytd_months), "usd_amount"].sum())
+
+    _mom_display = f"{_mom_pct:+.1f}%" if _mom_pct is not None else "—"
+
+    _dash_metrics = {
+        "ytd":         ytd_total,
+        "qtd":         qtd_total,
+        "mtd":         mtd_total,
+        "full_mo":     full_month,
+        "run_rate":    _run_rate,
+        "mom":         _mom_display,
+        "ff_ytd":      _ff_ytd,
+        "tm_ytd":      _tm_ytd,
+        "recon_ytd":   _recon_ytd,
+        "ff_projects": len(slices["project_id"].unique()) if not slices.empty else 0,
+        "tm_projects": len(df_tm["ns_project"].dropna().unique()) if df_tm is not None and not df_tm.empty else 0,
+        "flag_count":  _flag_count,
+        "trend_rows":  _dash_trend,
+        "region_rows": _dash_region,
+        "product_rows":_dash_product,
+    }
+
+    _formatted_bytes = apply_zone_formatting(
+        _buf.getvalue(), _dash_metrics, _ns_date_str, _blurb
+    )
+except Exception as _fmt_err:
+    # Fallback to unformatted if formatter fails
+    _formatted_bytes = _buf.getvalue()
+    st.warning(f"Formatting error (unformatted report downloaded): {_fmt_err}")
+
 st.download_button(
     "⬇ Download Revenue Report (Excel)",
-    data=_buf.getvalue(),
-    file_name=f"ff_revenue_{today.strftime('%Y%m%d')}.xlsx",
+    data=_formatted_bytes,
+    file_name=f"ps_revenue_report_{today.strftime('%Y%m%d')}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     type="primary",
 )
