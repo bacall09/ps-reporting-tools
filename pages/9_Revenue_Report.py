@@ -785,18 +785,6 @@ else:
             else:
                 st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
 
-# ── Reconcile Carve-Out Flags ────────────────────────────────────────────────
-if df_rev_raw is not None and "notes" in df_rev_raw.columns:
-    _rec_flags = df_rev_raw[df_rev_raw["notes"].str.startswith("⚠️", na=False)]
-    if not _rec_flags.empty:
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.markdown('<div class="section-label">Revenue Carve-Out Flags</div>', unsafe_allow_html=True)
-        st.caption(f"{len(_rec_flags)} charge rows require review — see details below.")
-        _flag_cols = [c for c in ["charge_item","subscription_id","subscription_item",
-                                   "gross_amount","currency","rev_start","service_end",
-                                   "notes"] if c in _rec_flags.columns]
-        with st.expander(f"⚠️ Reconcile Flags ({len(_rec_flags)} rows)", expanded=True):
-            st.dataframe(_rec_flags[_flag_cols], use_container_width=True, hide_index=True)
 
 # ── Billing Exceptions ────────────────────────────────────────────────────────
 if df_ns_session is not None:

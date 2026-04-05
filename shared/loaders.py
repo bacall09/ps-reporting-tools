@@ -1231,6 +1231,37 @@ def load_revenue(file) -> pd.DataFrame:
     df = calc_reconcile_carveout(df)
     # Capture + Approvals: table-based carve-out with license validation
     df = calc_capture_approvals_carveout(df)
+    # ── Deduplicate impl rows — keep earliest rev_start per project_id + SKU ────
+    # Multiple charge rows can exist for multi-year licenses but only 1 impl project
+    from shared.config import (CAPTURE_IMPL_SKU as _CIS, APPROVALS_IMPL_SKU as _AIS,
+                                RECONCILE_IMPL_SKU as _RIS2)
+    _impl_skus_dedup = {_CIS, _AIS, _RIS2}
+
+    def _strip_for_dedup(s):
+        s = str(s).strip()
+        return s.split(" : ")[-1].strip() if " : " in s else s
+
+    _is_impl = df["charge_item"].apply(_strip_for_dedup).isin(_impl_skus_dedup)
+    if _is_impl.any() and "project_id" in df.columns:
+        impl_df   = df[_is_impl].copy()
+        other_df  = df[~_is_impl].copy()
+        # Sort by rev_start ascending so earliest comes first
+        impl_df["_rev_start_sort"] = pd.to_datetime(impl_df.get("rev_start", pd.Series()), errors="coerce")
+        impl_df = impl_df.sort_values("_rev_start_sort", na_position="last")
+        # Keep first (earliest) per project_id + charge_item
+        impl_deduped = impl_df.drop_duplicates(subset=["project_id","charge_item"], keep="first")
+        dupes = impl_df[~impl_df.index.isin(impl_deduped.index)]
+        if not dupes.empty:
+            # Flag dupes so they appear in Carve Flags tab
+            dupes = dupes.copy()
+            dupes["notes"] = dupes["notes"].fillna("") + " | ⚠️ Duplicate impl charge — excluded (same project_id, earlier row retained)"
+            dupes["_exclude_from_slices"] = True
+            impl_deduped["_rev_start_sort"] = None
+            dupes["_rev_start_sort"] = None
+            df = pd.concat([other_df, impl_deduped, dupes], ignore_index=True)
+        else:
+            impl_df.drop(columns=["_rev_start_sort"], inplace=True)
+
     # Rename reconcile_flag → notes for unified audit trail
     if "reconcile_flag" in df.columns and "notes" not in df.columns:
         df = df.rename(columns={"reconcile_flag": "notes"})
