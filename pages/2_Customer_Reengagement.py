@@ -978,6 +978,13 @@ def main():
     else:
         df_ns = _from_session.get("df_ns")
 
+    # ── Clean Smartsheet default placeholder values ──────────────────────────
+    if df_drs is not None and "risk_detail" in df_drs.columns:
+        _ss_placeholders = {"this is an internal field", "internal field", "n/a", "none"}
+        df_drs["risk_detail"] = df_drs["risk_detail"].apply(
+            lambda v: None if str(v).strip().lower() in _ss_placeholders else v
+        )
+
     # ── Merge NS inactivity into DRS (outside try/except so errors are visible) ─
     if df_drs is not None and df_ns is not None:
         try:
