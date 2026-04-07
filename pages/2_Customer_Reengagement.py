@@ -1127,8 +1127,8 @@ Used when no NS entries and no milestones are present.
                 _action_df["⚠️ Recent"] = False
             # Flag escalated projects
             if "risk_level" in _action_df.columns:
-                _action_df["⚠️ Risk"] = _action_df["risk_level"].astype(str).str.strip().str.lower().apply(
-                    lambda r: "⚠️ Escalated" if "escalat" in r else ("🔴 High" if "high" in r else "")
+                _action_df["⚠️ Risk"] = _action_df["risk_level"].fillna("").astype(str).str.strip().str.lower().map(
+                    lambda r: "⚠️ Escalated" if "escalat" in str(r) else ("🔴 High" if "high" in str(r) else "")
                 )
 
             # Sort: Tier 4 → 3 → 2 → 1, then by days desc
