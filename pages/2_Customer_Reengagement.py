@@ -193,9 +193,37 @@ st.markdown(f"""
     <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
         <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
         <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Tools</div>
-        <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Customer Re-Engagement{_title_suffix_from_browse()}</h1>
+        <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Customer Engagement{_title_suffix_from_browse()}</h1>
         <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Tier-based re-engagement communications for on-hold or stalled projects — auto-suggests outreach level based on days inactive.</p>
     </div>
+""", unsafe_allow_html=True)
+
+# ── Phase Banner ─────────────────────────────────────────────────────────────
+st.markdown("""
+<div style='background:#F0F4FF;border-left:4px solid #1E2C63;border-radius:6px;
+            padding:16px 20px;margin:12px 0 20px;font-family:Manrope,sans-serif'>
+    <div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+                color:#1E2C63;margin-bottom:10px'>Roadmap</div>
+    <div style='display:flex;gap:32px;flex-wrap:wrap'>
+        <div style='flex:1;min-width:240px'>
+            <span style='background:#1E2C63;color:#fff;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>PHASE 1 · NOW</span>
+            <p style='margin:8px 0 0;font-size:13px;color:#333;line-height:1.6'>
+                Access project contact details for all DRS-assigned projects.
+                Templates for <strong>Customer Re-Engagement</strong> communications are pre-loaded
+                and auto-suggested based on days inactive.
+            </p>
+        </div>
+        <div style='flex:1;min-width:240px'>
+            <span style='background:#808080;color:#fff;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>PHASE 2 · COMING SOON</span>
+            <p style='margin:8px 0 0;font-size:13px;color:#555;line-height:1.6'>
+                Templates for <strong>Project Lifecycle</strong> communications will be added
+                once finalised — covering kick-off, go-live, and project close communications.
+            </p>
+        </div>
+    </div>
+</div>
 """, unsafe_allow_html=True)
 
 # ── Templates ─────────────────────────────────────────────────────────────────
@@ -891,23 +919,10 @@ def main():
             st.markdown("[Download latest NS Time Detail ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=70652&saverun=T&whence=)")
             ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
     else:
-        st.success(
-            f"✓ Data loaded from Home page: "
-            f"{', '.join(k.replace('df_','').upper() for k in _session_loaded)}. "
-            f"Expand below to upload overrides if needed."
-        )
-        with st.expander("Override uploaded data for this page", expanded=False):
-            st.caption("Upload here to override the Home page data for this session.")
-            up1, up2, up3 = st.columns([3, 3, 3])
-            with up1:
-                st.markdown("**SFDC Contacts Export**")
-                sfdc_file = st.file_uploader("Drop SFDC Contacts file here", type=["xlsx","xls","csv"], key="sfdc_outreach")
-            with up2:
-                st.markdown("**SS DRS Export**")
-                drs_file = st.file_uploader("Drop SS DRS file here", type=["xlsx","xls","csv"], key="drs_outreach")
-            with up3:
-                st.markdown("**NS Time Detail**")
-                ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
+        # Data loaded from Home page — no banner or override needed
+        sfdc_file = None
+        drs_file  = None
+        ns_file   = None
 
     # Require at least one source — session state counts
     if not sfdc_file and not drs_file and not ns_file and not _session_loaded:

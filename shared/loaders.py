@@ -143,7 +143,10 @@ def load_sfdc(file):
         df["close_date"] = pd.to_datetime(df["close_date"], errors="coerce")
     # Always build contact_name from first + last (source report has separate columns)
     if "first_name" in df.columns and "last_name" in df.columns:
-        df["contact_name"] = (df["first_name"].fillna("") + " " + df["last_name"].fillna("")).str.strip()
+        df["contact_name"] = (
+            df["first_name"].fillna("").astype(str) + " " +
+            df["last_name"].fillna("").astype(str)
+        ).str.strip()
     # Use opportunity name as the project label
     if "opportunity" not in df.columns and "opportunity_id" in df.columns:
         df["opportunity"] = df["opportunity_id"]
