@@ -1059,6 +1059,33 @@ Used when no NS entries and no milestones are present.
 **Unknown (-1)** — shown when none of the above signals are available.
             """)
 
+        # ── This Week's Initial Engagement Actions ───────────────────────
+        st.subheader("This Week's Initial Engagement Actions")
+        st.caption("Non-legacy projects with no Intro. Email Sent date — first outreach needed.")
+
+        _intro_df = pd.DataFrame()
+        if "ms_intro_email" in df_drs.columns and "legacy" in df_drs.columns:
+            _non_legacy  = ~df_drs["legacy"].astype(bool)
+            _no_intro    = df_drs["ms_intro_email"].isna() | (df_drs["ms_intro_email"].astype(str).str.strip().isin(["", "nan", "None", "NaT"]))
+            _active_mask = df_drs.get("status", pd.Series("Active", index=df_drs.index)).astype(str).str.lower().isin(["active", "in progress", "onboarding", "implementation", ""])
+            _intro_df    = df_drs[_non_legacy & _no_intro & _active_mask].copy()
+        elif "ms_intro_email" in df_drs.columns:
+            _no_intro = df_drs["ms_intro_email"].isna() | (df_drs["ms_intro_email"].astype(str).str.strip().isin(["", "nan", "None", "NaT"]))
+            _intro_df = df_drs[_no_intro].copy()
+
+        if not _intro_df.empty:
+            _intro_cols = [c for c in ["account","project_name","project_type","phase",
+                                        "project_manager","start_date","days_inactive"]
+                           if c in _intro_df.columns]
+            _intro_display = _intro_df[_intro_cols].copy()
+            _intro_display.columns = [c.replace("_"," ").title() for c in _intro_display.columns]
+            st.dataframe(_intro_display, use_container_width=True, hide_index=True)
+            st.caption(f"{len(_intro_df)} project(s) awaiting initial introduction email.")
+        else:
+            st.success("✓ All non-legacy projects have an intro email on record.")
+
+        st.markdown("---")
+
         # ── Weekly Action List ────────────────────────────────────────────
         st.subheader("This Week's Re-Engagement Actions")
 

@@ -262,11 +262,11 @@ CONSULTANT_TOOLS = [
     },
     {
         "icon": "✉️",
-        "title": "Customer Re-engagement",
+        "title": "Customer Engagement",
         "sub": "Generate tiered outreach letters for on-hold or stalled projects. No copy-paste required.",
         "steps": [
             "Make sure SS DRS and Salesforce exports are uploaded on Home.",
-            "Navigate to Customer Re-engagement — your projects load, filtered to you.",
+            "Navigate to Customer Engagement — your projects load, filtered to you.",
             "Select a project from the dropdown. The tool shows days inactive and suggests a tier.",
             "Review the suggested letter, edit as needed, and copy or download.",
         ],
