@@ -525,8 +525,10 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
             _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
 
-            # Per-consultant FF credit/overrun — same logic as top-level engine
-            _ff_rows_cn = _emp_rows[_bt == "fixed fee"].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
+            # Per-consultant FF credit/overrun — mirrors top-level engine exactly
+            # Use same rule: anything not internal or T&M = Fixed Fee
+            _bt_cn = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+            _ff_rows_cn = _emp_rows[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
             _ff_util = 0.0; _ff_over = 0.0
             if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
                 _con_cn: dict = {}
@@ -540,15 +542,16 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                     _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
                     if _fsc is None:
                         _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
-                    if _fp not in _con_cn:
-                        _con_cn[_fp] = prior_htd.get(_fp, 0.0)
-                    _fused = _con_cn[_fp]; _frem = _fsc - _fused
+                    _fck = (_fp, _ftype)  # composite key: project + product type (matches top-level)
+                    if _fck not in _con_cn:
+                        _con_cn[_fck] = prior_htd.get(_fck, prior_htd.get((_fp,), 0.0))
+                    _fused = _con_cn[_fck]; _frem = _fsc - _fused
                     if _frem <= 0:
                         _ff_over += _fh
                     elif _fh <= _frem:
-                        _ff_util += _fh; _con_cn[_fp] = _fused + _fh
+                        _ff_util += _fh; _con_cn[_fck] = _fused + _fh
                     else:
-                        _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fp] = _fsc
+                        _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fck] = _fsc
             _ff_util = round(_ff_util, 2)
             _ff_over = round(_ff_over, 2)
 

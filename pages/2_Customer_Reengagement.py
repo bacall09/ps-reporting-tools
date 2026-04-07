@@ -1078,15 +1078,14 @@ Used when no NS entries and no milestones are present.
                                         "project_manager","start_date","days_inactive"]
                            if c in _intro_df.columns]
             _intro_display = _intro_df[_intro_cols].copy()
-            # Format date columns — strip timestamp
+            # Format all columns — convert any datetime-like values to readable date strings
             for _dc in _intro_display.columns:
-                if _intro_display[_dc].dtype in ["datetime64[ns]", "object"]:
-                    try:
-                        _parsed = pd.to_datetime(_intro_display[_dc], errors="coerce")
-                        if _parsed.notna().any():
-                            _intro_display[_dc] = _parsed.dt.strftime("%-d %b %Y").where(_parsed.notna(), "")
-                    except Exception:
-                        pass
+                try:
+                    _parsed = pd.to_datetime(_intro_display[_dc], errors="coerce")
+                    if _parsed.notna().any():
+                        _intro_display[_dc] = _parsed.dt.strftime("%-d %b %Y").where(_parsed.notna(), "")
+                except Exception:
+                    pass
             _intro_display.columns = [c.replace("_"," ").title() for c in _intro_display.columns]
             st.dataframe(_intro_display, use_container_width=True, hide_index=True)
             st.caption(f"{len(_intro_df)} project(s) awaiting initial introduction email.")
