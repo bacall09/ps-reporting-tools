@@ -183,10 +183,12 @@ def load_drs(file):
         df["go_live_date"] = pd.to_datetime(df["go_live_date"], errors="coerce")
     if "last_updated" in df.columns:
         df["last_updated"] = pd.to_datetime(df["last_updated"], errors="coerce")
-    # Parse all milestone date columns
+    # Parse all milestone date columns — clip epoch/nonsense dates (e.g. checkbox=1 → 1970-01-01)
+    _min_valid = pd.Timestamp("2015-01-01")
     for _ms_col in MILESTONE_COLS_MAP.keys():
         if _ms_col in df.columns:
-            df[_ms_col] = pd.to_datetime(df[_ms_col], errors="coerce")
+            _parsed = pd.to_datetime(df[_ms_col], errors="coerce")
+            df[_ms_col] = _parsed.where(_parsed >= _min_valid, pd.NaT)
 
     # Filter to active FF projects only
     today = pd.Timestamp.today().normalize()

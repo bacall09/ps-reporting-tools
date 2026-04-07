@@ -1075,7 +1075,8 @@ Used when no NS entries and no milestones are present.
 
         if not _intro_df.empty:
             _intro_cols = [c for c in ["account","project_name","project_type","phase",
-                                        "project_manager","start_date","days_inactive"]
+                                        "project_manager","start_date","days_inactive",
+                                        "_inactivity_source"]
                            if c in _intro_df.columns]
             _intro_display = _intro_df[_intro_cols].copy()
             # Format only known date columns — avoid converting numeric columns like days_inactive
