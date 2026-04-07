@@ -352,6 +352,11 @@ def calc_days_inactive(df_drs, df_ns):
         df_drs = df_drs.merge(last_entry, on="project_name", how="left")
 
     if "last_ns_entry" in df_drs.columns:
+        # Clip epoch dates (1970-01-01) — these indicate a parse failure, not real dates
+        _min_valid_date = pd.Timestamp("2015-01-01")
+        df_drs["last_ns_entry"] = df_drs["last_ns_entry"].where(
+            df_drs["last_ns_entry"] >= _min_valid_date, pd.NaT
+        )
         ns_days = (today - df_drs["last_ns_entry"]).dt.days.clip(lower=0)
         fallback = df_drs["days_inactive"] if "days_inactive" in df_drs.columns else pd.Series(-1, index=df_drs.index)
         df_drs["days_inactive"] = ns_days.where(df_drs["last_ns_entry"].notna(), fallback).fillna(-1).astype(int)
