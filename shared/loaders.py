@@ -1066,7 +1066,7 @@ _PRODUCT_KEYWORDS = [
     ("Billing",                 ["zonebill", "zbilling", "zab partner",
                                   "billing", "zb_standard", "zb_premium",
                                   "subscription services"]),
-    ("Payroll",                 ["zonepay", "zpayroll", "payroll", "zep:"]),
+    ("Payroll",                 ["zonepay", "zpayroll", "payroll", "zep:", "zonepay:"]),
     ("Reporting",               ["zonerpt", "zonerepor", "reporting",
                                   "install, dwh", "dwh"]),
     ("E-Invoicing",             ["e-invoic", "einvoic"]),
@@ -1074,7 +1074,12 @@ _PRODUCT_KEYWORDS = [
     ("Approvals",               ["zoneapprovals", "zapprovals", "approval",
                                   "zoneapps: consulting"]),
     ("Reconcile",               ["zonereconcile", "zreconcile", "reconcile"]),
-    ("Payments",                ["zonepayments", "zpayment", "payment"]),
+    # Payments: AP Payments, ZonePayments, ZonePay AP — but NOT ZonePay/ZonePayroll (caught above)
+    # Check "ap payment" and "zonepayment" explicitly before generic "payment"
+    ("Payments",                ["ap payment", "zonepayments", "zone payments",
+                                  "zpayment", "zap:", "ap pay"]),
+    # Generic "payment" fallback — only if payroll keywords didn't match
+    ("Payments",                ["payment"]),
     ("PSP",                     ["psp"]),
     ("SFTP",                    ["sftp"]),
     ("CC",                      ["cc statement", "credit card"]),
@@ -1218,11 +1223,15 @@ def load_revenue(file) -> pd.DataFrame:
         amt = float(row.get("amount", 0) or 0)
         if amt > 0:
             return amt
+        # Negative gross — credit note / reversal; pass through as-is (flagged in notes later)
+        gross_amt = float(row.get("gross_amount", 0) or 0)
+        if gross_amt < 0:
+            return gross_amt
         # Skip carve table for SKUs handled by dedicated carve-out functions
         ci = _strip_ci(row.get("charge_item", ""))
         if ci in _CARVE_HANDLED_SKUS:
             # Will be set by product-specific carve function; use gross_amount as placeholder
-            return float(row.get("gross_amount", 0) or 0)
+            return gross_amt
         # Try SKU carve-out table for other SKUs
         tbl = get_carve_out_amount(row.get("charge_item", ""), row.get("currency", "USD"))
         if tbl is not None:
@@ -1232,7 +1241,7 @@ def load_revenue(file) -> pd.DataFrame:
         if carve > 0:
             return carve
         # Last resort: gross_amount
-        return float(row.get("gross_amount", 0) or 0)
+        return gross_amt
 
     df["recognizable_amount"] = df.apply(_rec_amount, axis=1)
 
@@ -1636,6 +1645,13 @@ def calc_capture_approvals_carveout(df: pd.DataFrame) -> pd.DataFrame:
 
         carve_local = get_carve_out_amount(sku, curr, period_str)
         if carve_local is None:
+            # No carve table entry for this SKU — inherit gross amount 1:1
+            _fallback_gross = float(df.at[idx, "gross_amount"] or 0)
+            if _fallback_gross > 0:
+                df.at[idx, "recognizable_amount"] = round(_fallback_gross, 2)
+                notes_parts.append(f"No carve defined — 1:1 gross {curr} {_fallback_gross:,.2f}")
+                df.at[idx, "notes"] = " | ".join(notes_parts)
+                continue
             carve_local = 0.0
 
         # Get USD equivalent of carve for comparison
@@ -1802,6 +1818,12 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
         if total == 0:
             continue
 
+        # Flag credit notes / reversals in notes column
+        _existing_notes = str(r.get("notes", "") or "")
+        if total < 0:
+            _credit_note = f"⚠️ Credit/reversal {str(r.get('currency','USD')).upper()} {total:,.2f} — offsets prior charge"
+            _existing_notes = (_credit_note + " | " + _existing_notes).strip(" | ") if _existing_notes else _credit_note
+
         start = pd.Timestamp(start)
         end   = pd.Timestamp(end)
 
@@ -1821,6 +1843,7 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
         for mp in months:
             period_str = mp.strftime("%Y-%m")
             mo_start   = mp.to_timestamp()
+            _slice_notes = _existing_notes  # carry credit note flag into each slice row
             mo_end     = mp.to_timestamp("M")
             days_in_mo = calendar.monthrange(mp.year, mp.month)[1]
 
@@ -1855,7 +1878,7 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
                 "usd_amount":        round(prorated * fx, 2),
                 "status":            r.get("status", ""),
                 "transaction":       r.get("transaction", ""),
-                "notes":              r.get("notes", r.get("reconcile_flag", "")),
+                "notes":              _slice_notes if total < 0 else r.get("notes", r.get("reconcile_flag", "")),
                 "license_sku":         r.get("license_sku", ""),
                 "license_cost_local":  r.get("license_cost_local", ""),
                 "license_currency":    r.get("license_currency", ""),

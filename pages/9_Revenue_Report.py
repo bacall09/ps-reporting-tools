@@ -967,7 +967,13 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
             _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
                        .first().reset_index())
             _all_p_r     = sorted(_recon_slices["period"].unique())
-            _display_p_r = [p for p in _all_p_r if _roll_start <= p <= _roll_end]
+            # Reconcile Carve Detail: always Jan–Dec of current year for Finance review
+            _recon_yr_start = f"{_today.year}-01"
+            _recon_yr_end   = f"{_today.year}-12"
+            _display_p_r = [p for p in _all_p_r if _recon_yr_start <= p <= _recon_yr_end]
+            # Fall back to rolling if no data in calendar year
+            if not _display_p_r:
+                _display_p_r = [p for p in _all_p_r if _roll_start <= p <= _roll_end]
 
             # Pivot all periods — Total Carve reflects full recognition window
             _piv_r = (_recon_slices.groupby(["project_id","charge_item","period"])["usd_amount"]
@@ -1016,9 +1022,9 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         _piv = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                 .sum().unstack(fill_value=0).reset_index())
         _piv.columns.name = None
-        # Rev Amount = Total USD = sum across ALL periods (full window)
-        _all_amt_all = [p for p in _all_periods_all if p in _piv.columns]
-        _piv["Rev Amount"] = _piv[_all_amt_all].sum(axis=1)
+        # Rev Amount = sum of displayed (rolling window) periods only
+        _display_amt_cols = [p for p in _display_p_all if p in _piv.columns]
+        _piv["Rev Amount"] = _piv[_display_amt_cols].sum(axis=1) if _display_amt_cols else 0
         _month_rename = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_all}
         _piv = _piv.rename(columns=_month_rename)
         _month_cols = [_month_rename[p] for p in _display_p_all if _month_rename[p] in _piv.columns]
@@ -1041,7 +1047,8 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
         _piv_ytd = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
                     .sum().unstack(fill_value=0).reset_index())
         _piv_ytd.columns.name = None
-        _piv_ytd["Rev Amount"] = _piv_ytd[[p for p in _all_periods_all if p in _piv_ytd.columns]].sum(axis=1)
+        _ytd_display_cols = [p for p in _display_p_ytd if p in _piv_ytd.columns]
+        _piv_ytd["Rev Amount"] = _piv_ytd[_ytd_display_cols].sum(axis=1) if _ytd_display_cols else 0
         _mo_ytd = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_ytd}
         _piv_ytd = _piv_ytd.rename(columns=_mo_ytd)
         _mc_ytd = [_mo_ytd[p] for p in _display_p_ytd if _mo_ytd[p] in _piv_ytd.columns]
