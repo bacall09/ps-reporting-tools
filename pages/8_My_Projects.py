@@ -245,25 +245,7 @@ else:
         def _ms(col):
             v = row.get(col)
             return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
-        def _rag_emoji(val):
-            v = str(val or "").strip().lower()
-            if v == "red":    return "🔴"
-            if v == "yellow": return "🟡"
-            if v == "green":  return "🟢"
-            return "—"
 
-        def _engagement_flag(row):
-            flags = []
-            _days  = int(row.get("days_inactive", -1) or -1)
-            _leg   = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
-            _no_i  = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
-            if not _leg and _no_i:
-                flags.append("📧 No intro")
-            if _days >= 30:
-                flags.append(f"⏰ {_days}d inactive")
-            elif _days >= 14:
-                flags.append(f"👀 {_days}d inactive")
-            return " · ".join(flags) if flags else "✓"
 
         def _dt(col):
             v = row.get(col)
@@ -342,14 +324,17 @@ else:
 
     st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
     st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
-    if st.button("→ Go to DRS Health Check", key="mp_drs_link"):
-        # Pass current view to DRS Health Check via a passthrough key
-        # (cannot write directly to home_browse — it's bound to a widget)
-        if _va_region:
-            st.session_state["_va_passthrough"] = f"── {_va_region} ──"
-        elif view_as and view_as != selected:
-            st.session_state["_va_passthrough"] = view_as
-        st.switch_page("pages/6_DRS_Health_Check.py")
+    _btn_col1, _btn_col2 = st.columns([1, 1])
+    with _btn_col1:
+        if st.button("→ Go to DRS Health Check", key="mp_drs_link", use_container_width=True):
+            if _va_region:
+                st.session_state["_va_passthrough"] = f"── {_va_region} ──"
+            elif view_as and view_as != selected:
+                st.session_state["_va_passthrough"] = view_as
+            st.switch_page("pages/6_DRS_Health_Check.py")
+    with _btn_col2:
+        if st.button("→ Draft Outreach", key="mp_engagement_link", use_container_width=True):
+            st.switch_page("pages/2_Customer_Reengagement.py")
 
     edited = st.data_editor(
         edit_df,
@@ -389,11 +374,31 @@ else:
     _inactive_projs = active[active["days_inactive"].fillna(0)>=14].sort_values("days_inactive", ascending=False)
     if not _inactive_projs.empty:
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.caption(f"{len(_inactive_projs)} project(s) need engagement — see Engagement column above or visit Customer Engagement page.")
+
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
+def _rag_emoji(val):
+    v = str(val or "").strip().lower()
+    if v == "red":    return "🔴"
+    if v == "yellow": return "🟡"
+    if v == "green":  return "🟢"
+    return "—"
+
+def _engagement_flag(row):
+    flags = []
+    _days = int(row.get("days_inactive", -1) or -1)
+    _leg  = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
+    _no_i = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
+    if not _leg and _no_i:
+        flags.append("📧 No intro")
+    if _days >= 30:
+        flags.append(f"⏰ {_days}d inactive")
+    elif _days >= 14:
+        flags.append(f"👀 {_days}d inactive")
+    return " · ".join(flags) if flags else "✓"
+
 # SECTION 4 — On Hold
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">On Hold</div>', unsafe_allow_html=True)
