@@ -55,6 +55,18 @@ st.markdown("""
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+        .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
+                         cursor:help; position:relative; }
+        .metric-help:hover::after {
+            content: attr(data-tip);
+            position:absolute; left:50%; transform:translateX(-50%);
+            top:calc(100% + 8px); background:#0E223D; color:#fff;
+            font-size:12.5px; font-weight:500; padding:11px 15px; border-radius:8px;
+            white-space:normal; width:280px; z-index:99999; line-height:1.65;
+            box-shadow:0 4px 20px rgba(0,0,0,0.6); opacity:1 !important;
+            letter-spacing:0.1px;
+            pointer-events:none;
+        }
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
         .badge-red   {background:rgba(192,57,43,0.15);color:#C0392B;}
         .badge-amber {background:rgba(243,156,18,0.15);color:#D68910;}
@@ -430,37 +442,40 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         return f"{s}h"
 
     # Pre-calculate WHS so it sits in the same row
-    _whs_score, _whs_label, _whs_col = consultant_whs(selected, df_drs) if (df_drs is not None and not _is_group_view) else (None, "—", "#718096")
+    # WHS: use the viewed consultant name (view_as or logged-in)
+    _whs_name = view_name if (view_name and not _is_group_view) else selected
+    # Normalise "Last, First" to match project_manager format
+    _whs_score, _whs_label, _whs_col = consultant_whs(_whs_name, df_drs) if (df_drs is not None and not _is_group_view) else (None, "—", "#718096")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         v   = _fmt_hrs(avail)
         lbl = "Available this month" if avail else "Available hrs (location not mapped)"
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}<span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month<span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c3:
         if util_pct is not None:
             col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#C0392B")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c4:
         if overrun_pct is not None:
             col = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c5:
         if admin_pct is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c6:
         if _whs_score is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS &nbsp;·&nbsp; {_whs_label}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS &nbsp;·&nbsp; {_whs_label}<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">WHS</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">WHS<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
 
     # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
     if ff_unscoped > 0:
@@ -525,8 +540,10 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
             _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
 
-            # Per-consultant FF credit/overrun — same logic as top-level engine
-            _ff_rows_cn = _emp_rows[_bt == "fixed fee"].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
+            # Per-consultant FF credit/overrun — mirrors top-level engine exactly
+            # Use same rule: anything not internal or T&M = Fixed Fee
+            _bt_cn = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+            _ff_rows_cn = _emp_rows[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
             _ff_util = 0.0; _ff_over = 0.0
             if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
                 _con_cn: dict = {}
@@ -540,15 +557,16 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                     _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
                     if _fsc is None:
                         _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
-                    if _fp not in _con_cn:
-                        _con_cn[_fp] = prior_htd.get(_fp, 0.0)
-                    _fused = _con_cn[_fp]; _frem = _fsc - _fused
+                    _fck = (_fp, _ftype)  # composite key: project + product type (matches top-level)
+                    if _fck not in _con_cn:
+                        _con_cn[_fck] = prior_htd.get(_fck, prior_htd.get((_fp,), 0.0))
+                    _fused = _con_cn[_fck]; _frem = _fsc - _fused
                     if _frem <= 0:
                         _ff_over += _fh
                     elif _fh <= _frem:
-                        _ff_util += _fh; _con_cn[_fp] = _fused + _fh
+                        _ff_util += _fh; _con_cn[_fck] = _fused + _fh
                     else:
-                        _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fp] = _fsc
+                        _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fck] = _fsc
             _ff_util = round(_ff_util, 2)
             _ff_over = round(_ff_over, 2)
 
@@ -665,7 +683,15 @@ else:
     if "days_inactive" in my_projects.columns:
         _stale = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False)
 
-    snap1, snap2, snap3, snap4, snap5 = st.columns(5)
+    # RAG counts — from Overall RAG column in DRS
+    _rag_red    = pd.DataFrame()
+    _rag_yellow = pd.DataFrame()
+    if "rag" in _active.columns:
+        _rag_vals   = _active["rag"].fillna("").astype(str).str.strip().str.lower()
+        _rag_red    = _active[_rag_vals == "red"]
+        _rag_yellow = _active[_rag_vals == "yellow"]
+
+    snap1, snap2, snap3, snap4, snap5, snap6, snap7 = st.columns(7)
     with snap1:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
         for ph, cnt in _pc:
@@ -694,6 +720,27 @@ else:
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement</div></div>', unsafe_allow_html=True)
         if len(_stale) > 0:
             st.markdown('<div style="font-size:13px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)
+    def _rag_label(r):
+        """Format as 'Customer : Product abbrev' for RAG card list items."""
+        _pn  = str(r.get("project_name","") or "")
+        _cust = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
+        _cust = _cust[:22]
+        _pt   = str(r.get("project_type","") or "")
+        # Abbreviate product type: strip ZoneApp:/ZoneBill: prefix, keep first word
+        _prod = _pt.split(":")[-1].strip() if ":" in _pt else _pt
+        _prod = _prod.split()[0] if _prod else ""
+        return f"{_cust} : {_prod}" if _prod else _cust
+
+    with snap6:
+        _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
+        for _, _rr in _rag_red.head(3).iterrows():
+            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
+    with snap7:
+        _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
+        for _, _ry in _rag_yellow.head(3).iterrows():
+            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
 
 
 

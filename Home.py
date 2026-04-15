@@ -14,6 +14,9 @@ from shared.constants import (
 )
 from shared.loaders import load_drs, load_ns_time, load_sfdc
 
+# Increment this when loaders change — forces session cache to invalidate
+_LOADER_VERSION = "v20260415a"
+
 st.set_page_config(page_title="PS Tools", page_icon=None, layout="wide")
 
 # ── Build credentials ─────────────────────────────────────────────────────────
@@ -54,21 +57,27 @@ if _roster and st.session_state.get("consultant_name") != _roster:
 _consultant_pages = [
     st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing"),
     st.Page("pages/8_My_Projects.py",            title="My Projects"),
-    st.Page("pages/2_Customer_Reengagement.py", title="Customer Re-Engagement"),
+    st.Page("pages/2_Customer_Reengagement.py", title="Customer Engagement"),
     st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
     st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
     st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
+    st.Page("pages/10_Time_Entries.py",          title="Time Entries"),
     # st.Page("pages/7_Vibe_Check.py",          title="Vibe Check ✨"),  # hidden
 ]
 _manager_pages = [
     st.Page("pages/5_Capacity_Outlook.py",  title="Capacity Outlook"),
     st.Page("pages/9_Revenue_Report.py",    title="Revenue Report"),
 ]
+_help_pages = [
+    st.Page("pages/9_Help.py", title="Help"),
+]
 
 if _role in ("manager", "manager_only"):
-    pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages})
+    pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages, "Info": _help_pages})
+elif _role == "reporting_only":
+    pg = st.navigation({"Management": _manager_pages})
 else:
-    pg = st.navigation({"My Tools": _consultant_pages})
+    pg = st.navigation({"My Tools": _consultant_pages, "Info": _help_pages})
 
 # ── Login gate (shown instead of page content when not authenticated) ─────────
 if not st.session_state.get("authentication_status"):
@@ -201,21 +210,29 @@ with st.sidebar:
     ns_ua_file = (
         st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
                          help="Required for Capacity Outlook")
-        if _upload_role in ("manager","manager_only") else None
+        if _upload_role in ("manager","manager_only","reporting_only") else None
     )
-    if _upload_role in ("manager","manager_only"):
+    if _upload_role in ("manager","manager_only","reporting_only"):
         st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Unassigned Projects</a>', unsafe_allow_html=True)
 
     rev_file = (
         st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue",
                          help="Required for Revenue Report")
-        if _upload_role in ("manager","manager_only") else None
+        if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     tm_sow_file = (
         st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow",
                          help="Required for T&M Revenue Report")
-        if _upload_role in ("manager","manager_only") else None
+        if _upload_role in ("manager","manager_only","reporting_only") else None
     )
+    # Clear stale versioned caches on new deploy
+    for _vk in [f"df_ns_{_LOADER_VERSION}", f"df_drs_{_LOADER_VERSION}"]:
+        if _vk not in st.session_state:
+            for _ok in [k for k in list(st.session_state.keys())
+                        if k.startswith(_vk.split("_v")[0]) and k != _vk.split("_v")[0]
+                        and "_v20" in k]:
+                del st.session_state[_ok]
+
     for _lbl, _key, _ldr, _f in [
         ("SS DRS","df_drs",load_drs,drs_file),
         ("NS Time","df_ns",load_ns_time,ns_file),
@@ -232,10 +249,16 @@ with st.sidebar:
                 else _pd.read_csv(ns_ua_file)
             )
         except Exception as e: st.error(f"NS Unassigned: {e}")
-    if rev_file and "df_revenue" not in st.session_state:
+    _rev_key = f"df_revenue_{_LOADER_VERSION}"
+    # Clear old version if present
+    if _rev_key not in st.session_state:
+        for _ok in [k for k in st.session_state if k.startswith("df_revenue")]:
+            del st.session_state[_ok]
+    if rev_file and _rev_key not in st.session_state:
         try:
             from shared.loaders import load_revenue as _lr
             st.session_state["df_revenue"] = _lr(rev_file)
+            st.session_state[_rev_key] = True
         except Exception as e: st.error(f"Revenue: {e}")
     if tm_sow_file and "df_tm_sow" not in st.session_state:
         try:
@@ -245,7 +268,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Session data**")
     _si = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
-    if _upload_role in ("manager","manager_only"):
+    if _upload_role in ("manager","manager_only","reporting_only"):
         _si.append(("NS Unassigned","df_ns_unassigned"))
         _si.append(("FF Revenue","df_revenue"))
         _si.append(("T&M SOW","df_tm_sow"))
@@ -254,7 +277,7 @@ with st.sidebar:
         st.markdown(f'<div style="font-size:12px;color:{"#27AE60" if _ok else "rgba(128,128,128,0.4)"};'
                     f'padding:3px 0">{"✓" if _ok else "○"}&nbsp; {_lbl}</div>',
                     unsafe_allow_html=True)
-    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned"]):
+    if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue","df_tm_sow"]):
         if st.button("Clear loaded data", use_container_width=True, key="home_clear"):
             # Clear dataframes and uploader widget states
             keys_to_clear = [

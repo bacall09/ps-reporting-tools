@@ -180,8 +180,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
+def _get_browse():
+    """Return effective view-as: passthrough from My Projects takes priority."""
+    return (st.session_state.get("_browse_passthrough") or
+            st.session_state.get("home_browse", "— My own view —") or
+            "— My own view —")
+
 def _title_suffix_from_browse():
-    b = st.session_state.get("home_browse", "— My own view —") or ""
+    b = _get_browse()
     if b.startswith("── ") and b.endswith(" ──"):
         return f" — {b[3:-3].strip()} Team"
     if b and b not in ("— My own view —", "— Select —", "👥 All team"):
@@ -193,9 +199,37 @@ st.markdown(f"""
     <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
         <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
         <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Tools</div>
-        <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Customer Re-Engagement{_title_suffix_from_browse()}</h1>
+        <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Customer Engagement{_title_suffix_from_browse()}</h1>
         <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Tier-based re-engagement communications for on-hold or stalled projects — auto-suggests outreach level based on days inactive.</p>
     </div>
+""", unsafe_allow_html=True)
+
+# ── Phase Banner ─────────────────────────────────────────────────────────────
+st.markdown("""
+<div style='background:#F0F4FF;border-left:4px solid #1E2C63;border-radius:6px;
+            padding:16px 20px;margin:12px 0 20px;font-family:Manrope,sans-serif'>
+    <div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+                color:#1E2C63;margin-bottom:10px'>Roadmap</div>
+    <div style='display:flex;gap:32px;flex-wrap:wrap'>
+        <div style='flex:1;min-width:240px'>
+            <span style='background:#1E2C63;color:#fff;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>PHASE 1 · NOW</span>
+            <p style='margin:8px 0 0;font-size:13px;color:#333;line-height:1.6'>
+                Access project contact details for all DRS-assigned projects.
+                Templates for <strong>Customer Re-Engagement</strong> communications are pre-loaded
+                and auto-suggested based on days inactive.
+            </p>
+        </div>
+        <div style='flex:1;min-width:240px'>
+            <span style='background:#808080;color:#fff;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>PHASE 2 · COMING SOON</span>
+            <p style='margin:8px 0 0;font-size:13px;color:#555;line-height:1.6'>
+                Templates for <strong>Project Lifecycle</strong> communications will be added
+                once finalised — covering kick-off, go-live, and project close communications.
+            </p>
+        </div>
+    </div>
+</div>
 """, unsafe_allow_html=True)
 
 # ── Templates ─────────────────────────────────────────────────────────────────
@@ -809,7 +843,9 @@ def main():
     if _session_name and _session_name != "— Select —":
         from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
         from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
-        _home_browse = st.session_state.get("home_browse", "— My own view —")
+        _home_browse = _get_browse()
+        # Consume passthrough after use so it doesn't persist across navigation
+        st.session_state.pop("_browse_passthrough", None)
         _va_name, _va_region, _is_group = resolve_view_as(
             _session_name, _home_browse, EMPLOYEE_ROLES,
             EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES
@@ -891,23 +927,10 @@ def main():
             st.markdown("[Download latest NS Time Detail ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=70652&saverun=T&whence=)")
             ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
     else:
-        st.success(
-            f"✓ Data loaded from Home page: "
-            f"{', '.join(k.replace('df_','').upper() for k in _session_loaded)}. "
-            f"Expand below to upload overrides if needed."
-        )
-        with st.expander("Override uploaded data for this page", expanded=False):
-            st.caption("Upload here to override the Home page data for this session.")
-            up1, up2, up3 = st.columns([3, 3, 3])
-            with up1:
-                st.markdown("**SFDC Contacts Export**")
-                sfdc_file = st.file_uploader("Drop SFDC Contacts file here", type=["xlsx","xls","csv"], key="sfdc_outreach")
-            with up2:
-                st.markdown("**SS DRS Export**")
-                drs_file = st.file_uploader("Drop SS DRS file here", type=["xlsx","xls","csv"], key="drs_outreach")
-            with up3:
-                st.markdown("**NS Time Detail**")
-                ns_file = st.file_uploader("Drop NS Time Detail file here", type=["xlsx","xls","csv"], key="ns_outreach")
+        # Data loaded from Home page — no banner or override needed
+        sfdc_file = None
+        drs_file  = None
+        ns_file   = None
 
     # Require at least one source — session state counts
     if not sfdc_file and not drs_file and not ns_file and not _session_loaded:
@@ -963,6 +986,13 @@ def main():
     else:
         df_ns = _from_session.get("df_ns")
 
+    # ── Clean Smartsheet default placeholder values ──────────────────────────
+    if df_drs is not None and "risk_detail" in df_drs.columns:
+        _ss_placeholders = {"this is an internal field", "internal field", "n/a", "none"}
+        df_drs["risk_detail"] = df_drs["risk_detail"].apply(
+            lambda v: None if str(v).strip().lower() in _ss_placeholders else v
+        )
+
     # ── Merge NS inactivity into DRS (outside try/except so errors are visible) ─
     if df_drs is not None and df_ns is not None:
         try:
@@ -971,17 +1001,7 @@ def main():
         except Exception as e:
             st.warning(f"Could not calculate inactivity from NS data: {e}")
 
-    # ── Debug: column map verification (remove once column issues are resolved) ──
-    with st.expander("🔍 Debug: DRS column check", expanded=False):
-        if df_drs is not None:
-            st.write("**Columns present:**", df_drs.columns.tolist())
-            st.write("**project_name present:**", "project_name" in df_drs.columns)
-            if "project_name" not in df_drs.columns:
-                st.error("⚠️ `project_name` column is missing. Check that your DRS export has a 'Project Name' column header.")
-        else:
-            st.write("df_drs is None — no DRS data loaded.")
-
-    # ── Summary metrics ───────────────────────────────────────────────────
+        # ── Summary metrics ───────────────────────────────────────────────────
     msg_parts = []
     if df_sfdc is not None:
         msg_parts.append(f"SFDC: {df_sfdc['account'].nunique() if 'account' in df_sfdc.columns else '?'} accounts · {df_sfdc['opportunity'].nunique() if 'opportunity' in df_sfdc.columns else '?'} opportunities")
@@ -1054,6 +1074,44 @@ Used when no NS entries and no milestones are present.
 **Unknown (-1)** — shown when none of the above signals are available.
             """)
 
+        # ── This Week's Initial Engagement Actions ───────────────────────
+        st.subheader("This Week's Initial Engagement Actions")
+        st.caption("Non-legacy projects with no Intro. Email Sent date — first outreach needed.")
+
+        _intro_df = pd.DataFrame()
+        if "ms_intro_email" in df_drs.columns and "legacy" in df_drs.columns:
+            _non_legacy  = ~df_drs["legacy"].astype(bool)
+            _no_intro    = df_drs["ms_intro_email"].isna() | (df_drs["ms_intro_email"].astype(str).str.strip().isin(["", "nan", "None", "NaT"]))
+            _active_mask = df_drs.get("status", pd.Series("Active", index=df_drs.index)).astype(str).str.lower().isin(["active", "in progress", "onboarding", "implementation", ""])
+            _intro_df    = df_drs[_non_legacy & _no_intro & _active_mask].copy()
+        elif "ms_intro_email" in df_drs.columns:
+            _no_intro = df_drs["ms_intro_email"].isna() | (df_drs["ms_intro_email"].astype(str).str.strip().isin(["", "nan", "None", "NaT"]))
+            _intro_df = df_drs[_no_intro].copy()
+
+        if not _intro_df.empty:
+            _intro_cols = [c for c in ["account","project_name","project_type","phase",
+                                        "project_manager","start_date","days_inactive",
+                                        "_inactivity_source"]
+                           if c in _intro_df.columns]
+            _intro_display = _intro_df[_intro_cols].copy()
+            # Format only known date columns — avoid converting numeric columns like days_inactive
+            _date_cols = ["start_date", "go_live_date", "ms_intro_email"]
+            for _dc in _date_cols:
+                if _dc in _intro_display.columns:
+                    try:
+                        _parsed = pd.to_datetime(_intro_display[_dc], errors="coerce")
+                        if _parsed.notna().any():
+                            _intro_display[_dc] = _parsed.dt.strftime("%-d %b %Y").where(_parsed.notna(), "")
+                    except Exception:
+                        pass
+            _intro_display.columns = [c.replace("_"," ").title() for c in _intro_display.columns]
+            st.dataframe(_intro_display, use_container_width=True, hide_index=True)
+            st.caption(f"{len(_intro_df)} project(s) awaiting initial introduction email.")
+        else:
+            st.success("✓ All non-legacy projects have an intro email on record.")
+
+        st.markdown("---")
+
         # ── Weekly Action List ────────────────────────────────────────────
         st.subheader("This Week's Re-Engagement Actions")
 
@@ -1095,8 +1153,8 @@ Used when no NS entries and no milestones are present.
                 _action_df["⚠️ Recent"] = False
             # Flag escalated projects
             if "risk_level" in _action_df.columns:
-                _action_df["⚠️ Risk"] = _action_df["risk_level"].astype(str).str.strip().str.lower().apply(
-                    lambda r: "⚠️ Escalated" if "escalat" in r else ("🔴 High" if "high" in r else "")
+                _action_df["⚠️ Risk"] = _action_df["risk_level"].fillna("").astype(str).str.strip().str.lower().map(
+                    lambda r: "⚠️ Escalated" if "escalat" in str(r) else ("🔴 High" if "high" in str(r) else "")
                 )
 
             # Sort: Tier 4 → 3 → 2 → 1, then by days desc
@@ -1128,20 +1186,7 @@ Used when no NS entries and no milestones are present.
                 if _show[_sc].dtype == object:
                     _show[_sc] = _show[_sc].fillna("—").astype(str)
 
-            # Colour by tier
-            def _style_action(row):
-                t = row.get("Suggested Tier","")
-                if t == "Tier 4": bg, fg = "#e8d5ff","#4a235a"
-                elif t == "Tier 3": bg, fg = "#FDECED","#9C0006"
-                elif t == "Tier 2": bg, fg = "#FFEB9C","#9C6500"
-                elif t == "Tier 1": bg, fg = "#C6EFCE","#276221"
-                else: return [""] * len(row)
-                return [f"background-color:{bg};color:{fg}"] * len(row)
-
-            st.dataframe(
-                _show.style.apply(_style_action, axis=1),
-                hide_index=True, use_container_width=True
-            )
+            st.dataframe(_show, hide_index=True, use_container_width=True)
             st.caption(f"{len(_action_df)} project(s) requiring re-engagement · sorted by urgency")
 
             # Warn about escalated projects
@@ -1557,12 +1602,7 @@ Used when no NS entries and no milestones are present.
                 cc_emails = cc_emails + [_extra_cc.strip()]
         else:
             st.warning("Email and/or contact name columns not detected. Check your export headers.")
-            with st.expander("🔍 Debug — columns found in your SFDC file"):
-                st.caption("These are the column names after mapping. If you see your email/name columns below under a different name, let your admin know to add it to the column map.")
-                st.write(sorted(proj_rows.columns.tolist()) if not proj_rows.empty else "No rows matched for this project")
-                if df_sfdc is not None:
-                    st.caption("All columns in loaded SFDC file:")
-                    st.write(sorted(df_sfdc.columns.tolist()))
+
             to_emails = []
             cc_emails = []
 
@@ -1703,6 +1743,20 @@ Used when no NS entries and no milestones are present.
                 template      = selected_template,
             )
             st.session_state["_log_success_msg"] = f"✅ Logged — {_tier_str} for {_log_customer} on {datetime.today().strftime('%Y-%m-%d')}"
+            # Auto-capture to Time Entries
+            try:
+                from shared.activity_log import log_activity
+                _te_pid  = _pid if "_pid" in dir() and _pid else ""
+                _te_name = str(selected_proj or "")
+                log_activity(
+                    project_id    = _te_pid or _te_name,
+                    project_name  = _te_name,
+                    activity_type = "Customer Email",
+                    employee      = selected_user,
+                    notes         = f"{_tier_str} outreach — {_log_customer}",
+                )
+            except Exception:
+                pass
 
         if st.session_state.get("_log_success_msg"):
             st.success(st.session_state["_log_success_msg"])

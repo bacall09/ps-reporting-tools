@@ -143,7 +143,10 @@ def load_sfdc(file):
         df["close_date"] = pd.to_datetime(df["close_date"], errors="coerce")
     # Always build contact_name from first + last (source report has separate columns)
     if "first_name" in df.columns and "last_name" in df.columns:
-        df["contact_name"] = (df["first_name"].fillna("") + " " + df["last_name"].fillna("")).str.strip()
+        df["contact_name"] = (
+            df["first_name"].fillna("").astype(str) + " " +
+            df["last_name"].fillna("").astype(str)
+        ).str.strip()
     # Use opportunity name as the project label
     if "opportunity" not in df.columns and "opportunity_id" in df.columns:
         df["opportunity"] = df["opportunity_id"]
@@ -180,10 +183,12 @@ def load_drs(file):
         df["go_live_date"] = pd.to_datetime(df["go_live_date"], errors="coerce")
     if "last_updated" in df.columns:
         df["last_updated"] = pd.to_datetime(df["last_updated"], errors="coerce")
-    # Parse all milestone date columns
+    # Parse all milestone date columns — clip epoch/nonsense dates (e.g. checkbox=1 → 1970-01-01)
+    _min_valid = pd.Timestamp("2015-01-01")
     for _ms_col in MILESTONE_COLS_MAP.keys():
         if _ms_col in df.columns:
-            df[_ms_col] = pd.to_datetime(df[_ms_col], errors="coerce")
+            _parsed = pd.to_datetime(df[_ms_col], errors="coerce")
+            df[_ms_col] = _parsed.where(_parsed >= _min_valid, pd.NaT)
 
     # Filter to active FF projects only
     today = pd.Timestamp.today().normalize()
@@ -278,30 +283,28 @@ def load_ns_time(file):
     rename = {col: NS_COL_MAP_OUT[col.strip().lower()] for col in df.columns if col.strip().lower() in NS_COL_MAP_OUT}
     df = df.rename(columns=rename)
     if "date" in df.columns:
-        # Handle Unix timestamps from NS exports:
-        #   - Unix seconds (10 digits, ~1e9): e.g. 1767225600 = 2026-01-01
-        #   - Unix milliseconds (13 digits, ~1e12): e.g. 1767225600000
-        #   - String dates: "3/11/26", "2026-03-11" etc.
-        _date_raw = df["date"]
-        try:
-            _parsed = pd.to_numeric(_date_raw, errors="coerce")
-            _is_ms  = _parsed.notna() & (_parsed > 1e11)   # 13-digit ms timestamps
-            _is_sec = _parsed.notna() & (_parsed > 1e8) & ~_is_ms  # 10-digit second timestamps
-            if _is_ms.any() or _is_sec.any():
-                _dt = pd.Series(pd.NaT, index=df.index)
-                if _is_ms.any():
-                    _dt = _dt.where(~_is_ms, pd.to_datetime(_parsed.where(_is_ms), unit="ms", errors="coerce"))
-                if _is_sec.any():
-                    _dt = _dt.where(~_is_sec, pd.to_datetime(_parsed.where(_is_sec), unit="s", errors="coerce"))
-                # Fill remaining with string parse
-                _remaining = ~(_is_ms | _is_sec)
-                if _remaining.any():
-                    _dt = _dt.where(~_remaining, pd.to_datetime(_date_raw.where(_remaining), errors="coerce"))
-                df["date"] = _dt
-            else:
+        # Handle Unix timestamps from NS exports (seconds or ms) as well as string dates
+        # Skip if already datetime
+        if not pd.api.types.is_datetime64_any_dtype(df["date"]):
+            _date_raw = df["date"]
+            try:
+                _parsed = pd.to_numeric(_date_raw, errors="coerce")
+                _is_ms  = _parsed.notna() & (_parsed > 1e11)
+                _is_sec = _parsed.notna() & (_parsed > 1e8) & ~_is_ms
+                if _is_ms.any() or _is_sec.any():
+                    _dt = pd.Series(pd.NaT, index=df.index)
+                    if _is_ms.any():
+                        _dt[_is_ms] = pd.to_datetime(_parsed[_is_ms], unit="ms", errors="coerce")
+                    if _is_sec.any():
+                        _dt[_is_sec] = pd.to_datetime(_parsed[_is_sec], unit="s", errors="coerce")
+                    _remaining = ~(_is_ms | _is_sec)
+                    if _remaining.any():
+                        _dt[_remaining] = pd.to_datetime(_date_raw[_remaining], errors="coerce")
+                    df["date"] = _dt
+                else:
+                    df["date"] = pd.to_datetime(_date_raw, errors="coerce")
+            except Exception:
                 df["date"] = pd.to_datetime(_date_raw, errors="coerce")
-        except Exception:
-            df["date"] = pd.to_datetime(_date_raw, errors="coerce")
     if "project_id" in df.columns:
         df["project_id"] = df["project_id"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     if "ns_rate" in df.columns:
@@ -351,6 +354,11 @@ def calc_days_inactive(df_drs, df_ns):
         df_drs = df_drs.merge(last_entry, on="project_name", how="left")
 
     if "last_ns_entry" in df_drs.columns:
+        # Clip epoch dates (1970-01-01) — these indicate a parse failure, not real dates
+        _min_valid_date = pd.Timestamp("2015-01-01")
+        df_drs["last_ns_entry"] = df_drs["last_ns_entry"].where(
+            df_drs["last_ns_entry"] >= _min_valid_date, pd.NaT
+        )
         ns_days = (today - df_drs["last_ns_entry"]).dt.days.clip(lower=0)
         fallback = df_drs["days_inactive"] if "days_inactive" in df_drs.columns else pd.Series(-1, index=df_drs.index)
         df_drs["days_inactive"] = ns_days.where(df_drs["last_ns_entry"].notna(), fallback).fillna(-1).astype(int)
@@ -610,28 +618,31 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
     if tm.empty:
         return pd.DataFrame()
 
-    # Ensure period column — handle Unix second/ms timestamps
+    # Ensure period column
     if "period" not in tm.columns:
-        if "date" in tm.columns:
-            _d_raw  = tm["date"]
-            _d_num  = pd.to_numeric(_d_raw, errors="coerce")
-            _d_ms   = _d_num.notna() & (_d_num > 1e11)
-            _d_sec  = _d_num.notna() & (_d_num > 1e8) & ~_d_ms
+        if "date" not in tm.columns:
+            return pd.DataFrame()
+        # If already a datetime dtype, use directly
+        if pd.api.types.is_datetime64_any_dtype(tm["date"]):
+            tm["period"] = tm["date"].dt.strftime("%Y-%m")
+        else:
+            _d_raw = tm["date"]
+            _d_num = pd.to_numeric(_d_raw, errors="coerce")
+            _d_ms  = _d_num.notna() & (_d_num > 1e11)
+            _d_sec = _d_num.notna() & (_d_num > 1e8) & ~_d_ms
             if _d_ms.any() or _d_sec.any():
                 _dt = pd.Series(pd.NaT, index=tm.index)
                 if _d_ms.any():
-                    _dt = _dt.where(~_d_ms, pd.to_datetime(_d_num.where(_d_ms), unit="ms", errors="coerce"))
+                    _dt[_d_ms] = pd.to_datetime(_d_num[_d_ms], unit="ms", errors="coerce")
                 if _d_sec.any():
-                    _dt = _dt.where(~_d_sec, pd.to_datetime(_d_num.where(_d_sec), unit="s", errors="coerce"))
+                    _dt[_d_sec] = pd.to_datetime(_d_num[_d_sec], unit="s", errors="coerce")
                 _rem = ~(_d_ms | _d_sec)
                 if _rem.any():
-                    _dt = _dt.where(~_rem, pd.to_datetime(_d_raw.where(_rem), errors="coerce"))
+                    _dt[_rem] = pd.to_datetime(_d_raw[_rem], errors="coerce")
                 tm["date"] = _dt
             else:
                 tm["date"] = pd.to_datetime(_d_raw, errors="coerce")
             tm["period"] = tm["date"].dt.strftime("%Y-%m")
-        else:
-            return pd.DataFrame()
 
     tm["hours"] = pd.to_numeric(tm.get("hours", 0), errors="coerce").fillna(0)
 
@@ -747,18 +758,6 @@ def calc_tm_monthly_actuals(df_ns: pd.DataFrame, df_sow: pd.DataFrame) -> pd.Dat
                   revenue_usd=("_revenue_usd", "sum"),
                   rate_local=("_rate_local", "max"),     # max for display only
                   rate_source=("_rate_source", "first")))
-
-    # Debug: store counts in a module-level var accessible from outside
-    import shared.loaders as _self_mod
-    _self_mod._last_debug = {
-        "tm_rows": len(tm),
-        "grp_rows": len(grp),
-        "agg_cols": agg_cols,
-        "tm_cols": list(tm.columns),
-        "period_sample": tm["period"].head(3).tolist() if "period" in tm.columns else [],
-        "billing_flag_sample": tm["billing_flag"].head(3).tolist() if "billing_flag" in tm.columns else [],
-        "billing_flag_nulls": int(tm["billing_flag"].isna().sum()) if "billing_flag" in tm.columns else -1,
-    }
 
     rows = []
     for _, r in grp.iterrows():
@@ -1067,7 +1066,11 @@ _PRODUCT_KEYWORDS = [
     ("Billing",                 ["zonebill", "zbilling", "zab partner",
                                   "billing", "zb_standard", "zb_premium",
                                   "subscription services"]),
-    ("Payroll",                 ["zonepay", "zpayroll", "payroll", "zep:"]),
+    # Payments must come BEFORE Payroll so "zonepayments" doesn't match "zonepay"
+    ("Payments",                ["ap payment", "zonepayments", "zone payments",
+                                  "zpayment", "zap:", "ap pay"]),
+    ("Payroll",                 ["zonepayroll", "zpayroll", "payroll", "zep:",
+                                  "zonepay:", "zonepay "]),
     ("Reporting",               ["zonerpt", "zonerepor", "reporting",
                                   "install, dwh", "dwh"]),
     ("E-Invoicing",             ["e-invoic", "einvoic"]),
@@ -1075,7 +1078,9 @@ _PRODUCT_KEYWORDS = [
     ("Approvals",               ["zoneapprovals", "zapprovals", "approval",
                                   "zoneapps: consulting"]),
     ("Reconcile",               ["zonereconcile", "zreconcile", "reconcile"]),
-    ("Payments",                ["zonepayments", "zpayment", "payment"]),
+    # Generic payment/payroll fallbacks — order matters
+    ("Payments",                ["payment"]),
+    ("Payroll",                 ["zonepay", "payroll"]),
     ("PSP",                     ["psp"]),
     ("SFTP",                    ["sftp"]),
     ("CC",                      ["cc statement", "credit card"]),
@@ -1103,10 +1108,15 @@ REV_COL_MAP = {
     "subscription":             "subscription_item",
     "item name":                "subscription_item",
     "service item":             "subscription_item",
+    "subscription id":          "subscription_id",
+    "subscription_id":          "subscription_id",
     # Project
     "project id":               "project_id",
     "project":                  "project_id",
     "job":                      "project_id",
+    "project name":             "project_name",
+    "name":                     "project_name",
+    "customer":                 "project_name",
     # Revenue dates
     "rev rec start":            "rev_start",
     "rev rec start date":       "rev_start",
@@ -1114,6 +1124,7 @@ REV_COL_MAP = {
     "rev start":                "rev_start",
     "rev start date":           "rev_start",
     "start date":               "rev_start",
+    "service start date":       "rev_start",   # Finance report header
     "rev rec end":              "rev_end",
     "rev rec end date":         "rev_end",
     "revenue recognition end":  "rev_end",
@@ -1158,7 +1169,26 @@ def load_revenue(file) -> pd.DataFrame:
         df = pd.read_excel(file)
 
     df.columns = df.columns.str.strip()
-    rename = {c: REV_COL_MAP[c.lower()] for c in df.columns if c.lower() in REV_COL_MAP}
+    # Build rename map — if multiple columns map to the same target, prefer more specific names
+    _col_lower = {c: c.strip().lower() for c in df.columns}
+    _seen_targets = set()
+    _priority_order = ["project name", "project id", "subscription id", "service start date",
+                       "service end date", "gross amount", "charge item", "subscription item"]
+    # First pass: priority columns
+    rename = {}
+    for c, cl in _col_lower.items():
+        if cl in _priority_order and cl in REV_COL_MAP:
+            target = REV_COL_MAP[cl]
+            rename[c] = target
+            _seen_targets.add(target)
+    # Second pass: remaining columns (skip if target already claimed)
+    for c, cl in _col_lower.items():
+        if c in rename: continue
+        if cl in REV_COL_MAP:
+            target = REV_COL_MAP[cl]
+            if target not in _seen_targets:
+                rename[c] = target
+                _seen_targets.add(target)
     df = df.rename(columns=rename)
 
     # Parse dates — handle short year format (1/1/26) and standard formats
@@ -1182,18 +1212,116 @@ def load_revenue(file) -> pd.DataFrame:
     # 2. If Amount = 0 → look up carve-out table by SKU + currency
     # 3. If not in table → fall back to Rev Carve Amount column from NS
     from shared.config import get_carve_out_amount
+    from shared.config import (CAPTURE_IMPL_SKU, APPROVALS_IMPL_SKU,
+                                RECONCILE_IMPL_SKU as _RIMPL)
+    _CARVE_HANDLED_SKUS = {CAPTURE_IMPL_SKU, APPROVALS_IMPL_SKU, _RIMPL}
+
+    def _strip_ci(s):
+        s = str(s).strip()
+        return s.split(" : ")[-1].strip() if " : " in s else s
+
     def _rec_amount(row):
         amt = float(row.get("amount", 0) or 0)
         if amt > 0:
             return amt
-        # Try SKU table first
+        # Negative gross — credit note / reversal; pass through as-is (flagged in notes later)
+        gross_amt = float(row.get("gross_amount", 0) or 0)
+        if gross_amt < 0:
+            return gross_amt
+        # Skip carve table for SKUs handled by dedicated carve-out functions
+        ci = _strip_ci(row.get("charge_item", ""))
+        if ci in _CARVE_HANDLED_SKUS:
+            # Will be set by product-specific carve function; use gross_amount as placeholder
+            return gross_amt
+        # Try SKU carve-out table for other SKUs
         tbl = get_carve_out_amount(row.get("charge_item", ""), row.get("currency", "USD"))
         if tbl is not None:
             return tbl
-        # Fall back to column value
-        return float(row.get("rev_carve_amount", 0) or 0)
+        # Fall back to rev_carve_amount column
+        carve = float(row.get("rev_carve_amount", 0) or 0)
+        if carve > 0:
+            return carve
+        # Last resort: gross_amount
+        return gross_amt
 
     df["recognizable_amount"] = df.apply(_rec_amount, axis=1)
+
+    # ── Apply product-specific carve-out logic ────────────────────────────────
+    # Reconcile: license-based carve-out (must run before slicing)
+    df = calc_reconcile_carveout(df)
+    # Capture + Approvals: table-based carve-out with license validation
+    df = calc_capture_approvals_carveout(df)
+    # ── Deduplicate impl rows — keep earliest rev_start per project_id + SKU ────
+    # Multiple charge rows can exist for multi-year licenses but only 1 impl project
+    from shared.config import (CAPTURE_IMPL_SKU as _CIS, APPROVALS_IMPL_SKU as _AIS,
+                                RECONCILE_IMPL_SKU as _RIS2)
+    _impl_skus_dedup = {_CIS, _AIS, _RIS2}
+
+    def _strip_for_dedup(s):
+        s = str(s).strip()
+        return s.split(" : ")[-1].strip() if " : " in s else s
+
+    _is_impl = df["charge_item"].apply(_strip_for_dedup).isin(_impl_skus_dedup)
+    if _is_impl.any() and "project_id" in df.columns:
+        impl_df   = df[_is_impl].copy()
+        other_df  = df[~_is_impl].copy()
+        # Sort by rev_start ascending so earliest comes first
+        impl_df["_rev_start_sort"] = pd.to_datetime(impl_df.get("rev_start", pd.Series()), errors="coerce")
+        impl_df = impl_df.sort_values("_rev_start_sort", na_position="last")
+        # Keep first (earliest) per project_id + charge_item
+        impl_deduped = impl_df.drop_duplicates(subset=["project_id","charge_item"], keep="first")
+        dupes = impl_df[~impl_df.index.isin(impl_deduped.index)]
+        if not dupes.empty:
+            # Flag dupes so they appear in Carve Flags tab
+            dupes = dupes.copy()
+            dupes["notes"] = dupes["notes"].fillna("") + " | ⚠️ Duplicate impl charge — excluded (same project_id, earlier row retained)"
+            dupes["_exclude_from_slices"] = True
+            impl_deduped["_rev_start_sort"] = None
+            dupes["_rev_start_sort"] = None
+            df = pd.concat([other_df, impl_deduped, dupes], ignore_index=True)
+        else:
+            impl_df.drop(columns=["_rev_start_sort"], inplace=True)
+
+    # ── Derive rev rec window for ALL rows that don't have one yet ───────────
+    import calendar as _cal_lr
+    if "rev_rec_start" not in df.columns:
+        df["rev_rec_start"] = None
+    if "rev_rec_end" not in df.columns:
+        df["rev_rec_end"] = None
+
+    def _derive_window_lr(rev_start_val):
+        try:
+            ts = pd.Timestamp(rev_start_val)
+            if ts.day == 1:
+                tgt_mo = ts.month + 1; tgt_yr = ts.year
+                if tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                rre = pd.Timestamp(tgt_yr, tgt_mo, _cal_lr.monthrange(tgt_yr, tgt_mo)[1])
+            else:
+                tgt_mo = ts.month + 2; tgt_yr = ts.year
+                while tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                rre = pd.Timestamp(tgt_yr, tgt_mo, _cal_lr.monthrange(tgt_yr, tgt_mo)[1])
+            return ts.strftime("%Y-%m-%d"), rre.strftime("%Y-%m-%d")
+        except Exception:
+            return None, None
+
+    _needs_window = (
+        df["rev_rec_start"].isna() | (df["rev_rec_start"].astype(str).str.strip().isin(["", "None", "NaT"]))
+    )
+    for _idx in df[_needs_window].index:
+        _rs = df.at[_idx, "rev_start"]
+        if pd.notna(_rs) and str(_rs).strip() not in ("", "NaT"):
+            _rrs, _rre = _derive_window_lr(_rs)
+            if _rrs:
+                df.at[_idx, "rev_rec_start"] = _rrs
+                df.at[_idx, "rev_rec_end"]   = _rre
+
+    # Rename reconcile_flag → notes for unified audit trail
+    if "reconcile_flag" in df.columns and "notes" not in df.columns:
+        df = df.rename(columns={"reconcile_flag": "notes"})
+    elif "reconcile_flag" in df.columns and "notes" in df.columns:
+        # Merge: prefer notes content, fall back to reconcile_flag
+        df["notes"] = df["notes"].where(df["notes"] != "", df["reconcile_flag"])
+        df.drop(columns=["reconcile_flag"], inplace=True)
 
     # Product from subscription item
     df["product"] = df.get("subscription_item", pd.Series("", index=df.index)).apply(match_product)
@@ -1210,6 +1338,392 @@ def load_revenue(file) -> pd.DataFrame:
     return df
 
 
+def calc_reconcile_carveout(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply Reconcile carve-out logic to FF revenue charge DataFrame.
+
+    For each SERV-APP-ZR2-STD_IMPL (Implementation) row:
+      1. Derive rev_rec_start and rev_rec_end from Service Start Date (rev_start):
+           - If rev_start is 1st of month → rev_rec_end = last day of following month
+           - If rev_start is after 1st     → rev_rec_end = last day of 3rd month from start
+      2. Find all Reconcile License rows with same subscription_id
+      3. Calculate annual license cost: sum of each license row's gross_amount
+         pro-rated to the 12-month window starting from impl rev_start
+      4. Convert annual license cost to USD if non-USD
+      5. carve_amount = min(table_max[license_sku], annual_license_cost_usd)
+         If no license rows: carve = 0.00, flag
+      6. Override recognizable_amount on impl row with carve_amount
+      7. Set rev_rec_start / rev_rec_end on impl row
+    """
+    import calendar as _cal
+    from shared.config import (RECONCILE_LICENSE_CARVE, RECONCILE_IMPL_SKU,
+                                RECONCILE_LICENSE_SKUS, get_fx_rate)
+
+    if df is None or df.empty:
+        return df
+
+    df = df.copy()
+    df["reconcile_flag"]      = ""
+    df["license_sku"]         = ""
+    df["license_cost_usd"]    = None
+    df["carve_max"]           = None
+    df["impl_gross"]          = None
+    df["rev_rec_start"]       = None
+    df["rev_rec_end"]         = None
+    df["_exclude_from_slices"] = False
+
+    def _strip_sku(s):
+        s = str(s).strip()
+        # Split on all " : " separators and take the last segment
+        # Handles "SERVICES : SERV-APP-ZR2-STD_IMPL" and "ZRR : BUNDLES : PROD-APP-ZR2_START15"
+        return s.split(" : ")[-1].strip() if " : " in s else s
+
+    df["_sku"] = df["charge_item"].apply(_strip_sku)
+
+    impl_mask    = df["_sku"] == RECONCILE_IMPL_SKU
+    license_mask = df["_sku"].isin(RECONCILE_LICENSE_SKUS)
+
+    if not impl_mask.any():
+        df["_exclude_from_slices"] = license_mask
+        df.drop(columns=["_sku"], inplace=True)
+        return df
+
+    license_rows = df[license_mask].copy()
+    impl_rows    = df[impl_mask].copy()
+
+    def _derive_rev_rec_window(rev_start):
+        """Derive rev_rec_start and rev_rec_end from service start date."""
+        try:
+            ts = pd.Timestamp(rev_start)
+            rrs = ts  # rev_rec_start = service start
+            if ts.day == 1:
+                # 1st of month → end of following month
+                next_mo = ts + pd.DateOffset(months=1)
+                rre = pd.Timestamp(next_mo.year, next_mo.month,
+                                   _cal.monthrange(next_mo.year, next_mo.month)[1])
+            else:
+                # After 1st → end of 3rd month from start
+                third_mo = ts + pd.DateOffset(months=2)
+                rre = pd.Timestamp(third_mo.year, third_mo.month,
+                                   _cal.monthrange(third_mo.year, third_mo.month)[1])
+            return rrs, rre
+        except Exception:
+            return None, None
+
+    def _annual_license_cost(license_rows_sub, impl_start):
+        """Sum license gross amounts pro-rated to the 12-month window from impl_start."""
+        window_start = pd.Timestamp(impl_start)
+        window_end   = window_start + pd.DateOffset(years=1) - pd.Timedelta(days=1)
+        total = 0.0
+        for _, lr in license_rows_sub.iterrows():
+            lic_start = lr.get("rev_start")
+            lic_end   = lr.get("service_end") or lr.get("rev_end")
+            gross     = float(lr.get("gross_amount", 0) or 0)
+            if pd.isna(lic_start) or lic_end is None or pd.isna(lic_end):
+                total += gross  # can't pro-rate, include in full
+                continue
+            ls = pd.Timestamp(lic_start)
+            le = pd.Timestamp(lic_end)
+            lic_days    = max((le - ls).days, 1)
+            overlap_s   = max(ls, window_start)
+            overlap_e   = min(le, window_end)
+            overlap_days = max((overlap_e - overlap_s).days, 0)
+            total += gross * (overlap_days / lic_days)
+        return total
+
+    # Flag orphan licenses (no matching impl)
+    if "subscription_id" in df.columns:
+        impl_subs    = set(impl_rows["subscription_id"].dropna().astype(str))
+        license_subs = set(license_rows["subscription_id"].dropna().astype(str))
+        orphan       = license_subs - impl_subs
+        if orphan:
+            df.loc[license_mask & df["subscription_id"].astype(str).isin(orphan),
+                   "reconcile_flag"] = "⚠️ License: no matching Implementation SKU"
+
+    # Process each implementation row
+    for idx, impl_row in impl_rows.iterrows():
+        impl_start = impl_row.get("rev_start")
+        impl_gross = float(impl_row.get("gross_amount", 0) or 0)
+
+        # Store original impl gross for reviewer reference
+        df.at[idx, "impl_gross"]        = impl_gross
+
+        # Step 1: derive rev rec window
+        rrs, rre = _derive_rev_rec_window(impl_start) if pd.notna(impl_start) else (None, None)
+        df.at[idx, "rev_rec_start"] = rrs.strftime("%Y-%m-%d") if rrs else ""
+        df.at[idx, "rev_rec_end"]   = rre.strftime("%Y-%m-%d") if rre else ""
+
+        # Step 2: find license rows
+        sub_id = str(impl_row.get("subscription_id", "")) if "subscription_id" in impl_row.index else ""
+        if sub_id and "subscription_id" in df.columns:
+            matched = license_rows[license_rows["subscription_id"].astype(str) == sub_id]
+        else:
+            matched = pd.DataFrame()
+
+        if matched.empty:
+            df.at[idx, "recognizable_amount"] = 0.0
+            df.at[idx, "carve_max"]           = 0.0
+            df.at[idx, "reconcile_flag"]      = "⚠️ No License SKU found — carve set to $0"
+            continue
+
+        # Identify license SKU — use earliest rev_start row; flag if mixed SKUs
+        matched_sorted = matched.sort_values("rev_start") if "rev_start" in matched.columns else matched
+        year1_lic      = matched_sorted.iloc[0]
+        lic_sku        = str(year1_lic["_sku"])
+
+        unique_skus = matched_sorted["_sku"].unique()
+        mixed_flag  = len(unique_skus) > 1
+
+        max_carve = RECONCILE_LICENSE_CARVE.get(lic_sku, 0.0)
+
+        # Step 3: annual license cost (pro-rated 12-month window)
+        if pd.notna(impl_start):
+            annual_gross = _annual_license_cost(matched, impl_start)
+        else:
+            annual_gross = float(year1_lic.get("gross_amount", 0) or 0)
+
+        # Step 4: convert to USD
+        lic_cur = str(year1_lic.get("currency", "USD") or "USD").strip().upper()
+        if lic_cur != "USD" and annual_gross > 0:
+            try:
+                period_str = pd.Timestamp(year1_lic.get("rev_start")).strftime("%Y-%m")
+            except Exception:
+                period_str = ""
+            annual_gross_usd = annual_gross * get_fx_rate(lic_cur, period_str)
+        else:
+            annual_gross_usd = annual_gross
+
+        # Step 5: carve = min(table max, annual license cost USD)
+        carve_amount  = min(max_carve, annual_gross_usd) if annual_gross_usd > 0 else max_carve
+        discount_flag = annual_gross_usd > 0 and annual_gross_usd < max_carve
+
+        # Step 6: apply
+        df.at[idx, "recognizable_amount"] = round(carve_amount, 2)
+        df.at[idx, "license_sku"]         = lic_sku
+        df.at[idx, "license_cost_local"]  = round(annual_gross, 2)
+        df.at[idx, "license_currency"]    = lic_cur
+        df.at[idx, "license_cost_usd"]    = round(annual_gross_usd, 2)
+        df.at[idx, "carve_max"]           = max_carve
+
+        flags = []
+        if mixed_flag:
+            flags.append(f"⚠️ Mixed License SKUs: {', '.join(unique_skus)} — using earliest ({lic_sku})")
+        if discount_flag:
+            flags.append(
+                f"License: {lic_sku} · License Cost USD ${annual_gross_usd:,.2f} · "
+                f"⚠️ Discount — Carve ${carve_amount:,.2f} (table max ${max_carve:,.2f})"
+            )
+        if not flags:
+            flags.append(
+                f"License: {lic_sku} · License Cost USD ${annual_gross_usd:,.2f} · Carve ${carve_amount:,.2f}"
+            )
+        df.at[idx, "reconcile_flag"] = " | ".join(flags)
+
+    # Mark license rows for exclusion from slices
+    df["_exclude_from_slices"] = df["_sku"].isin(RECONCILE_LICENSE_SKUS)
+    df.drop(columns=["_sku"], inplace=True)
+    return df
+
+def calc_capture_approvals_carveout(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply Capture and Approvals carve-out logic to FF revenue charge DataFrame.
+
+    For each SERV-APP-ZC_STD-IMPL or SERV-APP-ZA_STD-IMPL row:
+      1. If gross_amount > 0 → recognizable_amount = gross_amount, notes = "Billed: $X"
+      2. If gross_amount = 0 → recognizable_amount = carve table lookup (by SKU + currency)
+         Capture non-CAD non-USD: convert $3,000 USD via FX
+      3. Find matching license rows by subscription_id, annualise 12-month window
+      4. If year1_license_cost_usd < carve_table_max → note the cap
+      5. Flag orphan licenses (license with no matching impl)
+
+    Notes column (renamed from reconcile_flag) accumulates all observations.
+    """
+    from shared.config import (CAPTURE_IMPL_SKU, CAPTURE_LICENSE_SKUS,
+                                APPROVALS_IMPL_SKU, APPROVALS_LICENSE_SKUS,
+                                FF_CARVE_OUT_TABLE, get_carve_out_amount, get_fx_rate)
+
+    if df is None or df.empty:
+        return df
+
+    df = df.copy()
+    if "notes" not in df.columns:
+        df["notes"] = ""
+    if "rev_rec_start" not in df.columns:
+        df["rev_rec_start"] = None
+    if "rev_rec_end" not in df.columns:
+        df["rev_rec_end"] = None
+
+    def _strip_sku(s):
+        s = str(s).strip()
+        return s.split(" : ")[-1].strip() if " : " in s else s
+
+    df["_sku"] = df["charge_item"].apply(_strip_sku)
+
+    all_impl_skus    = {CAPTURE_IMPL_SKU, APPROVALS_IMPL_SKU}
+    all_license_skus = CAPTURE_LICENSE_SKUS | APPROVALS_LICENSE_SKUS
+
+    impl_mask    = df["_sku"].isin(all_impl_skus)
+    license_mask = df["_sku"].isin(all_license_skus)
+
+    if not impl_mask.any():
+        df["_exclude_from_slices_ca"] = license_mask.copy()
+        df.drop(columns=["_sku"], inplace=True)
+        return df
+
+    license_rows = df[license_mask].copy()
+    impl_rows    = df[impl_mask].copy()
+
+    # Flag orphan licenses
+    if "subscription_id" in df.columns:
+        impl_subs    = set(impl_rows["subscription_id"].dropna().astype(str))
+        license_subs = set(license_rows["subscription_id"].dropna().astype(str))
+        orphans      = license_subs - impl_subs
+        if orphans:
+            df.loc[license_mask & df["subscription_id"].astype(str).isin(orphans),
+                   "notes"] = "⚠️ Orphan License: no matching Implementation SKU"
+
+    # Annual license cost helper (same as Reconcile)
+    def _annual_license_cost(matched_lic, impl_start_val):
+        try:
+            window_start = pd.Timestamp(impl_start_val)
+            window_end   = window_start + pd.DateOffset(years=1) - pd.Timedelta(days=1)
+        except Exception:
+            return sum(float(r.get("gross_amount", 0) or 0) for _, r in matched_lic.iterrows())
+        total = 0.0
+        for _, lr in matched_lic.iterrows():
+            gross = float(lr.get("gross_amount", 0) or 0)
+            ls    = lr.get("rev_start")
+            le    = lr.get("service_end") or lr.get("rev_end")
+            if not pd.notna(ls) or le is None or not pd.notna(le):
+                total += gross
+                continue
+            try:
+                ls = pd.Timestamp(ls); le = pd.Timestamp(le)
+                lic_days     = max((le - ls).days, 1)
+                overlap_s    = max(ls, window_start)
+                overlap_e    = min(le, window_end)
+                overlap_days = max((overlap_e - overlap_s).days, 0)
+                total += gross * (overlap_days / lic_days)
+            except Exception:
+                total += gross
+        return total
+
+    for idx, impl_row in impl_rows.iterrows():
+        sku        = str(impl_row["_sku"])
+        curr       = str(impl_row.get("currency", "USD") or "USD").strip().upper()
+        gross      = float(impl_row.get("gross_amount", 0) or 0)
+        impl_start = impl_row.get("rev_start")
+        notes_parts = []
+
+        # Derive rev rec window for all impl rows (same rule as all FF)
+        if pd.notna(impl_start):
+            try:
+                import calendar as _cal2
+                ts = pd.Timestamp(impl_start)
+                if ts.day == 1:
+                    tgt_mo = ts.month + 1; tgt_yr = ts.year
+                    if tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                    rre = pd.Timestamp(tgt_yr, tgt_mo, _cal2.monthrange(tgt_yr, tgt_mo)[1])
+                else:
+                    tgt_mo = ts.month + 2; tgt_yr = ts.year
+                    while tgt_mo > 12: tgt_mo -= 12; tgt_yr += 1
+                    rre = pd.Timestamp(tgt_yr, tgt_mo, _cal2.monthrange(tgt_yr, tgt_mo)[1])
+                df.at[idx, "rev_rec_start"] = ts.strftime("%Y-%m-%d")
+                df.at[idx, "rev_rec_end"]   = rre.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+        # Step 1: gross_amount > 0 → use directly
+        if gross > 0:
+            df.at[idx, "recognizable_amount"] = round(gross, 2)
+            notes_parts.append(f"Billed: {curr} {gross:,.2f}")
+            df.at[idx, "notes"] = " | ".join(notes_parts)
+            continue
+
+        # Step 2: gross = 0 → table lookup
+        period_str = ""
+        if pd.notna(impl_start):
+            try: period_str = pd.Timestamp(impl_start).strftime("%Y-%m")
+            except Exception: pass
+
+        carve_local = get_carve_out_amount(sku, curr, period_str)
+        if carve_local is None:
+            # No carve table entry for this SKU — inherit gross amount 1:1
+            _fallback_gross = float(df.at[idx, "gross_amount"] or 0)
+            if _fallback_gross > 0:
+                df.at[idx, "recognizable_amount"] = round(_fallback_gross, 2)
+                notes_parts.append(f"No carve defined — 1:1 gross {curr} {_fallback_gross:,.2f}")
+                df.at[idx, "notes"] = " | ".join(notes_parts)
+                continue
+            carve_local = 0.0
+
+        # Get USD equivalent of carve for comparison
+        if curr == "USD":
+            carve_usd = carve_local
+            fx_used   = 1.0
+        else:
+            fx_used   = get_fx_rate(curr, period_str) if curr != "USD" else 1.0
+            # For Capture non-CAD non-USD: carve_local already is USD-converted amount
+            if sku == CAPTURE_IMPL_SKU and curr not in ("USD", "CAD"):
+                carve_usd = carve_local  # already USD
+                carve_local_display = round(3000.00, 2)
+                notes_parts.append(
+                    f"Carve USD 3,000.00 → {curr} {carve_local:,.2f} @ FX {fx_used:.4f}"
+                )
+            else:
+                carve_usd = carve_local * fx_used
+                notes_parts.append(
+                    f"Carve {curr} {carve_local:,.2f} → USD {carve_usd:,.2f} @ FX {fx_used:.4f}"
+                )
+
+        table_max_usd = FF_CARVE_OUT_TABLE.get((sku, "USD"), carve_usd)
+
+        # Step 3: Year 1 license cost validation
+        sub_id = str(impl_row.get("subscription_id", "")) if "subscription_id" in impl_row.index else ""
+        if sub_id and "subscription_id" in df.columns:
+            matched_lic = license_rows[license_rows["subscription_id"].astype(str) == sub_id]
+        else:
+            matched_lic = pd.DataFrame()
+
+        if not matched_lic.empty:
+            lic_currency = str(matched_lic.iloc[0].get("currency", "USD") or "USD").strip().upper()
+            year1_local  = _annual_license_cost(matched_lic, impl_start)
+            if lic_currency != "USD":
+                lic_period = ""
+                lic_start_val = matched_lic.iloc[0].get("rev_start")
+                if pd.notna(lic_start_val):
+                    try: lic_period = pd.Timestamp(lic_start_val).strftime("%Y-%m")
+                    except Exception: pass
+                lic_fx       = get_fx_rate(lic_currency, lic_period)
+                year1_usd    = year1_local * lic_fx
+            else:
+                year1_usd = year1_local
+
+            if year1_usd < table_max_usd:
+                notes_parts.append(
+                    f"⚠️ License Year 1 cost USD {year1_usd:,.2f} < table max USD {table_max_usd:,.2f} — carve capped"
+                )
+                # Cap carve at year1 cost
+                if curr == "USD":
+                    carve_local = min(carve_local, year1_usd)
+                    carve_usd   = carve_local
+                else:
+                    carve_usd   = min(carve_usd, year1_usd)
+                    carve_local = carve_usd * fx_used
+
+        df.at[idx, "recognizable_amount"] = round(carve_usd, 2)
+        if not notes_parts:
+            notes_parts.append(f"Carve {curr} {carve_local:,.2f}")
+        df.at[idx, "notes"] = " | ".join(notes_parts)
+
+    # Exclude license rows from slices
+    if "_sku" in df.columns:
+        df["_exclude_from_slices_ca"] = df["_sku"].isin(all_license_skus)
+        df.drop(columns=["_sku"], inplace=True)
+    else:
+        df["_exclude_from_slices_ca"] = False
+
+    return df
+
+
 def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
     """Expand each charge row into monthly recognition slices.
     Returns a long-format DataFrame with columns:
@@ -1219,15 +1733,97 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
     from shared.config import get_fx_rate
     import calendar
 
+    import calendar as _cal
+
+    def _derive_ff_window(rev_start_val):
+        """Derive rev rec start/end from service start date.
+        1st of month → end of following month (2-month window)
+        After 1st    → end of 3rd month from start (3-month window)
+        Returns (rev_rec_start, rev_rec_end) as Timestamps, or (None, None) if invalid.
+        """
+        try:
+            ts = pd.Timestamp(rev_start_val)
+            if ts.day == 1:
+                # End of following month
+                if ts.month == 12:
+                    rre = pd.Timestamp(ts.year + 1, 2, 1) - pd.Timedelta(days=1)
+                else:
+                    next_mo = ts.month + 1
+                    yr = ts.year
+                    last = _cal.monthrange(yr, next_mo)[1]
+                    rre = pd.Timestamp(yr, next_mo, last)
+            else:
+                # End of 3rd month from start
+                target_mo = ts.month + 2
+                target_yr = ts.year
+                while target_mo > 12:
+                    target_mo -= 12
+                    target_yr += 1
+                last = _cal.monthrange(target_yr, target_mo)[1]
+                rre = pd.Timestamp(target_yr, target_mo, last)
+            return ts, rre
+        except Exception:
+            return None, None
+
     rows = []
     for _, r in df.iterrows():
-        start = r.get("rev_start")
-        end   = r.get("rev_end")
+        # Skip license rows — reference only, revenue recognised on impl row
+        if r.get("_exclude_from_slices", False) or r.get("_exclude_from_slices_ca", False):
+            continue
+
         total = float(r.get("recognizable_amount", 0) or 0)
         curr  = str(r.get("currency", "USD")).strip().upper()
+        rev_start_raw = r.get("rev_start")
 
-        if pd.isna(start) or pd.isna(end) or total == 0:
+        # If rev_start is missing — flag, skip rev calc
+        if pd.isna(rev_start_raw) or str(rev_start_raw).strip() == "":
+            rows.append({
+                "project_id":    str(r.get("project_id", "")),
+                "project_name":  r.get("project_name", ""),
+                "charge_item":   r.get("charge_item", ""),
+                "subscription_item": r.get("subscription_item", ""),
+                "subscription_id":   r.get("subscription_id", ""),
+                "product":       r.get("product", "Other"),
+                "region":        r.get("region", "Other"),
+                "currency":      curr,
+                "rev_start":     "",
+                "rev_end":       "",
+                "period":        "missing_start",
+                "local_amount":  0.0,
+                "usd_amount":    0.0,
+                "status":        r.get("status", ""),
+                "transaction":   r.get("transaction", ""),
+                "notes": "⚠️ Missing rev_start — no rev calc until resolved",
+                "license_sku":   r.get("license_sku", ""),
+                "license_cost_local": r.get("license_cost_local", ""),
+                "license_currency":   r.get("license_currency", ""),
+                "license_cost_usd":   r.get("license_cost_usd", ""),
+                "carve_max":     r.get("carve_max", ""),
+                "impl_gross":    r.get("impl_gross", ""),
+                "rev_rec_start": "",
+                "rev_rec_end":   "",
+            })
             continue
+
+        # Use Reconcile-derived window if already set, otherwise derive for all FF rows
+        _has_rr = (pd.notna(r.get("rev_rec_start")) and
+                   str(r.get("rev_rec_start", "")).strip() not in ("", "NaT"))
+        if _has_rr:
+            start = pd.Timestamp(r.get("rev_rec_start"))
+            end   = pd.Timestamp(r.get("rev_rec_end"))
+        else:
+            start, end = _derive_ff_window(rev_start_raw)
+            if start is None:
+                continue
+
+        if total == 0:
+            continue
+
+        # Flag credit notes / reversals in notes column
+        _existing_notes = str(r.get("notes", "") or "")
+        if total < 0:
+            _credit_note = f"⚠️ Credit/reversal {str(r.get('currency','USD')).upper()} {total:,.2f} — offsets prior charge"
+            _existing_notes = (_credit_note + " | " + _existing_notes).strip(" | ") if _existing_notes else _credit_note
 
         start = pd.Timestamp(start)
         end   = pd.Timestamp(end)
@@ -1248,37 +1844,57 @@ def calc_monthly_slices(df: pd.DataFrame) -> pd.DataFrame:
         for mp in months:
             period_str = mp.strftime("%Y-%m")
             mo_start   = mp.to_timestamp()
+            _slice_notes = _existing_notes  # carry credit note flag into each slice row
             mo_end     = mp.to_timestamp("M")
             days_in_mo = calendar.monthrange(mp.year, mp.month)[1]
 
-            # Pro-rate partial first / last months
-            actual_start = max(start, mo_start)
-            actual_end   = min(end, mo_end)
-            days_active  = (actual_end - actual_start).days + 1
-
-            # Monthly slice = total / n_months, scaled by days active
-            full_slice    = total / n_months
-            prorated      = full_slice * (days_active / days_in_mo)
-            fx            = get_fx_rate(curr, period_str)
+            # All FF rows: equal split across derived window, last month absorbs rounding
+            # Reconcile rows already in USD (fx=1.0); others converted per period
+            _is_reconcile_row = (pd.notna(r.get("rev_rec_start")) and
+                                  str(r.get("rev_rec_start", "")).strip() not in ("", "NaT"))
+            _mo_idx  = months.index(mp)
+            _is_last = (_mo_idx == n_months - 1)
+            if _is_last:
+                _already = round(total / n_months, 2) * (n_months - 1)
+                prorated = round(total - _already, 2)
+            else:
+                prorated = round(total / n_months, 2)
+            fx = 1.0 if _is_reconcile_row else get_fx_rate(curr, period_str)
 
             rows.append({
                 "project_id":        str(r.get("project_id", "")),
+                "project_name":      r.get("project_name", ""),
                 "charge_item":       r.get("charge_item", ""),
                 "subscription_item": r.get("subscription_item", ""),
+                "subscription_id":   r.get("subscription_id", ""),
                 "product":           r.get("product", "Other"),
                 "region":            r.get("region", "Other"),
                 "currency":          curr,
+                "service_start":     str(r.get("rev_start", ""))[:10] if pd.notna(r.get("rev_start")) else "",
+                "service_end_orig":  str(r.get("service_end", "") or r.get("rev_end", ""))[:10],
+                "rev_start":         str(r.get("rev_start", ""))[:10] if pd.notna(r.get("rev_start")) else "",
+                "rev_end":           str(r.get("rev_end", "") or r.get("service_end", ""))[:10],
                 "period":            period_str,
                 "local_amount":      round(prorated, 2),
                 "usd_amount":        round(prorated * fx, 2),
                 "status":            r.get("status", ""),
                 "transaction":       r.get("transaction", ""),
+                "notes":              _slice_notes if total < 0 else r.get("notes", r.get("reconcile_flag", "")),
+                "license_sku":         r.get("license_sku", ""),
+                "license_cost_local":  r.get("license_cost_local", ""),
+                "license_currency":    r.get("license_currency", ""),
+                "license_cost_usd":    r.get("license_cost_usd", ""),
+                "carve_max":           r.get("carve_max", ""),
+                "impl_gross":          r.get("impl_gross", ""),
+                "rev_rec_start":       str(r.get("rev_rec_start", ""))[:10] if pd.notna(r.get("rev_rec_start")) else "",
+                "rev_rec_end":         str(r.get("rev_rec_end", ""))[:10]   if pd.notna(r.get("rev_rec_end"))   else "",
             })
 
     result = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=["project_id","charge_item","subscription_item","product",
-                 "region","currency","period","local_amount","usd_amount",
-                 "status","transaction"]
+        columns=["project_id","charge_item","subscription_item","subscription_id",
+                 "product","region","currency","period","local_amount","usd_amount",
+                 "status","transaction","notes","license_sku",
+                 "license_cost_usd","carve_max"]
     )
     # Ensure numeric columns are correct dtype
     for _nc in ("local_amount", "usd_amount"):

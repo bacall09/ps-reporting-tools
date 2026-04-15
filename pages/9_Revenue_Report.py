@@ -42,8 +42,8 @@ st.markdown("""
 # ── Identity / access ─────────────────────────────────────────────────────────
 from shared.constants import get_role
 _role = get_role(st.session_state.get("consultant_name",""))
-if _role not in ("manager","manager_only"):
-    st.warning("This page is available to managers only.")
+if _role not in ("manager", "manager_only", "reporting_only"):
+    st.warning("This page is available to managers and reporting users only.")
     st.stop()
 
 today      = pd.Timestamp.today().normalize()
@@ -83,9 +83,19 @@ if df_rev_raw is not None:
     if df_drs is not None and "project_id" in df_drs.columns:
         drs_lookup = df_drs[["project_id","project_name","project_manager","phase"]].copy()
         drs_lookup["project_id"] = drs_lookup["project_id"].astype(str).str.strip().str.split(".").str[0]
+        # Preserve project_name already in slices (from FF loader) before merge
+        _existing_pname = slices.get("project_name", pd.Series(dtype=str)).copy() if "project_name" in slices.columns else None
         slices = slices.merge(drs_lookup, on="project_id", how="left")
+        # Restore FF-loaded project_name where DRS didn't fill it
+        if _existing_pname is not None and "project_name" in slices.columns:
+            slices["project_name"] = slices["project_name"].fillna("").where(
+                slices["project_name"].fillna("") != "",
+                _existing_pname.reindex(slices.index).fillna("")
+            )
     else:
-        slices["project_name"]    = slices["project_id"]
+        # Don't overwrite project_name if already populated from FF loader
+        if "project_name" not in slices.columns or slices["project_name"].fillna("").eq("").all():
+            slices["project_name"] = slices["project_id"]
         slices["project_manager"] = ""
         slices["phase"]           = ""
 else:
@@ -153,13 +163,28 @@ if df_tm_sow is not None:
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 1 — Top-line metric cards (FF + T&M)
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Total Revenue</div>',unsafe_allow_html=True)
+st.markdown('<div class="section-label">Total Revenue (FF + T&M)</div>',unsafe_allow_html=True)
 
-# ── Build monthly totals for trend calculations ───────────────────────────────
-# Use full-month slices (not pro-rated) for MoM and run rate
-_monthly_totals = (slices[slices["period"].isin(ytd_months)]
-                   .groupby("period")["usd_amount"].sum()
-                   .sort_index())
+# ── Pre-compute T&M actuals here so they feed top-line totals ────────────────
+# (full computation happens later; this gives us monthly totals for the bubbles)
+_tm_monthly_early = pd.Series(dtype=float)
+if df_ns is not None:
+    try:
+        _tma_early = calc_tm_monthly_actuals(df_ns, df_tm_sow)
+        if not _tma_early.empty and "period" in _tma_early.columns:
+            _tm_monthly_early = (
+                _tma_early[_tma_early["period"].isin(ytd_months)]
+                .groupby("period")["revenue_usd"].sum()
+            )
+    except Exception:
+        pass
+
+# ── Build monthly totals — FF + T&M combined ─────────────────────────────────
+_ff_monthly = (slices[slices["period"].isin(ytd_months)]
+               .groupby("period")["usd_amount"].sum()
+               .sort_index()) if not slices.empty else pd.Series(dtype=float)
+
+_monthly_totals = _ff_monthly.add(_tm_monthly_early, fill_value=0).sort_index()
 
 # MoM growth: compare last two complete months
 _complete_months = [m for m in sorted(_monthly_totals.index) if m < this_month]
@@ -180,14 +205,28 @@ else:
 _avg_monthly = _monthly_totals[_monthly_totals.index < this_month].mean() if len(_complete_months) >= 1 else 0
 _run_rate    = _avg_monthly * 12
 
-ytd_total  = ytd_df["usd_amount"].sum()
-qtd_total  = qtd_df["usd_amount"].sum()
-mtd_total  = slices_mtd["usd_amount"].sum()
-full_month = slices[slices["period"]==this_month]["usd_amount"].sum()
+# FF component
+_ff_ytd   = ytd_df["usd_amount"].sum()   if not ytd_df.empty   else 0.0
+_ff_qtd   = qtd_df["usd_amount"].sum()   if not qtd_df.empty   else 0.0
+_ff_mtd   = slices_mtd["usd_amount"].sum() if not slices_mtd.empty else 0.0
+_ff_full  = slices[slices["period"]==this_month]["usd_amount"].sum() if not slices.empty else 0.0
 
-# ── Fixed Fee metric cards ────────────────────────────────────────────────────
-if df_rev_raw is not None:
-    st.markdown('<div class="section-label">Fixed Fee Revenue</div>', unsafe_allow_html=True)
+# T&M component (from early pre-computation)
+_tm_ytd   = float(_tm_monthly_early[_tm_monthly_early.index.isin(ytd_months)].sum())
+_tm_qtd   = float(_tm_monthly_early[_tm_monthly_early.index.isin(q_months)].sum())
+_tm_mtd   = float(_tm_monthly_early.get(this_month, 0) * mtd_scale)
+_tm_full  = float(_tm_monthly_early.get(this_month, 0))
+
+ytd_total  = _ff_ytd  + _tm_ytd
+qtd_total  = _ff_qtd  + _tm_qtd
+mtd_total  = _ff_mtd  + _tm_mtd
+full_month = _ff_full + _tm_full
+
+# ── Total Revenue metric cards (FF + T&M combined) ───────────────────────────
+# Composition: FF = slices (recognizable_amount straight-lined over rev rec window)
+#              T&M = calc_tm_monthly_actuals (NS hours × matched rate, converted to USD)
+_ff_pct = f"{(_ff_ytd/ytd_total*100):.0f}%" if ytd_total > 0 else "—"
+_tm_pct = f"{(_tm_ytd/ytd_total*100):.0f}%" if ytd_total > 0 else "—"
 c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
     st.markdown(
@@ -229,9 +268,16 @@ with c6:
         f'<div class="metric-lbl">Run Rate (ARR) · avg × 12 ({len(_complete_months)} mo)</div></div>',
         unsafe_allow_html=True)
 
+if df_rev_raw is not None or df_ns is not None:
+    st.caption(
+        f"Composition: FF = {_fmt(_ff_ytd)} ({_ff_pct} of YTD) · "
+        f"T&M Actuals = {_fmt(_tm_ytd)} ({_tm_pct} of YTD) · "
+        f"T&M figures = NS hours × matched rate (not SFDC SOW estimate)"
+    )
+
 # ── T&M metric cards ──────────────────────────────────────────────────────────
 if df_tm is not None:
-    st.markdown('<div class="section-label" style="margin-top:4px">T&amp;M Revenue</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label" style="margin-top:4px">T&amp;M Pipeline (from SFDC SOW)</div>', unsafe_allow_html=True)
     _bc = "#E74C3C" if _burn > 90 else ("#F39C12" if _burn > 70 else "inherit")
     _avg_rate = float(df_tm["sow_rate_usd"].replace(0, float("nan")).mean()) if "sow_rate_usd" in df_tm.columns else 0.0
     _avg_rate = 0.0 if pd.isna(_avg_rate) else _avg_rate
@@ -278,8 +324,7 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — FF Summary by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-if df_rev_raw is not None:
-    st.markdown('<div class="section-label">Fixed Fee Revenue Summary</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Revenue Summary by Region &amp; Product</div>', unsafe_allow_html=True)
 
 def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
     """Build FF summary table matching T&M structure."""
@@ -305,13 +350,16 @@ def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
         "YTD":        ytd_s.reindex(idx, fill_value=0),
     })
 
-    # Count projects per dim
-    if "project_id" in df_ytd.columns:
+    # Count distinct projects per dim
+    _has_proj = "project_id" in df_ytd.columns
+    if _has_proj:
         proj_counts = df_ytd.groupby(dim)["project_id"].nunique().rename("# Projects")
         result = result.join(proj_counts, how="left").fillna(0)
 
-    # Total row
-    total = result.sum(numeric_only=True)
+    # Total row — sum revenue cols, distinct project_id count across all groups
+    total = result[[c for c in ["MTD","Full Month","QTD","YTD"] if c in result.columns]].sum(numeric_only=True)
+    if _has_proj:
+        total["# Projects"] = df_ytd["project_id"].nunique()
     total.name = "Total"
     result = pd.concat([result, total.to_frame().T])
 
@@ -452,11 +500,176 @@ if df_tm is not None:
 elif df_tm_sow is None:
     st.info("Upload the SFDC T&M SOW export in the sidebar to see T&M breakdown.")
 
+st.markdown('<div class="section-label">T&amp;M Monthly Actuals (from NS Time Detail)</div>',
+            unsafe_allow_html=True)
+
+# Currency breakdown table injected after _tm_actuals is built — placeholder rendered below
+
+df_ns_session = st.session_state.get("df_ns")
+_tm_actuals   = pd.DataFrame()
+_tm_piv_rgn   = pd.DataFrame()
+_tm_piv_prod  = pd.DataFrame()
+_tm_piv_cur   = pd.DataFrame()
+
+if df_ns_session is None:
+    st.info("Upload NS Time Detail in the sidebar to see monthly T&M actuals.")
+else:
+    _tm_actuals = calc_tm_monthly_actuals(df_ns_session, df_tm_sow)
+
+
+    if _tm_actuals.empty:
+        st.info("No T&M time entries found in the NS file.")
+    else:
+        _matched_pct  = (_tm_actuals["rate_usd"] > 0).mean() * 100
+        _total_tm_rev = float(_tm_actuals["revenue_usd"].sum())
+        _total_tm_hrs = float(_tm_actuals["hours"].sum())
+        _unrated      = int((_tm_actuals["rate_usd"] == 0).sum())
+        _no_sfdc      = int((_tm_actuals.get("rate_source", pd.Series()) == "No SFDC Opp").sum())
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val">{_fmt(_total_tm_rev)}</div>'
+                f'<div class="metric-lbl">NS-driven Actual Revenue · hours logged × matched rate</div></div>',
+                unsafe_allow_html=True)
+        with c2:
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val">{_total_tm_hrs:,.1f}h</div>'
+                f'<div class="metric-lbl">T&M Hours Worked · all projects</div></div>',
+                unsafe_allow_html=True)
+        with c3:
+            _rc = "#F39C12" if _matched_pct < 80 else "inherit"
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val" style="color:{_rc}">{_matched_pct:.0f}%</div>'
+                f'<div class="metric-lbl">Rate Match · {_unrated} rows at $0 rate</div></div>',
+                unsafe_allow_html=True)
+
+        if _no_sfdc > 0:
+            st.caption(
+                f"ℹ️ {_no_sfdc} project-month rows are T&M in NS but have no matching SFDC opportunity — "
+                f"likely pre-2026 SOWs or projects created without an Opp. "
+                f"Add a Rate column to your NS Time Detail export to calculate revenue for these rows "
+                f"without needing a SFDC match."
+            )
+        elif _unrated > 0:
+            st.caption(f"⚠️ {_unrated} project-month rows have no matched rate — revenue shown as $0.")
+
+        def _tm_actuals_pivot(df, dim):
+            if df.empty or dim not in df.columns: return pd.DataFrame()
+            all_periods = sorted(df["period"].unique())
+            all_years   = sorted({p[:4] for p in all_periods})
+            base = (df.groupby([dim,"period"])["revenue_usd"]
+                      .sum().unstack(fill_value=0))
+            ordered_cols = []
+            for year in all_years:
+                year_periods = [p for p in all_periods if p.startswith(year)]
+                for q in range(1, 5):
+                    q_ps = [f"{year}-{m:02d}" for m in range((q-1)*3+1,(q-1)*3+4)]
+                    q_present = [p for p in q_ps if p in year_periods]
+                    if not q_present: continue
+                    for p in q_present:
+                        ml = pd.Timestamp(p+"-01").strftime("%b")
+                        if len(all_years)>1: ml += f" '{year[2:]}"
+                        ordered_cols.append((ml,"month",p))
+                    ordered_cols.append((f"Q{q}"+(f" '{year[2:]}" if len(all_years)>1 else ""),"quarter",q_ps))
+                ytd_label = "YTD" if year==all_years[-1] else f"FY{year[2:]}"
+                ordered_cols.append((ytd_label,"ytd",year_periods))
+            rows_index = base.index.tolist()
+            result = {dim: list(rows_index)+["Total"]}
+            for col_label, ctype, key in ordered_cols:
+                if ctype == "month":
+                    vals = base[key] if key in base.columns else pd.Series(0,index=base.index)
+                else:
+                    present = [p for p in key if p in base.columns]
+                    vals = base[present].sum(axis=1) if present else pd.Series(0,index=base.index)
+                col_vals = [float(vals.get(idx,0)) for idx in rows_index]
+                col_vals.append(sum(col_vals))
+                result[col_label] = [f"${v:,.0f}" for v in col_vals]
+            return pd.DataFrame(result)
+
+        _tm_piv_rgn  = _tm_actuals_pivot(_tm_actuals, "region")
+        _tm_piv_prod = _tm_actuals_pivot(_tm_actuals, "product")
+
+        # ── Currency pivot ────────────────────────────────────────────────────
+        _tm_piv_cur = pd.DataFrame()
+        if "currency" in _tm_actuals.columns:
+            from shared.config import get_fx_rate
+            _all_periods = sorted(_tm_actuals["period"].unique())
+            _cur_rows = []
+            for _cur, _cdf in _tm_actuals[_tm_actuals["revenue_usd"] > 0].groupby("currency"):
+                _row = {"Currency": _cur}
+                _total_usd = 0
+                for _p in _all_periods:
+                    _pdf = _cdf[_cdf["period"] == _p]
+                    _rev_usd   = float(_pdf["revenue_usd"].sum())
+                    _rev_local = float((_pdf["rate_local"] * _pdf["hours"]).sum()) if "rate_local" in _pdf.columns else _rev_usd
+                    _fx        = get_fx_rate(_cur, _p)
+                    _mo        = pd.Timestamp(_p + "-01").strftime("%b")
+                    if _cur != "USD":
+                        _row[_mo] = f"${_rev_usd:,.0f} ({_cur} {_rev_local:,.0f} · FX: {_fx:.4f})"
+                    else:
+                        _row[_mo] = f"${_rev_usd:,.0f}"
+                    _total_usd += _rev_usd
+                _row["Total USD"] = f"${_total_usd:,.0f}"
+                _cur_rows.append(_row)
+            # Total row — sum of all currencies converted to USD
+            _total_row = {"Currency": "Total"}
+            _grand_total = 0
+            for _p in _all_periods:
+                _mo = pd.Timestamp(_p + "-01").strftime("%b")
+                _p_total = float(_tm_actuals[_tm_actuals["period"] == _p]["revenue_usd"].sum())
+                _total_row[_mo] = f"${_p_total:,.0f}"
+                _grand_total += _p_total
+            _total_row["Total USD"] = f"${_grand_total:,.0f}"
+            _cur_rows.append(_total_row)
+            _tm_piv_cur = pd.DataFrame(_cur_rows)
+
+
+def _style_pivot(df):
+    """Apply subtle background to quarter subtotal and FY/YTD columns."""
+    # Identify which columns are Q or FY/YTD subtotals
+    subtotal_cols = [c for c in df.columns
+                     if str(c).startswith("Q") or c in ("YTD", "FY26", "FY27", "FY28")]
+
+    def _highlight(col):
+        if col.name in subtotal_cols:
+            return ["background-color: rgba(68,114,196,0.18); font-weight: 600"] * len(col)
+        return [""] * len(col)
+
+    # Also bold the Total row
+    def _bold_total(row):
+        if str(row.iloc[0]) == "Total":
+            return ["font-weight: 700; border-top: 1px solid rgba(128,128,128,0.4)"] * len(row)
+        return [""] * len(row)
+
+    return (df.style
+              .apply(_highlight, axis=0)
+              .apply(_bold_total, axis=1))
+
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">T&amp;M Actuals Summary (from NS Time Detail)</div>', unsafe_allow_html=True)
+_cur_tab_label = "By Currency 💱" if not _tm_piv_cur.empty else "By Currency"
+tab1, tab2, tab3 = st.tabs(["By Region", "By Product", _cur_tab_label])
+with tab1:
+    if not _tm_piv_rgn.empty:
+        st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
+                     use_container_width=True, hide_index=True)
+with tab2:
+    if not _tm_piv_prod.empty:
+        st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
+                     use_container_width=True, hide_index=True)
+with tab3:
+    if not _tm_piv_cur.empty:
+        st.caption("Revenue converted to USD using monthly average FX rates (shared/config.py). "
+                   "Local currency amounts shown in brackets.")
+        st.dataframe(_tm_piv_cur, use_container_width=True, hide_index=True)
+    else:
+        st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION — Monthly Breakdown by Region & Product
 # ══════════════════════════════════════════════════════════════════════════════
-if df_rev_raw is not None:
-    st.markdown('<div class="section-label">Fixed Fee Monthly Breakdown (USD)</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Monthly Revenue Breakdown — FF + T&amp;M (USD)</div>', unsafe_allow_html=True)
 
 # ── Build quarterly columnar pivot ───────────────────────────────────────────
 # Layout: Jan | Feb | Mar | Q1 | Apr | May | Jun | Q2 | ... | YTD
@@ -532,27 +745,6 @@ def _pivot_quarterly(df, row_dim):
 _piv_region  = _pivot_quarterly(slices, "region")
 _piv_product = _pivot_quarterly(slices, "product")
 
-def _style_pivot(df):
-    """Apply subtle background to quarter subtotal and FY/YTD columns."""
-    # Identify which columns are Q or FY/YTD subtotals
-    subtotal_cols = [c for c in df.columns
-                     if str(c).startswith("Q") or c in ("YTD", "FY26", "FY27", "FY28")]
-
-    def _highlight(col):
-        if col.name in subtotal_cols:
-            return ["background-color: rgba(68,114,196,0.18); font-weight: 600"] * len(col)
-        return [""] * len(col)
-
-    # Also bold the Total row
-    def _bold_total(row):
-        if str(row.iloc[0]) == "Total":
-            return ["font-weight: 700; border-top: 1px solid rgba(128,128,128,0.4)"] * len(row)
-        return [""] * len(row)
-
-    return (df.style
-              .apply(_highlight, axis=0)
-              .apply(_bold_total, axis=1))
-
 if not _piv_region.empty:
     st.markdown("**By Region**")
     st.dataframe(_style_pivot(_piv_region), use_container_width=True, hide_index=True)
@@ -560,6 +752,17 @@ if not _piv_region.empty:
 if not _piv_product.empty:
     st.markdown("**By Product**")
     st.dataframe(_style_pivot(_piv_product), use_container_width=True, hide_index=True)
+
+# ── T&M Monthly Actuals pivot — appended to monthly breakdown section ────────
+if not _tm_actuals.empty:
+    st.markdown("**T&M By Region**")
+    if not _tm_piv_rgn.empty:
+        st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
+                     use_container_width=True, hide_index=True)
+    st.markdown("**T&M By Product**")
+    if not _tm_piv_prod.empty:
+        st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
+                     use_container_width=True, hide_index=True)
 
 # ── Trend Analysis and MoM by Region — Excel only (removed from UI) ──────────
 _trend_full = (_monthly_totals.reset_index()
@@ -609,211 +812,6 @@ if _all_periods_sorted:
 
 # ── T&M Monthly Actuals (from NS time entries) ───────────────────────────────
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
-st.markdown('<div class="section-label">T&amp;M Monthly Actuals (from NS Time Detail)</div>',
-            unsafe_allow_html=True)
-
-# Currency breakdown table injected after _tm_actuals is built — placeholder rendered below
-
-df_ns_session = st.session_state.get("df_ns")
-_tm_actuals   = pd.DataFrame()
-
-if df_ns_session is None:
-    st.info("Upload NS Time Detail in the sidebar to see monthly T&M actuals.")
-else:
-    _tm_actuals = calc_tm_monthly_actuals(df_ns_session, df_tm_sow)
-
-    # Store for debug
-    if not _tm_actuals.empty and "billing_flag" in _tm_actuals.columns:
-        st.session_state["_debug_actuals_flags"] = (
-            _tm_actuals.groupby("billing_flag")[["hours","revenue_usd"]]
-            .sum().reset_index().to_dict("records")
-        )
-
-    with st.expander("🔍 Debug: NS file columns & T&M classification", expanded=_tm_actuals.empty):
-        st.write("**Columns:**", df_ns_session.columns.tolist())
-        if "billing_type" in df_ns_session.columns:
-            st.write("**billing_type unique values:**", df_ns_session["billing_type"].dropna().unique().tolist())
-        else:
-            st.warning("`billing_type` column not found — check NS export includes 'Billing Type' column")
-        if "non_billable" in df_ns_session.columns:
-            st.write("**non_billable unique values:**", df_ns_session["non_billable"].dropna().unique().tolist())
-        if not _tm_actuals.empty and "billing_flag" in _tm_actuals.columns:
-            st.write("**Revenue by billing_flag in _tm_actuals:**")
-            _flag_summary = _tm_actuals.groupby("billing_flag").agg(
-                rows=("revenue_usd","count"),
-                revenue_usd=("revenue_usd","sum"),
-                hours=("hours","sum")
-            ).reset_index()
-            st.dataframe(_flag_summary, hide_index=True)
-            st.write(f"**Total revenue_usd in _tm_actuals:** ${_tm_actuals['revenue_usd'].sum():,.2f}")
-            # Check rate_source for FF/Billable rows specifically
-            _ff_rows = _tm_actuals[_tm_actuals["billing_flag"] == "⚠️ FF / Billable hours"]
-            if not _ff_rows.empty:
-                st.write(f"**FF/Billable rows:** {len(_ff_rows)} · revenue: ${_ff_rows['revenue_usd'].sum():,.2f}")
-                if "rate_source" in _ff_rows.columns:
-                    st.write("**FF/Billable rate_source values:**", _ff_rows["rate_source"].value_counts().to_dict())
-                if "rate_local" in _ff_rows.columns:
-                    st.write("**FF/Billable rate_local sample:**", _ff_rows["rate_local"].head(5).tolist())
-            else:
-                st.warning("⚠️ No FF/Billable rows found in _tm_actuals — they may not be passing the billing type filter")
-
-        # Show _tm_actuals billing_flag breakdown
-        _dbg_flags = st.session_state.get("_debug_actuals_flags", [])
-        if _dbg_flags:
-            st.write("**_tm_actuals revenue by billing_flag:**")
-            st.dataframe(pd.DataFrame(_dbg_flags), hide_index=True)
-        else:
-            st.warning("billing_flag not in _tm_actuals — FF/Billable rows may be missing from result")
-
-        # Show module-level groupby debug
-        try:
-            from shared import loaders as _ldr
-            _ld = getattr(_ldr, "_last_debug", {})
-            if _ld:
-                st.write(f"**tm rows before groupby:** {_ld.get('tm_rows')} → **grp rows after:** {_ld.get('grp_rows')}")
-                st.write(f"**agg_cols:** {_ld.get('agg_cols')}")
-                st.write(f"**period sample:** {_ld.get('period_sample')}")
-                st.write(f"**billing_flag sample:** {_ld.get('billing_flag_sample')}")
-                st.write(f"**billing_flag nulls:** {_ld.get('billing_flag_nulls')}")
-        except Exception as _e:
-            st.write(f"Debug read error: {_e}")
-
-        # Extra: show raw tm row counts before groupby by checking df_ns directly
-        if df_ns_session is not None and "billing_type" in df_ns_session.columns:
-            _bt_chk = df_ns_session["billing_type"].fillna("").str.lower()
-            _nb_chk = df_ns_session.get("non_billable", pd.Series("", index=df_ns_session.index)).fillna("").str.strip().str.lower()
-            _ff_bill_chk = _bt_chk.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True) & ~_nb_chk.isin(["true","t","yes","1","y"])
-            _tm_chk = _bt_chk.str.contains("t&m|time", na=False)
-            st.write(f"**Raw NS rows — T&M eligible:** {_tm_chk.sum()} · **FF/Billable eligible:** {_ff_bill_chk.sum()}")
-            if "period" in df_ns_session.columns:
-                st.write("**Period sample (first 3):**", df_ns_session["period"].dropna().head(3).tolist())
-            elif "date" in df_ns_session.columns:
-                st.write("**Date sample (first 3 raw):**", df_ns_session["date"].head(3).tolist())
-
-    if _tm_actuals.empty:
-        st.info("No T&M time entries found in the NS file.")
-    else:
-        _matched_pct  = (_tm_actuals["rate_usd"] > 0).mean() * 100
-        _total_tm_rev = float(_tm_actuals["revenue_usd"].sum())
-        _total_tm_hrs = float(_tm_actuals["hours"].sum())
-        _unrated      = int((_tm_actuals["rate_usd"] == 0).sum())
-        _no_sfdc      = int((_tm_actuals.get("rate_source", pd.Series()) == "No SFDC Opp").sum())
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(
-                f'<div class="metric-card"><div class="metric-val">{_fmt(_total_tm_rev)}</div>'
-                f'<div class="metric-lbl">NS-driven Actual Revenue · hours logged × matched rate</div></div>',
-                unsafe_allow_html=True)
-        with c2:
-            st.markdown(
-                f'<div class="metric-card"><div class="metric-val">{_total_tm_hrs:,.1f}h</div>'
-                f'<div class="metric-lbl">T&M Hours Worked · all projects</div></div>',
-                unsafe_allow_html=True)
-        with c3:
-            _rc = "#F39C12" if _matched_pct < 80 else "inherit"
-            st.markdown(
-                f'<div class="metric-card"><div class="metric-val" style="color:{_rc}">{_matched_pct:.0f}%</div>'
-                f'<div class="metric-lbl">Rate Match · {_unrated} rows at $0 rate</div></div>',
-                unsafe_allow_html=True)
-
-        if _no_sfdc > 0:
-            st.caption(
-                f"ℹ️ {_no_sfdc} project-month rows are T&M in NS but have no matching SFDC opportunity — "
-                f"likely pre-2026 SOWs or projects created without an Opp. "
-                f"Add a Rate column to your NS Time Detail export to calculate revenue for these rows "
-                f"without needing a SFDC match."
-            )
-        elif _unrated > 0:
-            st.caption(f"⚠️ {_unrated} project-month rows have no matched rate — revenue shown as $0.")
-
-        def _tm_actuals_pivot(df, dim):
-            if df.empty or dim not in df.columns: return pd.DataFrame()
-            all_periods = sorted(df["period"].unique())
-            all_years   = sorted({p[:4] for p in all_periods})
-            base = (df.groupby([dim,"period"])["revenue_usd"]
-                      .sum().unstack(fill_value=0))
-            ordered_cols = []
-            for year in all_years:
-                year_periods = [p for p in all_periods if p.startswith(year)]
-                for q in range(1, 5):
-                    q_ps = [f"{year}-{m:02d}" for m in range((q-1)*3+1,(q-1)*3+4)]
-                    q_present = [p for p in q_ps if p in year_periods]
-                    if not q_present: continue
-                    for p in q_present:
-                        ml = pd.Timestamp(p+"-01").strftime("%b")
-                        if len(all_years)>1: ml += f" '{year[2:]}"
-                        ordered_cols.append((ml,"month",p))
-                    ordered_cols.append((f"Q{q}"+(f" '{year[2:]}" if len(all_years)>1 else ""),"quarter",q_ps))
-                ytd_label = "YTD" if year==all_years[-1] else f"FY{year[2:]}"
-                ordered_cols.append((ytd_label,"ytd",year_periods))
-            rows_index = base.index.tolist()
-            result = {dim: list(rows_index)+["Total"]}
-            for col_label, ctype, key in ordered_cols:
-                if ctype == "month":
-                    vals = base[key] if key in base.columns else pd.Series(0,index=base.index)
-                else:
-                    present = [p for p in key if p in base.columns]
-                    vals = base[present].sum(axis=1) if present else pd.Series(0,index=base.index)
-                col_vals = [float(vals.get(idx,0)) for idx in rows_index]
-                col_vals.append(sum(col_vals))
-                result[col_label] = [_fmt(v) for v in col_vals]
-            return pd.DataFrame(result)
-
-        _tm_piv_rgn  = _tm_actuals_pivot(_tm_actuals, "region")
-        _tm_piv_prod = _tm_actuals_pivot(_tm_actuals, "product")
-
-        # ── Currency pivot ────────────────────────────────────────────────────
-        _tm_piv_cur = pd.DataFrame()
-        if "currency" in _tm_actuals.columns:
-            from shared.config import get_fx_rate
-            _all_periods = sorted(_tm_actuals["period"].unique())
-            _cur_rows = []
-            for _cur, _cdf in _tm_actuals[_tm_actuals["revenue_usd"] > 0].groupby("currency"):
-                _row = {"Currency": _cur}
-                _total_usd = 0
-                for _p in _all_periods:
-                    _pdf = _cdf[_cdf["period"] == _p]
-                    _rev_usd   = float(_pdf["revenue_usd"].sum())
-                    _rev_local = float((_pdf["rate_local"] * _pdf["hours"]).sum()) if "rate_local" in _pdf.columns else _rev_usd
-                    _fx        = get_fx_rate(_cur, _p)
-                    _mo        = pd.Timestamp(_p + "-01").strftime("%b")
-                    if _cur != "USD":
-                        _row[_mo] = f"${_rev_usd:,.0f} ({_cur} {_rev_local:,.0f} · FX: {_fx:.4f})"
-                    else:
-                        _row[_mo] = f"${_rev_usd:,.0f}"
-                    _total_usd += _rev_usd
-                _row["Total USD"] = f"${_total_usd:,.0f}"
-                _cur_rows.append(_row)
-            # Total row — sum of all currencies converted to USD
-            _total_row = {"Currency": "Total"}
-            _grand_total = 0
-            for _p in _all_periods:
-                _mo = pd.Timestamp(_p + "-01").strftime("%b")
-                _p_total = float(_tm_actuals[_tm_actuals["period"] == _p]["revenue_usd"].sum())
-                _total_row[_mo] = f"${_p_total:,.0f}"
-                _grand_total += _p_total
-            _total_row["Total USD"] = f"${_grand_total:,.0f}"
-            _cur_rows.append(_total_row)
-            _tm_piv_cur = pd.DataFrame(_cur_rows)
-
-        _cur_tab_label = "By Currency 💱" if not _tm_piv_cur.empty else "By Currency"
-        tab1, tab2, tab3 = st.tabs(["By Region", "By Product", _cur_tab_label])
-        with tab1:
-            if not _tm_piv_rgn.empty:
-                st.dataframe(_style_pivot(_tm_piv_rgn.rename(columns={"region":"Region"})),
-                             use_container_width=True, hide_index=True)
-        with tab2:
-            if not _tm_piv_prod.empty:
-                st.dataframe(_style_pivot(_tm_piv_prod.rename(columns={"product":"Product"})),
-                             use_container_width=True, hide_index=True)
-        with tab3:
-            if not _tm_piv_cur.empty:
-                st.caption("Revenue converted to USD using monthly average FX rates (shared/config.py). "
-                           "Local currency amounts shown in brackets.")
-                st.dataframe(_tm_piv_cur, use_container_width=True, hide_index=True)
-            else:
-                st.info("Add a 'Currency' column to your NS Time Detail export to see FX breakdown.")
 
 # ── Billing Exceptions ────────────────────────────────────────────────────────
 if df_ns_session is not None:
@@ -854,14 +852,56 @@ if df_ns_session is not None:
                              "mismatch_flag":  st.column_config.TextColumn("Flag",         width="medium"),
                          })
 
-# ── Itemized Time Entry Detail ───────────────────────────────────────────────
+# ── Itemized Time Entry Detail (Excel only) ──────────────────────────────────
+# Build _det for Excel sheet — no UI rendering
+_det_excel = pd.DataFrame()
 if df_ns_session is not None:
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">Itemized Time Entry Detail</div>', unsafe_allow_html=True)
-    st.caption("All time entries from NS with their classification — use Internal ID to reconcile 1:1 against your NS report.")
+    _det = df_ns_session.copy()
 
-    # Build itemized view from raw NS session data
-    _detail_cols = {
+    # Format dates
+    if "date" in _det.columns:
+        if pd.api.types.is_datetime64_any_dtype(_det["date"]):
+            _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
+        else:
+            try:
+                _det["date"] = pd.to_datetime(_det["date"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("")
+            except Exception:
+                _det["date"] = _det["date"].astype(str)
+
+    if "period" not in _det.columns and "date" in _det.columns:
+        _det["period"] = _det["date"].astype(str).str[:7]
+
+    # Classification
+    _bt_d  = _det.get("billing_type", pd.Series("", index=_det.index)).fillna("").str.lower()
+    _nb_d  = _det.get("non_billable", pd.Series("", index=_det.index)).fillna("").astype(str).str.strip().str.lower()
+    _is_nb_d  = _nb_d.isin(["true","t","yes","1","y"])
+    _is_tm_d  = _bt_d.str.contains("t&m|time", na=False)
+    _is_ff_d  = _bt_d.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
+    _is_int_d = _bt_d.str.contains("internal", na=False)
+
+    _det["_classification"] = "Other / Unclassified"
+    _det.loc[_is_int_d,              "_classification"] = "Internal"
+    _det.loc[_is_ff_d  &  _is_nb_d, "_classification"] = "FF / Non-Billable"
+    _det.loc[_is_ff_d  & ~_is_nb_d, "_classification"] = "FF / Billable ⚠️"
+    _det.loc[_is_tm_d  &  _is_nb_d, "_classification"] = "T&M / Non-Billable ⚠️"
+    _det.loc[_is_tm_d  & ~_is_nb_d, "_classification"] = "T&M / Billable ✓"
+
+    # Revenue
+    _det["hours"]   = pd.to_numeric(_det.get("hours",   0), errors="coerce").fillna(0)
+    _det["ns_rate"] = pd.to_numeric(_det.get("ns_rate", 0), errors="coerce").fillna(0)
+
+    from shared.config import get_fx_rate as _gfx
+    def _to_usd_det(row):
+        cur = str(row.get("currency", "USD") or "USD").strip().upper()
+        per = str(row.get("period", ""))
+        fx  = _gfx(cur, per) if cur != "USD" else 1.0
+        return round(row["hours"] * row["ns_rate"] * fx, 2)
+
+    _det["_rev_local"] = (_det["hours"] * _det["ns_rate"]).round(2)
+    _det["_rev_usd"]   = _det.apply(_to_usd_det, axis=1)
+
+    # Build display DataFrame
+    _det_col_map = {
         "internal_id":    "Internal ID",
         "project_id":     "Project ID",
         "project":        "Project",
@@ -875,112 +915,22 @@ if df_ns_session is not None:
         "ns_rate":        "Rate (Local)",
         "entry_status":   "Entry Status",
         "billing_flag":   "Flag",
+        "_classification":"Classification",
+        "_rev_local":     "Revenue (Local)",
+        "_rev_usd":       "Revenue (USD)",
     }
+    _show = [c for c in _det_col_map if c in _det.columns]
+    _det_excel = _det[_show].rename(columns=_det_col_map).copy()
 
-    # Build a copy of NS with date properly parsed and period derived
-    _det = df_ns_session.copy()
-
-    # Parse dates — handle Unix second and millisecond timestamps from NS exports
-    if "date" in _det.columns:
-        _raw = _det["date"]
-        try:
-            _num    = pd.to_numeric(_raw, errors="coerce")
-            _is_ms  = _num.notna() & (_num > 1e11)
-            _is_sec = _num.notna() & (_num > 1e8) & ~_is_ms
-            if _is_ms.any() or _is_sec.any():
-                _dt = pd.Series(pd.NaT, index=_det.index)
-                if _is_ms.any():
-                    _dt = _dt.where(~_is_ms, pd.to_datetime(_num.where(_is_ms), unit="ms", errors="coerce"))
-                if _is_sec.any():
-                    _dt = _dt.where(~_is_sec, pd.to_datetime(_num.where(_is_sec), unit="s", errors="coerce"))
-                _remaining = ~(_is_ms | _is_sec)
-                if _remaining.any():
-                    _dt = _dt.where(~_remaining, pd.to_datetime(_raw.where(_remaining), errors="coerce"))
-                _det["date"] = _dt
-            else:
-                _det["date"] = pd.to_datetime(_raw, errors="coerce")
-        except Exception:
-            _det["date"] = pd.to_datetime(_raw, errors="coerce")
-        _det["date"] = _det["date"].dt.strftime("%Y-%m-%d").fillna("")
-
-    if "period" not in _det.columns and "date" in _det.columns:
-        _det["period"] = _det["date"].str[:7]  # YYYY-MM from already-formatted string
-
-    # Derive classification column
-    _bt_d  = _det.get("billing_type", pd.Series("", index=_det.index)).fillna("").str.lower()
-    _nb_d  = _det.get("non_billable", pd.Series("", index=_det.index)).fillna("").astype(str).str.strip().str.lower()
-    _is_nb_d  = _nb_d.isin(["true","t","yes","1","y"])
-    _is_tm_d  = _bt_d.str.contains("t&m|time", na=False)
-    _is_ff_d  = _bt_d.str.contains("fixed fee|fixed.fee|fixed_fee|\bff\b", na=False, regex=True)
-    _is_int_d = _bt_d.str.contains("internal", na=False)
-
-    _det["_classification"] = "Other / Unclassified"
-    _det.loc[_is_int_d,                  "_classification"] = "Internal"
-    _det.loc[_is_ff_d  &  _is_nb_d,     "_classification"] = "FF / Non-Billable"
-    _det.loc[_is_ff_d  & ~_is_nb_d,     "_classification"] = "FF / Billable ⚠️"
-    _det.loc[_is_tm_d  &  _is_nb_d,     "_classification"] = "T&M / Non-Billable ⚠️"
-    _det.loc[_is_tm_d  & ~_is_nb_d,     "_classification"] = "T&M / Billable ✓"
-
-    # Revenue column
-    _det["hours"]   = pd.to_numeric(_det.get("hours",   0), errors="coerce").fillna(0)
-    _det["ns_rate"] = pd.to_numeric(_det.get("ns_rate", 0), errors="coerce").fillna(0)
-
-    # FX to USD — single step, same logic as calc_tm_monthly_actuals to avoid rounding drift
-    from shared.config import get_fx_rate
-    def _to_usd(row):
-        cur = str(row.get("currency", "USD") or "USD").strip().upper()
-        per = str(row.get("period", ""))
-        fx  = get_fx_rate(cur, per) if cur != "USD" else 1.0
-        return round(row["hours"] * row["ns_rate"] * fx, 2)
-    _det["_rev_local"] = (_det["hours"] * _det["ns_rate"]).round(2)
-    _det["_rev_usd"]   = _det.apply(_to_usd, axis=1)
-
-    _det_cols = {**_detail_cols, "_classification": "Classification", "_rev_local": "Revenue (Local)", "_rev_usd": "Revenue (USD)"}
-    _show_cols = [c for c in _det_cols.keys() if c in _det.columns]
-    _det_display = _det[_show_cols].rename(columns=_det_cols).copy()
-
-    # Filters
-    _fc1, _fc2, _fc3 = st.columns(3)
-    with _fc1:
-        _class_opts = ["All"] + sorted(_det["_classification"].unique().tolist())
-        _class_filter = st.selectbox("Classification", _class_opts, key="det_class_filter")
-    with _fc2:
-        _period_opts = ["All"] + sorted(_det["period"].dropna().unique().tolist()) if "period" in _det.columns else ["All"]
-        _period_filter = st.selectbox("Period", _period_opts, key="det_period_filter")
-    with _fc3:
-        _cur_opts = ["All"] + sorted(_det["currency"].dropna().unique().tolist()) if "currency" in _det.columns else ["All"]
-        _cur_filter = st.selectbox("Currency", _cur_opts, key="det_cur_filter")
-
-    _det_filtered = _det_display.copy()
-    if _class_filter  != "All": _det_filtered = _det_filtered[_det_filtered["Classification"] == _class_filter]
-    if _period_filter != "All": _det_filtered = _det_filtered[_det_filtered["Period"] == _period_filter]
-    if _cur_filter    != "All" and "Currency" in _det_filtered.columns:
-        _det_filtered = _det_filtered[_det_filtered["Currency"] == _cur_filter]
-
-    st.caption(f"{len(_det_filtered):,} rows · Revenue (Local): {_det_filtered['Revenue (Local)'].sum():,.2f} · Revenue (USD): ${_det_filtered['Revenue (USD)'].sum():,.2f}")
-
-    with st.expander(f"Show {len(_det_filtered):,} rows", expanded=False):
-        st.dataframe(_det_filtered, use_container_width=True, hide_index=True,
-                     column_config={
-                         "Internal ID":      st.column_config.TextColumn("Internal ID",    width="small"),
-                         "Project ID":       st.column_config.TextColumn("Project ID",     width="small"),
-                         "Project":          st.column_config.TextColumn("Project",        width="large"),
-                         "Employee":         st.column_config.TextColumn("Employee",       width="medium"),
-                         "Date":             st.column_config.TextColumn("Date",           width="small"),
-                         "Period":           st.column_config.TextColumn("Period",         width="small"),
-                         "Billing Type":     st.column_config.TextColumn("Billing Type",   width="small"),
-                         "Non-Billable":     st.column_config.TextColumn("Non-Billable",   width="small"),
-                         "Currency":         st.column_config.TextColumn("Currency",       width="small"),
-                         "Hours":            st.column_config.NumberColumn("Hours",        width="small",  format="%.2f"),
-                         "Rate (Local)":     st.column_config.NumberColumn("Rate (Local)", width="small",  format="%.2f"),
-                         "Revenue (Local)":  st.column_config.NumberColumn("Rev (Local)",  width="small",  format="%.2f"),
-                         "Revenue (USD)":    st.column_config.NumberColumn("Rev (USD)",    width="small",  format="%.2f"),
-                         "Classification":   st.column_config.TextColumn("Classification", width="medium"),
-                         "Flag":             st.column_config.TextColumn("Flag",           width="medium"),
-                     })
 
 # ── Excel download ─────────────────────────────────────────────────────────
 st.markdown("")
+
+# Rolling 15-month window for all pivot columns
+_today       = pd.Timestamp.today()
+_roll_start  = _today.strftime("%Y-%m")
+_roll_end    = ((_today + pd.DateOffset(months=14))
+                .strftime("%Y-%m"))
 _buf = io.BytesIO()
 with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     # Summary sheet
@@ -994,19 +944,258 @@ with pd.ExcelWriter(_buf, engine="xlsxwriter") as _xl:
     if not _piv_region.empty:  _piv_region.to_excel(_xl,  sheet_name="Region by Month",    index=False)
     if not _piv_product.empty: _piv_product.to_excel(_xl, sheet_name="Product by Month",   index=False)
     if not _trend_disp.empty:  _trend_disp.to_excel(_xl,  sheet_name="Trend Analysis",     index=False)
-    _detail.to_excel(_xl, sheet_name="FF Project Detail (Long)", index=False)
-    if not _detail_pivot.empty: _detail_pivot.to_excel(_xl, sheet_name="FF Project Detail", index=False)
+    # ── FF Revenue by Project × Month pivot ─────────────────────────────────
+    if not slices.empty:
+        from shared.config import RECONCILE_IMPL_SKU as _RIMPL
+
+        # Separate Reconcile impl rows from all other FF rows
+        def _is_reconcile_impl(ci):
+            s = str(ci).strip()
+            return s.split(" : ")[-1].strip() == _RIMPL
+
+        _recon_slices = slices[slices["charge_item"].apply(_is_reconcile_impl)].copy()
+        _other_slices = slices[~slices["charge_item"].apply(_is_reconcile_impl)].copy()
+
+        # ── Reconcile Implementation pivot ───────────────────────────────────
+        _recon_pivot = pd.DataFrame()
+        if not _recon_slices.empty:
+            _meta_cols = ["project_name", "product", "subscription_id",
+                          "subscription_item", "currency",
+                          "service_start", "service_end_orig",
+                          "rev_rec_start", "rev_rec_end",
+                          "impl_gross", "license_sku",
+                          "license_cost_local", "license_currency", "license_cost_usd",
+                          "carve_max", "notes"]
+            _meta_cols = [c for c in _meta_cols if c in _recon_slices.columns]
+            _meta_r = (_recon_slices.groupby(["project_id","charge_item"])[_meta_cols]
+                       .first().reset_index())
+            _all_p_r     = sorted(_recon_slices["period"].unique())
+            # Reconcile Carve Detail: always Jan–Dec of current year for Finance review
+            _recon_yr_start = f"{_today.year}-01"
+            _recon_yr_end   = f"{_today.year}-12"
+            _display_p_r = [p for p in _all_p_r if _recon_yr_start <= p <= _recon_yr_end]
+            # Fall back to rolling if no data in calendar year
+            if not _display_p_r:
+                _display_p_r = [p for p in _all_p_r if _roll_start <= p <= _roll_end]
+
+            # Pivot all periods — Total Carve reflects full recognition window
+            _piv_r = (_recon_slices.groupby(["project_id","charge_item","period"])["usd_amount"]
+                      .sum().unstack(fill_value=0).reset_index())
+            _piv_r.columns.name = None
+
+            # Total Carve = sum across ALL periods
+            _all_amt_cols = [p for p in _all_p_r if p in _piv_r.columns]
+            _piv_r["Total Carve"] = _piv_r[_all_amt_cols].sum(axis=1)
+
+            # Rename only rolling window periods for column headers
+            _mo_r = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_r}
+            _piv_r = _piv_r.rename(columns=_mo_r)
+            _mc_r = [_mo_r[p] for p in _display_p_r if _mo_r[p] in _piv_r.columns]
+
+            _recon_pivot = _meta_r.merge(
+                _piv_r[["project_id","charge_item"] + _mc_r + ["Total Carve"]],
+                on=["project_id","charge_item"], how="left")
+            # Rename rev_start → charge_start_date for clarity
+            if "rev_start" in _recon_pivot.columns:
+                _recon_pivot = _recon_pivot.rename(columns={"rev_start": "charge_start_date"})
+            # Rename service_start → charge_start_date for Reconcile tab
+            if "service_start" in _recon_pivot.columns:
+                _recon_pivot = _recon_pivot.rename(columns={"service_start": "charge_start_date",
+                                                             "service_end_orig": "service_end"})
+            _ord_r = [c for c in ["project_id","project_name","product","subscription_id",
+                                    "subscription_item","currency","charge_start_date","service_end",
+                                    "rev_rec_start","rev_rec_end","impl_gross",
+                                    "license_sku","license_cost_local","license_currency",
+                                    "license_cost_usd","carve_max","notes"]
+                      if c in _recon_pivot.columns]
+            _ord_r += _mc_r + ["Total Carve"]
+            _recon_pivot = _recon_pivot[[c for c in _ord_r if c in _recon_pivot.columns]]
+            _recon_pivot.to_excel(_xl, sheet_name="Reconcile Carve Detail", index=False)
+
+        # ── All FF rows pivot (standard) — rolling 15-month window ─────────────
+        _all_periods_all  = sorted(slices["period"].unique())
+        _display_p_all    = [p for p in _all_periods_all if _roll_start <= p <= _roll_end]
+        _meta_cols_all = ["project_name", "region", "product", "subscription_id",
+                          "subscription_item", "currency",
+                          "service_start", "service_end_orig",
+                          "rev_rec_start", "rev_rec_end", "notes"]
+        _meta_cols_all = [c for c in _meta_cols_all if c in slices.columns]
+        _meta_all = (slices.groupby(["project_id","charge_item"])[_meta_cols_all]
+                     .first().reset_index())
+        _piv = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
+                .sum().unstack(fill_value=0).reset_index())
+        _piv.columns.name = None
+        # Rev Amount = sum of displayed (rolling window) periods only
+        _display_amt_cols = [p for p in _display_p_all if p in _piv.columns]
+        _piv["Rev Amount"] = _piv[_display_amt_cols].sum(axis=1) if _display_amt_cols else 0
+        _month_rename = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_all}
+        _piv = _piv.rename(columns=_month_rename)
+        _month_cols = [_month_rename[p] for p in _display_p_all if _month_rename[p] in _piv.columns]
+        _ff_proj_pivot = _meta_all.merge(
+            _piv[["project_id","charge_item","Rev Amount"] + _month_cols],
+            on=["project_id","charge_item"], how="left")
+        _ord_all = [c for c in ["project_id","project_name","region","product","subscription_id",
+                                  "subscription_item","currency",
+                                  "service_start","service_end_orig",
+                                  "rev_rec_start","rev_rec_end",
+                                  "notes","Rev Amount"] if c in _ff_proj_pivot.columns]
+        _ord_all += _month_cols
+        _ff_proj_pivot = _ff_proj_pivot[[c for c in _ord_all if c in _ff_proj_pivot.columns]]
+        _ff_proj_pivot.to_excel(_xl, sheet_name="FF Rev by Project (Rolling)", index=False)
+
+        # ── FF Rev by Project YTD ────────────────────────────────────────────
+        _ytd_start     = f"{_today.year}-01"
+        _ytd_end       = f"{_today.year}-12"
+        _display_p_ytd = [p for p in _all_periods_all if _ytd_start <= p <= _ytd_end]
+        _piv_ytd = (slices.groupby(["project_id","charge_item","period"])["usd_amount"]
+                    .sum().unstack(fill_value=0).reset_index())
+        _piv_ytd.columns.name = None
+        _ytd_display_cols = [p for p in _display_p_ytd if p in _piv_ytd.columns]
+        _piv_ytd["Rev Amount"] = _piv_ytd[_ytd_display_cols].sum(axis=1) if _ytd_display_cols else 0
+        _mo_ytd = {p: pd.Timestamp(p+"-01").strftime("%b %Y") for p in _display_p_ytd}
+        _piv_ytd = _piv_ytd.rename(columns=_mo_ytd)
+        _mc_ytd = [_mo_ytd[p] for p in _display_p_ytd if _mo_ytd[p] in _piv_ytd.columns]
+        _ff_proj_ytd = _meta_all.merge(
+            _piv_ytd[["project_id","charge_item","Rev Amount"] + _mc_ytd],
+            on=["project_id","charge_item"], how="left")
+        _ord_ytd = [c for c in ["project_id","project_name","region","product","subscription_id",
+                                  "subscription_item","currency",
+                                  "service_start","service_end_orig",
+                                  "rev_rec_start","rev_rec_end",
+                                  "notes","Rev Amount"] if c in _ff_proj_ytd.columns]
+        _ord_ytd += _mc_ytd
+        _ff_proj_ytd = _ff_proj_ytd[[c for c in _ord_ytd if c in _ff_proj_ytd.columns]]
+        _ff_proj_ytd.to_excel(_xl, sheet_name="FF Rev by Project YTD", index=False)
+
+    # FF Project Detail tabs removed — superseded by FF Rev by Project and Reconcile Carve Detail
     if df_tm_sow is not None and not df_tm.empty:
         df_tm[[c for c in ["account_name","opportunity_name","opportunity_owner",
                             "product","region","close_date","sow_hours",
                             "sow_amount_usd","sow_rate_usd","ns_project",
                             "ns_hours_worked","ns_revenue_to_date"]
                if c in df_tm.columns]].to_excel(_xl, sheet_name="TM Detail", index=False)
+    if not _det_excel.empty:
+        _det_excel.to_excel(_xl, sheet_name="Time Entry Detail", index=False)
+    if df_rev_raw is not None and "notes" in df_rev_raw.columns:
+        # Only show rows with warning flags — exclude successfully matched rows
+        _rec_xl = df_rev_raw[df_rev_raw["notes"].str.startswith("⚠️", na=False)].copy()
+        if not _rec_xl.empty:
+            _rec_xl_cols = [c for c in ["charge_item","subscription_id","subscription_item",
+                                         "project_id","gross_amount","currency",
+                                         "rev_start","service_end",
+                                         "notes"] if c in _rec_xl.columns]
+            _rec_xl_out = _rec_xl[_rec_xl_cols].copy()
+            if "rev_start" in _rec_xl_out.columns:
+                _rec_xl_out = _rec_xl_out.rename(columns={"rev_start": "service_start"})
+            _rec_xl_out.to_excel(_xl, sheet_name="Carve Flags", index=False)
+
+# ── Apply Zone brand formatting ──────────────────────────────────────────────
+try:
+    from shared.excel_formatter import apply_zone_formatting
+
+    # Collect metrics for Dashboard
+    _ns_date_str = ""
+    if df_ns is not None and "date" in df_ns.columns:
+        _ns_latest = df_ns["date"].dropna().max()
+        try:
+            _ns_date_str = pd.Timestamp(_ns_latest).strftime("%-d %B %Y")
+        except Exception:
+            _ns_date_str = str(_ns_latest)[:10]
+
+    _blurb = (
+        "This report calculates PS revenue recognition from NetSuite charge exports and "
+        "NS Time Detail. Fixed Fee projects: revenue recognised straight-line across a "
+        "2–3 month window from service start. Reconcile, Capture and Approvals "
+        "implementations apply a license-based carve-out capped at the Year 1 license "
+        "cost. T&M projects: revenue = hours logged × billing rate, converted to USD "
+        "using monthly average FX rates. Carve flags are surfaced for Finance review."
+    )
+
+    # By Region summary rows for dashboard
+    _dash_region = []
+    if not _rt.empty:
+        for _, _rrow in _rt.iterrows():
+            try:
+                _rv = float(str(_rrow.get("YTD", 0)).replace("$","").replace(",","") or 0)
+            except Exception:
+                _rv = 0.0
+            _pct = f"{_rv/max(float(ytd_total),1)*100:.1f}%" if ytd_total else "0.0%"
+            _dash_region.append({
+                "Region": str(_rrow.get("Region", "")),
+                "YTD (USD)": f"${_rv:,.0f}",
+                "% of Total": _pct,
+            })
+
+    # By Product summary rows for dashboard
+    _dash_product = []
+    if not _pt.empty:
+        for _, _prow in _pt.iterrows():
+            try:
+                _pv = float(str(_prow.get("YTD", 0)).replace("$","").replace(",","") or 0)
+            except Exception:
+                _pv = 0.0
+            _pct = f"{_pv/max(float(ytd_total),1)*100:.1f}%" if ytd_total else "0.0%"
+            _dash_product.append({
+                "Product": str(_prow.get("Product", "")),
+                "YTD (USD)": f"${_pv:,.0f}",
+                "% of Total": _pct,
+            })
+
+    # Trend rows for dashboard — stringify all values for safe Excel writing
+    _dash_trend = []
+    if not _trend_disp.empty:
+        for _, _trow in _trend_disp.head(12).iterrows():
+            _dash_trend.append({k: (f"${float(v):,.0f}" if isinstance(v, (int, float)) and k != "Period"
+                                    else str(v)) for k, v in _trow.items()})
+
+    _flag_count = 0
+    if df_rev_raw is not None and "notes" in df_rev_raw.columns:
+        _flag_count = int(df_rev_raw["notes"].str.startswith("⚠️", na=False).sum())
+
+    _ff_ytd  = float(ytd_df["usd_amount"].sum()) if not ytd_df.empty else 0.0
+    _tm_ytd  = float(_tm_monthly_early.sum()) if not _tm_monthly_early.empty else 0.0
+    _recon_ytd = 0.0
+    if not slices.empty and "notes" in slices.columns:
+        from shared.config import RECONCILE_IMPL_SKU as _RDASH
+        _recon_mask = slices["charge_item"].str.contains(_RDASH, na=False)
+        _recon_ytd  = float(slices.loc[_recon_mask & slices["period"].isin(ytd_months), "usd_amount"].sum())
+
+    _mom_display = f"{_mom_pct:+.1f}%" if _mom_pct is not None else "—"
+
+    def _fmt_usd(v):
+        try: return f"${float(v):,.0f}"
+        except Exception: return "$0"
+
+    _dash_metrics = {
+        "ytd":         _fmt_usd(ytd_total),
+        "qtd":         _fmt_usd(qtd_total),
+        "mtd":         _fmt_usd(mtd_total),
+        "full_mo":     _fmt_usd(full_month),
+        "run_rate":    _fmt_usd(_run_rate),
+        "mom":         _mom_display,
+        "ff_ytd":      _fmt_usd(_ff_ytd),
+        "tm_ytd":      _fmt_usd(_tm_ytd),
+        "recon_ytd":   _fmt_usd(_recon_ytd),
+        "ff_projects": int(slices["project_id"].nunique()) if not slices.empty else 0,
+        "tm_projects": int(df_tm["ns_project"].dropna().nunique()) if df_tm is not None and not df_tm.empty else 0,
+        "flag_count":  int(_flag_count),
+        "trend_rows":  _dash_trend,
+        "region_rows": _dash_region,
+        "product_rows":_dash_product,
+    }
+
+    _formatted_bytes = apply_zone_formatting(
+        _buf.getvalue(), _dash_metrics, _ns_date_str, _blurb
+    )
+except Exception as _fmt_err:
+    # Fallback to unformatted if formatter fails
+    _formatted_bytes = _buf.getvalue()
+    st.warning(f"Formatting error (unformatted report downloaded): {_fmt_err}")
 
 st.download_button(
     "⬇ Download Revenue Report (Excel)",
-    data=_buf.getvalue(),
-    file_name=f"ff_revenue_{today.strftime('%Y%m%d')}.xlsx",
+    data=_formatted_bytes,
+    file_name=f"ps_revenue_report_{today.strftime('%Y%m%d')}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     type="primary",
 )

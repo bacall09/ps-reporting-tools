@@ -155,22 +155,101 @@ FF_TASKS = ["Configuration", "Enablement", "Training", "Post Go-live", "Project 
 # Note: charge_item in NS export includes prefix "SERVICES : " — matching is
 # done on the SKU portion only (after the last space-colon-space if present).
 FF_CARVE_OUT_TABLE = {
-    ("SERV-APP-ZR2-STD_IMPL", "USD"): 2500.00,
-    ("SERV-APP-ZA_STD-IMPL",  "USD"): 2205.00,
+    # ── SERV-APP-ZC_STD-IMPL (ZoneCapture Standard Implementation) ───────────
+    # CAD has specific rate; all other currencies convert from USD 3,000
     ("SERV-APP-ZC_STD-IMPL",  "USD"): 3000.00,
+    ("SERV-APP-ZC_STD-IMPL",  "CAD"): 4152.00,
+
+    # ── SERV-APP-ZA_STD-IMPL (ZoneApprovals Standard Implementation) ─────────
+    ("SERV-APP-ZA_STD-IMPL",  "USD"): 2205.00,
+    ("SERV-APP-ZA_STD-IMPL",  "EUR"): 1935.00,
+    ("SERV-APP-ZA_STD-IMPL",  "GBP"): 1644.00,
+    ("SERV-APP-ZA_STD-IMPL",  "AUD"): 3443.00,
+    ("SERV-APP-ZA_STD-IMPL",  "NZD"): 3705.00,
+    ("SERV-APP-ZA_STD-IMPL",  "CAD"): 3052.00,
+
+    # ── SERV-APP-ZR2-STD_IMPL (Reconcile Standard Implementation) ────────────
+    # NOTE: USD placeholder 3,500 — update when confirmed
+    ("SERV-APP-ZR2-STD_IMPL", "USD"): 3500.00,
 }
 
-def get_carve_out_amount(charge_item: str, currency: str) -> float | None:
+# ── Reconcile License SKU → max carve-out amount (USD) ───────────────────────
+RECONCILE_LICENSE_CARVE = {
+    "PROD-APP-ZR2_START15":  2000.00,
+    "PROD-APP-ZR2_ADV35":    2500.00,
+    "PROD-APP-ZR2_PROF70":   3500.00,
+    "PROD-APP-ZR2_ENT150":   5000.00,
+    "PROD-APP-ZR2_CUSTOM":   5000.00,
+}
+
+RECONCILE_IMPL_SKU     = "SERV-APP-ZR2-STD_IMPL"
+RECONCILE_LICENSE_SKUS = set(RECONCILE_LICENSE_CARVE.keys())
+
+# ── Capture License SKUs (reference — for orphan flagging + Year 1 validation) ─
+CAPTURE_IMPL_SKU     = "SERV-APP-ZC_STD-IMPL"
+CAPTURE_LICENSE_SKUS = {
+    "PROD-APP-ZC_START250",
+    "PROD-APP-ZC_ADV500",
+    "PROD-APP-ZC_PROF1000",
+    "PROD-APP-ZC_ENT3000",
+    "PROD-APP-ZC_CUSTOM",
+}
+
+# ── Approvals License SKUs (reference — for orphan flagging + Year 1 validation) ─
+APPROVALS_IMPL_SKU     = "SERV-APP-ZA_STD-IMPL"
+APPROVALS_LICENSE_SKUS = {
+    "PROD-APP-ZA_START2000",
+    "PROD-APP-ZA_ADV5000",
+    "PROD-APP-ZA_PROF10000",
+    "PROD-APP-ZA_ENT",
+}
+
+def get_carve_out_amount(charge_item: str, currency: str,
+                          period: str = "") -> float | None:
     """Look up carve-out amount for a $0 charge line.
-    charge_item may include 'SERVICES : ' prefix — stripped for matching.
-    Returns None if not found (will fall back to Rev Carve Amount column if present).
+
+    Matching order:
+    1. Exact match on stripped SKU + currency
+    2. Capture non-CAD non-USD: convert USD 3,000 via FX
+    3. Fuzzy partial match on SKU (≥ 85 score) — handles minor SKU variants
+    Returns None if not found (caller falls back to gross_amount).
     """
     ci = str(charge_item).strip()
-    # Strip 'SERVICES : ' or similar prefix
     if " : " in ci:
-        ci = ci.split(" : ", 1)[-1].strip()
+        ci = ci.split(" : ")[-1].strip()
     curr = str(currency).strip().upper()
-    return FF_CARVE_OUT_TABLE.get((ci, curr), None)
+
+    # 1. Exact match
+    result = FF_CARVE_OUT_TABLE.get((ci, curr), None)
+    if result is not None:
+        return result
+
+    # 2. Capture: non-CAD non-USD → convert USD 3,000 via FX
+    if ci == CAPTURE_IMPL_SKU and curr not in ("USD", "CAD"):
+        try:
+            fx = get_fx_rate(curr, period)
+            return round(3000.00 * fx, 2)
+        except Exception:
+            return 3000.00  # fallback to USD if FX unavailable
+
+    # 3. Fuzzy match — find closest SKU key for same currency
+    try:
+        from rapidfuzz import fuzz as _fuzz
+        best_score = 0
+        best_val   = None
+        for (sku, ccy), val in FF_CARVE_OUT_TABLE.items():
+            if ccy != curr:
+                continue
+            score = _fuzz.partial_ratio(ci.lower(), sku.lower())
+            if score > best_score:
+                best_score = score
+                best_val   = val
+        if best_score >= 85:
+            return best_val
+    except ImportError:
+        pass
+
+    return None
 # Used for revenue reporting where region is derived from billing currency
 CURRENCY_REGION_MAP = {
     "USD": "NOAM",

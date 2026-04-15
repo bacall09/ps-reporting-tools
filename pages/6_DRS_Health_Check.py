@@ -38,7 +38,9 @@ st.markdown("""
 
 # ── Header ────────────────────────────────────────────────────────────────────
 # Use passthrough key if set (navigated from My Projects), else fall back to home_browse
-_b = st.session_state.pop("_va_passthrough", None) or st.session_state.get("home_browse", "") or ""
+_b = (st.session_state.pop("_va_passthrough", None) or
+      st.session_state.get("_browse_passthrough") or
+      st.session_state.get("home_browse", "")) or ""
 if _b.startswith("── ") and _b.endswith(" ──"):
     _drs_title_sfx = f" — {_b[3:-3].strip()} Team"
 elif _b and _b not in ("— My own view —", "— Select —", "👥 All team"):
@@ -98,7 +100,8 @@ from shared.config import EMPLOYEE_LOCATION as _EL3, PS_REGION_MAP as _RM3, PS_R
 from shared.constants import ACTIVE_EMPLOYEES as _AE3, EMPLOYEE_ROLES as _ER3
 _session_name = st.session_state.get("consultant_name", "")
 if _session_name:
-    _home_browse = st.session_state.get("home_browse", "— My own view —")
+    _home_browse = (st.session_state.pop("_browse_passthrough", None) or
+                    st.session_state.get("home_browse", "— My own view —"))
     _va_name, _va_region, _is_group = resolve_view_as(
         _session_name, _home_browse, _ER3, _EL3, _RM3, _RO3, _AE3
     )
@@ -115,13 +118,6 @@ if _session_name:
             if not _filtered.empty: df_drs = _filtered
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-# ── Debug: column map verification (remove once column issues are resolved) ──
-with st.expander("🔍 Debug: DRS column check", expanded=False):
-    st.write("**Columns present:**", df_drs.columns.tolist())
-    st.write("**project_name present:**", "project_name" in df_drs.columns)
-    if "project_name" not in df_drs.columns:
-        st.error("⚠️ `project_name` column is missing. Check that your DRS export has a 'Project Name' column header.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RULE ENGINE

@@ -1443,7 +1443,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # Dynamic title suffix from View As
-    _b = st.session_state.get("home_browse", "") or ""
+    _b = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse", "") or ""
     if _b.startswith("── ") and _b.endswith(" ──"):
         _title_sfx = f" — {_b[3:-3].strip()} Team"
     elif _b and _b not in ("— My own view —", "— Select —", "👥 All team"):
@@ -1496,37 +1496,19 @@ def main():
     ss_file = None
     ns_file = None
 
-    if _session_loaded:
-        st.success(f"✓ Data loaded from Home page: {', '.join(_session_loaded)}. Expand below to upload overrides.")
-        with st.expander("Override uploaded data for this page", expanded=False):
-            st.caption("Upload here to override the Home page data for this session.")
-            ss_file = st.file_uploader("SS DRS Export", type=["xlsx","xls","csv"], key="ss_upload")
-            ns_file = st.file_uploader("NS Time Detail", type=["xlsx","xls","csv"], key="ns_upload")
-    else:
-        st.subheader("Step 1 — Upload Smartsheets DRS Export")
-        st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
-        ss_file = st.file_uploader(
-            "Drop your file here or click to browse",
-            type=["xlsx", "xls", "csv"],
-            key="ss_upload"
-        )
-        st.subheader("Step 2 — Upload NetSuite Time Detail Export")
-        st.caption("Used to compare time data with the current project list to identify project manager assignments and projects without time entries for the period.")
-        ns_file = st.file_uploader(
-            "Drop your file here or click to browse",
-            type=["xlsx", "xls", "csv"],
-            key="ns_upload"
-        )
+    if not _session_loaded:
+        st.info("Upload SS DRS and NS Time Detail on the Home page to generate the Workload Health Score.")
+        return
 
-    if not ss_file and _ss_from_session is None:
-        st.info("Upload your Smartsheets DRS export (or load it on the Home page) to continue.")
+    if _ss_from_session is None:
+        st.info("Upload SS DRS on the Home page to continue.")
         return
 
     # ── Process ───────────────────────────────────────────────────────────────
     milestone_cols = []
     try:
-        ss_df, milestone_cols = load_ss(ss_file) if ss_file else (_ss_from_session, [])
-        ns_df, ns_min_date = load_ns(ns_file) if ns_file else ((_ns_from_session, None) if _ns_from_session is not None else (None, None))
+        ss_df, milestone_cols = _ss_from_session, []
+        ns_df, ns_min_date = (_ns_from_session, None) if _ns_from_session is not None else (None, None)
 
         # ── Apply view_as filter (respects home_browse for managers) ──
         _session_name = st.session_state.get("consultant_name", "")
@@ -1534,12 +1516,13 @@ def main():
             from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
             from shared.config import EMPLOYEE_LOCATION as _EL2, PS_REGION_MAP as _RM2, PS_REGION_OVERRIDE as _RO2
             from shared.constants import ACTIVE_EMPLOYEES as _AE2
-            _home_browse = st.session_state.get("home_browse", "— My own view —")
+            _home_browse = (st.session_state.pop("_browse_passthrough", None) or
+                               st.session_state.get("home_browse", "— My own view —"))
             _va_name, _va_region, _is_group = resolve_view_as(
                 _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
             )
             _role = _get_role(_session_name)
-            _is_mgr = _role in ("manager", "manager_only")
+            _is_mgr = _role in ("manager", "manager_only", "reporting_only")
             _pm_col = next((c for c in ["project_manager", "consultant"] if c in ss_df.columns), None)
             if _va_region:
                 _rc = get_region_consultants(_va_region, _EL2, _RM2, _RO2, _AE2)

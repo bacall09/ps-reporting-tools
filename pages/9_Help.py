@@ -262,20 +262,22 @@ CONSULTANT_TOOLS = [
     },
     {
         "icon": "✉️",
-        "title": "Customer Re-engagement",
-        "sub": "Generate tiered outreach letters for on-hold or stalled projects. No copy-paste required.",
+        "title": "Customer Engagement",
+        "sub": "Your hub for customer outreach — initial introductions, re-engagement, and future lifecycle communications.",
         "steps": [
-            "Make sure SS DRS and Salesforce exports are uploaded on Home.",
-            "Navigate to Customer Re-engagement — your projects load, filtered to you.",
-            "Select a project from the dropdown. The tool shows days inactive and suggests a tier.",
-            "Review the suggested letter, edit as needed, and copy or download.",
+            "Make sure SS DRS, SFDC Contacts, and NS Time Detail exports are uploaded on Home.",
+            "Navigate to Customer Engagement — your projects load, filtered to you.",
+            "Check 'This Week\'s Initial Engagement Actions' — projects with no intro email sent yet.",
+            "Check 'This Week\'s Re-Engagement Actions' for stalled projects needing follow-up.",
+            "Select a project, review the suggested tier and template, edit as needed, and send.",
         ],
         "why": [
-            "Three tiers of outreach templates — tone scales with how long the project's been stalled.",
-            "Pre-populated with project name, product, and contact details from your data.",
-            "Consistent messaging across the team — no one reinventing the wheel per email.",
+            "Phase 1: Surfaces projects missing an intro email so no new customer falls through the cracks.",
+            "Phase 1: Tier 1–4 re-engagement templates — tone escalates with days inactive.",
+            "Pre-populated with project name, product, and contact details from SFDC.",
+            "Phase 2 (coming soon): Project lifecycle templates — kick-off, go-live, and close communications.",
         ],
-        "tip": "You only see your own projects here. Managers: use 'View As' in the sidebar to generate letters on behalf of a consultant.",
+        "tip": "You only see your own projects here. Managers: use 'View As' in the sidebar to review any consultant or region.",
     },
 ]
 
