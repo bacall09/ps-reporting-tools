@@ -1443,7 +1443,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # Dynamic title suffix from View As
-    _b = st.session_state.get("home_browse", "") or ""
+    _b = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse", "") or ""
     if _b.startswith("── ") and _b.endswith(" ──"):
         _title_sfx = f" — {_b[3:-3].strip()} Team"
     elif _b and _b not in ("— My own view —", "— Select —", "👥 All team"):
@@ -1534,7 +1534,8 @@ def main():
             from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
             from shared.config import EMPLOYEE_LOCATION as _EL2, PS_REGION_MAP as _RM2, PS_REGION_OVERRIDE as _RO2
             from shared.constants import ACTIVE_EMPLOYEES as _AE2
-            _home_browse = st.session_state.get("home_browse", "— My own view —")
+            _home_browse = (st.session_state.pop("_browse_passthrough", None) or
+                               st.session_state.get("home_browse", "— My own view —"))
             _va_name, _va_region, _is_group = resolve_view_as(
                 _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
             )
