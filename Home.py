@@ -61,6 +61,7 @@ _consultant_pages = [
     st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
     st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
     st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
+    st.Page("pages/10_Time_Entries.py",          title="Time Entries"),
     # st.Page("pages/7_Vibe_Check.py",          title="Vibe Check ✨"),  # hidden
 ]
 _manager_pages = [

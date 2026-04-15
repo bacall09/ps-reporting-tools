@@ -1743,6 +1743,20 @@ Used when no NS entries and no milestones are present.
                 template      = selected_template,
             )
             st.session_state["_log_success_msg"] = f"✅ Logged — {_tier_str} for {_log_customer} on {datetime.today().strftime('%Y-%m-%d')}"
+            # Auto-capture to Time Entries
+            try:
+                from shared.activity_log import log_activity
+                _te_pid  = _pid if "_pid" in dir() and _pid else ""
+                _te_name = str(selected_proj or "")
+                log_activity(
+                    project_id    = _te_pid or _te_name,
+                    project_name  = _te_name,
+                    activity_type = "Customer Email",
+                    employee      = selected_user,
+                    notes         = f"{_tier_str} outreach — {_log_customer}",
+                )
+            except Exception:
+                pass
 
         if st.session_state.get("_log_success_msg"):
             st.success(st.session_state["_log_success_msg"])
