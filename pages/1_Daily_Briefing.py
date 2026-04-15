@@ -59,10 +59,10 @@ st.markdown("""
                          cursor:help; position:relative; }
         .metric-help:hover::after {
             content: attr(data-tip);
-            position:fixed; left:50%; transform:translateX(-50%);
-            bottom:40px; background:#0E223D; color:#fff;
+            position:absolute; left:50%; transform:translateX(-50%);
+            top:calc(100% + 8px); background:#0E223D; color:#fff;
             font-size:12px; font-weight:400; padding:10px 14px; border-radius:8px;
-            white-space:normal; width:300px; z-index:99999; line-height:1.6;
+            white-space:normal; width:280px; z-index:99999; line-height:1.6;
             box-shadow:0 4px 16px rgba(0,0,0,0.45);
             pointer-events:none;
         }
