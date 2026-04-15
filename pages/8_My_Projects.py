@@ -349,11 +349,17 @@ with _btn_col1:
     if st.button("→ Go to DRS Health Check", key="mp_drs_link", use_container_width=True):
         if _va_region:
             st.session_state["_va_passthrough"] = f"── {_va_region} ──"
+            st.session_state["home_browse"]      = f"── {_va_region} ──"
         elif view_as and view_as != selected:
             st.session_state["_va_passthrough"] = view_as
+            st.session_state["home_browse"]      = view_as
         st.switch_page("pages/6_DRS_Health_Check.py")
 with _btn_col2:
     if st.button("→ Draft Outreach", key="mp_engagement_link", use_container_width=True):
+        if _va_region:
+            st.session_state["home_browse"] = f"── {_va_region} ──"
+        elif view_as and view_as != selected:
+            st.session_state["home_browse"] = view_as
         st.switch_page("pages/2_Customer_Reengagement.py")
 
 edited = st.data_editor(
