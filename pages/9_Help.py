@@ -30,7 +30,7 @@ st.markdown("""
     }
     .hero-eyebrow {
         font-size: 11px; font-weight: 700; letter-spacing: 2px;
-        text-transform: uppercase; color: #ff4b40; margin-bottom: 10px;
+        text-transform: uppercase; color: #3B9EFF; margin-bottom: 10px;
     }
     .hero-title {
         font-size: 30px; font-weight: 800; color: #fff;
@@ -46,7 +46,7 @@ st.markdown("""
         display: inline-block; padding: 5px 14px; border-radius: 20px;
         font-size: 11.5px; font-weight: 600;
     }
-    .hpill-mint  { background: rgba(255,75,64,0.15); color: #ff4b40;  border: 1px solid rgba(255,75,64,0.35); }
+    .hpill-mint  { background: rgba(255,75,64,0.15); color: #3B9EFF;  border: 1px solid rgba(255,75,64,0.35); }
     .hpill-sky   { background: rgba(91,141,239,0.15);  color: #5B8DEF;  border: 1px solid rgba(91,141,239,0.3); }
     .hpill-white { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.15); }
 
@@ -127,7 +127,7 @@ st.markdown("""
         font-size: 12.5px; color: #1A2340; line-height: 1.6;
         padding-left: 18px; position: relative; margin-bottom: 7px;
     }
-    .why-list li::before { content: '✓'; position: absolute; left: 0; color: #ff4b40; font-weight: 700; font-size: 11px; }
+    .why-list li::before { content: '✓'; position: absolute; left: 0; color: #3B9EFF; font-weight: 700; font-size: 11px; }
 
     /* Tip */
     .tip-box {
@@ -191,7 +191,7 @@ st.markdown("""
 st.markdown('<div class="section-eyebrow">Before you begin · Everyone</div>', unsafe_allow_html=True)
 
 st.markdown("""
-<div style="background:#1B2B5E; border-radius:10px; padding:24px 28px; margin-bottom:16px;">
+<div style="background:#050D1F; border-radius:10px; padding:24px 28px; margin-bottom:16px; position:relative; overflow:hidden;">
     <div style="font-size:16px; font-weight:700; color:#fff; margin-bottom:18px; font-family:Manrope,sans-serif;">
         Getting started in 4 steps
     </div>

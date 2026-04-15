@@ -1766,7 +1766,10 @@ def main():
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
         </style>
-        <div style='background-color:#1e2c63;padding:24px 32px;border-radius:8px;margin-bottom:24px;font-family:Manrope,sans-serif'>
+        <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
+    <div style='position:absolute;left:-80px;bottom:-100px;width:380px;height:380px;border-radius:50%;border:55px solid rgba(0,82,255,0.12);pointer-events:none'></div>
+    <div style='position:absolute;left:-40px;bottom:-60px;width:260px;height:260px;border-radius:50%;border:35px solid rgba(14,165,233,0.10);pointer-events:none'></div>
+    <div style='position:absolute;left:10px;bottom:-20px;width:160px;height:160px;border-radius:50%;border:20px solid rgba(0,82,255,0.07);pointer-events:none'></div>
             <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Professional Services Utilization Credit Report</h1>
             <p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>Upload your NetSuite time detail export to generate a utilization credit report.</p>
         </div>

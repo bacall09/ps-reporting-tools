@@ -22,7 +22,7 @@ if not _session_name:
 # ── Page styles ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .te-hero { background: linear-gradient(135deg, #1E2C63 0%, #2A3F8F 100%);
+    .te-hero { background: #050D1F;
                padding: 28px 36px; border-radius: 10px; margin-bottom: 24px; }
     .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
                      letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
@@ -36,7 +36,7 @@ st.markdown("""
 st.markdown("""
 <div class="te-hero">
     <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-                color:#FF4B40;margin-bottom:8px;font-family:Manrope,sans-serif">
+                color:#3B9EFF;margin-bottom:8px;font-family:Manrope,sans-serif">
         PROFESSIONAL SERVICES · MY WORK
     </div>
     <h1 style="color:#fff;margin:0;font-size:26px;font-weight:800;font-family:Manrope,sans-serif">
