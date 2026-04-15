@@ -264,7 +264,7 @@ def _to_edit_row(row):
     needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
     def _ms(col):
         v = row.get(col)
-        return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
+        return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
 
 
     def _dt(col):
@@ -357,7 +357,7 @@ col_cfg = {
     "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
     "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
     "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
-    "Balance":               st.column_config.NumberColumn("Balance",           disabled=True, width="small"),
+    "Balance":               st.column_config.TextColumn("Balance",            disabled=True, width="small"),
     "Engagement":            st.column_config.TextColumn("Engagement",         disabled=True, width="medium"),
     "_bal_flag":             None,
     **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
@@ -395,9 +395,26 @@ def _style_balance(df):
                 styles.at[i, "Balance"] = "background-color:#FFF3CD;color:#B7770D;font-weight:600"
     return styles
 
-_display_df = edit_df.drop(columns=["_bal_flag"], errors="ignore")
+# st.data_editor doesn't support Styler — apply Balance colour as a display-only
+# text prefix flag instead, keep _bal_flag hidden via col_cfg None
+_display_df = edit_df.copy()
+# Inject colour signal into Balance value as a suffixed marker for display
+if "Balance" in _display_df.columns and "_bal_flag" in _display_df.columns:
+    def _fmt_bal(row):
+        val = row["Balance"]
+        flag = row["_bal_flag"]
+        if val == "": return val
+        try:
+            fval = float(val)
+            if flag == "red":    return f"🔴 {fval:,.2f}"
+            if flag == "yellow": return f"🟡 {fval:,.2f}"
+            return fval
+        except Exception:
+            return val
+    _display_df["Balance"] = _display_df.apply(_fmt_bal, axis=1)
+_display_df = _display_df.drop(columns=["_bal_flag"], errors="ignore")
 edited = st.data_editor(
-    _display_df.style.apply(_style_balance, axis=None),
+    _display_df,
     column_config=col_cfg,
     use_container_width=True,
     hide_index=True,
