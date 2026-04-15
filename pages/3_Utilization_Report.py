@@ -1831,21 +1831,24 @@ def main():
     _is_mgr_u = _role_u in ("manager", "manager_only", "reporting_only")
 
     if "employee" in df_raw.columns:
+        from shared.utils import name_matches
         if _va_region_u:
+            # Region view — filter to all consultants in that region
             _rc_u = get_region_consultants(_va_region_u, _EL_u, _RM_u, _RO_u, _AE_u)
             _filtered_u = df_raw[df_raw["employee"].astype(str).str.strip().str.lower().isin(_rc_u)]
             if not _filtered_u.empty:
                 df_raw = _filtered_u
-        elif _va_name_u and not _is_mgr_u:
-            from shared.utils import name_matches
+        elif _va_name_u:
+            # Specific consultant selected (works for managers viewing-as too)
             _filtered_u = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _va_name_u))]
             if not _filtered_u.empty:
                 df_raw = _filtered_u
         elif not _is_mgr_u and _logged_in:
-            from shared.utils import name_matches
+            # Non-manager with no view-as — filter to own rows
             _filtered_u = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _logged_in))]
             if not _filtered_u.empty:
                 df_raw = _filtered_u
+        # else: manager with no view-as = full team, no filter applied
 
     st.divider()
 
