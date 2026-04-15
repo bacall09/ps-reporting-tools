@@ -12,7 +12,7 @@ st.markdown("""
 
     /* ── HERO ── */
     .help-hero {
-        background: #1B2B5E;
+        background:#050D1F;
         border-radius: 10px;
         padding: 36px 40px;
         margin-bottom: 28px;
@@ -116,7 +116,7 @@ st.markdown("""
     }
     .sn {
         width: 19px; height: 19px; border-radius: 50%;
-        background: #1B2B5E; color: #fff; font-size: 9.5px; font-weight: 700;
+        background:#050D1F; color: #fff; font-size: 9.5px; font-weight: 700;
         display: flex; align-items: center; justify-content: center;
         flex-shrink: 0; margin-top: 1px;
     }
@@ -143,7 +143,7 @@ st.markdown("""
         text-transform: uppercase; margin-left: 8px; vertical-align: middle;
     }
     .atag-c { background: rgba(46,92,230,0.1);  color: #2E5CE6; }
-    .atag-m { background: rgba(255,75,64,0.12); color: #1a9a80; }
+    .atag-m { background: rgba(59,158,255,0.12); color: #1a9a80; }
     .atag-a { background: rgba(139,100,220,0.1); color: #6B3FA0; }
 
     /* ── PHASE ROADMAP ── */
