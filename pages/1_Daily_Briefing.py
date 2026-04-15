@@ -55,15 +55,16 @@ st.markdown("""
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
-        .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.5;
+        .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
                          cursor:help; position:relative; }
         .metric-help:hover::after {
             content: attr(data-tip);
-            position:absolute; left:50%; transform:translateX(-50%);
-            bottom:calc(100% + 6px); background:#1E2C63; color:#fff;
-            font-size:11px; font-weight:400; padding:7px 11px; border-radius:6px;
-            white-space:normal; width:240px; z-index:9999; line-height:1.5;
-            box-shadow:0 2px 8px rgba(0,0,0,0.3);
+            position:fixed; left:50%; transform:translateX(-50%);
+            bottom:40px; background:#0E223D; color:#fff;
+            font-size:12px; font-weight:400; padding:10px 14px; border-radius:8px;
+            white-space:normal; width:300px; z-index:99999; line-height:1.6;
+            box-shadow:0 4px 16px rgba(0,0,0,0.45);
+            pointer-events:none;
         }
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
         .badge-red   {background:rgba(192,57,43,0.15);color:#C0392B;}
