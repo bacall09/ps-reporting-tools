@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 import io
 import os
-from datetime import datetime
+from datetime import datetime, date
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -1852,13 +1852,48 @@ def main():
 
     st.divider()
 
+    # ── Step 1 — Define Reporting Period ─────────────────────
+    st.subheader("Step 1 — Define Reporting Period")
+
+    # Derive available date range from the loaded NS data
+    _raw_dates = pd.to_datetime(df_raw["date"], errors="coerce").dropna() if "date" in df_raw.columns else pd.Series(dtype="datetime64[ns]")
+    _min_date  = _raw_dates.min().date() if not _raw_dates.empty else date(date.today().year, 1, 1)
+    _max_date  = _raw_dates.max().date() if not _raw_dates.empty else date.today()
+
+    _pc1, _pc2 = st.columns(2)
+    with _pc1:
+        _period_start = st.date_input("Start date", value=_min_date,
+                                       min_value=date(2020, 1, 1), max_value=_max_date,
+                                       key="util_period_start")
+    with _pc2:
+        _period_end = st.date_input("End date", value=_max_date,
+                                     min_value=_period_start, max_value=date(2030, 12, 31),
+                                     key="util_period_end")
+    st.caption(f"NS data available: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')} · "
+               f"Selected: {_period_start.strftime('%-d %b %Y')} → {_period_end.strftime('%-d %b %Y')}")
+
+    st.divider()
+
     # ── Process ───────────────────────────────────────────────
     st.subheader("Step 2 — Generate Report")
 
     if st.button("Run Utilization Engine", type="primary"):
         with st.spinner("Processing..."):
             try:
-                df, consumed, skipped_df = assign_credits(df_raw.copy(), DEFAULT_SCOPE)
+                # Filter to selected period before processing
+                _ts  = pd.Timestamp(_period_start)
+                _te  = pd.Timestamp(_period_end) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                if "date" in df_raw.columns:
+                    _dated = pd.to_datetime(df_raw["date"], errors="coerce")
+                    _mask  = (_dated >= _ts) & (_dated <= _te)
+                    _df_period = df_raw[_mask].copy()
+                    if _df_period.empty:
+                        st.warning(f"No time entries found between {_period_start.strftime('%-d %b %Y')} and {_period_end.strftime('%-d %b %Y')}.")
+                        st.stop()
+                else:
+                    _df_period = df_raw.copy()
+
+                df, consumed, skipped_df = assign_credits(_df_period, DEFAULT_SCOPE)
             except Exception as e:
                 st.error(f"Processing error: {e}"); return
 
