@@ -668,7 +668,15 @@ else:
     if "days_inactive" in my_projects.columns:
         _stale = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False)
 
-    snap1, snap2, snap3, snap4, snap5 = st.columns(5)
+    # RAG counts — from Overall RAG column in DRS
+    _rag_red    = pd.DataFrame()
+    _rag_yellow = pd.DataFrame()
+    if "rag" in _active.columns:
+        _rag_vals   = _active["rag"].fillna("").astype(str).str.strip().str.lower()
+        _rag_red    = _active[_rag_vals == "red"]
+        _rag_yellow = _active[_rag_vals == "yellow"]
+
+    snap1, snap2, snap3, snap4, snap5, snap6, snap7 = st.columns(7)
     with snap1:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
         for ph, cnt in _pc:
@@ -697,6 +705,20 @@ else:
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement</div></div>', unsafe_allow_html=True)
         if len(_stale) > 0:
             st.markdown('<div style="font-size:13px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)
+    with snap6:
+        _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">🔴 Red RAG</div></div>', unsafe_allow_html=True)
+        if len(_rag_red) > 0:
+            for _, _rr in _rag_red.head(3).iterrows():
+                _rn = str(_rr.get("project_name","")).split(" - ")[0][:24]
+                st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rn}</div>', unsafe_allow_html=True)
+    with snap7:
+        _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">🟡 Yellow RAG</div></div>', unsafe_allow_html=True)
+        if len(_rag_yellow) > 0:
+            for _, _ry in _rag_yellow.head(3).iterrows():
+                _yn = str(_ry.get("project_name","")).split(" - ")[0][:24]
+                st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_yn}</div>', unsafe_allow_html=True)
 
 
 

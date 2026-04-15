@@ -350,13 +350,16 @@ def _ff_summary_table(df_ytd, df_qtd, df_mtd, df_full_mo, dim):
         "YTD":        ytd_s.reindex(idx, fill_value=0),
     })
 
-    # Count projects per dim
-    if "project_id" in df_ytd.columns:
+    # Count distinct projects per dim
+    _has_proj = "project_id" in df_ytd.columns
+    if _has_proj:
         proj_counts = df_ytd.groupby(dim)["project_id"].nunique().rename("# Projects")
         result = result.join(proj_counts, how="left").fillna(0)
 
-    # Total row
-    total = result.sum(numeric_only=True)
+    # Total row — sum revenue cols, distinct project_id count across all groups
+    total = result[[c for c in ["MTD","Full Month","QTD","YTD"] if c in result.columns]].sum(numeric_only=True)
+    if _has_proj:
+        total["# Projects"] = df_ytd["project_id"].nunique()
     total.name = "Total"
     result = pd.concat([result, total.to_frame().T])
 

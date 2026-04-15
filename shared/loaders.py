@@ -1066,7 +1066,11 @@ _PRODUCT_KEYWORDS = [
     ("Billing",                 ["zonebill", "zbilling", "zab partner",
                                   "billing", "zb_standard", "zb_premium",
                                   "subscription services"]),
-    ("Payroll",                 ["zonepay", "zpayroll", "payroll", "zep:", "zonepay:"]),
+    # Payments must come BEFORE Payroll so "zonepayments" doesn't match "zonepay"
+    ("Payments",                ["ap payment", "zonepayments", "zone payments",
+                                  "zpayment", "zap:", "ap pay"]),
+    ("Payroll",                 ["zonepayroll", "zpayroll", "payroll", "zep:",
+                                  "zonepay:", "zonepay "]),
     ("Reporting",               ["zonerpt", "zonerepor", "reporting",
                                   "install, dwh", "dwh"]),
     ("E-Invoicing",             ["e-invoic", "einvoic"]),
@@ -1074,12 +1078,9 @@ _PRODUCT_KEYWORDS = [
     ("Approvals",               ["zoneapprovals", "zapprovals", "approval",
                                   "zoneapps: consulting"]),
     ("Reconcile",               ["zonereconcile", "zreconcile", "reconcile"]),
-    # Payments: AP Payments, ZonePayments, ZonePay AP — but NOT ZonePay/ZonePayroll (caught above)
-    # Check "ap payment" and "zonepayment" explicitly before generic "payment"
-    ("Payments",                ["ap payment", "zonepayments", "zone payments",
-                                  "zpayment", "zap:", "ap pay"]),
-    # Generic "payment" fallback — only if payroll keywords didn't match
+    # Generic payment/payroll fallbacks — order matters
     ("Payments",                ["payment"]),
+    ("Payroll",                 ["zonepay", "payroll"]),
     ("PSP",                     ["psp"]),
     ("SFTP",                    ["sftp"]),
     ("CC",                      ["cc statement", "credit card"]),

@@ -245,6 +245,26 @@ else:
         def _ms(col):
             v = row.get(col)
             return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
+        def _rag_emoji(val):
+            v = str(val or "").strip().lower()
+            if v == "red":    return "🔴"
+            if v == "yellow": return "🟡"
+            if v == "green":  return "🟢"
+            return "—"
+
+        def _engagement_flag(row):
+            flags = []
+            _days  = int(row.get("days_inactive", -1) or -1)
+            _leg   = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
+            _no_i  = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
+            if not _leg and _no_i:
+                flags.append("📧 No intro")
+            if _days >= 30:
+                flags.append(f"⏰ {_days}d inactive")
+            elif _days >= 14:
+                flags.append(f"👀 {_days}d inactive")
+            return " · ".join(flags) if flags else "✓"
+
         def _dt(col):
             v = row.get(col)
             return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
@@ -279,6 +299,8 @@ else:
             "Scope Hrs":            _scope,
             "Hours to Date":        _htd,
             "Balance":              _bal,
+            "RAG":                  _rag_emoji(row.get("rag")),
+            "Engagement":           _engagement_flag(row),
             "Intro Email Sent":     _ms("ms_intro_email"),
             "Config Start":         _ms("ms_config_start"),
             "Enablement Session":   _ms("ms_enablement"),
@@ -367,20 +389,7 @@ else:
     _inactive_projs = active[active["days_inactive"].fillna(0)>=14].sort_values("days_inactive", ascending=False)
     if not _inactive_projs.empty:
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.markdown('<div class="section-label">Re-engagement shortcuts</div>', unsafe_allow_html=True)
-        for _ri,(_,row) in enumerate(_inactive_projs.iterrows()):
-            pn        = str(row.get("project_name","—"))
-            days_inac = int(row.get("days_inactive",0))
-            tier      = suggest_tier(days_inac) if days_inac>=14 else None
-            if tier and tier in TEMPLATES:
-                _rc1,_rc2,_rc3 = st.columns([3,1,1])
-                with _rc1:
-                    st.markdown(f'<span style="font-size:13px">{pn}</span> <span style="font-size:11px;opacity:.6">{days_inac}d inactive · {tier}</span>', unsafe_allow_html=True)
-                with _rc3:
-                    if st.button("Draft outreach →", key=f"mp_re_{_ri}", use_container_width=True):
-                        st.session_state["_jump_to_proj"] = pn
-                        st.session_state["_jump_tier"]    = tier
-                        st.switch_page("pages/2_Customer_Reengagement.py")
+        st.caption(f"{len(_inactive_projs)} project(s) need engagement — see Engagement column above or visit Customer Engagement page.")
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
@@ -396,7 +405,8 @@ else:
         _oh_row = {
             "Project":      str(r.get("project_name", "")),
             "Phase":        str(r.get("phase", "—")),
-            "RAG":          str(r.get("rag", "") or "—").strip(),
+            "RAG":          _rag_emoji(r.get("rag")),
+            "Engagement":   _engagement_flag(r),
             "Go Live":      pd.Timestamp(r["go_live_date"]).strftime("%-d %b %Y") if pd.notna(r.get("go_live_date")) else "—",
             "Days Inactive": int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
         }

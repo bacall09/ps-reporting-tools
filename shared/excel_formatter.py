@@ -63,7 +63,7 @@ def format_data_sheet(ws, title_text):
     for c in range(2, max_col + 1):
         ws.cell(row=1, column=c).fill = _fill(NAVY)
 
-    # ── Header row 2 — blue ───────────────────────────────────────────────────
+    # ── Header row 2 (original row 1 shifted down by insert) ────────────────
     header_values = []
     if max_row >= 2:
         for cell in ws[2]:
@@ -73,36 +73,42 @@ def format_data_sheet(ws, title_text):
             cell.alignment = _center()
         ws.row_dimensions[2].height = 18
 
-    # ── Autofilter on header row ──────────────────────────────────────────────
+    # ── Autofilter on row 2 (header row) ─────────────────────────────────────
     if max_row >= 2 and max_col >= 1:
-        ws.auto_filter.ref = f"A2:{get_column_letter(max_col)}2"
+        ws.auto_filter.ref = f"A2:{get_column_letter(max_col)}{max_row}"
 
-    # ── Freeze panes below header ─────────────────────────────────────────────
+    # ── Freeze panes: rows 1+2 (title + header) ──────────────────────────────
     ws.freeze_panes = "A3"
 
-    # ── Identify month columns for USD formatting ─────────────────────────────
+    # ── Identify month/value columns for USD formatting ───────────────────────
     month_col_indices = set()
     for i, hdr in enumerate(header_values):
         if _is_month_col(hdr) or hdr in ("Rev Amount", "Total Carve",
                                           "YTD", "QTD", "MTD", "Full Month"):
             month_col_indices.add(i + 1)  # 1-indexed
 
-    # ── Data rows — alternating, Arial 10pt ──────────────────────────────────
+    # ── Data rows start at row 3 ──────────────────────────────────────────────
     for r_idx, row in enumerate(ws.iter_rows(min_row=3, max_row=max_row)):
         bg = _fill(LGREY) if r_idx % 2 == 1 else _fill(WHITE)
         for cell in row:
             cell.font  = Font(name="Arial", size=10)
             cell.fill  = bg
             cell.alignment = _left()
-            # USD number format on month/value columns
-            if cell.column in month_col_indices:
-                if cell.value is not None:
-                    try:
-                        cell.value = float(cell.value)
-                        cell.number_format = '$#,##0.00_);($#,##0.00)'
-                        cell.alignment = _center()
-                    except (ValueError, TypeError):
-                        pass
+            # USD accounting format on month/value columns
+            if cell.column in month_col_indices and cell.value is not None:
+                # Strip currency symbols/commas if value is a string from xlsxwriter
+                raw = cell.value
+                if isinstance(raw, str):
+                    raw = raw.replace("$", "").replace(",", "").strip()
+                    if raw in ("", "—", "-", "0"):
+                        cell.value = 0.0
+                    else:
+                        try: raw = float(raw)
+                        except ValueError: raw = None
+                if isinstance(raw, (int, float)):
+                    cell.value = float(raw)
+                    cell.number_format = '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
+                    cell.alignment = _center()
 
     # ── Auto-width columns (capped at 45) ────────────────────────────────────
     for col in ws.columns:
@@ -270,8 +276,7 @@ def apply_zone_formatting(excel_bytes: bytes, metrics: dict,
             continue
         ws = wb[sheet_name]
         # Insert two blank rows at top for title banner + header
-        ws.insert_rows(1)
-        ws.insert_rows(1)
+        ws.insert_rows(1)   # one row for title banner; original row 1 (headers) → row 2
         format_data_sheet(ws, sheet_name)
 
     out = io.BytesIO()
