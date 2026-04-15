@@ -11,7 +11,7 @@ from shared.activity_log import (
     log_activity, get_log_df, clear_log, log_count,
     to_ns_export, ACTIVITY_TYPE_LIST, ACTIVITY_TYPES, NS_HOUR_INCREMENTS
 )
-from shared.config import EMPLOYEE_ROLES
+from shared.constants import EMPLOYEE_ROLES
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 _session_name = st.session_state.get("consultant_name", "")
