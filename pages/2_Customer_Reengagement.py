@@ -180,8 +180,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
+def _get_browse():
+    """Return effective view-as: passthrough from My Projects takes priority."""
+    return (st.session_state.get("_browse_passthrough") or
+            st.session_state.get("home_browse", "— My own view —") or
+            "— My own view —")
+
 def _title_suffix_from_browse():
-    b = st.session_state.get("home_browse", "— My own view —") or ""
+    b = _get_browse()
     if b.startswith("── ") and b.endswith(" ──"):
         return f" — {b[3:-3].strip()} Team"
     if b and b not in ("— My own view —", "— Select —", "👥 All team"):
@@ -837,7 +843,9 @@ def main():
     if _session_name and _session_name != "— Select —":
         from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
         from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE
-        _home_browse = st.session_state.get("home_browse", "— My own view —")
+        _home_browse = _get_browse()
+        # Consume passthrough after use so it doesn't persist across navigation
+        st.session_state.pop("_browse_passthrough", None)
         _va_name, _va_region, _is_group = resolve_view_as(
             _session_name, _home_browse, EMPLOYEE_ROLES,
             EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES
