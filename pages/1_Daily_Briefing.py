@@ -55,6 +55,16 @@ st.markdown("""
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+        .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.5;
+                         cursor:help; position:relative; }
+        .metric-help:hover::after {
+            content: attr(data-tip);
+            position:absolute; left:50%; transform:translateX(-50%);
+            bottom:calc(100% + 6px); background:#1E2C63; color:#fff;
+            font-size:11px; font-weight:400; padding:7px 11px; border-radius:6px;
+            white-space:normal; width:240px; z-index:9999; line-height:1.5;
+            box-shadow:0 2px 8px rgba(0,0,0,0.3);
+        }
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
         .badge-red   {background:rgba(192,57,43,0.15);color:#C0392B;}
         .badge-amber {background:rgba(243,156,18,0.15);color:#D68910;}
@@ -439,31 +449,31 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     with c1:
         v   = _fmt_hrs(avail)
         lbl = "Available this month" if avail else "Available hrs (location not mapped)"
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}<span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month<span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c3:
         if util_pct is not None:
             col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#C0392B")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c4:
         if overrun_pct is not None:
             col = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c5:
         if admin_pct is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c6:
         if _whs_score is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS &nbsp;·&nbsp; {_whs_label}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS &nbsp;·&nbsp; {_whs_label}<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">WHS</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">WHS<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
 
     # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
     if ff_unscoped > 0:
