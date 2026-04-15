@@ -1496,37 +1496,19 @@ def main():
     ss_file = None
     ns_file = None
 
-    if _session_loaded:
-        st.success(f"✓ Data loaded from Home page: {', '.join(_session_loaded)}. Expand below to upload overrides.")
-        with st.expander("Override uploaded data for this page", expanded=False):
-            st.caption("Upload here to override the Home page data for this session.")
-            ss_file = st.file_uploader("SS DRS Export", type=["xlsx","xls","csv"], key="ss_upload")
-            ns_file = st.file_uploader("NS Time Detail", type=["xlsx","xls","csv"], key="ns_upload")
-    else:
-        st.subheader("Step 1 — Upload Smartsheets DRS Export")
-        st.caption("Required columns: Project ID, Project Name, Project Phase, Project Type, Territory, Status")
-        ss_file = st.file_uploader(
-            "Drop your file here or click to browse",
-            type=["xlsx", "xls", "csv"],
-            key="ss_upload"
-        )
-        st.subheader("Step 2 — Upload NetSuite Time Detail Export")
-        st.caption("Used to compare time data with the current project list to identify project manager assignments and projects without time entries for the period.")
-        ns_file = st.file_uploader(
-            "Drop your file here or click to browse",
-            type=["xlsx", "xls", "csv"],
-            key="ns_upload"
-        )
+    if not _session_loaded:
+        st.info("Upload SS DRS and NS Time Detail on the Home page to generate the Workload Health Score.")
+        return
 
-    if not ss_file and _ss_from_session is None:
-        st.info("Upload your Smartsheets DRS export (or load it on the Home page) to continue.")
+    if _ss_from_session is None:
+        st.info("Upload SS DRS on the Home page to continue.")
         return
 
     # ── Process ───────────────────────────────────────────────────────────────
     milestone_cols = []
     try:
-        ss_df, milestone_cols = load_ss(ss_file) if ss_file else (_ss_from_session, [])
-        ns_df, ns_min_date = load_ns(ns_file) if ns_file else ((_ns_from_session, None) if _ns_from_session is not None else (None, None))
+        ss_df, milestone_cols = _ss_from_session, []
+        ns_df, ns_min_date = (_ns_from_session, None) if _ns_from_session is not None else (None, None)
 
         # ── Apply view_as filter (respects home_browse for managers) ──
         _session_name = st.session_state.get("consultant_name", "")

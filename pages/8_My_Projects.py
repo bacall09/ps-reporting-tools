@@ -269,7 +269,7 @@ def _to_edit_row(row):
 
     def _dt(col):
         v = row.get(col)
-        return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
+        return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
     _pn    = str(row.get("project_name","") or "")
     _cust  = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
     # Scope: FF → from DEFAULT_SCOPE table by project_type; T&M → total NS hours logged
@@ -289,8 +289,26 @@ def _to_edit_row(row):
         _scope = ""
     _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
     _bal = round(float(_scope) - float(_htd), 2) if _scope != "" and _htd != "" else ""
+    # Balance cell flag logic
+    _phase_raw = str(row.get("phase","") or "").strip().lower()
+    _closed_phases = {"08. ready for support transition","09. phase 2 scoping","closed","complete"}
+    _late_phases   = {"05. prep for go-live","06. go-live (hypercare)","07. hypercare","08. ready for support transition"}
+    _bal_flag = ""
+    if _bal != "" and _scope not in ("", 0):
+        _pct_remaining = float(_bal) / float(_scope) if float(_scope) != 0 else 0
+        if float(_bal) <= 0 and _phase_raw not in _closed_phases:
+            _bal_flag = "red"
+        elif _pct_remaining <= 0.10 and _phase_raw not in _late_phases and _phase_raw not in _closed_phases:
+            _bal_flag = "yellow"
+
+    # No RAG flag
+    _rag_val = _rag_emoji(row.get("rag"))
+    if _rag_val == "—":
+        _rag_val = "⚠️ No RAG"
+
     return {
         "Flags":                needs,
+        "RAG":                  _rag_val,
         "Customer":             _cust,
         "Consultant":           str(row.get("project_manager","") or ""),
         "Project Type":         str(row.get("project_type","") or ""),
@@ -301,7 +319,7 @@ def _to_edit_row(row):
         "Scope Hrs":            _scope,
         "Hours to Date":        _htd,
         "Balance":              _bal,
-        "RAG":                  _rag_emoji(row.get("rag")),
+        "_bal_flag":            _bal_flag,
         "Engagement":           _engagement_flag(row),
         "Intro Email Sent":     _ms("ms_intro_email"),
         "Config Start":         _ms("ms_config_start"),
@@ -329,6 +347,7 @@ _ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1",
             "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
 col_cfg = {
     "Flags":                 st.column_config.TextColumn("Flags",             disabled=True, width="small"),
+    "RAG":                   st.column_config.TextColumn("RAG",               disabled=True, width="small"),
     "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
     "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
     "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
@@ -339,8 +358,8 @@ col_cfg = {
     "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
     "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
     "Balance":               st.column_config.NumberColumn("Balance",           disabled=True, width="small"),
-    "RAG":                   st.column_config.TextColumn("RAG",                disabled=True, width="small"),
     "Engagement":            st.column_config.TextColumn("Engagement",         disabled=True, width="medium"),
+    "_bal_flag":             None,
     **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
 }
 
@@ -364,8 +383,21 @@ with _btn_col2:
             st.session_state["_browse_passthrough"] = view_as
         st.switch_page("pages/2_Customer_Reengagement.py")
 
+# Apply Balance cell background styling
+def _style_balance(df):
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    if "Balance" in df.columns and "_bal_flag" in df.columns:
+        for i, row in df.iterrows():
+            flag = str(row.get("_bal_flag",""))
+            if flag == "red":
+                styles.at[i, "Balance"] = "background-color:#FDECED;color:#C0392B;font-weight:600"
+            elif flag == "yellow":
+                styles.at[i, "Balance"] = "background-color:#FFF3CD;color:#B7770D;font-weight:600"
+    return styles
+
+_display_df = edit_df.drop(columns=["_bal_flag"], errors="ignore")
 edited = st.data_editor(
-    edit_df,
+    _display_df.style.apply(_style_balance, axis=None),
     column_config=col_cfg,
     use_container_width=True,
     hide_index=True,
@@ -417,11 +449,13 @@ else:
     for _, r in on_hold.iterrows():
         _oh_row = {
             "Project":      str(r.get("project_name", "")),
-            "Phase":        str(r.get("phase", "—")),
-            "RAG":          _rag_emoji(r.get("rag")),
-            "Engagement":   _engagement_flag(r),
-            "Go Live":      pd.Timestamp(r["go_live_date"]).strftime("%-d %b %Y") if pd.notna(r.get("go_live_date")) else "—",
-            "Days Inactive": int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
+            "Phase":          str(r.get("phase", "—")),
+            "RAG":            _rag_emoji(r.get("rag")) if _rag_emoji(r.get("rag")) != "—" else "⚠️ No RAG",
+            "Last Milestone": str(r.get("last_milestone","") or "—"),
+            "Days Inactive":  int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
+            "Inactivity Source": str(r.get("_inactivity_source","") or "—"),
+            "Engagement":     _engagement_flag(r),
+            "Go Live":        pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
         }
         if _va_region:
             _oh_row["Consultant"] = str(r.get("project_manager", "") or "")

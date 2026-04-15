@@ -430,7 +430,10 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         return f"{s}h"
 
     # Pre-calculate WHS so it sits in the same row
-    _whs_score, _whs_label, _whs_col = consultant_whs(selected, df_drs) if (df_drs is not None and not _is_group_view) else (None, "—", "#718096")
+    # WHS: use the viewed consultant name (view_as or logged-in)
+    _whs_name = view_name if (view_name and not _is_group_view) else selected
+    # Normalise "Last, First" to match project_manager format
+    _whs_score, _whs_label, _whs_col = consultant_whs(_whs_name, df_drs) if (df_drs is not None and not _is_group_view) else (None, "—", "#718096")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:

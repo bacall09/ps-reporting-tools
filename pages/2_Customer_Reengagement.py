@@ -1186,20 +1186,7 @@ Used when no NS entries and no milestones are present.
                 if _show[_sc].dtype == object:
                     _show[_sc] = _show[_sc].fillna("—").astype(str)
 
-            # Colour by tier
-            def _style_action(row):
-                t = row.get("Suggested Tier","")
-                if t == "Tier 4": bg, fg = "#e8d5ff","#4a235a"
-                elif t == "Tier 3": bg, fg = "#FDECED","#9C0006"
-                elif t == "Tier 2": bg, fg = "#FFEB9C","#9C6500"
-                elif t == "Tier 1": bg, fg = "#C6EFCE","#276221"
-                else: return [""] * len(row)
-                return [f"background-color:{bg};color:{fg}"] * len(row)
-
-            st.dataframe(
-                _show.style.apply(_style_action, axis=1),
-                hide_index=True, use_container_width=True
-            )
+            st.dataframe(_show, hide_index=True, use_container_width=True)
             st.caption(f"{len(_action_df)} project(s) requiring re-engagement · sorted by urgency")
 
             # Warn about escalated projects
