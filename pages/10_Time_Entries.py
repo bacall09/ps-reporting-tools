@@ -130,6 +130,10 @@ else:
     _edit_cols = ["date","project_id","project_name","activity_type","hours","memo","employee"]
     _display   = log_df[_edit_cols].copy()
 
+    # Ensure types are compatible with column config
+    _display["date"]  = pd.to_datetime(_display["date"], errors="coerce").dt.date
+    _display["hours"] = pd.to_numeric(_display["hours"], errors="coerce").fillna(0.25)
+
     _edited = st.data_editor(
         _display,
         column_config={
@@ -138,8 +142,9 @@ else:
             "project_name":  st.column_config.TextColumn("Project Name", width="medium"),
             "activity_type": st.column_config.SelectboxColumn(
                                  "Activity Type", options=ACTIVITY_TYPE_LIST, width="medium"),
-            "hours":         st.column_config.SelectboxColumn(
-                                 "Hours", options=NS_HOUR_INCREMENTS, width="small"),
+            "hours":         st.column_config.NumberColumn(
+                                 "Hours", min_value=0.25, max_value=24.0,
+                                 step=0.25, format="%.2f", width="small"),
             "memo":          st.column_config.TextColumn("NS Memo",      width="large"),
             "employee":      st.column_config.TextColumn("Employee",     disabled=True, width="medium"),
         },
