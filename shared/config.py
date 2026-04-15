@@ -2,7 +2,6 @@
 PS Tools — Shared Configuration
 Constants, lookup tables, and scope maps used across all reports.
 """
-import streamlit as st
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 NAVY     = "1e2c63"
