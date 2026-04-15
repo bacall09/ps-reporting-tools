@@ -1808,71 +1808,44 @@ def main():
 
         st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
-    # ── Upload — session state from Home takes priority ──────
+    # ── Load NS data from session (Home page upload) ─────────
     _ns_from_session = st.session_state.get("df_ns")
-    uploaded = None
 
-    # Show note about data scope
-    _logged_in = st.session_state.get("consultant_name", "")
-    from shared.constants import get_role as _gr
-    if _gr(_logged_in) in ("manager","manager_only","reporting_only"):
-        st.info("ℹ️ This report processes **all employees in the uploaded NS file**. "
-                "To see the full team, upload a full-team NS export (all employees, not filtered by name).")
-
-    if _ns_from_session is not None:
-        st.success("✓ NS Time Detail loaded from Home page. Expand below to upload a different file.")
-        with st.expander("Override NS Time Detail for this page", expanded=False):
-            st.markdown("[Open NS Time Details Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&saverun=T&whence=)")
-            st.caption("Supported columns: Employee, Region, Project, Project Type, Billing Type, "
-                       "Hours to Date, Date, Hours, Approval Status, Case/Task/Event, Non-Billable")
-            uploaded = st.file_uploader(
-                "Drop your file here or click to browse",
-                type=["csv", "xlsx", "xls"],
-                help="Supports CSV and Excel files exported from NetSuite",
-                key="util_ns_override"
-            )
-    else:
-        st.subheader("Step 1 — Upload NetSuite Time Detail Export")
-        st.markdown("[Open NS Time Details Report ↗](https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&saverun=T&whence=)")
-        st.caption("Supported columns: Employee, Region, Project, Project Type, Billing Type, "
-                   "Hours to Date, Date, Hours, Approval Status, Case/Task/Event, Non-Billable")
-        uploaded = st.file_uploader(
-            "Drop your file here or click to browse",
-            type=["csv", "xlsx", "xls"],
-            help="Supports CSV and Excel files exported from NetSuite"
-        )
-
-    if not uploaded and _ns_from_session is None:
-        # Show stored config as reference
-        with st.expander(" View stored scope map & available hours"):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**Fixed Fee Scope Hours**")
-                scope_df = pd.DataFrame(list(DEFAULT_SCOPE.items()), columns=["Project Type","Scoped Hrs"])
-                st.dataframe(scope_df, hide_index=True, use_container_width=True)
-            with c2:
-                st.markdown("**Available Hours by Region (2026)**")
-                avail_df = pd.DataFrame([
-                    {"Region": r, **months} for r, months in AVAIL_HOURS.items()
-                ])
-                st.dataframe(avail_df, hide_index=True, use_container_width=True)
-                st.info(" Upload your NetSuite export here, or load it on the Home page first.")
+    if _ns_from_session is None:
+        st.info("Upload NS Time Detail on the Home page to generate the Utilization Report.")
         return
 
-    # Load file — local upload overrides session state
-    if uploaded:
-        try:
-            ext = os.path.splitext(uploaded.name)[1].lower()
-            df_raw = pd.read_excel(uploaded) if ext in (".xlsx",".xls") else \
-                     pd.read_csv(uploaded, encoding="utf-8") if True else \
-                     pd.read_csv(uploaded, encoding="latin-1")
-        except Exception:
-            try:
-                df_raw = pd.read_csv(uploaded, encoding="latin-1")
-            except Exception as e:
-                st.error(f"Could not read file: {e}"); return
-    else:
-        df_raw = _ns_from_session
+    df_raw = _ns_from_session.copy()
+
+    # ── Apply View As filter ──────────────────────────────────
+    _logged_in = st.session_state.get("consultant_name", "")
+    from shared.constants import get_role as _gr, resolve_view_as, get_region_consultants
+    from shared.config import EMPLOYEE_LOCATION as _EL_u, PS_REGION_MAP as _RM_u, PS_REGION_OVERRIDE as _RO_u
+    from shared.constants import ACTIVE_EMPLOYEES as _AE_u
+    _home_browse_u = (st.session_state.get("_browse_passthrough") or
+                      st.session_state.get("home_browse", "— My own view —"))
+    _va_name_u, _va_region_u, _is_group_u = resolve_view_as(
+        _logged_in, _home_browse_u, EMPLOYEE_ROLES, _EL_u, _RM_u, _RO_u, _AE_u
+    )
+    _role_u = _gr(_logged_in)
+    _is_mgr_u = _role_u in ("manager", "manager_only", "reporting_only")
+
+    if "employee" in df_raw.columns:
+        if _va_region_u:
+            _rc_u = get_region_consultants(_va_region_u, _EL_u, _RM_u, _RO_u, _AE_u)
+            _filtered_u = df_raw[df_raw["employee"].astype(str).str.strip().str.lower().isin(_rc_u)]
+            if not _filtered_u.empty:
+                df_raw = _filtered_u
+        elif _va_name_u and not _is_mgr_u:
+            from shared.utils import name_matches
+            _filtered_u = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _va_name_u))]
+            if not _filtered_u.empty:
+                df_raw = _filtered_u
+        elif not _is_mgr_u and _logged_in:
+            from shared.utils import name_matches
+            _filtered_u = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _logged_in))]
+            if not _filtered_u.empty:
+                df_raw = _filtered_u
 
     st.divider()
 

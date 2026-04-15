@@ -339,6 +339,8 @@ col_cfg = {
     "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
     "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
     "Balance":               st.column_config.NumberColumn("Balance",           disabled=True, width="small"),
+    "RAG":                   st.column_config.TextColumn("RAG",                disabled=True, width="small"),
+    "Engagement":            st.column_config.TextColumn("Engagement",         disabled=True, width="medium"),
     **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
 }
 
