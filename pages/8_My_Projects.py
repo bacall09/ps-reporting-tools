@@ -239,6 +239,26 @@ else:
                         pass
 
     # ── Build editable dataframe ──────────────────────────────────────────────
+def _rag_emoji(val):
+    v = str(val or "").strip().lower()
+    if v == "red":    return "🔴"
+    if v == "yellow": return "🟡"
+    if v == "green":  return "🟢"
+    return "—"
+
+def _engagement_flag(row):
+    flags = []
+    _days = int(row.get("days_inactive", -1) or -1)
+    _leg  = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
+    _no_i = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
+    if not _leg and _no_i:
+        flags.append("📧 No intro")
+    if _days >= 30:
+        flags.append(f"⏰ {_days}d inactive")
+    elif _days >= 14:
+        flags.append(f"👀 {_days}d inactive")
+    return " · ".join(flags) if flags else "✓"
+
     def _to_edit_row(row):
         fl    = row.get("_flags",[]) or []
         needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
@@ -379,26 +399,6 @@ else:
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-def _rag_emoji(val):
-    v = str(val or "").strip().lower()
-    if v == "red":    return "🔴"
-    if v == "yellow": return "🟡"
-    if v == "green":  return "🟢"
-    return "—"
-
-def _engagement_flag(row):
-    flags = []
-    _days = int(row.get("days_inactive", -1) or -1)
-    _leg  = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
-    _no_i = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
-    if not _leg and _no_i:
-        flags.append("📧 No intro")
-    if _days >= 30:
-        flags.append(f"⏰ {_days}d inactive")
-    elif _days >= 14:
-        flags.append(f"👀 {_days}d inactive")
-    return " · ".join(flags) if flags else "✓"
-
 # SECTION 4 — On Hold
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">On Hold</div>', unsafe_allow_html=True)
