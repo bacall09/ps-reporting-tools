@@ -26,8 +26,8 @@ st.markdown("""
                padding: 28px 36px; border-radius: 10px; margin-bottom: 24px; }
     .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
                      letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
-    .te-stat { font-size: 28px; font-weight: 700; color: #1E2C63; }
-    .te-stat-lbl { font-size: 12px; opacity: 0.6; }
+    .te-stat { font-size: 28px; font-weight: 700; color: inherit; }
+    .te-stat-lbl { font-size: 12px; opacity: 0.6; margin-top: 2px; }
     .te-empty { text-align: center; padding: 48px; opacity: 0.4; font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
@@ -75,37 +75,61 @@ st.markdown('<hr style="margin:20px 0;opacity:0.15">', unsafe_allow_html=True)
 # ── Manual entry form ─────────────────────────────────────────────────────────
 st.markdown('<div class="section-label">Add Entry</div>', unsafe_allow_html=True)
 
+# Build project dropdown from DRS session data filtered to this consultant
+_df_drs_te = st.session_state.get("df_drs")
+_proj_options = {}  # {display_name: project_id}
+if _df_drs_te is not None and not _df_drs_te.empty:
+    from shared.constants import name_matches
+    _my_drs = _df_drs_te[_df_drs_te["project_manager"].apply(
+        lambda v: name_matches(v, _session_name)
+    )] if "project_manager" in _df_drs_te.columns else _df_drs_te
+    if not _my_drs.empty and "project_name" in _my_drs.columns:
+        for _, _pr in _my_drs.iterrows():
+            _pname = str(_pr.get("project_name","") or "").strip()
+            _pid   = str(_pr.get("project_id","") or "").strip()
+            if _pname and _pname not in ("nan","None"):
+                _proj_options[_pname] = _pid
+
+_proj_names = sorted(_proj_options.keys())
+
 with st.form("te_add_form", clear_on_submit=True):
     fc1, fc2, fc3 = st.columns([2, 2, 1])
     with fc1:
-        _f_proj_id   = st.text_input("Project ID *", placeholder="e.g. 157425")
-        _f_proj_name = st.text_input("Project Name", placeholder="e.g. Acme Corp - ZCapture")
+        if _proj_names:
+            _f_proj_name = st.selectbox("Project *", ["— Select project —"] + _proj_names)
+            _f_proj_id   = _proj_options.get(_f_proj_name, "") if _f_proj_name != "— Select project —" else ""
+            st.caption(f"Project ID: {_f_proj_id}" if _f_proj_id else "Project ID: —")
+        else:
+            _f_proj_name = st.text_input("Project Name *", placeholder="e.g. Acme Corp - ZCapture")
+            _f_proj_id   = st.text_input("Project ID *", placeholder="e.g. 157425")
     with fc2:
         _f_activity = st.selectbox("Activity Type *", ACTIVITY_TYPE_LIST)
         _f_date     = st.date_input("Date", value=date.today())
     with fc3:
-        _f_hrs  = st.selectbox("Hours *", NS_HOUR_INCREMENTS,
-                               index=NS_HOUR_INCREMENTS.index(
-                                   ACTIVITY_TYPES.get(_f_activity, {}).get("default_hrs", 0.25)
-                               ))
-        _f_emp  = st.text_input("Employee", value=_session_name, disabled=True)
+        _f_hrs = st.number_input("Hours *", min_value=0.25, max_value=24.0,
+                                  value=ACTIVITY_TYPES.get(_f_activity, {}).get("default_hrs", 0.25),
+                                  step=0.25, format="%.2f")
+        _f_emp = st.text_input("Employee", value=_session_name, disabled=True)
 
     _f_notes = st.text_input("Notes (optional)", placeholder="Additional context for this entry")
 
     _submitted = st.form_submit_button("＋ Add Entry", type="primary", use_container_width=True)
     if _submitted:
-        if not _f_proj_id.strip():
-            st.error("Project ID is required.")
+        _proj_id_val   = _f_proj_id.strip() if isinstance(_f_proj_id, str) else str(_f_proj_id)
+        _proj_name_val = _f_proj_name if _f_proj_name != "— Select project —" else ""
+        if not _proj_id_val and not _proj_name_val:
+            st.error("Please select a project.")
+        elif not _proj_id_val:
+            st.error("Project ID could not be resolved — check DRS data is loaded on Home page.")
         else:
             log_activity(
-                project_id    = _f_proj_id.strip(),
-                project_name  = _f_proj_name.strip(),
+                project_id    = _proj_id_val,
+                project_name  = _proj_name_val,
                 activity_type = _f_activity,
                 employee      = _session_name,
                 notes         = _f_notes.strip(),
                 entry_date    = _f_date,
             )
-            # Override default hours with user selection
             _log = st.session_state.get("activity_log", [])
             if _log:
                 _log[-1]["hours"] = _f_hrs
