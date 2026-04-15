@@ -61,9 +61,10 @@ st.markdown("""
             content: attr(data-tip);
             position:absolute; left:50%; transform:translateX(-50%);
             top:calc(100% + 8px); background:#0E223D; color:#fff;
-            font-size:12px; font-weight:400; padding:10px 14px; border-radius:8px;
-            white-space:normal; width:280px; z-index:99999; line-height:1.6;
-            box-shadow:0 4px 16px rgba(0,0,0,0.45);
+            font-size:12.5px; font-weight:500; padding:11px 15px; border-radius:8px;
+            white-space:normal; width:280px; z-index:99999; line-height:1.65;
+            box-shadow:0 4px 20px rgba(0,0,0,0.6); opacity:1 !important;
+            letter-spacing:0.1px;
             pointer-events:none;
         }
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
