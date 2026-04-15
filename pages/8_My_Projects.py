@@ -259,141 +259,141 @@ def _engagement_flag(row):
         flags.append(f"👀 {_days}d inactive")
     return " · ".join(flags) if flags else "✓"
 
-    def _to_edit_row(row):
-        fl    = row.get("_flags",[]) or []
-        needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
-        def _ms(col):
-            v = row.get(col)
-            return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
+def _to_edit_row(row):
+    fl    = row.get("_flags",[]) or []
+    needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
+    def _ms(col):
+        v = row.get(col)
+        return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
 
 
-        def _dt(col):
-            v = row.get(col)
-            return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
-        _pn    = str(row.get("project_name","") or "")
-        _cust  = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
-        # Scope: FF → from DEFAULT_SCOPE table by project_type; T&M → total NS hours logged
-        _ptype_raw = str(row.get("project_type", "") or "")
-        _bill_raw  = str(row.get("billing_type", "") or "").strip().lower()
-        _pid_key   = _clean_pid(row.get("project_id", ""))
-        _is_tm     = ("t&m" in _bill_raw or "time" in _bill_raw
-                      or _pid_key in _ns_tm_pids)  # confirmed T&M from NS
-        _ff_scope  = get_ff_scope(_ptype_raw)
-        if _is_tm:
-            # T&M scope from NS Time Detail "T&M Scope" column (max per project_id)
-            # Falls back to hours sum if column not present in export
-            _scope = round(_ns_tm_hrs.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_tm_hrs else ""
-        elif _ff_scope is not None:
-            _scope = float(_ff_scope)
-        else:
-            _scope = ""
-        _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
-        _bal = round(float(_scope) - float(_htd), 2) if _scope != "" and _htd != "" else ""
-        return {
-            "Flags":                needs,
-            "Customer":             _cust,
-            "Consultant":           str(row.get("project_manager","") or ""),
-            "Project Type":         str(row.get("project_type","") or ""),
-            "Status":               str(row.get("status","") or ""),
-            "Phase":                str(row.get("phase","") or ""),
-            "Start Date":           _dt("start_date"),
-            "Est. Go-Live":         _dt("go_live_date"),
-            "Scope Hrs":            _scope,
-            "Hours to Date":        _htd,
-            "Balance":              _bal,
-            "RAG":                  _rag_emoji(row.get("rag")),
-            "Engagement":           _engagement_flag(row),
-            "Intro Email Sent":     _ms("ms_intro_email"),
-            "Config Start":         _ms("ms_config_start"),
-            "Enablement Session":   _ms("ms_enablement"),
-            "Session #1":           _ms("ms_session1"),
-            "Session #2":           _ms("ms_session2"),
-            "UAT Signoff":          _ms("ms_uat_signoff"),
-            "Prod Cutover":         _ms("ms_prod_cutover"),
-            "Hypercare Start":      _ms("ms_hypercare_start"),
-            "Close Out Tasks":      _ms("ms_close_out"),
-            "Transition to Support":_ms("ms_transition"),
-        }
-
-    try:
-        edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
-    except Exception as _e:
-        st.error(f"Table build error: {_e}")
-        st.stop()
-    # Hide Consultant column for single-person views
-    if not _va_region:
-        edit_df = edit_df.drop(columns=["Consultant"], errors="ignore")
-
-    # ── Column config ─────────────────────────────────────────────────────────
-    _ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2",
-                "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
-    col_cfg = {
-        "Flags":                 st.column_config.TextColumn("Flags",             disabled=True, width="small"),
-        "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
-        "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
-        "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
-        "Status":                st.column_config.TextColumn("Status",            disabled=True),
-        "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
-        "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
-        "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
-        "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
-        "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
-        "Balance":               st.column_config.NumberColumn("Balance",           disabled=True, width="small"),
-        **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
+    def _dt(col):
+        v = row.get(col)
+        return pd.Timestamp(v).strftime("%-d %b %Y") if pd.notna(v) else ""
+    _pn    = str(row.get("project_name","") or "")
+    _cust  = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
+    # Scope: FF → from DEFAULT_SCOPE table by project_type; T&M → total NS hours logged
+    _ptype_raw = str(row.get("project_type", "") or "")
+    _bill_raw  = str(row.get("billing_type", "") or "").strip().lower()
+    _pid_key   = _clean_pid(row.get("project_id", ""))
+    _is_tm     = ("t&m" in _bill_raw or "time" in _bill_raw
+                  or _pid_key in _ns_tm_pids)  # confirmed T&M from NS
+    _ff_scope  = get_ff_scope(_ptype_raw)
+    if _is_tm:
+        # T&M scope from NS Time Detail "T&M Scope" column (max per project_id)
+        # Falls back to hours sum if column not present in export
+        _scope = round(_ns_tm_hrs.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_tm_hrs else ""
+    elif _ff_scope is not None:
+        _scope = float(_ff_scope)
+    else:
+        _scope = ""
+    _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
+    _bal = round(float(_scope) - float(_htd), 2) if _scope != "" and _htd != "" else ""
+    return {
+        "Flags":                needs,
+        "Customer":             _cust,
+        "Consultant":           str(row.get("project_manager","") or ""),
+        "Project Type":         str(row.get("project_type","") or ""),
+        "Status":               str(row.get("status","") or ""),
+        "Phase":                str(row.get("phase","") or ""),
+        "Start Date":           _dt("start_date"),
+        "Est. Go-Live":         _dt("go_live_date"),
+        "Scope Hrs":            _scope,
+        "Hours to Date":        _htd,
+        "Balance":              _bal,
+        "RAG":                  _rag_emoji(row.get("rag")),
+        "Engagement":           _engagement_flag(row),
+        "Intro Email Sent":     _ms("ms_intro_email"),
+        "Config Start":         _ms("ms_config_start"),
+        "Enablement Session":   _ms("ms_enablement"),
+        "Session #1":           _ms("ms_session1"),
+        "Session #2":           _ms("ms_session2"),
+        "UAT Signoff":          _ms("ms_uat_signoff"),
+        "Prod Cutover":         _ms("ms_prod_cutover"),
+        "Hypercare Start":      _ms("ms_hypercare_start"),
+        "Close Out Tasks":      _ms("ms_close_out"),
+        "Transition to Support":_ms("ms_transition"),
     }
 
-    st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
-    st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
-    _btn_col1, _btn_col2 = st.columns([1, 1])
-    with _btn_col1:
-        if st.button("→ Go to DRS Health Check", key="mp_drs_link", use_container_width=True):
-            if _va_region:
-                st.session_state["_va_passthrough"] = f"── {_va_region} ──"
-            elif view_as and view_as != selected:
-                st.session_state["_va_passthrough"] = view_as
-            st.switch_page("pages/6_DRS_Health_Check.py")
-    with _btn_col2:
-        if st.button("→ Draft Outreach", key="mp_engagement_link", use_container_width=True):
-            st.switch_page("pages/2_Customer_Reengagement.py")
+try:
+    edit_df = pd.DataFrame([_to_edit_row(r) for _,r in active.iterrows()])
+except Exception as _e:
+    st.error(f"Table build error: {_e}")
+    st.stop()
+# Hide Consultant column for single-person views
+if not _va_region:
+    edit_df = edit_df.drop(columns=["Consultant"], errors="ignore")
 
-    edited = st.data_editor(
-        edit_df,
-        column_config=col_cfg,
+# ── Column config ─────────────────────────────────────────────────────────
+_ms_cols = ["Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2",
+            "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
+col_cfg = {
+    "Flags":                 st.column_config.TextColumn("Flags",             disabled=True, width="small"),
+    "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
+    "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
+    "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
+    "Status":                st.column_config.TextColumn("Status",            disabled=True),
+    "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
+    "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
+    "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
+    "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
+    "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
+    "Balance":               st.column_config.NumberColumn("Balance",           disabled=True, width="small"),
+    **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
+}
+
+st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
+st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
+_btn_col1, _btn_col2 = st.columns([1, 1])
+with _btn_col1:
+    if st.button("→ Go to DRS Health Check", key="mp_drs_link", use_container_width=True):
+        if _va_region:
+            st.session_state["_va_passthrough"] = f"── {_va_region} ──"
+        elif view_as and view_as != selected:
+            st.session_state["_va_passthrough"] = view_as
+        st.switch_page("pages/6_DRS_Health_Check.py")
+with _btn_col2:
+    if st.button("→ Draft Outreach", key="mp_engagement_link", use_container_width=True):
+        st.switch_page("pages/2_Customer_Reengagement.py")
+
+edited = st.data_editor(
+    edit_df,
+    column_config=col_cfg,
+    use_container_width=True,
+    hide_index=True,
+    num_rows="fixed",
+    key="mp_edit_table",
+)
+
+# ── Detect changes vs original ────────────────────────────────────────────
+editable_cols = ["Phase","Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2","UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
+changed = edited[editable_cols].fillna("").ne(edit_df[editable_cols].fillna("")).any(axis=1)
+changed_df = edited[changed].copy() if changed.any() else pd.DataFrame()
+
+# ── Export bar ────────────────────────────────────────────────────────────
+ex1, ex2 = st.columns([3,1])
+with ex1:
+    if changed.any():
+        st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {changed.sum()} project(s) edited — ready to export</span>', unsafe_allow_html=True)
+    else:
+        st.markdown('<span style="font-size:12px;opacity:.5">No edits yet — edit cells above then export</span>', unsafe_allow_html=True)
+with ex2:
+    _export_df = changed_df if not changed_df.empty else edited
+    _buf = io.BytesIO()
+    _export_df.to_csv(_buf, index=False)
+    st.download_button(
+        label="⬇ Export to CSV" if not changed_df.empty else "⬇ Export all",
+        data=_buf.getvalue(),
+        file_name=f"drs_updates_{date.today().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+        type="primary" if not changed_df.empty else "secondary",
         use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key="mp_edit_table",
     )
 
-    # ── Detect changes vs original ────────────────────────────────────────────
-    editable_cols = ["Phase","Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2","UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
-    changed = edited[editable_cols].fillna("").ne(edit_df[editable_cols].fillna("")).any(axis=1)
-    changed_df = edited[changed].copy() if changed.any() else pd.DataFrame()
-
-    # ── Export bar ────────────────────────────────────────────────────────────
-    ex1, ex2 = st.columns([3,1])
-    with ex1:
-        if changed.any():
-            st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {changed.sum()} project(s) edited — ready to export</span>', unsafe_allow_html=True)
-        else:
-            st.markdown('<span style="font-size:12px;opacity:.5">No edits yet — edit cells above then export</span>', unsafe_allow_html=True)
-    with ex2:
-        _export_df = changed_df if not changed_df.empty else edited
-        _buf = io.BytesIO()
-        _export_df.to_csv(_buf, index=False)
-        st.download_button(
-            label="⬇ Export to CSV" if not changed_df.empty else "⬇ Export all",
-            data=_buf.getvalue(),
-            file_name=f"drs_updates_{date.today().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-            type="primary" if not changed_df.empty else "secondary",
-            use_container_width=True,
-        )
-
-    # ── Re-engagement shortcuts for inactive projects ─────────────────────────
-    _inactive_projs = active[active["days_inactive"].fillna(0)>=14].sort_values("days_inactive", ascending=False)
-    if not _inactive_projs.empty:
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+# ── Re-engagement shortcuts for inactive projects ─────────────────────────
+_inactive_projs = active[active["days_inactive"].fillna(0)>=14].sort_values("days_inactive", ascending=False)
+if not _inactive_projs.empty:
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
