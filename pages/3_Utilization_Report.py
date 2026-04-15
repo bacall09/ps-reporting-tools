@@ -1831,7 +1831,7 @@ def main():
     _is_mgr_u = _role_u in ("manager", "manager_only", "reporting_only")
 
     if "employee" in df_raw.columns:
-        from shared.utils import name_matches
+        from shared.constants import name_matches
         if _va_region_u:
             # Region view — filter to all consultants in that region
             _rc_u = get_region_consultants(_va_region_u, _EL_u, _RM_u, _RO_u, _AE_u)
