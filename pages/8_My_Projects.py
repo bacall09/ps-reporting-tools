@@ -252,11 +252,11 @@ def _engagement_flag(row):
     _leg  = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
     _no_i = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
     if not _leg and _no_i:
-        flags.append("📧 No intro")
+        flags.append("No intro")
     if _days >= 30:
-        flags.append(f"⏰ {_days}d inactive")
+        flags.append(f"{_days}d inactive")
     elif _days >= 14:
-        flags.append(f"👀 {_days}d inactive")
+        flags.append(f"{_days}d inactive")
     return " · ".join(flags) if flags else "✓"
 
 def _to_edit_row(row):
