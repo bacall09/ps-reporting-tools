@@ -205,14 +205,16 @@ def consultant_whs(name, ss_df):
     Return (score, label, colour) for a single consultant given a DRS DataFrame.
     Convenience wrapper for Daily Briefing metric card.
     """
-    if ss_df is None or ss_df.empty:
+    if ss_df is None or ss_df.empty or not name:
         return None, "—", "#718096"
     try:
+        from shared.constants import name_matches
         scored   = score_projects(ss_df)
         summary, _ = build_consultant_summary(scored, ss_df)
-        row = summary[summary["project_manager"].astype(str).str.strip() == name.strip()]
+        # Use fuzzy name matching consistent with the rest of the app
+        row = summary[summary["project_manager"].apply(lambda v: name_matches(v, name))]
         if row.empty:
-            return 0.0, "Low", GREEN
+            return None, "—", "#718096"
         score = float(row.iloc[0]["total_score"])
         label, colour = workload_level(score)
         return score, label, colour

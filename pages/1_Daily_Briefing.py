@@ -344,9 +344,11 @@ if not _active.empty:
     _mi       = _active[(~_leg_s) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
     _stale    = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False) if "days_inactive" in _active.columns else pd.DataFrame()
     _rag_red  = pd.DataFrame(); _rag_yellow = pd.DataFrame()
-    if "rag" in _active.columns:
-        _rv = _active["rag"].fillna("").astype(str).str.strip().str.lower()
-        _rag_red = _active[_rv == "red"]; _rag_yellow = _active[_rv == "yellow"]
+    # Include on-hold projects in RAG — a red on-hold is still a red
+    _all_proj = my_projects.copy() if not my_projects.empty else pd.DataFrame()
+    if "rag" in _all_proj.columns:
+        _rv = _all_proj["rag"].fillna("").astype(str).str.strip().str.lower()
+        _rag_red = _all_proj[_rv == "red"]; _rag_yellow = _all_proj[_rv == "yellow"]
 else:
     _gls = _ihc = _mi = _stale = _rag_red = _rag_yellow = pd.DataFrame()
 
@@ -787,7 +789,7 @@ else:
          if cnt > 0],
         key=lambda x: (_pidx_db(x[0]) if x[0] != "Unassigned" else 999)
     )
-    snap1, snap2, snap3, snap4, snap5, snap6, snap7 = st.columns(7)
+    snap1, snap2, snap3, snap4, snap5, snap6, snap7, snap8 = st.columns(8)
     with snap1:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
         for ph, cnt in _pc:
@@ -837,6 +839,15 @@ else:
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
         for _, _ry in _rag_yellow.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
+    with snap8:
+        _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+        _col = "#F39C12" if _oh_snap > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
+        if _oh_snap > 0:
+            _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
+            for _, _or in _oh_proj.head(3).iterrows():
+                _on = str(_or.get("project_name","")).split(" - ")[0][:24]
+                st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_on}</div>', unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")
