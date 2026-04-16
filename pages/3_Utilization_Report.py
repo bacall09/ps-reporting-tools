@@ -494,9 +494,20 @@ def assign_credits(df, scope_map):
 
         # Rule 3: Fixed Fee = capped at scope (longest match wins)
         _ptype_lower = ptype.strip().lower()
-        _matches = [(k, float(v)) for k, v in scope_map.items()
-                    if k.strip().lower() in _ptype_lower]
-        scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
+        # Premium projects: extract scope from project name (10 or 20)
+        import re as _re2
+        _proj_name_scope = str(row.get("project", row.get("project_name", "")) or "")
+        if "premium" in _ptype_lower and _proj_name_scope:
+            _prem_nums = _re2.findall(r"\b(10|20)\b", _proj_name_scope)
+            if _prem_nums:
+                scope_hrs = float(_prem_nums[0])
+            else:
+                _matches = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in _ptype_lower]
+                scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
+        else:
+            _matches = [(k, float(v)) for k, v in scope_map.items()
+                        if k.strip().lower() in _ptype_lower]
+            scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
 
         if scope_hrs is None:
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
@@ -1431,11 +1442,17 @@ def build_excel(df, scope_map, consumed):
     wl_df["hours_to_date"] = wl_df.apply(
         lambda r: (float(r["htd_start"]) if r["htd_start"] else 0.0), axis=1)
 
-    def get_scope(ptype):
-        _pm = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in str(ptype).strip().lower()]
+    def get_scope_wl(row):
+        import re as _re
+        ptype = str(row.get("project_type","") or "")
+        pname = str(row.get("project","") or "")
+        if "premium" in ptype.strip().lower() and pname:
+            _nums = _re.findall(r"\b(10|20)\b", pname)
+            if _nums: return float(_nums[0])
+        _pm = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in ptype.strip().lower()]
         return max(_pm, key=lambda x: len(x[0]))[1] if _pm else 0
 
-    wl_df["scope_h"]  = wl_df["project_type"].apply(get_scope)
+    wl_df["scope_h"] = wl_df.apply(get_scope_wl, axis=1)
     wl_df["burn_pct"] = wl_df.apply(
         lambda r: (float(r["htd_start"]) if r["htd_start"] else 0) / r["scope_h"] if r["scope_h"] > 0 else None, axis=1)
     def _wl_status(r):

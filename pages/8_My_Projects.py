@@ -322,7 +322,7 @@ def _to_edit_row(row):
     _pid_key   = _clean_pid(row.get("project_id", ""))
     _is_tm     = ("t&m" in _bill_raw or "time" in _bill_raw
                   or _pid_key in _ns_tm_pids)  # confirmed T&M from NS
-    _ff_scope  = get_ff_scope(_ptype_raw)
+    _ff_scope  = get_ff_scope(_ptype_raw, project_name=_pn)
     if _is_tm:
         # T&M scope from NS Time Detail "T&M Scope" column (max per project_id)
         # Falls back to hours sum if column not present in export

@@ -316,9 +316,15 @@ def _is_delivery_role(name):
     info = EMPLOYEE_ROLES.get(name, {})
     return info.get("role") not in ("Project Manager",)
 
-def _resolve_ff_scope(project_type):
-    """Return scoped hours for a FF project type."""
+def _resolve_ff_scope(project_type, project_name=""):
+    """Return scoped hours for a FF project type.
+    For Premium types, extracts hours from project name first."""
+    import re as _re
     pt = (project_type or "").strip().lower()
+    if "premium" in pt and project_name:
+        _nums = _re.findall(r"\b(10|20)\b", str(project_name))
+        if _nums:
+            return float(_nums[0])
     for key in sorted(FF_SCOPE_MAP.keys(), key=len, reverse=True):
         if key in pt:
             return FF_SCOPE_MAP[key]
