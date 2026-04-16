@@ -161,6 +161,36 @@ if not active.empty:
 else:
     for c in ["_flags","_ne","_nw","_needs"]: active[c]=None
 
+# ── On Hold flags ──────────────────────────────────────────────────────────────
+def _oh_flags(row):
+    out = []
+    days     = int(row.get("days_inactive", -1) or -1)
+    resp     = str(row.get("client_responsiveness","") or "").strip().lower()
+    sent     = str(row.get("client_sentiment","") or "").strip().lower()
+    reason   = str(row.get("on_hold_reason","") or "").strip()
+    delay_by = str(row.get("responsible_for_delay","") or "").strip()
+
+    # Missing mandatory on-hold fields
+    if not reason or reason in ("—","nan","None"):
+        out.append(("warn","on_hold_reason","On Hold Reason not set — required for all on-hold projects",True))
+    if not delay_by or delay_by in ("—","nan","None"):
+        out.append(("warn","responsible_for_delay","Responsible for Delay not set — required for all on-hold projects",True))
+
+    # Engagement/sentiment inconsistent with on-hold status
+    if days >= 14:
+        if resp in ("highly engaged","highly responsive","responsive"):
+            out.append(("warn","client_responsiveness",
+                f"Client Responsiveness '{row.get('client_responsiveness','')}' inconsistent with {days}d on hold",True))
+        if sent in ("positive",):
+            out.append(("warn","client_sentiment",
+                f"Client Sentiment 'Positive' inconsistent with {days}d on hold",True))
+    return out
+
+if not on_hold.empty:
+    on_hold["_flags"] = on_hold.apply(_oh_flags, axis=1)
+else:
+    on_hold["_flags"] = None
+
 # ── Header ────────────────────────────────────────────────────────────────────
 _dn = (_va_region + " Team" if _va_region
        else view_as.split(",")[1].strip()+" "+view_as.split(",")[0] if "," in view_as
@@ -526,7 +556,8 @@ else:
         _rag_v = _rag_emoji(r.get("rag"))
         _oh_row = {
             "RAG":                   _rag_v if _rag_v != "—" else "⚠️ No RAG",
-            "Flags":                 "⚠️" if r.get("_flags") else "",
+            "Flags":                 ("⚠️" if any(s=="error" for s,*_ in (r.get("_flags") or []))
+                                  else ("⚠️" if (r.get("_flags") or []) else "")),
             "Customer":              str(r.get("project_name","")).split(" - ")[0].strip() if " - " in str(r.get("project_name","")) else str(r.get("project_name","")),
             "Project Type":          str(r.get("project_type","") or "—"),
             "Start Date":            pd.Timestamp(r["start_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("start_date")) else "—",
