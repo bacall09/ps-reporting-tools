@@ -6,6 +6,8 @@ import streamlit as st
 import pandas as pd
 from datetime import date, datetime
 
+st.session_state["current_page"] = "Daily Briefing"
+
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
     MILESTONE_COLS_MAP, get_role, is_manager, LEAVER_EXIT_DATES,
@@ -416,23 +418,30 @@ if _p1 or _p2 or _p3:
     if len(_rag_red) > 0:
         _para_attn += f"{len(_rag_red)} project{'s are' if len(_rag_red)>1 else ' is'} on Red RAG ({_proj_list(_rag_red)}). "
     if len(_gls) > 0:
-        _para_attn += f"{'With' if _para_attn else ''} {_proj_list(_gls)} going live this week — confirm cutover readiness before the end of the day. "
-    if len(_ihc) > 0:
-        _para_attn += f"{_proj_list(_ihc)} {'are' if len(_ihc)>1 else 'is'} in week-one hypercare — a proactive check-in today would be timely."
-
-    _para_quick = ""
-    if len(_rag_yellow) > 0:
-        _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation. "
+        _para_attn += f"{'With' if _para_attn else ''} {_proj_list(_gls)} {'is' if len(_gls)==1 else 'are'} going live this week — confirm cutover readiness before the end of the day. "
+    if len(_mi) > 0:
+        _para_attn += f"{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email date — if already sent, logging them is a quick close. "
     if len(_stale) > 0:
         _stale_top  = _stale.iloc[0]
         _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0].strip()[:28]
         _stale_days = int(_stale_top.get("days_inactive",0))
         if len(_stale) == 1:
-            _para_quick += f"{_stale_name} hasn't had contact in {_stale_days} days — a short check-in would re-establish momentum. "
+            _para_attn += f"{_stale_name} hasn't had contact in {_stale_days} days — a short check-in would re-establish momentum."
         else:
-            _para_quick += f"{len(_stale)} projects are overdue for outreach, with {_stale_name} leading at {_stale_days} days inactive — use Customer Engagement to draft messages. "
-    if len(_mi) > 0:
-        _para_quick += f"{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email date. If the emails were sent, logging the dates is a quick close."
+            _para_attn += f"{len(_stale)} projects are overdue for outreach, with {_stale_name} leading at {_stale_days} days inactive — use Customer Engagement to draft messages."
+
+    _para_reminder = ""
+    if len(_gls) > 0 or len(_ihc) > 0:
+        _r_parts = []
+        if len(_gls) > 0:
+            _r_parts.append(f"{len(_gls)} customer{'s' if len(_gls)>1 else ''} going live this week")
+        if len(_ihc) > 0:
+            _r_parts.append(f"{len(_ihc)} in week-one hypercare")
+        _para_reminder = " and ".join(_r_parts) + " — a proactive check-in today would be timely."
+
+    _para_quick = ""
+    if len(_rag_yellow) > 0:
+        _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation."
 
     _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
     _para_house = ""
@@ -446,8 +455,18 @@ if _p1 or _p2 or _p3:
   </div>
   <div style='padding:18px 22px;display:flex;flex-direction:column;gap:14px'>"""
 
-    if _para_attn:
+    if _para_reminder:
         _bhtml += f"""<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:#27AE60;border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#27AE60;margin-bottom:5px'>Friendly reminder</div>
+  <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_reminder.strip()}</div>
+</div>
+  </div>"""
+
+    if _para_attn:
+        _sep_r = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if _para_reminder else ""
+        _bhtml += f"""{_sep_r}<div style='display:flex;gap:14px;align-items:flex-start'>
 <div style='flex-shrink:0;width:3px;background:#C0392B;border-radius:2px;align-self:stretch;min-height:36px'></div>
 <div>
   <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#C0392B;margin-bottom:5px'>Needs attention</div>
@@ -456,7 +475,7 @@ if _p1 or _p2 or _p3:
   </div>"""
 
     if _para_quick:
-        _sep = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if _para_attn else ""
+        _sep = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if (_para_attn or _para_reminder) else ""
         _bhtml += f"""{_sep}<div style='display:flex;gap:14px;align-items:flex-start'>
 <div style='flex-shrink:0;width:3px;background:#3B9EFF;border-radius:2px;align-self:stretch;min-height:36px'></div>
 <div>
@@ -561,9 +580,16 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
             _date  = str(_r.get("date", ""))[:10]
             if _hrs <= 0: continue
 
-            _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
-                   if k.strip().lower() in _ptype.lower()]
-            _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+            # Premium: check Time Item SKU column for IMPL10/IMPL20 first
+            import re as _re_db
+            _sku = str(_r.get("time_item_sku", "") or "")
+            if "premium" in _ptype.lower() and _sku:
+                _sku_nums = _re_db.findall(r"IMPL(\d+)", _sku.upper())
+                _sc = float(_sku_nums[0]) if _sku_nums else None
+            else:
+                _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                       if k.strip().lower() in _ptype.lower()]
+                _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
             if _sc is None:
                 ff_unscoped += _hrs
@@ -859,4 +885,4 @@ else:
 
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
-st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")
+st.caption("PS Projects & Tools · Internal use only · Data loaded this session only")

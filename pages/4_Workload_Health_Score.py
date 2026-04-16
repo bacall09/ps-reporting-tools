@@ -5,6 +5,8 @@ a weighted workload score per consultant across active FF projects.
 """
 import streamlit as st
 from shared.whs import (
+
+
     PHASE_WEIGHTS, INACTIVE_PHASES, WHS_LOW, WHS_MEDIUM,
     workload_level, client_health_multiplier, risk_multiplier,
     get_phase_weight, get_ps_region, score_projects, build_consultant_summary,
@@ -12,6 +14,8 @@ from shared.whs import (
 )
 import pandas as pd
 import io
+
+st.session_state["current_page"] = "Workload Health Score"
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1576,7 +1580,7 @@ def main():
         return f"<div style='font-size:14px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div><div style='font-size:36px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>{pill}"
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.markdown(metric_card("Consultants Scored",          f"{total:,}"),             unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("WHS Score",                   f"{total:,}"),             unsafe_allow_html=True)
     with m2: st.markdown(metric_card("Consultant High Workload",    f"{high}",    "At or over capacity",  "#C0392B"), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Consultant Medium Workload",  f"{medium}",  "Monitor for changes",  "#f39c12"), unsafe_allow_html=True)
     with m4: st.markdown(metric_card("Total FF Projects",           f"{total_projects:,}"),     unsafe_allow_html=True)

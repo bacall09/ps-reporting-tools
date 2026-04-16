@@ -3,6 +3,8 @@ PS Tools — Help & How-To Guide
 """
 import streamlit as st
 
+st.session_state["current_page"] = "Help"
+
 st.set_page_config(page_title="PS Tools · Help", layout="wide")
 
 st.markdown("""

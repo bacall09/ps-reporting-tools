@@ -8,6 +8,8 @@ import pandas as pd
 import io
 from datetime import date, timedelta
 
+st.session_state["current_page"] = "My Projects"
+
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
     MILESTONE_COLS_MAP, get_role, is_manager,
@@ -648,4 +650,4 @@ else:
             use_container_width=True,
         )
 
-st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:20px">PS Reporting Tools · Internal use only · Data loaded this session only</div>',unsafe_allow_html=True)
+st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:20px">PS Projects & Tools · Internal use only · Data loaded this session only</div>',unsafe_allow_html=True)

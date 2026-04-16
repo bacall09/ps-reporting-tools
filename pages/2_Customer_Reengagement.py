@@ -4,6 +4,8 @@ from datetime import date, datetime
 import re
 from rapidfuzz import fuzz
 from shared.constants import (
+
+
     EMPLOYEE_ROLES, ACTIVE_EMPLOYEES, PRODUCT_KEYWORDS,
     MILESTONE_COLS_MAP, SS_COL_MAP, NS_COL_MAP, SFDC_COL_MAP,
     name_matches,
@@ -131,6 +133,8 @@ ACTIVE_EMPLOYEES = [
     "Tuazon, Carol", "Zoric, Ivan",
 ]
 
+st.session_state["current_page"] = "Customer Engagement"
+
 # ── Styling ───────────────────────────────────────────────────────────────────
 st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
@@ -217,15 +221,15 @@ st.markdown(f"""
 
 # ── Phase Banner ─────────────────────────────────────────────────────────────
 st.markdown("""
-<div style='background:#F0F4FF;border-left:4px solid #1E2C63;border-radius:6px;
+<div style='background:var(--color-background-secondary, rgba(59,158,255,0.05));border-left:4px solid #3B9EFF;border-radius:6px;
             padding:16px 20px;margin:12px 0 20px;font-family:Manrope,sans-serif'>
     <div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-                color:#1E2C63;margin-bottom:10px'>Roadmap</div>
+                color:#3B9EFF;margin-bottom:10px'>Roadmap</div>
     <div style='display:flex;gap:32px;flex-wrap:wrap'>
         <div style='flex:1;min-width:240px'>
             <span style='background:#1E2C63;color:#fff;font-size:10px;font-weight:700;
                          padding:2px 8px;border-radius:10px;letter-spacing:1px'>PHASE 1 · NOW</span>
-            <p style='margin:8px 0 0;font-size:13px;color:#333;line-height:1.6'>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;line-height:1.6'>
                 Access project contact details for all DRS-assigned projects.
                 Templates for <strong>Customer Re-Engagement</strong> communications are pre-loaded
                 and auto-suggested based on days inactive.

@@ -7,6 +7,8 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 
+st.session_state["current_page"] = "DRS Health Check"
+
 from shared.loaders import load_drs
 from shared.constants import MILESTONE_COLS_MAP, name_matches
 
