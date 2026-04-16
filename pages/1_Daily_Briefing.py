@@ -55,19 +55,19 @@ st.markdown("""
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
-        div[data-testid="stButton"] > button {
-            font-size: 10px !important; padding: 1px 4px !important;
-            min-height: 24px !important; height: 24px !important;
-            opacity: 0.5; border-radius: 4px !important;
-            white-space: nowrap; overflow: hidden;
-            text-overflow: ellipsis; max-width: 100%;
+        .snap-nav div[data-testid="stButton"] > button,
+        .snap-nav div[data-testid="stButton"] > button:focus,
+        .snap-nav button[kind="secondary"] {
+            font-size: 11px !important;
+            padding: 0px 4px !important;
+            min-height: 22px !important;
+            line-height: 22px !important;
+            height: 22px !important;
+            opacity: 0.5 !important;
+            border-radius: 3px !important;
+            max-width: 100% !important;
         }
-        div[data-testid="stButton"] > button:hover { opacity: 0.85; }
-        .snap-link a { display:block; font-size:10px; opacity:0.5; padding:2px 6px;
-            border:1px solid rgba(128,128,128,0.3); border-radius:4px;
-            text-decoration:none; color:inherit; text-align:center;
-            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .snap-link a:hover { opacity:0.9; background:rgba(128,128,128,0.1); }
+        .snap-nav div[data-testid="stButton"] > button:hover { opacity: 0.85 !important; }
         .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
                          cursor:help; position:relative; }
         .metric-help:hover::after {
@@ -810,7 +810,9 @@ else:
     with snap2:
         _col = "#27AE60" if len(_gls) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_gls", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
+        st.markdown('</div>', unsafe_allow_html=True)
         for _, r in _gls.iterrows():
             _cust = str(r.get("project_name",""))
             _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
@@ -818,7 +820,9 @@ else:
     with snap3:
         _col = "#F39C12" if len(_ihc) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare (week 1)</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_ihc", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
+        st.markdown('</div>', unsafe_allow_html=True)
         for _, r in _ihc.iterrows():
             _cust = str(r.get("project_name",""))
             _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
@@ -826,15 +830,19 @@ else:
     with snap4:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        if st.button("→ Initial Engagement Actions", key="snap_mi", use_container_width=True):
+        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
+        if st.button("→ Customer Engagement", key="snap_mi", use_container_width=True):
             st.session_state["_ce_anchor"] = "initial"
             st.switch_page("pages/2_Customer_Reengagement.py")
+        st.markdown('</div>', unsafe_allow_html=True)
     with snap5:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        if st.button("→ Re-engagement Actions", key="snap_stale", use_container_width=True):
+        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
+        if st.button("→ Customer Engagement", key="snap_stale", use_container_width=True):
             st.session_state["_ce_anchor"] = "reengagement"
             st.switch_page("pages/2_Customer_Reengagement.py")
+        st.markdown('</div>', unsafe_allow_html=True)
     def _rag_label(r):
         """Format as 'Customer : Product abbrev' for RAG card list items."""
         _pn  = str(r.get("project_name","") or "")
@@ -849,20 +857,26 @@ else:
     with snap6:
         _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_red", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
+        st.markdown('</div>', unsafe_allow_html=True)
         for _, _rr in _rag_red.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
     with snap7:
         _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_yel", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
+        st.markdown('</div>', unsafe_allow_html=True)
         for _, _ry in _rag_yellow.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
     with snap8:
         _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
         _col = "#F39C12" if _oh_snap > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_oh", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
+        st.markdown('</div>', unsafe_allow_html=True)
         if _oh_snap > 0:
             _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
             for _, _or in _oh_proj.head(3).iterrows():
