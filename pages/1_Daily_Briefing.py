@@ -939,7 +939,7 @@ else:
     # ── Phase breakdown row ────────────────────────────────────────────────────
     if _pc_assigned:
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.markdown('<div class="section-label" style="color:#3B9EFF">Phase breakdown</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Project Phase Breakdown</div>', unsafe_allow_html=True)
         _ph_cols = st.columns(len(_pc_assigned))
         for _phi, (ph, cnt) in enumerate(_pc_assigned):
             _abbr = _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:16])
