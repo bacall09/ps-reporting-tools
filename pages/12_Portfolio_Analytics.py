@@ -57,6 +57,9 @@ if role in ("manager", "manager_only", "reporting_only"):
     _pick = st.session_state.get("home_browse", "— My own view —")
     if _pick and _pick.startswith("── ") and _pick.endswith(" ──"):
         _va_region = _pick[3:-3].strip()
+    elif _pick and _pick in ("👥 All team", "All team"):
+        _va_region = None  # show all team — handled by manager_only path
+        view_as    = selected
     elif _pick and _pick not in ("— My own view —", "— Select —", ""):
         view_as    = _pick
         _va_region = None
@@ -118,13 +121,15 @@ if _va_region:
 elif role == "manager_only":
     _team_consultants = set(CONSULTANT_DROPDOWN)
 elif role in ("manager", "reporting_only"):
-    # Manager viewing own team — get their region
-    _mgr_loc    = EMPLOYEE_LOCATION.get(selected, "")
-    _mgr_region = PS_REGION_OVERRIDE.get(selected, PS_REGION_MAP.get(_mgr_loc, "Other"))
-    # If View As is set to a specific consultant, scope to that person
-    if view_as != selected:
+    _pick_curr = st.session_state.get("home_browse", "— My own view —")
+    if _pick_curr in ("👥 All team", "All team"):
+        _team_consultants = set(CONSULTANT_DROPDOWN)
+    elif view_as != selected:
         _team_consultants = {view_as}
     else:
+        # Default: manager's own region
+        _mgr_loc    = EMPLOYEE_LOCATION.get(selected, "")
+        _mgr_region = PS_REGION_OVERRIDE.get(selected, PS_REGION_MAP.get(_mgr_loc, "Other"))
         _team_consultants = _get_region_consultants(_mgr_region)
         if not _team_consultants:
             _team_consultants = set(CONSULTANT_DROPDOWN)
@@ -166,8 +171,8 @@ def _pidx(p):
 
 # ── Portfolio Snapshot metrics ────────────────────────────────────────────────
 _n_active   = len(_active)
-_n_total    = len(team_drs)
 _n_onhold   = int(_ioh.sum())
+_n_total    = _n_active + _n_onhold   # total = active + on-hold (not all DRS rows)
 _n_team     = len(_team_consultants)
 
 _rag_col    = _active.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
@@ -254,7 +259,7 @@ for _, _sr in _active.iterrows():
     _scope  = get_ff_scope(_pt_s, _pn_s) or ((_budget + _co) if (_budget + _co) > 0 else None)
     if not _scope or _actual == 0: continue
     _burn   = round(100 * _actual / _scope)
-    _pm_key = _pm_s.strip().lower()
+    _pm_key = _pm_s.strip()
     if _pm_key not in _scope_by_pm:
         _scope_by_pm[_pm_key] = {"overrun": 0, "near_limit": 0}
     if _burn > 100:
@@ -277,6 +282,24 @@ def _sched_status_pa(row):
 
 _active["_sched_pa"] = _active.apply(_sched_status_pa, axis=1)
 
+# Pre-score WHS once for all consultants
+_whs_lookup = {}
+try:
+    from shared.whs import score_projects, build_consultant_summary
+    if df_drs is not None and not df_drs.empty:
+        _whs_df_all, _ = score_projects(df_drs)
+        _whs_summ_all  = build_consultant_summary(_whs_df_all)
+        for _, _wr in _whs_summ_all.iterrows():
+            _wcs = str(_wr.get("consultant","") or "")
+            for _cn2 in _team_consultants:
+                if name_matches(_wcs, _cn2):
+                    _whs_lookup[_cn2] = round(float(_wr.get("total_score", 0)), 1)
+except Exception:
+    pass
+
+# Pre-compute month key for util
+_month_key_pa = today.strftime("%Y-%m")
+
 _cw_rows = []
 for _cn in sorted(_team_consultants):
     _cm = df_drs[pm_col.apply(lambda v: name_matches(v, _cn))].copy()
@@ -293,47 +316,45 @@ for _cn in sorted(_team_consultants):
     _cm_red = int((_cm_rag == "red").sum())
     _cm_yel = int((_cm_rag == "yellow").sum())
 
-    # Schedule counts from pre-computed column
-    _cm_sched = _cm_active.get("_sched_pa", pd.Series(dtype=str)).fillna("no_date")
+    # Schedule counts — compute per consultant from _active with _sched_pa column
+    _cm_idx    = _cm_active.index
+    _cm_sched  = _active.loc[_active.index.isin(_cm_idx), "_sched_pa"] if "_sched_pa" in _active.columns else pd.Series(dtype=str)
     _n_on_track = int(_cm_sched.isin(["on_track","going_live","delivered"]).sum())
     _n_delayed  = int((_cm_sched == "delayed").sum())
     _n_at_risk  = int((_cm_sched == "at_risk").sum())
 
-    # WHS score
-    from shared.whs import score_projects, build_consultant_summary
-    try:
-        if df_drs is not None and not df_drs.empty:
-            _whs_df, _ = score_projects(df_drs)
-            _whs_summ  = build_consultant_summary(_whs_df)
-            _whs_match = _whs_summ[_whs_summ["consultant"].apply(lambda v: name_matches(v, _cn))]
-            _whs_val   = round(_whs_match["total_score"].iloc[0], 1) if not _whs_match.empty else None
-        else:
-            _whs_val = None
-    except Exception:
-        _whs_val = None
+    # WHS score — looked up from pre-scored dict
+    _whs_val = _whs_lookup.get(_cn)
 
-    # Scope counts
-    _pm_norm = str(_cm_active["project_manager"].iloc[0] if not _cm_active.empty else "").strip().lower()
-    _scope_data = _scope_by_pm.get(_pm_norm, {"overrun": 0, "near_limit": 0})
-    _n_overrun    = _scope_data["overrun"]
-    _n_near_limit = _scope_data["near_limit"]
+    # Scope counts — match consultant name against scope_by_pm dict
+    _n_overrun = 0; _n_near_limit = 0
+    for _sp_key, _sp_val in _scope_by_pm.items():
+        if name_matches(_sp_key, _cn):
+            _n_overrun    += _sp_val["overrun"]
+            _n_near_limit += _sp_val["near_limit"]
 
-    # Util % MTD from NS
+    # Util % MTD from NS — uses AVAIL_HOURS lookup matching Daily Briefing logic
     _cm_util = "—"
     if df_ns is not None and not df_ns.empty:
-        _month_key = today.strftime("%Y-%m")
         _cm_ns = df_ns[df_ns.get("employee", pd.Series(dtype=str)).fillna("").apply(
             lambda v: name_matches(v, _cn)
         )]
         _cm_month_ns = _cm_ns[
-            pd.to_datetime(_cm_ns.get("date", pd.Series(dtype=str)), errors="coerce").dt.strftime("%Y-%m") == _month_key
+            pd.to_datetime(_cm_ns.get("date", pd.Series(dtype=str)), errors="coerce").dt.strftime("%Y-%m") == _month_key_pa
         ] if not _cm_ns.empty and "date" in _cm_ns.columns else pd.DataFrame()
         if not _cm_month_ns.empty and "hours" in _cm_month_ns.columns:
             _cm_hrs = float(_cm_month_ns["hours"].sum() or 0)
-            _work_days = pd.bdate_range(today.replace(day=1), today).shape[0]
-            _avail = _work_days * 8
-            if _avail > 0:
-                _cm_util_pct = round(100 * _cm_hrs / _avail)
+            # Use AVAIL_HOURS lookup — same as Daily Briefing
+            _cn_loc = EMPLOYEE_LOCATION.get(_cn, "")
+            if isinstance(_cn_loc, tuple): _cn_loc = _cn_loc[0]
+            _cn_avail = AVAIL_HOURS.get(_cn_loc, {}).get(_month_key_pa)
+            if _cn_avail and _cn_avail > 0:
+                # Calculate credited hours (T&M + FF within scope) like Daily Briefing
+                _bt_ns = _cm_month_ns.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+                _tm_h  = float(_cm_month_ns[_bt_ns == "t&m"]["hours"].sum() or 0)
+                _ff_h  = float(_cm_month_ns[(_bt_ns != "internal") & (_bt_ns != "t&m")]["hours"].sum() or 0)
+                _util_h = _tm_h + _ff_h  # simplified: full FF credit (no scope cap at this level)
+                _cm_util_pct = round(100 * _util_h / _cn_avail)
                 _cm_util = f"{_cm_util_pct}%"
 
     _cn_parts = [p.strip() for p in _cn.split(",")]
@@ -356,7 +377,46 @@ for _cn in sorted(_team_consultants):
     })
 
 if _cw_rows:
-    _cw_df = pd.DataFrame(_cw_rows).sort_values("_n_proj", ascending=False)
+    _cw_df = pd.DataFrame(_cw_rows)
+
+    # ── Sort controls ─────────────────────────────────────────────────────────
+    _sort_map = {
+        "Consultant":    "Consultant",
+        "WHS":           "_whs",
+        "Active":        "_n_proj",
+        "On hold":       "_n_oh",
+        "Red RAG":       "_red",
+        "Yellow RAG":    "_yel",
+        "On track":      "_on_track",
+        "Delayed":       "_delayed",
+        "At risk (sch)": "_at_risk",
+        "Overrun":       "_overrun",
+        "Near limit":    "_near_limit",
+        "Util %":        "_util",
+    }
+    _cw_sc1, _cw_sc2, _cw_sc3 = st.columns([2,1,3])
+    with _cw_sc1:
+        _cw_sort_lbl = st.selectbox("Sort by", list(_sort_map.keys()), index=2,
+                                     key="cw_sort_col", label_visibility="collapsed")
+    with _cw_sc2:
+        _cw_sort_dir = st.selectbox("Direction", ["↓ Desc","↑ Asc"], index=0,
+                                     key="cw_sort_dir", label_visibility="collapsed")
+    with _cw_sc3:
+        st.markdown(f'<div style="font-size:11px;opacity:.4;padding-top:10px">' +
+                    f'Sorting by {_cw_sort_lbl} · {len(_cw_rows)} consultants</div>',
+                    unsafe_allow_html=True)
+    _cw_sort_col = _sort_map[_cw_sort_lbl]
+    _cw_asc      = _cw_sort_dir.startswith("↑")
+    if _cw_sort_col == "_util":
+        # Sort util % numerically
+        def _util_key(v):
+            try: return int(str(v).replace("%","").strip())
+            except: return -1
+        _cw_df["_util_sort"] = _cw_df["_util"].apply(_util_key)
+        _cw_df = _cw_df.sort_values("_util_sort", ascending=_cw_asc)
+    else:
+        _cw_df = _cw_df.sort_values(_cw_sort_col, ascending=_cw_asc,
+                                     na_position="last" if not _cw_asc else "first")
 
     def _cv(val, col="", zero_muted=True):
         """Render a table cell value with colour."""
@@ -443,7 +503,9 @@ if "project_type" in _active.columns:
     for pt in _active["project_type"].fillna("Unknown"):
         _pt = str(pt).strip()
         _prod = _pt.split(":")[-1].strip() if ":" in _pt else _pt
-        _prod = _prod.split()[0] if _prod else "Unknown"
+        # Keep full product name (e.g. "AP Payment", "Capture", "ZoneApp: Billing")
+        # Just strip the "ZoneApp:" prefix if present
+        if not _prod: _prod = "Unknown"
         _pt_counts[_prod] = _pt_counts.get(_prod, 0) + 1
 
     _pt_sorted = sorted(_pt_counts.items(), key=lambda x: x[1], ascending=False) \
