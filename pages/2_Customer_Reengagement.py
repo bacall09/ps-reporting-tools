@@ -179,6 +179,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ── Scroll to anchor if navigated from Daily Briefing ──────────────────────────
+_ce_anchor = st.session_state.pop("_ce_anchor", None)
+if _ce_anchor == "initial":
+    st.components.v1.html(
+        "<script>window.parent.document.getElementById('this-week-s-initial-engagement-actions')"
+        "?.scrollIntoView({behavior:'smooth'});</script>", height=0)
+elif _ce_anchor == "reengagement":
+    st.components.v1.html(
+        "<script>window.parent.document.getElementById('this-week-s-re-engagement-actions')"
+        "?.scrollIntoView({behavior:'smooth'});</script>", height=0)
+
 # ── Hero ──────────────────────────────────────────────────────────────────────
 def _get_browse():
     """Return effective view-as: passthrough from My Projects takes priority."""

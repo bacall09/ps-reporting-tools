@@ -56,11 +56,18 @@ st.markdown("""
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
         div[data-testid="stButton"] > button {
-            font-size: 10px !important; padding: 2px 6px !important;
-            min-height: 0 !important; height: auto !important;
-            opacity: 0.55; border-radius: 4px !important;
+            font-size: 10px !important; padding: 1px 4px !important;
+            min-height: 24px !important; height: 24px !important;
+            opacity: 0.5; border-radius: 4px !important;
+            white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; max-width: 100%;
         }
-        div[data-testid="stButton"] > button:hover { opacity: 0.9; }
+        div[data-testid="stButton"] > button:hover { opacity: 0.85; }
+        .snap-link a { display:block; font-size:10px; opacity:0.5; padding:2px 6px;
+            border:1px solid rgba(128,128,128,0.3); border-radius:4px;
+            text-decoration:none; color:inherit; text-align:center;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .snap-link a:hover { opacity:0.9; background:rgba(128,128,128,0.1); }
         .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
                          cursor:help; position:relative; }
         .metric-help:hover::after {
@@ -819,11 +826,15 @@ else:
     with snap4:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        if st.button("→ Customer Engagement", key="snap_mi", use_container_width=True): st.switch_page("pages/2_Customer_Reengagement.py")
+        if st.button("→ Initial Engagement Actions", key="snap_mi", use_container_width=True):
+            st.session_state["_ce_anchor"] = "initial"
+            st.switch_page("pages/2_Customer_Reengagement.py")
     with snap5:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        if st.button("→ Customer Engagement", key="snap_stale", use_container_width=True): st.switch_page("pages/2_Customer_Reengagement.py")
+        if st.button("→ Re-engagement Actions", key="snap_stale", use_container_width=True):
+            st.session_state["_ce_anchor"] = "reengagement"
+            st.switch_page("pages/2_Customer_Reengagement.py")
     def _rag_label(r):
         """Format as 'Customer : Product abbrev' for RAG card list items."""
         _pn  = str(r.get("project_name","") or "")
