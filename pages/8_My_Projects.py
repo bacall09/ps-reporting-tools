@@ -526,22 +526,24 @@ else:
         _rag_v = _rag_emoji(r.get("rag"))
         _oh_row = {
             "RAG":                   _rag_v if _rag_v != "—" else "⚠️ No RAG",
+            "Flags":                 "⚠️" if r.get("_flags") else "",
             "Customer":              str(r.get("project_name","")).split(" - ")[0].strip() if " - " in str(r.get("project_name","")) else str(r.get("project_name","")),
             "Project Type":          str(r.get("project_type","") or "—"),
             "Start Date":            pd.Timestamp(r["start_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("start_date")) else "—",
             "Est. Go-Live":          pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
             "Phase":                 str(r.get("phase", "—")),
-            "On Hold Reason":        _clean(r.get("on_hold_reason")),
+            "On Hold Reason":        _clean(r.get("on_hold_reason")) if _clean(r.get("on_hold_reason")) != "—" else None,
             "Days Inactive":         int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
             "Inactivity Source":     _clean(r.get("_inactivity_source")),
             "Last Milestone":        _clean(r.get("last_milestone")),
-            "Client Responsiveness": _clean(r.get("client_responsiveness")),
-            "Client Sentiment":      _clean(r.get("client_sentiment")),
+            "Client Responsiveness": _clean(r.get("client_responsiveness")) if _clean(r.get("client_responsiveness")) != "—" else None,
+            "Client Sentiment":      _clean(r.get("client_sentiment")) if _clean(r.get("client_sentiment")) != "—" else None,
             "Risk Level":            _risk_emoji(r.get("risk_level")),
-            "Risk Owner":            _clean(r.get("risk_owner")),
+            "Risk Owner":            _clean(r.get("risk_owner")) if _clean(r.get("risk_owner")) != "—" else None,
             "Risk Detail":           _clean(r.get("risk_detail")),
-            "Responsible for Delay": _clean(r.get("responsible_for_delay")),
+            "Responsible for Delay": _clean(r.get("responsible_for_delay")) if _clean(r.get("responsible_for_delay")) != "—" else None,
             "Delay Summary":         _ds,
+            "JIRA Links":            _clean(r.get("jira_links")),
         }
         if _va_region:
             _oh_row["Consultant"] = str(r.get("project_manager", "") or "")
@@ -551,15 +553,15 @@ else:
 
     # Column order — insert Consultant after RAG if region view
     if "Consultant" in _oh_df.columns:
-        _col_order = ["RAG","Customer","Consultant","Project Type","Start Date","Est. Go-Live","Phase",
-                       "On Hold Reason","Days Inactive","Inactivity Source","Last Milestone",
-                       "Client Responsiveness","Client Sentiment","Risk Level","Risk Owner",
-                       "Risk Detail","Responsible for Delay","Delay Summary"]
+        _col_order = ["Flags","RAG","Customer","Consultant","Project Type","Start Date","Est. Go-Live",
+                       "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
+                       "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
+                       "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
     else:
-        _col_order = ["RAG","Customer","Project Type","Start Date","Est. Go-Live","Phase",
-                      "On Hold Reason","Days Inactive","Inactivity Source","Last Milestone",
-                      "Client Responsiveness","Client Sentiment","Risk Level","Risk Owner",
-                      "Risk Detail","Responsible for Delay","Delay Summary"]
+        _col_order = ["Flags","RAG","Customer","Project Type","Start Date","Est. Go-Live",
+                      "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
+                      "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
+                      "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
     _oh_df = _oh_df[[c for c in _col_order if c in _oh_df.columns]]
 
     # ✦ = SS syncable (editable) | no mark = derived/read-only
@@ -567,6 +569,7 @@ else:
     _oh_edited = st.data_editor(
         _oh_df,
         column_config={
+            "Flags":                 st.column_config.TextColumn("Flags",                  disabled=True, width="small"),
             "RAG":                   st.column_config.TextColumn("RAG",                    disabled=True, width="small"),
             "Customer":              st.column_config.TextColumn("Customer",                disabled=True, width="medium"),
             "Project Type":          st.column_config.TextColumn("Project Type",            disabled=True, width="medium"),
@@ -584,6 +587,8 @@ else:
             "Risk Detail":           st.column_config.TextColumn("Risk Detail",           width="large"),
             "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay", options=_OH_DELAY_OPTS, width="medium"),
             "Delay Summary":         st.column_config.TextColumn("Delay Summary",         width="large"),
+            "JIRA Links":            st.column_config.TextColumn("JIRA Links",             width="medium",
+                                         help="Comma-separated JIRA ticket URLs, e.g. https://zone.atlassian.net/browse/ZPS-123"),
         },
         use_container_width=True,
         hide_index=True,
@@ -592,8 +597,8 @@ else:
     )
 
     # Export bar
-    _oh_sync_cols = ["Customer","Project Type","On Hold Reason","Client Responsiveness","Client Sentiment",
-                     "Risk Level","Risk Owner","Risk Detail","Responsible for Delay","Delay Summary"]
+    _oh_sync_cols = ["Customer","Project Type","On Hold Reason","Responsible for Delay","Client Responsiveness","Client Sentiment",
+                     "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
     _oh_changed = _oh_edited[_oh_sync_cols].fillna("").ne(_oh_df[[c for c in _oh_sync_cols if c in _oh_df.columns]].fillna("")).any(axis=1) if not _oh_edited.empty else pd.Series(False, index=_oh_edited.index)
     _oh_ex1, _oh_ex2 = st.columns([3,1])
     with _oh_ex1:

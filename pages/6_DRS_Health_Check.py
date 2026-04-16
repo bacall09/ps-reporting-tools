@@ -316,6 +316,25 @@ for _, row in df_drs.iterrows():
              f"but project has been inactive {days_inac}d.",
              "Update Client Responsiveness to reflect actual recent engagement.")
 
+    # ── On Hold data quality checks ───────────────────────────────────────────
+    sentiment = str(_get(row, "client_sentiment", "") or "").strip().lower()
+    if "hold" in status and days_inac is not None and days_inac >= 14:
+        if resp in ("highly engaged", "highly responsive", "responsive"):
+            flag("Warning", "On Hold Data Quality",
+                 "Engagement rating inconsistent with On Hold status",
+                 f"Client Responsiveness is '{_get(row,'client_responsiveness','')}' "
+                 f"but project has been On Hold for {days_inac}d. "
+                 f"This rating should reflect current engagement, not historical.",
+                 "Review and update Client Responsiveness — consider 'Neutral' or 'Not Responsive'.")
+
+        if sentiment in ("positive",):
+            flag("Warning", "On Hold Data Quality",
+                 "Sentiment rating inconsistent with On Hold status",
+                 f"Client Sentiment is '{_get(row,'client_sentiment','')}' "
+                 f"but project has been On Hold for {days_inac}d. "
+                 f"Positive sentiment is unlikely for a stalled project.",
+                 "Review and update Client Sentiment to reflect current client relationship.")
+
     # ── Hours vs scope ────────────────────────────────────────────────────────
     if actual_h and budget_h:
         try:

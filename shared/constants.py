@@ -213,6 +213,8 @@ SS_COL_MAP = {
     "risk detail":           "risk_detail",
     "responsible for delay": "responsible_for_delay",
     "delay summary":         "delay_summary",
+    "jira links":            "jira_links",
+    "jira":                  "jira_links",
     "project manager":       "project_manager",
     "billing type":          "billing_type",
     "billing":               "billing_type",
