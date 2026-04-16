@@ -55,6 +55,12 @@ st.markdown("""
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+        div[data-testid="stButton"] > button {
+            font-size: 10px !important; padding: 2px 6px !important;
+            min-height: 0 !important; height: auto !important;
+            opacity: 0.55; border-radius: 4px !important;
+        }
+        div[data-testid="stButton"] > button:hover { opacity: 0.9; }
         .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
                          cursor:help; position:relative; }
         .metric-help:hover::after {
@@ -812,16 +818,12 @@ else:
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
     with snap4:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
         if st.button("→ Customer Engagement", key="snap_mi", use_container_width=True): st.switch_page("pages/2_Customer_Reengagement.py")
-        if len(_mi) > 0:
-            st.markdown('<div style="font-size:13px;opacity:.55">Excl. legacy projects</div>', unsafe_allow_html=True)
     with snap5:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
         if st.button("→ Customer Engagement", key="snap_stale", use_container_width=True): st.switch_page("pages/2_Customer_Reengagement.py")
-        if len(_stale) > 0:
-            st.markdown('<div style="font-size:13px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)
     def _rag_label(r):
         """Format as 'Customer : Product abbrev' for RAG card list items."""
         _pn  = str(r.get("project_name","") or "")
