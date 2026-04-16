@@ -170,11 +170,12 @@ _n_total    = len(team_drs)           # all rows for this team/consultant
 _n_team     = len(_team_consultants)
 _oh_denom   = _n_active + _n_onhold   # for on-hold rate: active+onhold (not total which may include completed)
 
-_rag_col    = _active.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+# RAG across all projects (including on-hold) — matches Daily Briefing behaviour
+_rag_col    = team_drs.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
 _n_red      = int((_rag_col == "red").sum())
 _n_yellow   = int((_rag_col == "yellow").sum())
 _n_at_risk  = _n_red + _n_yellow
-_risk_pct   = round(100 * _n_at_risk / _n_active) if _n_active else 0
+_risk_pct   = round(100 * _n_at_risk / (_n_active + _n_onhold)) if (_n_active + _n_onhold) else 0
 
 _oh_pct     = round(100 * _n_onhold / _oh_denom) if _oh_denom else 0
 
