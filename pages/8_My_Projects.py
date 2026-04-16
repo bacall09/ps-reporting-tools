@@ -456,6 +456,44 @@ if not _inactive_projs.empty:
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ── On Hold field value maps ──────────────────────────────────────────────────
+_OH_REASON_OPTS   = ["—","Zone Product Dependency","Zone Program Dependency",
+                     "NetSuite Dependency","Client Requested","Client Unresponsive"]
+_OH_RESP_OPTS     = ["—","Highly Engaged","Neutral","Not Responsive"]
+_OH_SENTIMENT_OPTS= ["—","Positive","Neutral","Concerned"]
+_OH_RISK_OPTS     = ["—","Low","Medium","High","Escalated"]
+_OH_OWNER_OPTS    = ["—","Client","Product","PS","Sales","Marketing","Support","3rd Party","N/A"]
+_OH_DELAY_OPTS    = ["—","Zone","Client","3rd Party"]
+
+def _delay_summary_prompt(r):
+    """Auto-generate a Delay Summary prompt from available fields."""
+    reason   = str(r.get("on_hold_reason","") or "")
+    days     = r.get("days_inactive", 0) or 0
+    risk     = str(r.get("risk_level","") or "")
+    owner    = str(r.get("risk_owner","") or "")
+    delay_by = str(r.get("responsible_for_delay","") or "")
+    parts = []
+    if reason and reason not in ("—",""):
+        parts.append(reason)
+    if days and int(days) > 0:
+        parts.append(f"inactive {int(days)}d")
+    if risk and risk not in ("—",""):
+        parts.append(f"{risk} risk")
+    if owner and owner not in ("—",""):
+        parts.append(f"owner: {owner}")
+    if delay_by and delay_by not in ("—",""):
+        parts.append(f"delay: {delay_by}")
+    return " · ".join(parts) if parts else ""
+
+# ── Risk level emoji helper ────────────────────────────────────────────────────
+def _risk_emoji(val):
+    v = str(val or "").strip().lower()
+    if v == "escalated": return "🚨 Escalated"
+    if v == "high":      return "🔴 High"
+    if v == "medium":    return "🟡 Medium"
+    if v == "low":       return "🟢 Low"
+    return str(val or "—")
+
 # SECTION 4 — On Hold
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">On Hold</div>', unsafe_allow_html=True)
@@ -464,23 +502,65 @@ if on_hold.empty:
 else:
     _oh_rows = []
     for _, r in on_hold.iterrows():
+        _ds_existing = str(r.get("delay_summary","") or "").strip()
+        _ds = _ds_existing if _ds_existing and _ds_existing not in ("—","nan","None") else _delay_summary_prompt(r)
+        _rag_v = _rag_emoji(r.get("rag"))
         _oh_row = {
-            "Project":      str(r.get("project_name", "")),
-            "Phase":          str(r.get("phase", "—")),
-            "RAG":            _rag_emoji(r.get("rag")) if _rag_emoji(r.get("rag")) != "—" else "⚠️ No RAG",
-            "Last Milestone": str(r.get("last_milestone","") or "—"),
-            "Days Inactive":  int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
-            "Inactivity Source": str(r.get("_inactivity_source","") or "—"),
-            "Engagement":     _engagement_flag(r),
-            "Go Live":        pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
+            "RAG":                   _rag_v if _rag_v != "—" else "⚠️ No RAG",
+            "Project":               str(r.get("project_name", "")),
+            "Phase":                 str(r.get("phase", "—")),
+            "On Hold Reason":        str(r.get("on_hold_reason","") or "—"),
+            "Days Inactive":         int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
+            "Inactivity Source":     str(r.get("_inactivity_source","") or "—"),
+            "Last Milestone":        str(r.get("last_milestone","") or "—"),
+            "Client Responsiveness": str(r.get("client_responsiveness","") or "—"),
+            "Client Sentiment":      str(r.get("client_sentiment","") or "—"),
+            "Risk Level":            _risk_emoji(r.get("risk_level")),
+            "Risk Owner":            str(r.get("risk_owner","") or "—"),
+            "Risk Detail":           str(r.get("risk_detail","") or "—"),
+            "Responsible for Delay": str(r.get("responsible_for_delay","") or "—"),
+            "Delay Summary":         _ds,
         }
         if _va_region:
             _oh_row["Consultant"] = str(r.get("project_manager", "") or "")
         _oh_rows.append(_oh_row)
+
     _oh_df = pd.DataFrame(_oh_rows)
-    # Put Consultant second if present
+
+    # Column order — insert Consultant after RAG if region view
     if "Consultant" in _oh_df.columns:
-        _oh_df = _oh_df[["Project", "Consultant"] + [c for c in _oh_df.columns if c not in ("Project", "Consultant")]]
-    st.dataframe(_oh_df, use_container_width=True, hide_index=True)
+        _col_order = ["RAG","Project","Consultant","Phase","On Hold Reason","Days Inactive",
+                      "Inactivity Source","Last Milestone","Client Responsiveness",
+                      "Client Sentiment","Risk Level","Risk Owner","Risk Detail",
+                      "Responsible for Delay","Delay Summary"]
+    else:
+        _col_order = ["RAG","Project","Phase","On Hold Reason","Days Inactive",
+                      "Inactivity Source","Last Milestone","Client Responsiveness",
+                      "Client Sentiment","Risk Level","Risk Owner","Risk Detail",
+                      "Responsible for Delay","Delay Summary"]
+    _oh_df = _oh_df[[c for c in _col_order if c in _oh_df.columns]]
+
+    st.dataframe(
+        _oh_df,
+        column_config={
+            "RAG":                   st.column_config.TextColumn("RAG",                   width="small"),
+            "Project":               st.column_config.TextColumn("Project",               width="medium"),
+            "Phase":                 st.column_config.TextColumn("Phase",                 width="medium"),
+            "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason",   options=_OH_REASON_OPTS,    width="medium"),
+            "Days Inactive":         st.column_config.NumberColumn("Days Inactive",        width="small"),
+            "Inactivity Source":     st.column_config.TextColumn("Inactivity Source",     width="small"),
+            "Last Milestone":        st.column_config.TextColumn("Last Milestone",        width="medium"),
+            "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness", options=_OH_RESP_OPTS, width="medium"),
+            "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment", options=_OH_SENTIMENT_OPTS, width="small"),
+            "Risk Level":            st.column_config.TextColumn("Risk Level",            width="small"),
+            "Risk Owner":            st.column_config.SelectboxColumn("Risk Owner",       options=_OH_OWNER_OPTS,     width="small"),
+            "Risk Detail":           st.column_config.TextColumn("Risk Detail",           width="large"),
+            "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay", options=_OH_DELAY_OPTS, width="medium"),
+            "Delay Summary":         st.column_config.TextColumn("Delay Summary",         width="large"),
+        },
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.caption("On Hold Reason, Client Responsiveness, Client Sentiment, Risk Owner, and Responsible for Delay are editable — changes export to CSV for DRS sync.")
 
 st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:20px">PS Reporting Tools · Internal use only · Data loaded this session only</div>',unsafe_allow_html=True)
