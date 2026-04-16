@@ -490,87 +490,6 @@ else:
         )
         st.warning(f"No time entries found for **{_view_label_for_warn}** in the NS file.")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# THIS WEEK — PLAIN ENGLISH BRIEFING
-# ══════════════════════════════════════════════════════════════════════════════
-if not my_projects.empty and not _is_group_view:
-    _briefing_lines = []
-    _today_str = today.strftime("%-d %b")
-
-    # ── Priority 1: Immediate action items ────────────────────────────────────
-    _p1 = []
-    if len(_rag_red) > 0:
-        _red_names = ", ".join(
-            str(r.get("project_name","")).split(" - ")[0][:25]
-            for _, r in _rag_red.head(3).iterrows()
-        )
-        _p1.append(f"**{len(_rag_red)} project{'s' if len(_rag_red)>1 else ''} flagged Red RAG** ({_red_names}{'...' if len(_rag_red)>3 else ''}) — these need your attention first.")
-
-    if len(_gls) > 0:
-        _gl_names = ", ".join(
-            str(r.get("project_name","")).split(" - ")[0][:20]
-            for _, r in _gls.iterrows()
-        )
-        _p1.append(f"**{len(_gls)} project{'s are' if len(_gls)>1 else ' is'} going live this week** ({_gl_names}) — confirm readiness and have cutover support in place.")
-
-    if len(_ihc) > 0:
-        _ihc_names = ", ".join(
-            str(r.get("project_name","")).split(" - ")[0][:20]
-            for _, r in _ihc.head(3).iterrows()
-        )
-        _p1.append(f"**{len(_ihc)} project{'s are' if len(_ihc)>1 else ' is'} in hypercare** ({_ihc_names}) — check in proactively and log any post-go-live issues.")
-
-    # ── Priority 2: This week's quick wins ───────────────────────────────────
-    _p2 = []
-    if len(_rag_yellow) > 0:
-        _yel_names = ", ".join(
-            str(r.get("project_name","")).split(" - ")[0][:25]
-            for _, r in _rag_yellow.head(2).iterrows()
-        )
-        _p2.append(f"**{len(_rag_yellow)} Yellow RAG project{'s' if len(_rag_yellow)>1 else ''}** ({_yel_names}) — review blockers and update RAG before they escalate to Red.")
-
-    if len(_stale) > 0:
-        _stale_top = _stale.iloc[0]
-        _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0][:25]
-        _stale_days = int(_stale_top.get("days_inactive", 0))
-        if len(_stale) == 1:
-            _p2.append(f"**1 project needs re-engagement** ({_stale_name}, {_stale_days}d inactive) — send a check-in to re-establish momentum.")
-        else:
-            _p2.append(f"**{len(_stale)} projects need re-engagement**, led by {_stale_name} ({_stale_days}d inactive) — prioritise the most overdue and use the Customer Engagement page to draft outreach.")
-
-    if len(_mi) > 0:
-        _p2.append(f"**{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email** — a quick win to close before end of week.")
-
-    # ── Priority 3: Housekeeping ──────────────────────────────────────────────
-    _p3 = []
-    _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
-    if _oh_count > 0:
-        _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — review the On Hold table on My Projects to ensure reason and delay owner are recorded.")
-
-    # ── Render briefing ───────────────────────────────────────────────────────
-    if _p1 or _p2 or _p3:
-        st.markdown('<div class="section-label">This Week — Focus Areas</div>', unsafe_allow_html=True)
-        _brief_html = "<div style='background:rgba(59,158,255,0.05);border:1px solid rgba(59,158,255,0.15);border-radius:8px;padding:18px 22px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
-
-        if _p1:
-            _brief_html += "<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Needs Attention</div>"
-            for item in _p1:
-                _brief_html += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {item}</div>"
-
-        if _p2:
-            _brief_html += f"<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin:{'14px' if _p1 else '0'} 0 10px'>Quick Wins This Week</div>"
-            for item in _p2:
-                _brief_html += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {item}</div>"
-
-        if _p3:
-            _brief_html += f"<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin:{'14px' if (_p1 or _p2) else '0'} 0 10px'>Housekeeping</div>"
-            for item in _p3:
-                _brief_html += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {item}</div>"
-
-        _brief_html += "<div style='font-size:10px;opacity:0.35;margin-top:12px'>Rule-based summary · AI-powered briefings coming in a future release</div>"
-        _brief_html += "</div>"
-        st.markdown(_brief_html, unsafe_allow_html=True)
-
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ── Consultant breakdown table (group views only) ─────────────────────────────
@@ -822,9 +741,58 @@ else:
         for _, _ry in _rag_yellow.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
 
+    # ── This Week Briefing ────────────────────────────────────────────────────
+    _p1, _p2, _p3 = [], [], []
 
+    if len(_rag_red) > 0:
+        _red_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_red.head(3).iterrows())
+        _p1.append(f"**{len(_rag_red)} project{'s' if len(_rag_red)>1 else ''} flagged Red RAG** ({_red_names}{'...' if len(_rag_red)>3 else ''}) — these need your attention first.")
 
+    if len(_gls) > 0:
+        _gl_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _gls.iterrows())
+        _p1.append(f"**{len(_gls)} project{'s are' if len(_gls)>1 else ' is'} going live this week** ({_gl_names}) — confirm readiness and have cutover support in place.")
 
+    if len(_ihc) > 0:
+        _ihc_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _ihc.head(3).iterrows())
+        _p1.append(f"**{len(_ihc)} project{'s are' if len(_ihc)>1 else ' is'} in hypercare** ({_ihc_names}) — check in proactively and log any post-go-live issues.")
+
+    if len(_rag_yellow) > 0:
+        _yel_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_yellow.head(2).iterrows())
+        _p2.append(f"**{len(_rag_yellow)} Yellow RAG project{'s' if len(_rag_yellow)>1 else ''}** ({_yel_names}) — review blockers before they escalate to Red.")
+
+    if len(_stale) > 0:
+        _stale_top  = _stale.iloc[0]
+        _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0][:25]
+        _stale_days = int(_stale_top.get("days_inactive", 0))
+        if len(_stale) == 1:
+            _p2.append(f"**1 project needs re-engagement** ({_stale_name}, {_stale_days}d inactive) — send a check-in to re-establish momentum.")
+        else:
+            _p2.append(f"**{len(_stale)} projects need re-engagement**, led by {_stale_name} ({_stale_days}d inactive) — use Customer Engagement to draft outreach.")
+
+    if len(_mi) > 0:
+        _p2.append(f"**{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email** — a quick win to close before end of week.")
+
+    _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+    if _oh_count > 0:
+        _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
+
+    if _p1 or _p2 or _p3:
+        st.markdown('<div class="section-label">This Week — Focus Areas</div>', unsafe_allow_html=True)
+        _bhtml = "<div style='background:rgba(59,158,255,0.05);border:1px solid rgba(59,158,255,0.15);border-radius:8px;padding:18px 22px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
+        if _p1:
+            _bhtml += "<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Needs Attention</div>"
+            for _item in _p1:
+                _bhtml += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {_item}</div>"
+        if _p2:
+            _bhtml += f"<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin:{'14px' if _p1 else '0'} 0 10px'>Quick Wins This Week</div>"
+            for _item in _p2:
+                _bhtml += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {_item}</div>"
+        if _p3:
+            _bhtml += f"<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin:{'14px' if (_p1 or _p2) else '0'} 0 10px'>Housekeeping</div>"
+            for _item in _p3:
+                _bhtml += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {_item}</div>"
+        _bhtml += "<div style='font-size:10px;opacity:0.35;margin-top:12px'>Rule-based summary · AI-powered briefings coming in a future release</div></div>"
+        st.markdown(_bhtml, unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")
