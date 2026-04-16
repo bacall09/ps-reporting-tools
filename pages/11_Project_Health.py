@@ -61,9 +61,9 @@ view_as    = selected
 _va_region = None
 if role in ("manager", "manager_only", "reporting_only"):
     _pick = st.session_state.get("home_browse", "— My own view —")
-    if _pick.startswith("[ ") and _pick.endswith(" ]"):
+    if _pick and _pick.startswith("── ") and _pick.endswith(" ──"):
         _va_region = _pick[3:-3].strip()
-    elif _pick not in ("— My own view —", ""):
+    elif _pick and _pick not in ("— My own view —", "— Select —", ""):
         view_as    = _pick
         _va_region = None
 
