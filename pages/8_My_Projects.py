@@ -248,11 +248,25 @@ def _rag_emoji(val):
 
 def _engagement_flag(row):
     flags = []
-    _days = int(row.get("days_inactive", -1) or -1)
-    _leg  = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
-    _no_i = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
-    if not _leg and _no_i:
+    _days  = int(row.get("days_inactive", -1) or -1)
+    _leg   = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
+    _phase = str(row.get("phase","") or "").strip().lower()
+    _htd   = row.get("_htd_val", 0) or 0  # hours to date — if >0 work has started
+    _start = row.get("start_date")
+
+    # Determine if project is genuinely new/early enough to flag missing intro:
+    # Skip flag if: legacy, has hours logged (work started = intro likely happened),
+    # or phase is past onboarding
+    _past_onboarding = any(p in _phase for p in ["config","enablement","training",
+                           "uat","prep","go-live","hypercare","support","transition","ready"])
+    _has_hours = float(_htd) > 0 if _htd != "" else False
+
+    _no_i = (not pd.notna(row.get("ms_intro_email")) or
+             str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT"))
+
+    if not _leg and _no_i and not _past_onboarding and not _has_hours:
         flags.append("No intro")
+
     if _days >= 30:
         flags.append(f"{_days}d inactive")
     elif _days >= 14:
@@ -320,7 +334,7 @@ def _to_edit_row(row):
         "Hours to Date":        _htd,
         "Balance":              _bal,
         "_bal_flag":            _bal_flag,
-        "Engagement":           _engagement_flag(row),
+        "Engagement":           _engagement_flag({**dict(row), "_htd_val": _htd}),
         "Intro Email Sent":     _ms("ms_intro_email"),
         "Config Start":         _ms("ms_config_start"),
         "Enablement Session":   _ms("ms_enablement"),
@@ -465,6 +479,11 @@ _OH_RISK_OPTS     = ["—","Low","Medium","High","Escalated"]
 _OH_OWNER_OPTS    = ["—","Client","Product","PS","Sales","Marketing","Support","3rd Party","N/A"]
 _OH_DELAY_OPTS    = ["—","Zone","Client","3rd Party"]
 
+def _clean(val):
+    """Normalise blank/nan/None to —."""
+    v = str(val or "").strip()
+    return "—" if v in ("", "nan", "None", "NaT") else v
+
 def _delay_summary_prompt(r):
     """Auto-generate a Delay Summary prompt from available fields."""
     reason   = str(r.get("on_hold_reason","") or "")
@@ -507,18 +526,21 @@ else:
         _rag_v = _rag_emoji(r.get("rag"))
         _oh_row = {
             "RAG":                   _rag_v if _rag_v != "—" else "⚠️ No RAG",
-            "Project":               str(r.get("project_name", "")),
+            "Customer":              str(r.get("project_name","")).split(" - ")[0].strip() if " - " in str(r.get("project_name","")) else str(r.get("project_name","")),
+            "Project Type":          str(r.get("project_type","") or "—"),
+            "Start Date":            pd.Timestamp(r["start_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("start_date")) else "—",
+            "Est. Go-Live":          pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
             "Phase":                 str(r.get("phase", "—")),
-            "On Hold Reason":        str(r.get("on_hold_reason","") or "—"),
+            "On Hold Reason":        _clean(r.get("on_hold_reason")),
             "Days Inactive":         int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
-            "Inactivity Source":     str(r.get("_inactivity_source","") or "—"),
-            "Last Milestone":        str(r.get("last_milestone","") or "—"),
-            "Client Responsiveness": str(r.get("client_responsiveness","") or "—"),
-            "Client Sentiment":      str(r.get("client_sentiment","") or "—"),
+            "Inactivity Source":     _clean(r.get("_inactivity_source")),
+            "Last Milestone":        _clean(r.get("last_milestone")),
+            "Client Responsiveness": _clean(r.get("client_responsiveness")),
+            "Client Sentiment":      _clean(r.get("client_sentiment")),
             "Risk Level":            _risk_emoji(r.get("risk_level")),
-            "Risk Owner":            str(r.get("risk_owner","") or "—"),
-            "Risk Detail":           str(r.get("risk_detail","") or "—"),
-            "Responsible for Delay": str(r.get("responsible_for_delay","") or "—"),
+            "Risk Owner":            _clean(r.get("risk_owner")),
+            "Risk Detail":           _clean(r.get("risk_detail")),
+            "Responsible for Delay": _clean(r.get("responsible_for_delay")),
             "Delay Summary":         _ds,
         }
         if _va_region:
@@ -529,38 +551,69 @@ else:
 
     # Column order — insert Consultant after RAG if region view
     if "Consultant" in _oh_df.columns:
-        _col_order = ["RAG","Project","Consultant","Phase","On Hold Reason","Days Inactive",
-                      "Inactivity Source","Last Milestone","Client Responsiveness",
-                      "Client Sentiment","Risk Level","Risk Owner","Risk Detail",
-                      "Responsible for Delay","Delay Summary"]
+        _col_order = ["RAG","Customer","Consultant","Project Type","Start Date","Est. Go-Live","Phase",
+                       "On Hold Reason","Days Inactive","Inactivity Source","Last Milestone",
+                       "Client Responsiveness","Client Sentiment","Risk Level","Risk Owner",
+                       "Risk Detail","Responsible for Delay","Delay Summary"]
     else:
-        _col_order = ["RAG","Project","Phase","On Hold Reason","Days Inactive",
-                      "Inactivity Source","Last Milestone","Client Responsiveness",
-                      "Client Sentiment","Risk Level","Risk Owner","Risk Detail",
-                      "Responsible for Delay","Delay Summary"]
+        _col_order = ["RAG","Customer","Project Type","Start Date","Est. Go-Live","Phase",
+                      "On Hold Reason","Days Inactive","Inactivity Source","Last Milestone",
+                      "Client Responsiveness","Client Sentiment","Risk Level","Risk Owner",
+                      "Risk Detail","Responsible for Delay","Delay Summary"]
     _oh_df = _oh_df[[c for c in _col_order if c in _oh_df.columns]]
 
-    st.dataframe(
+    # ✦ = SS syncable (editable) | no mark = derived/read-only
+    st.markdown(
+        '<span style="font-size:11px;opacity:.55">✦ Columns marked with ✦ sync back to Smartsheet — edit and export to CSV to update DRS. '
+        'Unmarked columns are derived or calculated.</span>',
+        unsafe_allow_html=True
+    )
+    _oh_edited = st.data_editor(
         _oh_df,
         column_config={
-            "RAG":                   st.column_config.TextColumn("RAG",                   width="small"),
-            "Project":               st.column_config.TextColumn("Project",               width="medium"),
-            "Phase":                 st.column_config.TextColumn("Phase",                 width="medium"),
-            "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason",   options=_OH_REASON_OPTS,    width="medium"),
-            "Days Inactive":         st.column_config.NumberColumn("Days Inactive",        width="small"),
-            "Inactivity Source":     st.column_config.TextColumn("Inactivity Source",     width="small"),
-            "Last Milestone":        st.column_config.TextColumn("Last Milestone",        width="medium"),
-            "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness", options=_OH_RESP_OPTS, width="medium"),
-            "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment", options=_OH_SENTIMENT_OPTS, width="small"),
-            "Risk Level":            st.column_config.TextColumn("Risk Level",            width="small"),
-            "Risk Owner":            st.column_config.SelectboxColumn("Risk Owner",       options=_OH_OWNER_OPTS,     width="small"),
-            "Risk Detail":           st.column_config.TextColumn("Risk Detail",           width="large"),
-            "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay", options=_OH_DELAY_OPTS, width="medium"),
-            "Delay Summary":         st.column_config.TextColumn("Delay Summary",         width="large"),
+            "RAG":                   st.column_config.TextColumn("RAG",                    disabled=True, width="small"),
+            "Customer":              st.column_config.TextColumn("Customer",                disabled=True, width="medium"),
+            "Project Type":          st.column_config.TextColumn("Project Type",            disabled=True, width="medium"),
+            "Start Date":            st.column_config.TextColumn("Start Date",              disabled=True, width="small"),
+            "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",            disabled=True, width="small"),
+            "Phase":                 st.column_config.TextColumn("Phase",                   disabled=True, width="medium"),
+            "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason ✦",  options=_OH_REASON_OPTS,     width="medium"),
+            "Days Inactive":         st.column_config.NumberColumn("Days Inactive",         disabled=True, width="small"),
+            "Inactivity Source":     st.column_config.TextColumn("Inactivity Source",       disabled=True, width="small"),
+            "Last Milestone":        st.column_config.TextColumn("Last Milestone",          disabled=True, width="medium"),
+            "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness ✦", options=_OH_RESP_OPTS, width="medium"),
+            "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment ✦", options=_OH_SENTIMENT_OPTS, width="small"),
+            "Risk Level":            st.column_config.SelectboxColumn("Risk Level ✦",       options=_OH_RISK_OPTS,       width="small"),
+            "Risk Owner":            st.column_config.SelectboxColumn("Risk Owner ✦",       options=_OH_OWNER_OPTS,      width="small"),
+            "Risk Detail":           st.column_config.TextColumn("Risk Detail ✦",           width="large"),
+            "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay ✦", options=_OH_DELAY_OPTS, width="medium"),
+            "Delay Summary":         st.column_config.TextColumn("Delay Summary ✦",         width="large"),
         },
         use_container_width=True,
         hide_index=True,
+        num_rows="fixed",
+        key="oh_edit_table",
     )
-    st.caption("On Hold Reason, Client Responsiveness, Client Sentiment, Risk Owner, and Responsible for Delay are editable — changes export to CSV for DRS sync.")
+
+    # Export bar
+    _oh_sync_cols = ["Project","On Hold Reason","Client Responsiveness","Client Sentiment",
+                     "Risk Level","Risk Owner","Risk Detail","Responsible for Delay","Delay Summary"]
+    _oh_changed = _oh_edited[_oh_sync_cols].fillna("").ne(_oh_df[[c for c in _oh_sync_cols if c in _oh_df.columns]].fillna("")).any(axis=1) if not _oh_edited.empty else pd.Series(False, index=_oh_edited.index)
+    _oh_ex1, _oh_ex2 = st.columns([3,1])
+    with _oh_ex1:
+        if _oh_changed.any():
+            st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {_oh_changed.sum()} on-hold project(s) edited — ready to export</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span style="font-size:12px;opacity:.5">Edit ✦ columns above then export to sync with DRS</span>', unsafe_allow_html=True)
+    with _oh_ex2:
+        _oh_buf = __import__("io").BytesIO()
+        _oh_edited[_oh_sync_cols].to_csv(_oh_buf, index=False)
+        st.download_button(
+            label="⬇ Export to CSV",
+            data=_oh_buf.getvalue(),
+            file_name=f"on_hold_updates_{__import__('datetime').date.today().isoformat()}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
 st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:20px">PS Reporting Tools · Internal use only · Data loaded this session only</div>',unsafe_allow_html=True)

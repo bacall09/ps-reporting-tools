@@ -208,6 +208,7 @@ SS_COL_MAP = {
     "change order":          "change_order",
     "partner name":          "partner_name",
     "on hold reason":        "on_hold_reason",
+    "legacy":                "legacy",
     "risk owner":            "risk_owner",
     "risk detail":           "risk_detail",
     "responsible for delay": "responsible_for_delay",
