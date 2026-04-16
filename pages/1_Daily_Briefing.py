@@ -60,11 +60,11 @@ st.markdown("""
         .metric-help:hover::after {
             content: attr(data-tip);
             position:absolute; left:50%; transform:translateX(-50%);
-            top:calc(100% + 8px); background:#0E223D; color:#fff;
-            font-size:12.5px; font-weight:500; padding:11px 15px; border-radius:8px;
-            white-space:normal; width:280px; z-index:99999; line-height:1.65;
-            box-shadow:0 4px 20px rgba(0,0,0,0.6); opacity:1 !important;
-            letter-spacing:0.1px;
+            top:calc(100% + 8px); background:#0E223D; color:#ffffff;
+            font-size:13px; font-weight:600; padding:12px 16px; border-radius:8px;
+            white-space:normal; width:290px; z-index:99999; line-height:1.7;
+            box-shadow:0 4px 20px rgba(0,0,0,0.7); opacity:1 !important;
+            letter-spacing:0.15px; border:1px solid rgba(59,158,255,0.3);
             pointer-events:none;
         }
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
