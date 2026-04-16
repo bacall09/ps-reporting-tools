@@ -3,6 +3,7 @@ PS Tools — Shared Constants
 Employee roster, role assignments, column maps, templates.
 Updated: 2026-03-22 v2
 """
+import re as _re_constants
 
 # ── Streamlit permission roles ─────────────────────────────────────────────────
 # Manager-only: see all pages, do NOT appear in consultant dropdowns
@@ -324,7 +325,6 @@ def get_ff_scope(project_type: str, project_name: str = ""):
     e.g. 'Acme - ZA - 20 Premium Implementation' → 20
     Falls back to DEFAULT_SCOPE lookup if no number found in name.
     """
-    import re as _re
     if not project_type:
         return None
     pt = str(project_type).strip().lower()
@@ -333,7 +333,7 @@ def get_ff_scope(project_type: str, project_name: str = ""):
     if "premium" in pt:
         if project_name:
             # Look for standalone 10 or 20 in the project name
-            _nums = _re.findall(r"\b(10|20)\b", str(project_name))
+            _nums = _re_constants.findall(r"\b(10|20)\b", str(project_name))
             if _nums:
                 return float(_nums[0])
         # Fall back to DEFAULT_SCOPE premium entries if no match in name
