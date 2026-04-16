@@ -90,15 +90,18 @@ if df_drs is not None and not df_drs.empty:
                 lambda v: resolve_name(str(v)).lower() in _region_consultants
                        or str(v).strip().lower() in _region_consultants
             )].copy()
-    elif role == "manager_only":
+    elif role in ("manager_only", "reporting_only"):
         my_drs = df_drs.copy()
+    elif role == "manager" and view_as == selected:
+        # Manager viewing own projects (no View As set)
+        my_drs = df_drs[pm_col.apply(lambda v: name_matches(v, view_as))].copy()
     else:
         my_drs = df_drs[pm_col.apply(lambda v: name_matches(v, view_as))].copy()
 else:
     my_drs = pd.DataFrame()
 
 # ── Hero render ───────────────────────────────────────────────────────────────
-_view_label = _va_region + " Team" if _va_region else (
+_view_label = ("Global Team" if _va_region == "__ALL__" else _va_region + " Team") if _va_region else (
     view_as if view_as != selected else selected
 )
 st.markdown(f"""

@@ -200,7 +200,7 @@ else:
     on_hold["_flags"] = None
 
 # ── Header ────────────────────────────────────────────────────────────────────
-_dn = (_va_region + " Team" if _va_region
+_dn = ("Global Team" if _va_region == "__ALL__" else _va_region + " Team" if _va_region
        else view_as.split(",")[1].strip()+" "+view_as.split(",")[0] if "," in view_as
        else view_as)
 st.markdown(f"""
