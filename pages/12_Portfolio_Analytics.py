@@ -4,6 +4,7 @@ Manager-level portfolio view: team utilization trends, project risk distribution
 workload by consultant, and product mix analysis.
 """
 import streamlit as st
+import math
 import pandas as pd
 
 st.session_state["current_page"] = "Portfolio Analytics"
@@ -258,7 +259,12 @@ for _, _sr in _active.iterrows():
     except (TypeError, ValueError):
         _scope_f = 0.0
     if _scope_f <= 0 or _actual <= 0: continue
-    _burn = round(100 * _actual / _scope_f)
+    try:
+        _burn_raw = 100 * _actual / _scope_f
+        if not math.isfinite(_burn_raw): continue
+        _burn = round(_burn_raw)
+    except (ZeroDivisionError, ValueError, OverflowError):
+        continue
     _pm_key = _pm_s.strip()
     if _pm_key not in _scope_by_pm:
         _scope_by_pm[_pm_key] = {"overrun": 0, "near_limit": 0}
@@ -288,10 +294,10 @@ _whs_lookup = {}
 try:
     from shared.whs import score_projects, build_consultant_summary
     if df_drs is not None and not df_drs.empty:
-        _whs_df_all, _ = score_projects(df_drs)
+        _whs_df_all   = score_projects(df_drs)          # returns DataFrame directly
         _whs_summ_all, _ = build_consultant_summary(_whs_df_all)  # returns (df, missing_count)
         for _, _wr in _whs_summ_all.iterrows():
-            _wcs = str(_wr.get("project_manager","") or "")  # column is project_manager not consultant
+            _wcs = str(_wr.get("project_manager","") or "")
             for _cn2 in _team_consultants:
                 if name_matches(_wcs, _cn2):
                     _whs_lookup[_cn2] = round(float(_wr.get("total_score", 0)), 1)
