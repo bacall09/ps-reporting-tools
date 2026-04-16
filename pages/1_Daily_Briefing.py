@@ -386,7 +386,6 @@ if _oh_count > 0:
     _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
 
 if _p1 or _p2 or _p3:
-    st.markdown('<div class="section-label">Today&#39;s Focus</div>', unsafe_allow_html=True)
 
     # Build paragraph prose — conversational, not bullet list
     def _proj_list(df, n=3):
@@ -423,7 +422,7 @@ if _p1 or _p2 or _p3:
 
     _bhtml = """<div style='border-radius:8px;border:1px solid rgba(59,158,255,0.2);overflow:hidden;margin-bottom:16px;font-family:Manrope,sans-serif'>
   <div style='background:rgba(59,158,255,0.07);padding:10px 20px;border-bottom:1px solid rgba(59,158,255,0.15);display:flex;align-items:center;gap:10px'>
-<span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>Today's Focus</span>
+<span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>This Week&#39;s Focus</span>
 <span style='font-size:11px;color:var(--text-color,inherit);opacity:0.35;margin-left:auto'>Rule-based · AI briefings coming soon</span>
   </div>
   <div style='padding:18px 22px;display:flex;flex-direction:column;gap:14px'>"""
