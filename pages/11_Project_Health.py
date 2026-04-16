@@ -72,12 +72,20 @@ my_drs = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
     pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
     if _va_region and role in ("manager", "manager_only", "reporting_only"):
-        _region_pms = {
-            n for n, d in EMPLOYEE_LOCATION.items()
-            if PS_REGION_MAP.get(PS_REGION_OVERRIDE.get(n, d), "") == _va_region
-        }
+        from shared.constants import CONSULTANT_DROPDOWN, resolve_name
+        _region_consultants = set()
+        for _n in CONSULTANT_DROPDOWN:
+            _nl = EMPLOYEE_LOCATION.get(_n, "")
+            _nr = PS_REGION_OVERRIDE.get(_n, PS_REGION_MAP.get(_nl, "Other"))
+            if _nr == _va_region:
+                _region_consultants.add(_n.lower())
+                _vp2 = [p.strip() for p in _n.split(",")]
+                _region_consultants.add(_vp2[0].lower())
+                if len(_vp2) == 2:
+                    _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
         my_drs = df_drs[pm_col.apply(
-            lambda v: any(name_matches(v, pm) for pm in _region_pms)
+            lambda v: resolve_name(str(v)).lower() in _region_consultants
+                   or str(v).strip().lower() in _region_consultants
         )].copy()
     elif role == "manager_only":
         my_drs = df_drs.copy()
@@ -312,7 +320,7 @@ if not _active.empty:
         _cols_show.append("Consultant")
 
     # ── Sort controls ─────────────────────────────────────────────────────────
-    _sortable_cols = ["Customer","Project Type","Phase","Go-Live","Variance","RAG","Status"]
+    _sortable_cols = ["Customer","Project Type","Phase","Start Date","Go-Live","Variance","RAG","Status"]
     if role in ("manager","manager_only","reporting_only") or _va_region:
         _sortable_cols.append("Consultant")
 
