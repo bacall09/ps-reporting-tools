@@ -181,6 +181,29 @@ def load_drs(file):
         df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
     if "go_live_date" in df.columns:
         df["go_live_date"] = pd.to_datetime(df["go_live_date"], errors="coerce")
+    # Parse new go-live date variants when present
+    for _gl_col in ["original_go_live_date", "forecast_go_live_date", "actual_go_live_date"]:
+        if _gl_col in df.columns:
+            df[_gl_col] = pd.to_datetime(df[_gl_col], errors="coerce")
+    # Compute effective_go_live_date: forecast → original → go_live_date
+    # This is what all pages should use for go-live assessments
+    _has_forecast  = "forecast_go_live_date"  in df.columns
+    _has_original  = "original_go_live_date"  in df.columns
+    if _has_forecast and _has_original:
+        df["effective_go_live_date"] = df["forecast_go_live_date"].combine_first(
+            df["original_go_live_date"].combine_first(df.get("go_live_date", pd.NaT))
+        )
+    elif _has_forecast:
+        df["effective_go_live_date"] = df["forecast_go_live_date"].combine_first(
+            df.get("go_live_date", pd.NaT)
+        )
+    elif _has_original:
+        df["effective_go_live_date"] = df["original_go_live_date"].combine_first(
+            df.get("go_live_date", pd.NaT)
+        )
+    else:
+        # No new columns yet — effective = existing go_live_date
+        df["effective_go_live_date"] = df.get("go_live_date", pd.NaT)
     if "last_updated" in df.columns:
         df["last_updated"] = pd.to_datetime(df["last_updated"], errors="coerce")
     # Parse all milestone date columns — clip epoch/nonsense dates (e.g. checkbox=1 → 1970-01-01)

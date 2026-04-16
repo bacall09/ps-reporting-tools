@@ -180,7 +180,7 @@ for _, row in df_drs.iterrows():
     rag    = str(_get(row, "rag",    "") or "").strip().upper()[:1]
     resp   = str(_get(row, "client_responsiveness", "") or "").strip().lower()
     pm     = _get(row, "project_manager")
-    go_live   = _get(row, "go_live_date")
+    go_live   = _get(row, "effective_go_live_date") or _get(row, "go_live_date")
     start_dt  = _get(row, "start_date")
     actual_h  = _get(row, "actual_hours")
     budget_h  = _get(row, "budgeted_hours")

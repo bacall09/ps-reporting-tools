@@ -139,7 +139,7 @@ for _dc in ["go_live_date","start_date"]:
 
 # ── Schedule variance ─────────────────────────────────────────────────────────
 def _schedule_status(row):
-    gld = row.get("go_live_date")
+    gld = row.get("effective_go_live_date") or row.get("go_live_date")
     phase = str(row.get("phase","") or "").strip().lower()
     pi    = _pidx(phase)
     if pd.isna(gld): return "No date", None, "grey"
@@ -252,7 +252,7 @@ if not _active.empty:
         _ph   = str(r.get("phase","") or "—")
         _ph_lbl = _ph.split(".")[-1].strip() if "." in _ph else _ph
 
-        _gld  = r.get("go_live_date")
+        _gld  = r.get("effective_go_live_date") or r.get("go_live_date")
         _gld_str = pd.Timestamp(_gld).strftime("%-d %b %Y") if pd.notna(_gld) else "—"
         _status = r.get("_sched_status","—")
         _days   = r.get("_sched_days")
@@ -393,68 +393,118 @@ for _, r in _active.iterrows():
     if _scope and _scope > 0 and _actual > 0:
         _burn = round(100 * _actual / _scope)
         _cust = _pname.split(" - ")[0].strip()[:28] if " - " in _pname else _pname[:28]
+        # Phase burn ceiling — expected max % of scope used by this phase
+        _PHASE_BURN_CEIL = {
+            0: 0,    # Onboarding
+            1: 5,    # Requirements and design
+            2: 15,   # Configuration
+            3: 40,   # Enablement/Training
+            4: 65,   # UAT
+            5: 70,   # Prep for Go-Live
+            6: 95,   # Go-Live / Hypercare
+            7: 95,   # Data Migration
+            8: 100,  # Ready for Support Transition
+            9: 100,  # Phase 2 Scoping
+        }
+        _ph_s   = str(r.get("phase","") or "—")
+        _ph_lbl_s = _ph_s.split(".")[-1].strip() if "." in _ph_s else _ph_s
+        _ph_idx_s = _pidx(_ph_s)
+        _burn_ceil = _PHASE_BURN_CEIL.get(_ph_idx_s, 100)
+        # Exclude short-delivery products from phase-burn warnings
+        # (Approvals, CC, SFTP, Additional Subsidiary have compact scope by design)
+        _SHORT_DELIVERY_TYPES = {"approvals", "cc", "sftp", "additional subsidiary",
+                                  "cc statement", "cc statement import"}
+        _is_short = any(sd in _pt_lbl.lower() for sd in _SHORT_DELIVERY_TYPES)
+        _ahead_of_phase = (not _is_short) and (_burn > _burn_ceil + 20)
+        _pt_s   = str(r.get("project_type","") or "—")
+        _pt_lbl = _pt_s.split(":")[-1].strip() if ":" in _pt_s else _pt_s
+        _st_s   = str(r.get("status","") or "—")
         _scope_rows.append({
-            "Customer":    _cust,
-            "Scope hrs":   int(_scope),
-            "Used hrs":    round(_actual,1),
-            "Burn %":      _burn,
-            "_burn":       _burn,
+            "Customer":        _cust,
+            "Project Type":    _pt_lbl,
+            "Status":          _st_s,
+            "Phase":           _ph_lbl_s[:20],
+            "Phase ceiling":   f"{_burn_ceil}%",
+            "Scope hrs":       int(_scope),
+            "Used hrs":        round(_actual,1),
+            "Burn %":          _burn,
+            "_burn":           _burn,
+            "_burn_ceil":      _burn_ceil,
+            "_ahead_of_phase": _ahead_of_phase,
         })
 
 if _scope_rows:
     _scope_df = pd.DataFrame(_scope_rows).sort_values("_burn", ascending=False)
-    sc1, sc2, sc3 = st.columns(3)
-    _overrun = _scope_df[_scope_df["_burn"] > 100]
-    _at_limit = _scope_df[(_scope_df["_burn"] >= 80) & (_scope_df["_burn"] <= 100)]
-    _healthy  = _scope_df[_scope_df["_burn"] < 80]
+    _overrun       = _scope_df[_scope_df["_burn"] > 100]
+    _at_limit      = _scope_df[(_scope_df["_burn"] >= 80) & (_scope_df["_burn"] <= 100)]
+    _ahead_phase   = _scope_df[_scope_df["_ahead_of_phase"] & (_scope_df["_burn"] <= 100)]
+    _healthy       = _scope_df[~_scope_df["_ahead_of_phase"] & (_scope_df["_burn"] < 80)]
+    sc1, sc2, sc3, sc4 = st.columns(4)
     with sc1:
-        st.markdown(f"""<div class="metric-card">
-          <div class="metric-val" style="color:{'#C0392B' if len(_overrun)>0 else 'inherit'}">{len(_overrun)}</div>
+        st.markdown(f'''<div class="metric-card">
+          <div class="metric-val" style="color:{"#C0392B" if len(_overrun)>0 else "inherit"}">{len(_overrun)}</div>
           <div class="metric-lbl">Overrun</div>
           <div class="metric-sub">hours exceed scope</div>
-        </div>""", unsafe_allow_html=True)
+        </div>''', unsafe_allow_html=True)
     with sc2:
-        st.markdown(f"""<div class="metric-card">
-          <div class="metric-val" style="color:{'#F39C12' if len(_at_limit)>0 else 'inherit'}">{len(_at_limit)}</div>
+        st.markdown(f'''<div class="metric-card">
+          <div class="metric-val" style="color:{"#F39C12" if len(_at_limit)>0 else "inherit"}">{len(_at_limit)}</div>
           <div class="metric-lbl">At or near limit</div>
           <div class="metric-sub">80–100% scope used</div>
-        </div>""", unsafe_allow_html=True)
+        </div>''', unsafe_allow_html=True)
     with sc3:
-        st.markdown(f"""<div class="metric-card">
+        st.markdown(f'''<div class="metric-card">
+          <div class="metric-val" style="color:{"#F39C12" if len(_ahead_phase)>0 else "inherit"}">{len(_ahead_phase)}</div>
+          <div class="metric-lbl">Ahead of phase</div>
+          <div class="metric-sub">burning faster than expected</div>
+        </div>''', unsafe_allow_html=True)
+    with sc4:
+        st.markdown(f'''<div class="metric-card">
           <div class="metric-val" style="color:#27AE60">{len(_healthy)}</div>
           <div class="metric-lbl">Within budget</div>
-          <div class="metric-sub">below 80% scope used</div>
-        </div>""", unsafe_allow_html=True)
+          <div class="metric-sub">on track for phase</div>
+        </div>''', unsafe_allow_html=True)
 
     # Top 8 by burn %
     st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+    def _th(label, align="left"):
+        return f"<th style='padding:8px 12px;text-align:{align};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>{label}</th>"
     _tbl2 = """<div style='border:0.5px solid rgba(128,128,128,.2);border-radius:10px;overflow:hidden'>
     <table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:12px'>
-    <thead><tr style='border-bottom:1px solid rgba(128,128,128,.2)'>
-    <th style='padding:8px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>Customer</th>
-    <th style='padding:8px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>Scope</th>
-    <th style='padding:8px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>Used</th>
-    <th style='padding:8px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>Burn %</th>
-    </tr></thead><tbody>"""
-    for _, row in _scope_df.head(8).iterrows():
+    <thead><tr style='border-bottom:1px solid rgba(128,128,128,.2)'>"""
+    _tbl2 += _th("Customer") + _th("Project Type") + _th("Phase") + _th("Phase ceiling","right") + _th("Scope","right") + _th("Used","right") + _th("Burn %")
+    _tbl2 += "</tr></thead><tbody>"
+    # Show: all overrun + at-limit + ahead-of-phase; sort overrun first
+    _flagged_df = pd.concat([_overrun, _at_limit, _ahead_phase]).drop_duplicates().sort_values("_burn", ascending=False)
+    _caption_n = f"{len(_flagged_df)} project(s) flagged — overrun, at/near limit, or burning ahead of phase expectation. Short-delivery products (Approvals, CC, SFTP, Additional Subsidiary) excluded from phase check."
+    for _, row in _flagged_df.iterrows():
         _b = row["_burn"]
         _bc = "#C0392B" if _b > 100 else ("#F39C12" if _b >= 80 else "#27AE60")
         _bar_w = min(_b, 120)
         _bar_html = f"""<div style='display:flex;align-items:center;gap:8px'>
-          <div style='flex:1;max-width:120px;background:rgba(128,128,128,.1);
+          <div style='flex:1;max-width:100px;background:rgba(128,128,128,.1);
                       border-radius:4px;height:6px;overflow:hidden'>
             <div style='width:{_bar_w}%;height:6px;background:{_bc};border-radius:4px'></div>
           </div>
           <span style='color:{_bc};font-weight:700;font-size:11px'>{_b}%</span>
         </div>"""
+        _flag_reason = ""
+        if row["_burn"] > 100:
+            _flag_reason = f'<span style="font-size:10px;color:#C0392B;margin-left:4px">overrun</span>'
+        elif row["_ahead_of_phase"]:
+            _flag_reason = f'<span style="font-size:10px;color:#F39C12;margin-left:4px">ahead of phase</span>'
         _tbl2 += f"""<tr style='border-bottom:0.5px solid rgba(128,128,128,.1)'>
-          <td style='padding:8px 12px'>{row["Customer"]}</td>
+          <td style='padding:8px 12px'>{row["Customer"]}{_flag_reason}</td>
+          <td style='padding:8px 12px;opacity:.75'>{row["Project Type"]}</td>
+          <td style='padding:8px 12px;opacity:.75'>{row["Phase"]}</td>
+          <td style='padding:8px 12px;text-align:right;opacity:.55'>{row["Phase ceiling"]}</td>
           <td style='padding:8px 12px;text-align:right;opacity:.65'>{row["Scope hrs"]}h</td>
           <td style='padding:8px 12px;text-align:right;opacity:.65'>{row["Used hrs"]}h</td>
           <td style='padding:8px 12px'>{_bar_html}</td>
         </tr>"""
     _tbl2 += "</tbody></table></div>"
     st.markdown(_tbl2, unsafe_allow_html=True)
+    st.caption(_caption_n)
 else:
     st.info("No scope data available — ensure budgeted hours are set in the DRS.")
 

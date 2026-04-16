@@ -353,10 +353,11 @@ def _pidx_db(p):
         if pl.startswith(ph[:6]) or ph in pl or pl in ph: return i
     return -1
 if not _active.empty:
-    _gls = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _snap_today) & (_active["go_live_date"] <= _snap_n7)]
-            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
-    _ihc = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _snap_14) & (_active["go_live_date"] < _snap_today)]
-            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
+    _gld_col = "effective_go_live_date" if "effective_go_live_date" in _active.columns else "go_live_date"
+    _gls = (_active[_active[_gld_col].notna() & (_active[_gld_col] >= _snap_today) & (_active[_gld_col] <= _snap_n7)]
+            .sort_values(_gld_col) if _gld_col in _active.columns else pd.DataFrame())
+    _ihc = (_active[_active[_gld_col].notna() & (_active[_gld_col] >= _snap_14) & (_active[_gld_col] < _snap_today)]
+            .sort_values(_gld_col) if _gld_col in _active.columns else pd.DataFrame())
     _leg_s    = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
     _onb_plus = _active["phase"].fillna("").apply(lambda p: _pidx_db(p) >= 0)
     _no_intro = (~_active["ms_intro_email"].notna()) if "ms_intro_email" in _active.columns else pd.Series(True, index=_active.index)
@@ -920,13 +921,13 @@ else:
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
         for _, r in _gls.iterrows():
             _cust = str(r.get("project_name","")).split(" - ")[0].strip()
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
     with r1b:
         _col = "#F39C12" if len(_ihc) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare</div></div>', unsafe_allow_html=True)
         for _, r in _ihc.iterrows():
             _cust = str(r.get("project_name","")).split(" - ")[0].strip()
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
     with r1c:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)

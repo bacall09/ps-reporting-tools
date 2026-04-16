@@ -135,7 +135,7 @@ active = my_drs[~_ioh].copy()
 # ── Flags ─────────────────────────────────────────────────────────────────────
 def _flags(row):
     out=[]; phase=str(row.get("phase","")or"").strip()
-    go_live=row.get("go_live_date"); start_dt=row.get("start_date")
+    go_live=row.get("effective_go_live_date") or row.get("go_live_date"); start_dt=row.get("start_date")
     is_leg=bool(row.get("legacy",False)); pi=_pidx(phase)
     if pd.notna(go_live) and pi>=0:
         if pd.Timestamp(go_live)<today and pi<_pidx("06. go-live"):
