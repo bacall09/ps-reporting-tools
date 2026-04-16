@@ -14,7 +14,7 @@ from shared.constants import (
     resolve_name, get_ff_scope,
 )
 from shared.config import (
-    EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
+    AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP, DEFAULT_SCOPE,
 )
 
 st.markdown("""
