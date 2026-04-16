@@ -81,6 +81,8 @@ if role == "manager":
     _pick = st.session_state.get("home_browse", "— My own view —")
     if _pick and _pick.startswith("── ") and _pick.endswith(" ──"):
         _va_region = _pick[3:-3].strip()
+    elif _pick in ("👥 All team", "All team"):
+        _va_region = "__ALL__"   # special flag for all-team view
     elif _pick and _pick not in ("— My own view —", "— Select —", ""):
         view_as    = _pick
         _va_region = None
@@ -96,21 +98,25 @@ if df_drs is None:
 pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
 
 if _va_region and role == "manager":
-    # Region view — show all consultants in this region
-    _region_consultants = set()
-    for n in CONSULTANT_DROPDOWN:
-        _nl = EMPLOYEE_LOCATION.get(n, "")
-        _nr = PS_REGION_OVERRIDE.get(n, PS_REGION_MAP.get(_nl, "Other"))
-        if _nr == _va_region:
-            _region_consultants.add(n.lower())
-            _vp2 = [p.strip() for p in n.split(",")]
-            _region_consultants.add(_vp2[0].lower())
-            if len(_vp2) == 2:
-                _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
-    my_drs = df_drs[pm_col.apply(lambda v: resolve_name(str(v)).lower() in _region_consultants or str(v).strip().lower() in _region_consultants)].copy()
-    if my_drs.empty:
-        st.info(f"No projects found for the {_va_region} region in DRS.")
-        st.stop()
+    if _va_region == "__ALL__":
+        # All team — show every project
+        my_drs = df_drs.copy()
+    else:
+        # Region view — show all consultants in this region
+        _region_consultants = set()
+        for n in CONSULTANT_DROPDOWN:
+            _nl = EMPLOYEE_LOCATION.get(n, "")
+            _nr = PS_REGION_OVERRIDE.get(n, PS_REGION_MAP.get(_nl, "Other"))
+            if _nr == _va_region:
+                _region_consultants.add(n.lower())
+                _vp2 = [p.strip() for p in n.split(",")]
+                _region_consultants.add(_vp2[0].lower())
+                if len(_vp2) == 2:
+                    _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
+        my_drs = df_drs[pm_col.apply(lambda v: resolve_name(str(v)).lower() in _region_consultants or str(v).strip().lower() in _region_consultants)].copy()
+        if my_drs.empty:
+            st.info(f"No projects found for the {_va_region} region in DRS.")
+            st.stop()
 elif view_as == selected and role == "manager_only":
     # Pure manager (no own projects) — prompt to use View As
     st.info(f"You are logged in as a manager. Use 'View as' to browse a consultant or region.")
