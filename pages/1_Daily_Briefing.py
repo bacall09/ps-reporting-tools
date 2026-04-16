@@ -579,51 +579,57 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values(["project", "date"])
 
-        # Build prior_htd — same formula as Util Report assign_credits
+        # Build prior_htd — exactly matching Util Report assign_credits:
+        # group by project only, prior = max(htd) - sum(period hours)
         prior_htd: dict = {}
         if "hours_to_date" in month_ns.columns:
-            _htd_grp_cols = [c for c in ["project","project_type"] if c in month_ns.columns]
-            for _key, _grp in month_ns.groupby(_htd_grp_cols):
-                _pk = tuple(" ".join(str(k).strip().split()) for k in (_key if isinstance(_key, tuple) else (_key,)))
+            for _proj_key, _grp in month_ns.groupby("project"):
+                _proj_n = " ".join(str(_proj_key).strip().split())
                 try:
-                    _max_htd  = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
-                    _period_h = float(_grp["hours"].sum() or 0)
-                    prior_htd[_pk] = max(0.0, _max_htd - _period_h)
+                    _max_htd   = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
+                    prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
                 except Exception:
-                    prior_htd[_pk] = 0.0
+                    prior_htd[_proj_n] = 0.0
 
+        import re as _re_db
         _con: dict = {}
         for _, _r in ff_rows.iterrows():
             _proj  = " ".join(str(_r.get("project","")).split())
             _ptype = str(_r.get("project_type","")).strip()
             _hrs   = float(_r.get("hours", 0) or 0)
-            _date  = str(_r.get("date", ""))[:10]
             if _hrs <= 0: continue
 
-            # Premium: check Time Item SKU column for IMPL10/IMPL20 first
-            import re as _re_db
-            _sku = str(_r.get("time_item_sku", "") or "")
-            if "premium" in _ptype.lower() and _sku:
+            # Premium: check Time Item SKU for IMPL10/IMPL20 first (matches Util Report)
+            _ptype_lower = _ptype.strip().lower()
+            if "premium" in _ptype_lower:
+                _sku = str(_r.get("time_item_sku", "") or "")
                 _sku_nums = _re_db.findall(r"IMPL(\d+)", _sku.upper())
-                _sc = float(_sku_nums[0]) if _sku_nums else None
+                if _sku_nums:
+                    _sc = float(_sku_nums[0])
+                else:
+                    _proj_name = str(_r.get("project","") or "")
+                    _name_nums = _re_db.findall(r"(?<![\d])(10|20)(?![\d])", _proj_name)
+                    _sc = float(_name_nums[0]) if _name_nums else None
             else:
                 _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
-                       if k.strip().lower() in _ptype.lower()]
+                       if k.strip().lower() in _ptype_lower]
                 _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
             if _sc is None:
                 ff_unscoped += _hrs
                 continue
 
-            _ck = (_proj, _ptype)  # composite key: project + product type
-            if _ck not in _con: _con[_ck] = prior_htd.get(_ck, prior_htd.get((_proj,), 0.0))
-            _used = _con[_ck]; _rem = _sc - _used
+            # Use project name as key — matching Util Report's consumed dict
+            if _proj not in _con:
+                _con[_proj] = prior_htd.get(_proj, 0.0)
+            _used = _con[_proj]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
             elif _hrs <= _rem:
-                ff_credit += _hrs; _con[_ck] = _used + _hrs
+                ff_credit += _hrs; _con[_proj] = _used + _hrs
             else:
-                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_ck] = _sc
+                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
 
     credit_hrs  = round(tm_hrs + ff_credit, 2)
     overrun_hrs  = round(ff_overrun, 2)
@@ -924,12 +930,12 @@ else:
         _col = "#F39C12" if len(_proj_9mo) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9+ months active <span class="metric-help" data-tip="Active projects 9 or more months from Start Date that have not yet reached Phase 08. Ready for Support Transition.">ⓘ</span></div></div>', unsafe_allow_html=True)
         for _, _p9 in _proj_9mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{str(_p9.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_p9)}</div>', unsafe_allow_html=True)
     with r2e:
         _col = "#C0392B" if len(_proj_12mo) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_12mo)}</div><div class="metric-lbl">12+ months active <span class="metric-help" data-tip="Active projects at or beyond 12 months from Start Date that have not yet reached Phase 08. May need escalation review.">ⓘ</span></div></div>', unsafe_allow_html=True)
         for _, _p12 in _proj_12mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{str(_p12.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_p12)}</div>', unsafe_allow_html=True)
 
     # ── Section: My Projects — Snapshot ───────────────────────────────────────
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
