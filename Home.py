@@ -196,7 +196,11 @@ with st.sidebar:
         except Exception:
             _page_script = ""
         _cur_page = st.session_state.get("current_page", "")
-        _show_prod_filter = (not _cur_page or "Daily Briefing" in _cur_page)
+        # Show on Daily Briefing and on first load (unknown page); hide on all others
+        _pages_without_filter = {"Customer Engagement", "Utilization Report",
+            "Workload Health Score", "DRS Health Check", "My Projects",
+            "Time Entries", "Help", "Capacity Outlook", "Revenue Report"}
+        _show_prod_filter = _cur_page not in _pages_without_filter
         if _show_prod_filter:
             st.markdown("**Filter by product:**")
             _product_filter_home = st.selectbox("Product", ["All products"] + _all_prods,

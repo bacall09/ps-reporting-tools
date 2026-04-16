@@ -1568,6 +1568,8 @@ def main():
     high     = len(consultant_df[consultant_df["workload_level"] == "High"])
     medium   = len(consultant_df[consultant_df["workload_level"] == "Medium"])
     low      = len(consultant_df[consultant_df["workload_level"] == "Low"])
+    avg_whs  = round(consultant_df["total_score"].mean(), 1) if not consultant_df.empty else 0.0
+    _whs_col_t, _whs_lbl_t = workload_level(avg_whs) if avg_whs else ("#718096", "—")
     active_projects = scored_df[scored_df["active"]]["project_id"].nunique()
     total_projects  = scored_df[scored_df["total_project"]]["project_id"].nunique() if "total_project" in scored_df.columns else active_projects
 
@@ -1580,7 +1582,7 @@ def main():
         return f"<div style='font-size:14px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div><div style='font-size:36px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>{pill}"
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.markdown(metric_card("WHS Score",                   f"{total:,}"),             unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("WHS Score",                   f"{avg_whs}"),             unsafe_allow_html=True)
     with m2: st.markdown(metric_card("Consultant High Workload",    f"{high}",    "At or over capacity",  "#C0392B"), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Consultant Medium Workload",  f"{medium}",  "Monitor for changes",  "#f39c12"), unsafe_allow_html=True)
     with m4: st.markdown(metric_card("Total FF Projects",           f"{total_projects:,}"),     unsafe_allow_html=True)

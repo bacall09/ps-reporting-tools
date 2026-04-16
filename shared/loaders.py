@@ -514,6 +514,11 @@ NS_COL_MAP_OUT = {
     "foreign currency":     "currency",
     "cost rate":            "ns_rate",
     "pay rate":             "ns_rate",
+    # ── Project type SKU (for Premium scope resolution) ───────────────────────
+    "time item sku":        "time_item_sku",
+    "item sku":             "time_item_sku",
+    "sku":                  "time_item_sku",
+    "time item":            "time_item_sku",
 }
 
 

@@ -236,9 +236,9 @@ st.markdown("""
             </p>
         </div>
         <div style='flex:1;min-width:240px'>
-            <span style='background:#808080;color:#fff;font-size:10px;font-weight:700;
-                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>PHASE 2 · COMING SOON</span>
-            <p style='margin:8px 0 0;font-size:13px;color:#555;line-height:1.6'>
+            <span style='background:rgba(59,158,255,0.15);color:#3B9EFF;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px;border:1px solid rgba(59,158,255,0.4)'>PHASE 2 · COMING SOON</span>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;opacity:0.65;line-height:1.6'>
                 Templates for <strong>Project Lifecycle</strong> communications will be added
                 once finalised — covering kick-off, go-live, and project close communications.
             </p>
