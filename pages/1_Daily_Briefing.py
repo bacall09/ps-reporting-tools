@@ -319,6 +319,148 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# ── Pre-compute snapshot data so briefing can appear before utilization ───────
+_ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool) if not my_projects.empty else pd.Series(dtype=bool)
+_active  = my_projects[~_ioh].copy() if not my_projects.empty else pd.DataFrame()
+_snap_today = pd.Timestamp.today().normalize()
+_snap_n7    = _snap_today + pd.Timedelta(days=7)
+_snap_14    = _snap_today - pd.Timedelta(days=14)
+_PHASE_ORDER_DB = ["00. onboarding","01. requirements and design","02. configuration",
+                "03. enablement/training","04. uat","05. prep for go-live",
+                "06. go-live","07. data migration","08. ready for support transition","09. phase 2 scoping"]
+def _pidx_db(p):
+    pl = str(p).strip().lower()
+    for i, ph in enumerate(_PHASE_ORDER_DB):
+        if pl.startswith(ph[:6]) or ph in pl or pl in ph: return i
+    return -1
+if not _active.empty:
+    _gls = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _snap_today) & (_active["go_live_date"] <= _snap_n7)]
+            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
+    _ihc = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _snap_14) & (_active["go_live_date"] < _snap_today)]
+            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
+    _leg_s    = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
+    _onb_plus = _active["phase"].fillna("").apply(lambda p: _pidx_db(p) >= 0)
+    _no_intro = (~_active["ms_intro_email"].notna()) if "ms_intro_email" in _active.columns else pd.Series(True, index=_active.index)
+    _mi       = _active[(~_leg_s) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
+    _stale    = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False) if "days_inactive" in _active.columns else pd.DataFrame()
+    _rag_red  = pd.DataFrame(); _rag_yellow = pd.DataFrame()
+    if "rag" in _active.columns:
+        _rv = _active["rag"].fillna("").astype(str).str.strip().str.lower()
+        _rag_red = _active[_rv == "red"]; _rag_yellow = _active[_rv == "yellow"]
+else:
+    _gls = _ihc = _mi = _stale = _rag_red = _rag_yellow = pd.DataFrame()
+
+# ── This Week Briefing ────────────────────────────────────────────────────
+_p1, _p2, _p3 = [], [], []
+
+if len(_rag_red) > 0:
+    _red_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_red.head(3).iterrows())
+    _p1.append(f"**{len(_rag_red)} project{'s' if len(_rag_red)>1 else ''} flagged Red RAG** ({_red_names}{'...' if len(_rag_red)>3 else ''}) — these need your attention first.")
+
+if len(_gls) > 0:
+    _gl_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _gls.iterrows())
+    _p1.append(f"**{len(_gls)} project{'s are' if len(_gls)>1 else ' is'} going live this week** ({_gl_names}) — confirm readiness and have cutover support in place.")
+
+if len(_ihc) > 0:
+    _ihc_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _ihc.head(3).iterrows())
+    _p1.append(f"**{len(_ihc)} project{'s are' if len(_ihc)>1 else ' is'} in hypercare** ({_ihc_names}) — check in proactively and log any post-go-live issues.")
+
+if len(_rag_yellow) > 0:
+    _yel_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_yellow.head(2).iterrows())
+    _p2.append(f"**{len(_rag_yellow)} Yellow RAG project{'s' if len(_rag_yellow)>1 else ''}** ({_yel_names}) — review blockers before they escalate to Red.")
+
+if len(_stale) > 0:
+    _stale_top  = _stale.iloc[0]
+    _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0][:25]
+    _stale_days = int(_stale_top.get("days_inactive", 0))
+    if len(_stale) == 1:
+        _p2.append(f"**1 project needs re-engagement** ({_stale_name}, {_stale_days}d inactive) — send a check-in to re-establish momentum.")
+    else:
+        _p2.append(f"**{len(_stale)} projects need re-engagement**, led by {_stale_name} ({_stale_days}d inactive) — use Customer Engagement to draft outreach.")
+
+if len(_mi) > 0:
+    _p2.append(f"**{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email** — a quick win to close before end of week.")
+
+_oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+if _oh_count > 0:
+    _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
+
+if _p1 or _p2 or _p3:
+    st.markdown('<div class="section-label">Today&#39;s Focus</div>', unsafe_allow_html=True)
+
+    # Build paragraph prose — conversational, not bullet list
+    def _proj_list(df, n=3):
+        names = [str(r.get("project_name","")).split(" - ")[0].strip()[:28] for _, r in df.head(n).iterrows()]
+        if len(df) > n: names.append(f"and {len(df)-n} more")
+        return ", ".join(names)
+
+    _para_attn = ""
+    if len(_rag_red) > 0:
+        _para_attn += f"{len(_rag_red)} project{'s are' if len(_rag_red)>1 else ' is'} on Red RAG ({_proj_list(_rag_red)}). "
+    if len(_gls) > 0:
+        _para_attn += f"{'With' if _para_attn else ''} {_proj_list(_gls)} going live this week — confirm cutover readiness before the end of the day. "
+    if len(_ihc) > 0:
+        _para_attn += f"{_proj_list(_ihc)} {'are' if len(_ihc)>1 else 'is'} in week-one hypercare — a proactive check-in today would be timely."
+
+    _para_quick = ""
+    if len(_rag_yellow) > 0:
+        _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation. "
+    if len(_stale) > 0:
+        _stale_top  = _stale.iloc[0]
+        _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0].strip()[:28]
+        _stale_days = int(_stale_top.get("days_inactive",0))
+        if len(_stale) == 1:
+            _para_quick += f"{_stale_name} hasn't had contact in {_stale_days} days — a short check-in would re-establish momentum. "
+        else:
+            _para_quick += f"{len(_stale)} projects are overdue for outreach, with {_stale_name} leading at {_stale_days} days inactive — use Customer Engagement to draft messages. "
+    if len(_mi) > 0:
+        _para_quick += f"{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email date. If the emails were sent, logging the dates is a quick close."
+
+    _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+    _para_house = ""
+    if _oh_count > 0:
+        _para_house = f"{_oh_count} project{'s are' if _oh_count>1 else ' is'} on hold. Make sure each has an On Hold Reason and Responsible for Delay recorded — these are flagged in DRS Health Check if missing."
+
+    _bhtml = """<div style='border-radius:8px;border:1px solid rgba(59,158,255,0.2);overflow:hidden;margin-bottom:16px;font-family:Manrope,sans-serif'>
+  <div style='background:rgba(59,158,255,0.07);padding:10px 20px;border-bottom:1px solid rgba(59,158,255,0.15);display:flex;align-items:center;gap:10px'>
+<span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>Today's Focus</span>
+<span style='font-size:11px;color:var(--text-color,inherit);opacity:0.35;margin-left:auto'>Rule-based · AI briefings coming soon</span>
+  </div>
+  <div style='padding:18px 22px;display:flex;flex-direction:column;gap:14px'>"""
+
+    if _para_attn:
+        _bhtml += f"""<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:#C0392B;border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#C0392B;margin-bottom:5px'>Needs attention</div>
+  <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_attn.strip()}</div>
+</div>
+  </div>"""
+
+    if _para_quick:
+        _sep = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if _para_attn else ""
+        _bhtml += f"""{_sep}<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:#3B9EFF;border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:5px'>Quick wins this week</div>
+  <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_quick.strip()}</div>
+</div>
+  </div>"""
+
+    if _para_house:
+        _sep2 = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if (_para_attn or _para_quick) else ""
+        _bhtml += f"""{_sep2}<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:rgba(128,128,128,0.3);border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:inherit;opacity:0.45;margin-bottom:5px'>Housekeeping</div>
+  <div style='font-size:13px;color:inherit;opacity:0.6;line-height:1.7'>{_para_house.strip()}</div>
+</div>
+  </div>"""
+
+    _bhtml += "</div></div>"
+    st.markdown(_bhtml, unsafe_allow_html=True)
+
+
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -638,58 +780,14 @@ if df_drs is None:
 elif my_projects.empty:
     st.info("No projects found in the DRS file for your profile.")
 else:
-    _ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool)
-    _active  = my_projects[~_ioh].copy()
-    _today   = pd.Timestamp.today().normalize()
-    _n7      = _today + pd.Timedelta(days=7)
-    _14      = _today - pd.Timedelta(days=14)
-
-    # Phase breakdown
-    _PHASE_ORDER = ["00. onboarding","01. requirements and design","02. configuration",
-                    "03. enablement/training","04. uat","05. prep for go-live",
-                    "06. go-live","07. data migration","08. ready for support transition","09. phase 2 scoping"]
-    def _pidx_db(p):
-        pl = str(p).strip().lower()
-        for i, ph in enumerate(_PHASE_ORDER):
-            if pl.startswith(ph[:6]) or ph in pl or pl in ph: return i
-        return -1
-
+    # Phase breakdown (still needed for metric cards)
+    _today   = _snap_today; _n7 = _snap_n7; _14 = _snap_14
     _pc = sorted(
         [(("Unassigned" if str(ph) in ("—", "", "nan") else ph), cnt)
          for ph, cnt in _active["phase"].fillna("Unassigned").value_counts().items()
          if cnt > 0],
         key=lambda x: (_pidx_db(x[0]) if x[0] != "Unassigned" else 999)
     )
-
-    # Going live this week
-    _gls = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _today) & (_active["go_live_date"] <= _n7)]
-            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
-
-    # In hypercare
-    _ihc = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _14) & (_active["go_live_date"] < _today)]
-            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
-
-    # Missing intro email
-    _leg      = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
-    _onb_plus = _active["phase"].fillna("").apply(lambda p: _pidx_db(p) >= 0)
-    _no_intro = (~_active["ms_intro_email"].notna()) if "ms_intro_email" in _active.columns else pd.Series(True, index=_active.index)
-    _mi       = _active[(~_leg) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
-
-    # Unscoped hours banner — matches Util Report behaviour
-
-    # Re-engagement
-    _stale = pd.DataFrame()
-    if "days_inactive" in my_projects.columns:
-        _stale = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False)
-
-    # RAG counts — from Overall RAG column in DRS
-    _rag_red    = pd.DataFrame()
-    _rag_yellow = pd.DataFrame()
-    if "rag" in _active.columns:
-        _rag_vals   = _active["rag"].fillna("").astype(str).str.strip().str.lower()
-        _rag_red    = _active[_rag_vals == "red"]
-        _rag_yellow = _active[_rag_vals == "yellow"]
-
     snap1, snap2, snap3, snap4, snap5, snap6, snap7 = st.columns(7)
     with snap1:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
@@ -740,116 +838,6 @@ else:
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
         for _, _ry in _rag_yellow.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
-
-    # ── This Week Briefing ────────────────────────────────────────────────────
-    _p1, _p2, _p3 = [], [], []
-
-    if len(_rag_red) > 0:
-        _red_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_red.head(3).iterrows())
-        _p1.append(f"**{len(_rag_red)} project{'s' if len(_rag_red)>1 else ''} flagged Red RAG** ({_red_names}{'...' if len(_rag_red)>3 else ''}) — these need your attention first.")
-
-    if len(_gls) > 0:
-        _gl_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _gls.iterrows())
-        _p1.append(f"**{len(_gls)} project{'s are' if len(_gls)>1 else ' is'} going live this week** ({_gl_names}) — confirm readiness and have cutover support in place.")
-
-    if len(_ihc) > 0:
-        _ihc_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _ihc.head(3).iterrows())
-        _p1.append(f"**{len(_ihc)} project{'s are' if len(_ihc)>1 else ' is'} in hypercare** ({_ihc_names}) — check in proactively and log any post-go-live issues.")
-
-    if len(_rag_yellow) > 0:
-        _yel_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_yellow.head(2).iterrows())
-        _p2.append(f"**{len(_rag_yellow)} Yellow RAG project{'s' if len(_rag_yellow)>1 else ''}** ({_yel_names}) — review blockers before they escalate to Red.")
-
-    if len(_stale) > 0:
-        _stale_top  = _stale.iloc[0]
-        _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0][:25]
-        _stale_days = int(_stale_top.get("days_inactive", 0))
-        if len(_stale) == 1:
-            _p2.append(f"**1 project needs re-engagement** ({_stale_name}, {_stale_days}d inactive) — send a check-in to re-establish momentum.")
-        else:
-            _p2.append(f"**{len(_stale)} projects need re-engagement**, led by {_stale_name} ({_stale_days}d inactive) — use Customer Engagement to draft outreach.")
-
-    if len(_mi) > 0:
-        _p2.append(f"**{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email** — a quick win to close before end of week.")
-
-    _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
-    if _oh_count > 0:
-        _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
-
-    if _p1 or _p2 or _p3:
-        st.markdown('<div class="section-label">Today&#39;s Focus</div>', unsafe_allow_html=True)
-
-        # Build paragraph prose — conversational, not bullet list
-        def _proj_list(df, n=3):
-            names = [str(r.get("project_name","")).split(" - ")[0].strip()[:28] for _, r in df.head(n).iterrows()]
-            if len(df) > n: names.append(f"and {len(df)-n} more")
-            return ", ".join(names)
-
-        _para_attn = ""
-        if len(_rag_red) > 0:
-            _para_attn += f"{len(_rag_red)} project{'s are' if len(_rag_red)>1 else ' is'} on Red RAG ({_proj_list(_rag_red)}). "
-        if len(_gls) > 0:
-            _para_attn += f"{'With' if _para_attn else ''} {_proj_list(_gls)} going live this week — confirm cutover readiness before the end of the day. "
-        if len(_ihc) > 0:
-            _para_attn += f"{_proj_list(_ihc)} {'are' if len(_ihc)>1 else 'is'} in week-one hypercare — a proactive check-in today would be timely."
-
-        _para_quick = ""
-        if len(_rag_yellow) > 0:
-            _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation. "
-        if len(_stale) > 0:
-            _stale_top  = _stale.iloc[0]
-            _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0].strip()[:28]
-            _stale_days = int(_stale_top.get("days_inactive",0))
-            if len(_stale) == 1:
-                _para_quick += f"{_stale_name} hasn't had contact in {_stale_days} days — a short check-in would re-establish momentum. "
-            else:
-                _para_quick += f"{len(_stale)} projects are overdue for outreach, with {_stale_name} leading at {_stale_days} days inactive — use Customer Engagement to draft messages. "
-        if len(_mi) > 0:
-            _para_quick += f"{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email date. If the emails were sent, logging the dates is a quick close."
-
-        _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
-        _para_house = ""
-        if _oh_count > 0:
-            _para_house = f"{_oh_count} project{'s are' if _oh_count>1 else ' is'} on hold. Make sure each has an On Hold Reason and Responsible for Delay recorded — these are flagged in DRS Health Check if missing."
-
-        _bhtml = """<div style='border-radius:8px;border:1px solid rgba(59,158,255,0.2);overflow:hidden;margin-bottom:16px;font-family:Manrope,sans-serif'>
-  <div style='background:rgba(59,158,255,0.07);padding:10px 20px;border-bottom:1px solid rgba(59,158,255,0.15);display:flex;align-items:center;gap:10px'>
-    <span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>Today's Focus</span>
-    <span style='font-size:11px;color:var(--text-color,inherit);opacity:0.35;margin-left:auto'>Rule-based · AI briefings coming soon</span>
-  </div>
-  <div style='padding:18px 22px;display:flex;flex-direction:column;gap:14px'>"""
-
-        if _para_attn:
-            _bhtml += f"""<div style='display:flex;gap:14px;align-items:flex-start'>
-    <div style='flex-shrink:0;width:3px;background:#C0392B;border-radius:2px;align-self:stretch;min-height:36px'></div>
-    <div>
-      <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#C0392B;margin-bottom:5px'>Needs attention</div>
-      <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_attn.strip()}</div>
-    </div>
-  </div>"""
-
-        if _para_quick:
-            _sep = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if _para_attn else ""
-            _bhtml += f"""{_sep}<div style='display:flex;gap:14px;align-items:flex-start'>
-    <div style='flex-shrink:0;width:3px;background:#3B9EFF;border-radius:2px;align-self:stretch;min-height:36px'></div>
-    <div>
-      <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:5px'>Quick wins this week</div>
-      <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_quick.strip()}</div>
-    </div>
-  </div>"""
-
-        if _para_house:
-            _sep2 = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if (_para_attn or _para_quick) else ""
-            _bhtml += f"""{_sep2}<div style='display:flex;gap:14px;align-items:flex-start'>
-    <div style='flex-shrink:0;width:3px;background:rgba(128,128,128,0.3);border-radius:2px;align-self:stretch;min-height:36px'></div>
-    <div>
-      <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:inherit;opacity:0.45;margin-bottom:5px'>Housekeeping</div>
-      <div style='font-size:13px;color:inherit;opacity:0.6;line-height:1.7'>{_para_house.strip()}</div>
-    </div>
-  </div>"""
-
-        _bhtml += "</div></div>"
-        st.markdown(_bhtml, unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")
