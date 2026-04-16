@@ -76,12 +76,31 @@ def get_ps_region(name):
     if not name or str(name).strip().lower() in ("", "nan", "none"):
         return "Unknown"
     name = str(name).strip()
+    # Try exact match first
     if name in PS_REGION_OVERRIDE:
         return PS_REGION_OVERRIDE[name]
     loc = EMPLOYEE_LOCATION.get(name, "")
-    if isinstance(loc, tuple):
-        loc = loc[0]
-    return PS_REGION_MAP.get(loc, "Unknown")
+    if loc:
+        if isinstance(loc, tuple): loc = loc[0]
+        return PS_REGION_MAP.get(loc, "Unknown")
+    # Try reversing "First Last" → "Last, First"
+    parts = name.split()
+    if len(parts) == 2:
+        reversed_name = f"{parts[1]}, {parts[0]}"
+        if reversed_name in PS_REGION_OVERRIDE:
+            return PS_REGION_OVERRIDE[reversed_name]
+        loc2 = EMPLOYEE_LOCATION.get(reversed_name, "")
+        if loc2:
+            if isinstance(loc2, tuple): loc2 = loc2[0]
+            return PS_REGION_MAP.get(loc2, "Unknown")
+    # Try last name only match
+    last = parts[0] if parts else ""
+    for key in EMPLOYEE_LOCATION:
+        if key.split(",")[0].strip().lower() == last.lower():
+            loc3 = EMPLOYEE_LOCATION[key]
+            if isinstance(loc3, tuple): loc3 = loc3[0]
+            return PS_REGION_MAP.get(loc3, "Unknown")
+    return "Unknown"
 
 
 def score_projects(ss_df, ns_df=None):

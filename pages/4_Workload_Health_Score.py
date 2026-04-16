@@ -1617,7 +1617,7 @@ A project is flagged if no time has been booked within the NS report window:
         """)
 
     # ── Preview tabs ──────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs(["By Consultant", "At-Risk", "Stale Projects", "Phase Duration"])
+    tab1, tab2, tab3 = st.tabs(["By Consultant", "At-Risk", "Stale Projects"])
     with tab1:
         display_con = consultant_df.rename(columns={
             "project_manager":      "Consultant",
@@ -1691,109 +1691,6 @@ A project is flagged if no time has been booked within the NS report window:
             with _c4: st.markdown(metric_card("Not in NS",     str(_counts.get("No Entry in Period", 0)), "No time booked", "#7f8c8d"), unsafe_allow_html=True)
             st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
             st.dataframe(stale_df, hide_index=True, use_container_width=True)
-
-    with tab4:
-        st.markdown("#### Phase Duration — Time Spent per Delivery Phase")
-        if not milestone_cols:
-            st.info("No milestone columns detected in your SS DRS export. Milestone columns are added to newer projects — upload a DRS export that includes milestone date columns to enable this view.")
-        else:
-            wide_df, long_df = build_phase_duration(ss_df, milestone_cols)
-
-            if wide_df.empty:
-                st.info("No phase duration data could be calculated. Ensure your SS DRS export includes project start dates and milestone columns.")
-            else:
-                # Coerce all phase (days) columns to nullable int for clean display
-                for _dc in [col for col in wide_df.columns if col.endswith("(days)")]:
-                    wide_df[_dc] = pd.to_numeric(wide_df[_dc], errors="coerce").astype("Int64")
-                if "days_open" in wide_df.columns:
-                    wide_df["days_open"] = pd.to_numeric(wide_df["days_open"], errors="coerce").astype("Int64")
-
-                has_data = wide_df["milestone_data_available"].sum() if "milestone_data_available" in wide_df.columns else 0
-                total    = len(wide_df)
-                st.caption(
-                    f"{has_data:,} of {total:,} project(s) have milestone data · "
-                    f"Projects with NULL milestones show projected durations based on product-type benchmarks · "
-                    f"data_source: Milestone | Projected (new) | Projected (historical)"
-                )
-
-                # ── Filters ───────────────────────────────────────────────
-                _pf1, _pf2, _pf3 = st.columns([2, 2, 2])
-                with _pf1:
-                    _pm_opts = sorted(wide_df["project_manager"].dropna().astype(str).unique()) if "project_manager" in wide_df.columns else []
-                    _pm_filt = st.multiselect("Consultant / PM", _pm_opts, default=_pm_opts, key="pd_pm")
-                with _pf2:
-                    _type_opts = sorted(wide_df["project_type"].dropna().astype(str).unique()) if "project_type" in wide_df.columns else []
-                    _type_filt = st.multiselect("Project Type", _type_opts, default=_type_opts, key="pd_type")
-                with _pf3:
-                    _status_opts = sorted(wide_df["status"].dropna().astype(str).unique()) if "status" in wide_df.columns else []
-                    _status_filt = st.multiselect("Status", _status_opts, default=_status_opts, key="pd_status")
-
-                # Apply filters to wide_df
-                _wdf = wide_df.copy()
-                if _pm_filt     and "project_manager" in _wdf.columns: _wdf = _wdf[_wdf["project_manager"].isin(_pm_filt)]
-                if _type_filt   and "project_type"    in _wdf.columns: _wdf = _wdf[_wdf["project_type"].isin(_type_filt)]
-                if _status_filt and "status"          in _wdf.columns: _wdf = _wdf[_wdf["status"].isin(_status_filt)]
-
-                st.caption(f"{len(_wdf):,} project(s) shown")
-
-                # ── Wide view: heatmap-style ───────────────────────────────
-                st.markdown("**By Project — Days in Each Phase**")
-                phase_day_cols = [c for c in _wdf.columns if c.endswith("(days)")]
-                proj_cols      = [c for c in _wdf.columns if "(proj end)" in c or c in ("projected_go_live", "projected_close")]
-                display_cols   = ["project_name", "project_manager", "project_type",
-                                  "current_phase", "status", "start_date",
-                                  "days_open", "data_source",
-                                  "projected_go_live", "projected_close"] + phase_day_cols
-                display_cols   = [c for c in display_cols if c in _wdf.columns]
-
-                def _color_days(val):
-                    try:
-                        v = float(val)
-                        if v > 60:  return "background-color:#FFC7CE;color:#9C0006"
-                        if v > 30:  return "background-color:#FFEB9C;color:#9C6500"
-                        if v > 0:   return "background-color:#C6EFCE;color:#276221"
-                    except: pass
-                    return ""
-
-                # Build clean column rename map — phase "(days)" cols stay as-is for now
-                _col_rename = {
-                    "project_name":       "Project",
-                    "project_manager":    "Consultant / PM",
-                    "project_type":       "Type",
-                    "current_phase":      "Current Phase",
-                    "status":             "Status",
-                    "start_date":         "Start Date",
-                    "days_open":          "Days Open",
-                    "data_source":        "Data Source",
-                    "projected_go_live":  "Proj. Go-Live",
-                    "projected_close":    "Proj. Close",
-                }
-                styled_wide = _wdf[display_cols].rename(columns=_col_rename)
-                _style_cols = [_col_rename.get(c, c) for c in phase_day_cols if _col_rename.get(c, c) in styled_wide.columns] +                               ([_col_rename.get(c,c) for c in phase_day_cols if c in styled_wide.columns])
-                _style_cols = list(dict.fromkeys(  # deduplicate
-                    c for c in phase_day_cols if c in styled_wide.columns
-                ))
-                styled_obj = styled_wide.style.applymap(_color_days, subset=_style_cols) if _style_cols else styled_wide.style
-                st.dataframe(styled_obj, hide_index=True, use_container_width=True)
-
-                # ── Long view: for Tableau export ─────────────────────────
-                with st.expander("Long format (Tableau-ready) — one row per project per phase", expanded=False):
-                    if long_df.empty:
-                        st.info("No long-format data available.")
-                    else:
-                        _ldf = long_df.copy()
-                        if _pm_filt     and "project_manager" in _ldf.columns: _ldf = _ldf[_ldf["project_manager"].isin(_pm_filt)]
-                        if _type_filt   and "project_type"    in _ldf.columns: _ldf = _ldf[_ldf["project_type"].isin(_type_filt)]
-                        if _status_filt and "status"          in _ldf.columns: _ldf = _ldf[_ldf["status"].isin(_status_filt)]
-                        st.dataframe(_ldf, hide_index=True, use_container_width=True)
-
-                # ── Average days per phase (summary) ─────────────────────
-                if phase_day_cols:
-                    st.markdown("**Average Days per Phase — All Filtered Projects**")
-                    avg_data = {col.replace(" (days)", ""): [int(round(_wdf[col].dropna().mean(), 0))] for col in phase_day_cols if _wdf[col].notna().any()}
-                    if avg_data:
-                        avg_df = pd.DataFrame(avg_data)
-                        st.dataframe(avg_df.style.applymap(_color_days), hide_index=True, use_container_width=True)
 
 
     st.markdown("---")

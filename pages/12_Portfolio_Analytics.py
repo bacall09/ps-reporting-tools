@@ -429,9 +429,9 @@ if _cw_rows:
 
     def _whs_col(v):
         if v is None: return "opacity:.35"
-        if v <= 3:   return "color:#27AE60;font-weight:700"
-        if v <= 5.5: return "color:#F39C12;font-weight:700"
-        return "color:#C0392B;font-weight:700"
+        from shared.whs import workload_level as _wl
+        _, _c = _wl(float(v))
+        return f"color:{_c};font-weight:700"
 
     def _util_col(v):
         if v == "—": return "opacity:.35"
