@@ -268,15 +268,12 @@ if not _active.empty:
             _var_str = f"{int(_days)}d"
 
         _rag = str(r.get("rag","") or "").strip().lower()
-        _rag_pill = (
-            '<span class="pill pill-red">Red</span>' if _rag == "red" else
-            '<span class="pill pill-amber">Yellow</span>' if _rag == "yellow" else
-            '<span class="pill pill-green">Green</span>' if _rag == "green" else
-            '<span class="pill pill-grey">—</span>'
+        _rag_disp = (
+            "🔴 Red" if _rag == "red" else
+            "🟡 Yellow" if _rag == "yellow" else
+            "🟢 Green" if _rag == "green" else "—"
         )
-        _status_pill = (
-            f'<span class="pill pill-{"green" if _scol=="green" else "amber" if _scol=="amber" else "red" if _scol=="red" else "blue" if _scol=="blue" else "grey"}">{_status}</span>'
-        )
+        _status_disp = _status  # plain text for sortable dataframe
         _pm = str(r.get("project_manager","") or "")
         _pm_parts = [p.strip() for p in _pm.split(",")]
         _pm_short = f"{_pm_parts[1].split()[0]} {_pm_parts[0]}" if len(_pm_parts) == 2 else _pm
@@ -290,19 +287,59 @@ if not _active.empty:
             "Start Date":    _sd_str,
             "Go-Live":       _gld_str,
             "Variance":      _var_str,
-            "RAG":           _rag_pill,
-            "Status":        _status_pill,
+            "RAG":           _rag_disp,
+            "Status":        _status_disp,
             "Status Logic":  _status,
             "Consultant":    _pm_short,
         })
 
     _sched_df = pd.DataFrame(_sched_rows)
 
-    # Show table as HTML for coloured pills
+    _STATUS_EXPLAIN = {
+        "On track":   "Go-live is 14+ days away",
+        "Going live": "Go-live is within the next 14 days",
+        "Delayed":    "Go-live passed 1–30 days ago, not yet at Go-Live phase",
+        "At risk":    "Go-live passed 30+ days ago, not yet at Go-Live phase",
+        "Delivered":  "Project is at or past Go-Live phase",
+        "No date":    "No go-live date set in DRS",
+    }
+    _sched_df["Status Logic"] = _sched_df["Status Logic"].map(
+        lambda s: _STATUS_EXPLAIN.get(str(s), "")
+    )
+
     _cols_show = ["Customer","Project Type","Phase","Start Date","Go-Live","Variance","RAG","Status","Status Logic"]
     if role in ("manager","manager_only","reporting_only") or _va_region:
         _cols_show.append("Consultant")
 
+    # ── Sort controls ─────────────────────────────────────────────────────────
+    _sortable_cols = ["Customer","Project Type","Phase","Go-Live","Variance","RAG","Status"]
+    if role in ("manager","manager_only","reporting_only") or _va_region:
+        _sortable_cols.append("Consultant")
+
+    _sc1, _sc2, _sc3 = st.columns([2,1,3])
+    with _sc1:
+        _sort_col = st.selectbox("Sort by", _sortable_cols, index=4,
+                                  key="sched_sort_col", label_visibility="collapsed")
+    with _sc2:
+        _sort_dir = st.selectbox("Direction", ["↑ Asc","↓ Desc"], index=1,
+                                  key="sched_sort_dir", label_visibility="collapsed")
+    with _sc3:
+        st.markdown(f'<div style="font-size:11px;opacity:.4;padding-top:10px">'
+                    f'Sorting by {_sort_col} · {len(_active)} active projects · excludes on-hold</div>',
+                    unsafe_allow_html=True)
+
+    # Apply sort — for Variance sort numerically by stripping the 'd' suffix
+    _sort_asc = _sort_dir.startswith("↑")
+    if _sort_col == "Variance":
+        def _var_sort_key(v):
+            try: return int(str(v).replace("+","").replace("d","").strip())
+            except: return 9999
+        _sched_df["_var_sort"] = _sched_df["Variance"].apply(_var_sort_key)
+        _sched_df = _sched_df.sort_values("_var_sort", ascending=_sort_asc)
+    else:
+        _sched_df = _sched_df.sort_values(_sort_col, ascending=_sort_asc, na_position="last")
+
+    # ── Render HTML table with pills ──────────────────────────────────────────
     _tbl_html = """<div style='border:0.5px solid rgba(128,128,128,.2);border-radius:10px;
                                overflow:hidden;margin-bottom:4px'>
     <table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:12px'>
@@ -310,28 +347,44 @@ if not _active.empty:
     for c in _cols_show:
         _tbl_html += f"<th style='padding:8px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>{c}</th>"
     _tbl_html += "</tr></thead><tbody>"
-    for i, row in _sched_df[_cols_show].iterrows():
-        _bg = "background:rgba(192,57,43,.04)" if row.get("Status","") and "risk" in row.get("Status","").lower() else ""
-        _tbl_html += f"<tr style='border-bottom:0.5px solid rgba(128,128,128,.1);{_bg}'>"
-        _STATUS_EXPLAIN = {
-            "On track":   "Go-live is 14+ days away",
-            "Going live": "Go-live is within the next 14 days",
-            "Delayed":    "Go-live passed 1–30 days ago, not yet at Go-Live phase",
-            "At risk":    "Go-live passed 30+ days ago, not yet at Go-Live phase",
-            "Delivered":  "Project is at or past Go-Live phase",
-            "No date":    "No go-live date set in DRS",
-        }
+
+    _STATUS_EXPLAIN = {
+        "On track":   "Go-live is 14+ days away",
+        "Going live": "Go-live is within the next 14 days",
+        "Delayed":    "Go-live passed 1–30 days ago, not yet at Go-Live phase",
+        "At risk":    "Go-live passed 30+ days ago, not yet at Go-Live phase",
+        "Delivered":  "Project is at or past Go-Live phase",
+        "No date":    "No go-live date set in DRS",
+    }
+    for i, row in _sched_df.iterrows():
+        _rag_v   = str(row.get("RAG","") or "").strip().lower().replace("🔴 ","").replace("🟡 ","").replace("🟢 ","")
+        _rag_pill = (
+            '<span class="pill pill-red">Red</span>' if "red" in _rag_v else
+            '<span class="pill pill-amber">Yellow</span>' if "yellow" in _rag_v else
+            '<span class="pill pill-green">Green</span>' if "green" in _rag_v else
+            '<span class="pill pill-grey">—</span>'
+        )
+        _st_v    = str(row.get("Status","") or "")
+        _scol_v  = ("green" if _st_v in ("On track","Delivered","Going live") else
+                    "amber" if _st_v == "Delayed" else
+                    "red"   if _st_v == "At risk" else
+                    "blue"  if _st_v == "Going live" else "grey")
+        _status_pill = f'<span class="pill pill-{_scol_v}">{_st_v}</span>'
+        _explain = _STATUS_EXPLAIN.get(_st_v, "")
+
+        _tbl_html += "<tr style='border-bottom:0.5px solid rgba(128,128,128,.1)'>"
         for c in _cols_show:
-            _val = row[c]
-            if c == "Status Logic":
-                _explain = _STATUS_EXPLAIN.get(str(_val), "")
+            if c == "RAG":
+                _tbl_html += f"<td style='padding:8px 12px'>{_rag_pill}</td>"
+            elif c == "Status":
+                _tbl_html += f"<td style='padding:8px 12px'>{_status_pill}</td>"
+            elif c == "Status Logic":
                 _tbl_html += f"<td style='padding:8px 12px;font-size:11px;opacity:.55'>{_explain}</td>"
             else:
-                _tbl_html += f"<td style='padding:8px 12px;color:inherit'>{_val}</td>"
+                _tbl_html += f"<td style='padding:8px 12px;color:inherit'>{row.get(c,'—')}</td>"
         _tbl_html += "</tr>"
     _tbl_html += "</tbody></table></div>"
     st.markdown(_tbl_html, unsafe_allow_html=True)
-    st.caption(f"{len(_active)} active projects · excludes on-hold")
 
 # ── SECTION: Milestone Health ─────────────────────────────────────────────────
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
@@ -475,7 +528,7 @@ if _scope_rows:
     _tbl2 += "</tr></thead><tbody>"
     # Show: all overrun + at-limit + ahead-of-phase; sort overrun first
     _flagged_df = pd.concat([_overrun, _at_limit, _ahead_phase]).drop_duplicates().sort_values("_burn", ascending=False)
-    _caption_n = f"{len(_flagged_df)} project(s) flagged — overrun, at/near limit, or burning ahead of phase expectation. Short-delivery products (Approvals, CC, SFTP, Additional Subsidiary) excluded from phase check."
+    _caption_n = ""
     for _, row in _flagged_df.iterrows():
         _b = row["_burn"]
         _bc = "#C0392B" if _b > 100 else ("#F39C12" if _b >= 80 else "#27AE60")
@@ -503,7 +556,7 @@ if _scope_rows:
         </tr>"""
     _tbl2 += "</tbody></table></div>"
     st.markdown(_tbl2, unsafe_allow_html=True)
-    st.caption(_caption_n)
+    if _caption_n: st.caption(_caption_n)
 else:
     st.info("No scope data available — ensure budgeted hours are set in the DRS.")
 

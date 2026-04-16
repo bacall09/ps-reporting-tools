@@ -334,7 +334,14 @@ def _to_edit_row(row):
     else:
         _scope = ""
     _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
-    _bal = round(float(_scope) - float(_htd), 2) if _scope != "" and _htd != "" else ""
+    # Balance: scope - htd. If no NS data yet (htd=""), show full scope as remaining
+    if _scope != "" and _htd != "":
+        _bal = round(float(_scope) - float(_htd), 2)
+    elif _scope != "":
+        _bal = float(_scope)  # no hours logged yet — full scope remaining
+        _htd = 0.0
+    else:
+        _bal = ""
     # Balance cell flag logic
     _phase_raw = str(row.get("phase","") or "").strip().lower()
     _closed_phases = {"08. ready for support transition","09. phase 2 scoping","closed","complete"}
