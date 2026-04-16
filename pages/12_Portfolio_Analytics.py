@@ -253,8 +253,12 @@ for _, _sr in _active.iterrows():
     _budget = _safe_f(_sr.get("budgeted_hours",0))
     _co     = _safe_f(_sr.get("change_order",0))
     _scope  = get_ff_scope(_pt_s, _pn_s) or ((_budget + _co) if (_budget + _co) > 0 else None)
-    if not _scope or float(_scope) <= 0 or _actual == 0: continue
-    _burn   = round(100 * _actual / float(_scope))
+    try:
+        _scope_f = float(_scope) if _scope is not None else 0.0
+    except (TypeError, ValueError):
+        _scope_f = 0.0
+    if _scope_f <= 0 or _actual <= 0: continue
+    _burn = round(100 * _actual / _scope_f)
     _pm_key = _pm_s.strip()
     if _pm_key not in _scope_by_pm:
         _scope_by_pm[_pm_key] = {"overrun": 0, "near_limit": 0}
