@@ -55,19 +55,11 @@ st.markdown("""
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
         .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
         .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
-        .snap-nav div[data-testid="stButton"] > button,
-        .snap-nav div[data-testid="stButton"] > button:focus,
-        .snap-nav button[kind="secondary"] {
-            font-size: 11px !important;
-            padding: 0px 4px !important;
-            min-height: 22px !important;
-            line-height: 22px !important;
-            height: 22px !important;
-            opacity: 0.5 !important;
-            border-radius: 3px !important;
-            max-width: 100% !important;
-        }
-        .snap-nav div[data-testid="stButton"] > button:hover { opacity: 0.85 !important; }
+        .snap-btn { display:block; width:100%; text-align:center; font-size:11px;
+            color:inherit !important; opacity:0.5; padding:2px 0; margin-top:2px;
+            border:1px solid rgba(128,128,128,0.25); border-radius:4px;
+            text-decoration:none; cursor:pointer; background:transparent; }
+        .snap-btn:hover { opacity:0.9; background:rgba(128,128,128,0.08); }
         .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
                          cursor:help; position:relative; }
         .metric-help:hover::after {
@@ -87,6 +79,13 @@ st.markdown("""
         .badge-gray  {background:rgba(128,128,128,0.12);color:inherit;opacity:0.7;}
         .badge-green {background:rgba(39,174,96,0.15);color:#27AE60;}
         .divider{border:none;border-top:1px solid rgba(128,128,128,0.2);margin:20px 0;}
+        button[data-testid="baseButton-secondary"] {
+            font-size: 11px !important;
+            padding: 2px 6px !important;
+            min-height: 24px !important;
+            height: 24px !important;
+            line-height: 20px !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -604,33 +603,40 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
-        v   = _fmt_hrs(avail)
-        lbl = "Available this month" if avail else "Available hrs (location not mapped)"
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}<span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
+        _lbl = "Available this month" if avail else "Available hrs (location not mapped)"
+        st.metric(_lbl, _fmt_hrs(avail),
+            help="Total available hours based on consultant location less Bank or Government holidays.")
     with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month<span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
+        st.metric("Hours booked this month", _fmt_hrs(total_booked),
+            help="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).")
     with c3:
         if util_pct is not None:
-            col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#C0392B")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric(f"Util % · {_fmt_hrs(util_hrs)} credited", f"{util_pct}%",
+                help="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.")
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("Util %", "—",
+                help="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.")
     with c4:
         if overrun_pct is not None:
-            col = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric(f"FF overrun % · {_fmt_hrs(overrun_hrs)} over budget", f"{overrun_pct}%",
+                help="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.")
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("FF overrun %", "—",
+                help="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.")
     with c5:
         if admin_pct is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric(f"Internal % · {_fmt_hrs(admin_hrs)}", f"{admin_pct}%",
+                help="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.")
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("Internal %", "—",
+                help="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.")
     with c6:
         if _whs_score is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS &nbsp;·&nbsp; {_whs_label}<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric(f"WHS · {_whs_label}", str(_whs_score),
+                help="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.")
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">WHS<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("WHS", "—",
+                help="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.")
 
     # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
     if ff_unscoped > 0:
@@ -810,9 +816,7 @@ else:
     with snap2:
         _col = "#27AE60" if len(_gls) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_gls", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
-        st.markdown('</div>', unsafe_allow_html=True)
         for _, r in _gls.iterrows():
             _cust = str(r.get("project_name",""))
             _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
@@ -820,9 +824,7 @@ else:
     with snap3:
         _col = "#F39C12" if len(_ihc) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare (week 1)</div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_ihc", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
-        st.markdown('</div>', unsafe_allow_html=True)
         for _, r in _ihc.iterrows():
             _cust = str(r.get("project_name",""))
             _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
@@ -830,19 +832,15 @@ else:
     with snap4:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ Customer Engagement", key="snap_mi", use_container_width=True):
             st.session_state["_ce_anchor"] = "initial"
             st.switch_page("pages/2_Customer_Reengagement.py")
-        st.markdown('</div>', unsafe_allow_html=True)
     with snap5:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ Customer Engagement", key="snap_stale", use_container_width=True):
             st.session_state["_ce_anchor"] = "reengagement"
             st.switch_page("pages/2_Customer_Reengagement.py")
-        st.markdown('</div>', unsafe_allow_html=True)
     def _rag_label(r):
         """Format as 'Customer : Product abbrev' for RAG card list items."""
         _pn  = str(r.get("project_name","") or "")
@@ -857,26 +855,20 @@ else:
     with snap6:
         _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_red", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
-        st.markdown('</div>', unsafe_allow_html=True)
         for _, _rr in _rag_red.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
     with snap7:
         _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_yel", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
-        st.markdown('</div>', unsafe_allow_html=True)
         for _, _ry in _rag_yellow.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
     with snap8:
         _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
         _col = "#F39C12" if _oh_snap > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="snap-nav">', unsafe_allow_html=True)
         if st.button("→ My Projects", key="snap_oh", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
-        st.markdown('</div>', unsafe_allow_html=True)
         if _oh_snap > 0:
             _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
             for _, _or in _oh_proj.head(3).iterrows():
