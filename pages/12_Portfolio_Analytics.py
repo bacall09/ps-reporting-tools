@@ -11,10 +11,11 @@ st.session_state["current_page"] = "Portfolio Analytics"
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
     MILESTONE_COLS_MAP, get_role, is_manager, name_matches,
-    resolve_name, get_ff_scope,
+    resolve_name, get_ff_scope, DEFAULT_SCOPE,
 )
+from shared.utils import calc_consultant_util
 from shared.config import (
-    AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP, DEFAULT_SCOPE,
+    AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
 )
 
 st.markdown("""
@@ -327,32 +328,23 @@ for _cn in sorted(_team_consultants):
             _n_overrun    += _sp_val["overrun"]
             _n_near_limit += _sp_val["near_limit"]
 
-    # Util % MTD from NS — uses AVAIL_HOURS lookup matching Daily Briefing logic
+    # Util % MTD — full scope-capped calculation matching Daily Briefing exactly
     _cm_util = "—"
     if df_ns is not None and not df_ns.empty:
         _cm_ns = df_ns[df_ns.get("employee", pd.Series(dtype=str)).fillna("").apply(
             lambda v: name_matches(v, _cn)
         )]
-        _cm_month_ns = _cm_ns[
-            pd.to_datetime(_cm_ns.get("date", pd.Series(dtype=str)), errors="coerce").dt.strftime("%Y-%m") == _month_key_pa
-        ] if not _cm_ns.empty and "date" in _cm_ns.columns else pd.DataFrame()
-        if not _cm_month_ns.empty and "hours" in _cm_month_ns.columns:
-            _cm_hrs = float(_cm_month_ns["hours"].sum() or 0)
-            # Use AVAIL_HOURS lookup — same as Daily Briefing
-            _cn_loc = EMPLOYEE_LOCATION.get(_cn, "")
-            if isinstance(_cn_loc, tuple): _cn_loc = _cn_loc[0]
-            _cn_region = PS_REGION_OVERRIDE.get(_cn, PS_REGION_MAP.get(_cn_loc, ""))
-            _cn_avail = (AVAIL_HOURS.get(_cn_loc, {}).get(_month_key_pa)
-                      or AVAIL_HOURS.get(_cn_region, {}).get(_month_key_pa))
-            if _cn_avail and float(_cn_avail) > 0:
-                # T&M full credit + FF hours (simplified — no scope cap, consistent with
-                # Daily Briefing direction; small variance possible on overrun projects)
-                _bt_ns  = _cm_month_ns.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
-                _tm_h   = float(_cm_month_ns[_bt_ns == "t&m"]["hours"].sum() or 0)
-                _ff_h   = float(_cm_month_ns[(_bt_ns != "internal") & (_bt_ns != "t&m")]["hours"].sum() or 0)
-                _util_h = _tm_h + _ff_h
-                _cm_util_pct = round(100 * _util_h / float(_cn_avail))
-                _cm_util = f"{_cm_util_pct}%"
+        _cn_loc = EMPLOYEE_LOCATION.get(_cn, "")
+        if isinstance(_cn_loc, tuple): _cn_loc = _cn_loc[0]
+        _cn_region = PS_REGION_OVERRIDE.get(_cn, PS_REGION_MAP.get(_cn_loc, ""))
+        _cn_avail  = (AVAIL_HOURS.get(_cn_loc, {}).get(_month_key_pa)
+                   or AVAIL_HOURS.get(_cn_region, {}).get(_month_key_pa))
+        if _cn_avail and not _cm_ns.empty:
+            _util_result = calc_consultant_util(
+                _cm_ns, _month_key_pa, DEFAULT_SCOPE, float(_cn_avail)
+            )
+            if _util_result["util_pct"] is not None:
+                _cm_util = f"{_util_result['util_pct']}%"
 
     _cn_parts = [p.strip() for p in _cn.split(",")]
     _cn_disp  = f"{_cn_parts[1].split()[0]} {_cn_parts[0]}" if len(_cn_parts) == 2 else _cn
