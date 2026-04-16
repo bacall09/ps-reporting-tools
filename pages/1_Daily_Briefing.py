@@ -777,21 +777,78 @@ else:
         _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
 
     if _p1 or _p2 or _p3:
-        st.markdown('<div class="section-label">This Week — Focus Areas</div>', unsafe_allow_html=True)
-        _bhtml = "<div style='background:rgba(59,158,255,0.05);border:1px solid rgba(59,158,255,0.15);border-radius:8px;padding:18px 22px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
-        if _p1:
-            _bhtml += "<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Needs Attention</div>"
-            for _item in _p1:
-                _bhtml += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {_item}</div>"
-        if _p2:
-            _bhtml += f"<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin:{'14px' if _p1 else '0'} 0 10px'>Quick Wins This Week</div>"
-            for _item in _p2:
-                _bhtml += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {_item}</div>"
-        if _p3:
-            _bhtml += f"<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin:{'14px' if (_p1 or _p2) else '0'} 0 10px'>Housekeeping</div>"
-            for _item in _p3:
-                _bhtml += f"<div style='font-size:13px;color:rgba(255,255,255,0.85);padding:4px 0;line-height:1.6'>• {_item}</div>"
-        _bhtml += "<div style='font-size:10px;opacity:0.35;margin-top:12px'>Rule-based summary · AI-powered briefings coming in a future release</div></div>"
+        st.markdown('<div class="section-label">Today&#39;s Focus</div>', unsafe_allow_html=True)
+
+        # Build paragraph prose — conversational, not bullet list
+        def _proj_list(df, n=3):
+            names = [str(r.get("project_name","")).split(" - ")[0].strip()[:28] for _, r in df.head(n).iterrows()]
+            if len(df) > n: names.append(f"and {len(df)-n} more")
+            return ", ".join(names)
+
+        _para_attn = ""
+        if len(_rag_red) > 0:
+            _para_attn += f"{len(_rag_red)} project{'s are' if len(_rag_red)>1 else ' is'} on Red RAG ({_proj_list(_rag_red)}). "
+        if len(_gls) > 0:
+            _para_attn += f"{'With' if _para_attn else ''} {_proj_list(_gls)} going live this week — confirm cutover readiness before the end of the day. "
+        if len(_ihc) > 0:
+            _para_attn += f"{_proj_list(_ihc)} {'are' if len(_ihc)>1 else 'is'} in week-one hypercare — a proactive check-in today would be timely."
+
+        _para_quick = ""
+        if len(_rag_yellow) > 0:
+            _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation. "
+        if len(_stale) > 0:
+            _stale_top  = _stale.iloc[0]
+            _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0].strip()[:28]
+            _stale_days = int(_stale_top.get("days_inactive",0))
+            if len(_stale) == 1:
+                _para_quick += f"{_stale_name} hasn't had contact in {_stale_days} days — a short check-in would re-establish momentum. "
+            else:
+                _para_quick += f"{len(_stale)} projects are overdue for outreach, with {_stale_name} leading at {_stale_days} days inactive — use Customer Engagement to draft messages. "
+        if len(_mi) > 0:
+            _para_quick += f"{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email date. If the emails were sent, logging the dates is a quick close."
+
+        _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+        _para_house = ""
+        if _oh_count > 0:
+            _para_house = f"{_oh_count} project{'s are' if _oh_count>1 else ' is'} on hold. Make sure each has an On Hold Reason and Responsible for Delay recorded — these are flagged in DRS Health Check if missing."
+
+        _bhtml = """<div style='border-radius:8px;border:1px solid rgba(59,158,255,0.2);overflow:hidden;margin-bottom:16px;font-family:Manrope,sans-serif'>
+  <div style='background:rgba(59,158,255,0.07);padding:10px 20px;border-bottom:1px solid rgba(59,158,255,0.15);display:flex;align-items:center;gap:10px'>
+    <span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>Today's Focus</span>
+    <span style='font-size:11px;color:var(--text-color,inherit);opacity:0.35;margin-left:auto'>Rule-based · AI briefings coming soon</span>
+  </div>
+  <div style='padding:18px 22px;display:flex;flex-direction:column;gap:14px'>"""
+
+        if _para_attn:
+            _bhtml += f"""<div style='display:flex;gap:14px;align-items:flex-start'>
+    <div style='flex-shrink:0;width:3px;background:#C0392B;border-radius:2px;align-self:stretch;min-height:36px'></div>
+    <div>
+      <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#C0392B;margin-bottom:5px'>Needs attention</div>
+      <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_attn.strip()}</div>
+    </div>
+  </div>"""
+
+        if _para_quick:
+            _sep = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if _para_attn else ""
+            _bhtml += f"""{_sep}<div style='display:flex;gap:14px;align-items:flex-start'>
+    <div style='flex-shrink:0;width:3px;background:#3B9EFF;border-radius:2px;align-self:stretch;min-height:36px'></div>
+    <div>
+      <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:5px'>Quick wins this week</div>
+      <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_quick.strip()}</div>
+    </div>
+  </div>"""
+
+        if _para_house:
+            _sep2 = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if (_para_attn or _para_quick) else ""
+            _bhtml += f"""{_sep2}<div style='display:flex;gap:14px;align-items:flex-start'>
+    <div style='flex-shrink:0;width:3px;background:rgba(128,128,128,0.3);border-radius:2px;align-self:stretch;min-height:36px'></div>
+    <div>
+      <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:inherit;opacity:0.45;margin-bottom:5px'>Housekeeping</div>
+      <div style='font-size:13px;color:inherit;opacity:0.6;line-height:1.7'>{_para_house.strip()}</div>
+    </div>
+  </div>"""
+
+        _bhtml += "</div></div>"
         st.markdown(_bhtml, unsafe_allow_html=True)
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
