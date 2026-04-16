@@ -1760,7 +1760,7 @@ Used when no NS entries and no milestones are present.
                 _te_pid  = _pid if "_pid" in dir() and _pid else ""
                 _te_name = str(selected_proj or "")
                 log_activity(
-                    project_id    = _te_pid or _te_name,
+                    project_id    = _te_pid,
                     project_name  = _te_name,
                     activity_type = "Customer Email",
                     employee      = selected_user,

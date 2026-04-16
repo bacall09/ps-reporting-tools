@@ -100,7 +100,8 @@ with st.form("te_add_form", clear_on_submit=True):
             _f_proj_id   = _proj_options.get(_f_proj_name, "") if _f_proj_name != "— Select project —" else ""
             st.caption(f"Project ID: {_f_proj_id}" if _f_proj_id else "Project ID: —")
         else:
-            _f_proj_name = st.text_input("Project Name *", placeholder="e.g. Acme Corp - ZCapture")
+            st.caption("Load SS DRS on Home page to enable project dropdown")
+            _f_proj_name = st.text_input("Project Name *", placeholder="e.g. Acme Corp - ZCapture Implementation")
             _f_proj_id   = st.text_input("Project ID *", placeholder="e.g. 157425")
     with fc2:
         _f_activity = st.selectbox("Activity Type *", ACTIVITY_TYPE_LIST)
@@ -116,7 +117,11 @@ with st.form("te_add_form", clear_on_submit=True):
     _submitted = st.form_submit_button("＋ Add Entry", type="primary", use_container_width=True)
     if _submitted:
         _proj_id_val   = _f_proj_id.strip() if isinstance(_f_proj_id, str) else str(_f_proj_id)
-        _proj_name_val = _f_proj_name if _f_proj_name != "— Select project —" else ""
+        # project_name: use the display name from dropdown, never the ID
+        _proj_name_val = (_f_proj_name if _f_proj_name != "— Select project —" else "") if _proj_names else _f_proj_name
+        # Guard: if name accidentally equals the id, clear it so it's re-resolved
+        if _proj_name_val and _proj_name_val.strip() == _proj_id_val.strip():
+            _proj_name_val = ""
         if not _proj_id_val and not _proj_name_val:
             st.error("Please select a project.")
         elif not _proj_id_val:

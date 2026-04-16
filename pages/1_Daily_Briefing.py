@@ -609,11 +609,9 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         _lbl = "Available this month" if avail else "Available hrs (location not mapped)"
-        st.metric(_lbl, _fmt_hrs(avail),
-            help="Total available hours based on consultant location less Bank or Government holidays.")
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(avail)}</div><div class="metric-lbl">{_lbl} <span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c2:
-        st.metric("Hours booked this month", _fmt_hrs(total_booked),
-            help="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).")
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month <span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c3:
         if util_pct is not None:
             _ucol = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#C0392B")
@@ -815,7 +813,6 @@ else:
         return f"{_cust} : {_prod}" if _prod else _cust
 
     # ── My Projects group ─────────────────────────────────────────────────────
-    st.markdown('<div class="section-label" style="font-size:10px;margin-bottom:6px">My Projects</div>', unsafe_allow_html=True)
     mp1, mp2, mp3, mp4, mp5, mp6 = st.columns(6)
     with mp1:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
@@ -851,11 +848,9 @@ else:
             _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
             for _, _or in _oh_proj.head(3).iterrows():
                 st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
-    if st.button("→ My Projects", key="snap_mp", use_container_width=True):
-        st.switch_page("pages/8_My_Projects.py")
+
 
     # ── Customer Engagement group ─────────────────────────────────────────────
-    st.markdown('<div class="section-label" style="font-size:10px;margin:14px 0 6px">Customer Engagement</div>', unsafe_allow_html=True)
     ce1, ce2 = st.columns(2)
     with ce1:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
@@ -863,9 +858,7 @@ else:
     with ce2:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    if st.button("→ Customer Engagement", key="snap_ce", use_container_width=True):
-        st.session_state["_ce_anchor"] = "reengagement"
-        st.switch_page("pages/2_Customer_Reengagement.py")
+
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")
