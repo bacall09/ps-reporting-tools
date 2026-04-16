@@ -378,6 +378,8 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.markdown('<div class="section-label">Scope Health</div>', unsafe_allow_html=True)
 
 _scope_rows = []
+_SHORT_DELIVERY_TYPES = {"approvals", "cc", "sftp", "additional subsidiary",
+                          "cc statement", "cc statement import"}
 for _, r in _active.iterrows():
     _ptype = str(r.get("project_type","") or "")
     _pname = str(r.get("project_name","") or "")
@@ -410,15 +412,12 @@ for _, r in _active.iterrows():
         _ph_lbl_s = _ph_s.split(".")[-1].strip() if "." in _ph_s else _ph_s
         _ph_idx_s = _pidx(_ph_s)
         _burn_ceil = _PHASE_BURN_CEIL.get(_ph_idx_s, 100)
-        # Exclude short-delivery products from phase-burn warnings
-        # (Approvals, CC, SFTP, Additional Subsidiary have compact scope by design)
-        _SHORT_DELIVERY_TYPES = {"approvals", "cc", "sftp", "additional subsidiary",
-                                  "cc statement", "cc statement import"}
-        _is_short = any(sd in _pt_lbl.lower() for sd in _SHORT_DELIVERY_TYPES)
-        _ahead_of_phase = (not _is_short) and (_burn > _burn_ceil + 20)
         _pt_s   = str(r.get("project_type","") or "—")
         _pt_lbl = _pt_s.split(":")[-1].strip() if ":" in _pt_s else _pt_s
         _st_s   = str(r.get("status","") or "—")
+        # Exclude short-delivery products from phase-burn warnings
+        _is_short = any(sd in _pt_lbl.lower() for sd in _SHORT_DELIVERY_TYPES)
+        _ahead_of_phase = (not _is_short) and (_burn > _burn_ceil + 20)
         _scope_rows.append({
             "Customer":        _cust,
             "Project Type":    _pt_lbl,
