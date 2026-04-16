@@ -308,7 +308,7 @@ def _to_edit_row(row):
     needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
     def _ms(col):
         v = row.get(col)
-        return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
+        return pd.Timestamp(v).date() if pd.notna(v) else None
 
 
     def _dt(col):
@@ -404,7 +404,7 @@ col_cfg = {
     "Balance":               st.column_config.TextColumn("Balance",            disabled=True, width="small"),
     "Engagement":            st.column_config.TextColumn("Engagement",         disabled=True, width="medium"),
     "_bal_flag":             None,
-    **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
+    **{c: st.column_config.DateColumn(c, min_value=date(2020,1,1), max_value=date(2030,12,31), width="small") for c in _ms_cols},
 }
 
 st.caption("Columns with the edit icon sync back to Smartsheet — edit and export to CSV to update DRS. Greyed columns are derived or read-only.")
