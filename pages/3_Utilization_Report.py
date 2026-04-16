@@ -357,8 +357,9 @@ def auto_detect_columns(df):
     cols_lower = {c.lower().strip(): c for c in df.columns}
     checks = {
         "employee":      ["employee", "employee name", "name", "resource"],
-        "project":       ["project", "project name", "job"],
-        "project_type":  ["project type", "type", "project_type", "time item sku", "item sku", "sku"],
+        "project":       ["project", "project name", "job", "customer:project", "customer: project", "name", "project id", "project: name"],
+        "project_type":  ["project type", "type", "project_type"],
+        "time_item_sku": ["time item sku", "item sku", "sku", "time item"],
         "date":          ["date", "time entry date", "entry date", "work date"],
         "hours":         ["hours", "duration", "hours logged", "time", "qty"],
         "approval":      ["approval status", "approval", "status"],
@@ -496,14 +497,17 @@ def assign_credits(df, scope_map):
         # Rule 3: Fixed Fee = capped at scope (longest match wins)
         _ptype_lower = ptype.strip().lower()
         # Premium projects: extract scope from project name (10 or 20)
-        _proj_name_scope = str(row.get("project", row.get("project_name", "")) or "")
-        if "premium" in _ptype_lower and _proj_name_scope:
-            _prem_nums = _re_constants.findall(r"(?<![\d])(10|20)(?![\d])", _proj_name_scope)
-            if _prem_nums:
-                scope_hrs = float(_prem_nums[0])
+        # Premium: extract scope hours from Time Item SKU (IMPL10/IMPL20)
+        if "premium" in _ptype_lower:
+            _sku = str(row.get("time_item_sku", "") or "")
+            _sku_nums = _re_constants.findall(r"IMPL(\d+)", _sku.upper())
+            if _sku_nums:
+                scope_hrs = float(_sku_nums[0])
             else:
-                _matches = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in _ptype_lower]
-                scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
+                # Fallback: try DRS-enriched name or NS project name
+                _proj_name_scope = str(row.get("_drs_project_name", "") or "") or str(row.get("project", "") or "")
+                _name_nums = _re_constants.findall(r"(?<![\d])(10|20)(?![\d])", _proj_name_scope)
+                scope_hrs = float(_name_nums[0]) if _name_nums else None
         else:
             _matches = [(k, float(v)) for k, v in scope_map.items()
                         if k.strip().lower() in _ptype_lower]
@@ -1909,6 +1913,28 @@ def main():
                         st.stop()
                 else:
                     _df_period = df_raw.copy()
+
+                # ── Enrich NS rows with DRS project name for Premium scope lookup ──
+                _df_drs_enrich = st.session_state.get("df_drs")
+                if _df_drs_enrich is not None and not _df_drs_enrich.empty:
+                    if "project_id" in _df_drs_enrich.columns and "project_name" in _df_drs_enrich.columns:
+                        _drs_name_map = dict(zip(
+                            _df_drs_enrich["project_id"].astype(str).str.strip(),
+                            _df_drs_enrich["project_name"].astype(str).str.strip()
+                        ))
+                        # Also try mapping by fuzzy project name if project column exists
+                        if "project" in _df_period.columns:
+                            _df_period["_drs_project_name"] = _df_period["project"].astype(str).str.strip().map(
+                                lambda pid: _drs_name_map.get(pid, "")
+                            )
+                            # For Premium rows with no name yet, try name-based lookup
+                            _drs_name_by_name = {
+                                v: v for v in _df_drs_enrich["project_name"].astype(str).str.strip()
+                            }
+                            _empty_mask = _df_period["_drs_project_name"] == ""
+                            _df_period.loc[_empty_mask, "_drs_project_name"] =                                 _df_period.loc[_empty_mask, "project"].map(
+                                    lambda n: next((v for v in _drs_name_by_name if n.lower() in v.lower() or v.lower() in n.lower()), "")
+                                )
 
                 df, consumed, skipped_df = assign_credits(_df_period, DEFAULT_SCOPE)
             except Exception as e:
