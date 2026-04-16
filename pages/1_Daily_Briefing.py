@@ -660,8 +660,29 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month <span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c3:
         if util_pct is not None:
-            _ucol = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#C0392B")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_ucol}">{util_pct}%</div><div class="metric-lbl">Util % · {_fmt_hrs(util_hrs)} credited <span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            # Pacing-aware colouring — compare MTD util against pro-rated target
+            _UTIL_TARGET = 70.0
+            _month_start = today.replace(day=1)
+            _month_end   = (today.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
+            _days_total  = len(pd.bdate_range(_month_start, _month_end))
+            _days_elapsed = len(pd.bdate_range(_month_start, today))
+            _pacing_pct  = round(_UTIL_TARGET * _days_elapsed / _days_total, 1) if _days_total else _UTIL_TARGET
+            _gap         = util_pct - _pacing_pct
+            if _gap >= 0:
+                _ucol      = "#27AE60"
+                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(39,174,96,.15);color:#27AE60">On pace · target {_pacing_pct}%</div>'
+            elif _gap >= -10:
+                _ucol      = "#F39C12"
+                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(243,156,18,.15);color:#F39C12">Behind pace · target {_pacing_pct}%</div>'
+            else:
+                _ucol      = "#C0392B"
+                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(192,57,43,.15);color:#C0392B">Behind target · goal {_UTIL_TARGET}%</div>'
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val" style="color:{_ucol}">{util_pct}%</div>' +
+                f'<div class="metric-lbl">Util % · {_fmt_hrs(util_hrs)} credited <span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Colour reflects pacing: compares MTD util against the pro-rated {_UTIL_TARGET}% target for how far through the month we are.">ⓘ</span></div>' +
+                f'{_pace_tag}</div>',
+                unsafe_allow_html=True
+            )
         else:
             st.metric("Util %", "—", help="Utilization credit hours as a % of Available hours.")
     with c4:
@@ -694,8 +715,6 @@ else:
             view_name.split(",")[1].strip() if "," in view_name else view_name
         )
         st.warning(f"No time entries found for **{_view_label_for_warn}** in the NS file.")
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ── Consultant breakdown table (group views only) ─────────────────────────────
 if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
@@ -854,15 +873,15 @@ else:
     # Phase breakdown — exclude Unassigned, sort by phase order
     _PHASE_ABBREV = {
         "00. onboarding":                   "Onboarding",
-        "01. requirements and design":       "Requirements",
-        "02. configuration":                 "Config",
-        "03. enablement/training":           "Enablement",
+        "01. requirements and design":       "Requirements and Design",
+        "02. configuration":                 "Configuration",
+        "03. enablement/training":           "Enablement/Training",
         "04. uat":                           "UAT",
-        "05. prep for go-live":             "Prep Go-Live",
+        "05. prep for go-live":              "Prep for Go-Live",
         "06. go-live":                       "Go-Live",
-        "07. data migration":               "Data Migration",
-        "08. ready for support transition": "Supp. Transition",
-        "09. phase 2 scoping":              "Phase 2 Scoping",
+        "07. data migration":                "Data Migration",
+        "08. ready for support transition":  "Ready for Support Transition",
+        "09. phase 2 scoping":               "Phase 2 Scoping",
     }
     _pc_all = {}
     if "phase" in _active.columns:
@@ -938,16 +957,28 @@ else:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
 
     # ── Phase breakdown row ────────────────────────────────────────────────────
-    if _pc_assigned:
+    # Build full list: assigned phases + Unassigned if any
+    _pc_display = list(_pc_assigned)
+    if _unassigned_ct > 0:
+        _pc_display.append(("Unassigned", _unassigned_ct))
+
+    if _pc_display:
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
         st.markdown('<div class="section-label">Project Phase Breakdown</div>', unsafe_allow_html=True)
-        _ph_cols = st.columns(len(_pc_assigned))
-        for _phi, (ph, cnt) in enumerate(_pc_assigned):
-            _abbr = _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:16])
+        _ph_cols = st.columns(len(_pc_display))
+        for _phi, (ph, cnt) in enumerate(_pc_display):
+            _abbr = (
+                "Unassigned" if ph == "Unassigned"
+                else _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:20])
+            )
             with _ph_cols[_phi]:
-                st.markdown(f'<div class="metric-card" style="padding:8px 10px"><div class="metric-val" style="font-size:20px">{cnt}</div><div class="metric-lbl" style="font-size:10px">{_abbr}</div></div>', unsafe_allow_html=True)
-        if _unassigned_ct > 0:
-            st.markdown(f'<div style="font-size:11px;opacity:0.4;margin-top:4px">{_unassigned_ct} project{"s" if _unassigned_ct>1 else ""} with no phase assigned</div>', unsafe_allow_html=True)
+                _card_style = "opacity:0.5" if ph == "Unassigned" else ""
+                st.markdown(
+                    f'<div class="metric-card" style="padding:8px 10px;{_card_style}">' +
+                    f'<div class="metric-val" style="font-size:20px">{cnt}</div>' +
+                    f'<div class="metric-lbl" style="font-size:10px">{_abbr}</div></div>',
+                    unsafe_allow_html=True
+                )
 
 
 st.caption("PS Projects & Tools · Internal use only · Data loaded this session only")
