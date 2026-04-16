@@ -821,8 +821,10 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
         if is_leaver and exit_dt:
             _display += " *"
 
+        _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
         return {
             "Consultant":    _display,
+            "WHS":           f"{_whs_s} · {_whs_l}" if _whs_s is not None else "—",
             "Avail h":       _avail_cn or "—",
             "FF Util h":     _ff_util or "—",
             "FF Overrun h":  _ff_over or "—",
@@ -844,6 +846,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             hide_index=True,
             column_config={
                 "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
+                "WHS":          st.column_config.TextColumn("WHS",          width="small"),
                 "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
                 "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
                 "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
