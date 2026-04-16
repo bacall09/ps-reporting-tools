@@ -365,7 +365,7 @@ col_cfg = {
     "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
     "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
     "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
-    "Status":                st.column_config.TextColumn("Status",            disabled=True),
+    "Status":                st.column_config.SelectboxColumn("Status", options=["In Progress","On Hold","Closed","Complete","Cancelled"], width="medium"),
     "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
     "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
     "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
@@ -377,7 +377,7 @@ col_cfg = {
     **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
 }
 
-st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
+st.caption("Columns with the edit icon sync back to Smartsheet — edit and export to CSV to update DRS. Greyed columns are derived or read-only.")
 st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
 _btn_col1, _btn_col2 = st.columns([1, 1])
 with _btn_col1:
@@ -563,11 +563,7 @@ else:
     _oh_df = _oh_df[[c for c in _col_order if c in _oh_df.columns]]
 
     # ✦ = SS syncable (editable) | no mark = derived/read-only
-    st.markdown(
-        '<span style="font-size:11px;opacity:.55">✦ Columns marked with ✦ sync back to Smartsheet — edit and export to CSV to update DRS. '
-        'Unmarked columns are derived or calculated.</span>',
-        unsafe_allow_html=True
-    )
+    st.caption("Columns with the edit icon sync back to Smartsheet — edit and export to CSV to update DRS. Greyed columns are derived or read-only.")
     _oh_edited = st.data_editor(
         _oh_df,
         column_config={
@@ -576,18 +572,18 @@ else:
             "Project Type":          st.column_config.TextColumn("Project Type",            disabled=True, width="medium"),
             "Start Date":            st.column_config.TextColumn("Start Date",              disabled=True, width="small"),
             "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",            disabled=True, width="small"),
-            "Phase":                 st.column_config.TextColumn("Phase",                   disabled=True, width="medium"),
-            "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason ✦",  options=_OH_REASON_OPTS,     width="medium"),
+            "Phase":                 st.column_config.SelectboxColumn("Phase", options=PHASE_OPTIONS, width="medium"),
+            "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason",  options=_OH_REASON_OPTS,     width="medium"),
             "Days Inactive":         st.column_config.NumberColumn("Days Inactive",         disabled=True, width="small"),
             "Inactivity Source":     st.column_config.TextColumn("Inactivity Source",       disabled=True, width="small"),
             "Last Milestone":        st.column_config.TextColumn("Last Milestone",          disabled=True, width="medium"),
-            "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness ✦", options=_OH_RESP_OPTS, width="medium"),
-            "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment ✦", options=_OH_SENTIMENT_OPTS, width="small"),
-            "Risk Level":            st.column_config.SelectboxColumn("Risk Level ✦",       options=_OH_RISK_OPTS,       width="small"),
-            "Risk Owner":            st.column_config.SelectboxColumn("Risk Owner ✦",       options=_OH_OWNER_OPTS,      width="small"),
-            "Risk Detail":           st.column_config.TextColumn("Risk Detail ✦",           width="large"),
-            "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay ✦", options=_OH_DELAY_OPTS, width="medium"),
-            "Delay Summary":         st.column_config.TextColumn("Delay Summary ✦",         width="large"),
+            "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness", options=_OH_RESP_OPTS, width="medium"),
+            "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment", options=_OH_SENTIMENT_OPTS, width="small"),
+            "Risk Level":            st.column_config.SelectboxColumn("Risk Level",       options=_OH_RISK_OPTS,       width="small"),
+            "Risk Owner":            st.column_config.SelectboxColumn("Risk Owner",       options=_OH_OWNER_OPTS,      width="small"),
+            "Risk Detail":           st.column_config.TextColumn("Risk Detail",           width="large"),
+            "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay", options=_OH_DELAY_OPTS, width="medium"),
+            "Delay Summary":         st.column_config.TextColumn("Delay Summary",         width="large"),
         },
         use_container_width=True,
         hide_index=True,
@@ -596,7 +592,7 @@ else:
     )
 
     # Export bar
-    _oh_sync_cols = ["Project","On Hold Reason","Client Responsiveness","Client Sentiment",
+    _oh_sync_cols = ["Customer","Project Type","On Hold Reason","Client Responsiveness","Client Sentiment",
                      "Risk Level","Risk Owner","Risk Detail","Responsible for Delay","Delay Summary"]
     _oh_changed = _oh_edited[_oh_sync_cols].fillna("").ne(_oh_df[[c for c in _oh_sync_cols if c in _oh_df.columns]].fillna("")).any(axis=1) if not _oh_edited.empty else pd.Series(False, index=_oh_edited.index)
     _oh_ex1, _oh_ex2 = st.columns([3,1])
