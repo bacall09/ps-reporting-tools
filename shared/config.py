@@ -117,6 +117,7 @@ DEFAULT_SCOPE = {
     "Reconcile":               17,
     "PSP":                     18,
     "Payments":                30,
+    "AP Payment":               4,
     "Reconcile 2.0":           20,
     "CC":                       6,
     "SFTP":                    12,

@@ -188,19 +188,16 @@ with st.sidebar:
             p for n in _active_c
             for p in EMPLOYEE_ROLES.get(n, {}).get("products", []) if p and p != "All"
         })
-        # Only show product filter on Daily Briefing where it is used
+        # Product filter — shown on Daily Briefing only
+        # Use st.context if available (Streamlit >= 1.36), otherwise check page marker
+        _show_prod_filter = True
         try:
-            from streamlit.runtime.scriptrunner import get_script_run_ctx as _get_ctx
-            _ctx = _get_ctx()
-            _page_script = _ctx.script_requests[-1].page_script_hash if _ctx and _ctx.script_requests else ""
+            _page_path = str(getattr(st.context, "page_script_hash", "") or "")
         except Exception:
-            _page_script = ""
+            _page_path = ""
         _cur_page = st.session_state.get("current_page", "")
-        # Show on Daily Briefing and on first load (unknown page); hide on all others
-        _pages_without_filter = {"Customer Engagement", "Utilization Report",
-            "Workload Health Score", "DRS Health Check", "My Projects",
-            "Time Entries", "Help", "Capacity Outlook", "Revenue Report"}
-        _show_prod_filter = _cur_page not in _pages_without_filter
+        if _cur_page and _cur_page != "Daily Briefing":
+            _show_prod_filter = False
         if _show_prod_filter:
             st.markdown("**Filter by product:**")
             _product_filter_home = st.selectbox("Product", ["All products"] + _all_prods,

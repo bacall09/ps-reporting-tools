@@ -368,8 +368,19 @@ if not _active.empty:
     if "rag" in _all_proj.columns:
         _rv = _all_proj["rag"].fillna("").astype(str).str.strip().str.lower()
         _rag_red = _all_proj[_rv == "red"]; _rag_yellow = _all_proj[_rv == "yellow"]
+    # Projects 9+ and 12+ months from start, not yet at phase 08
+    _pre_trans = _active[_active["phase"].fillna("").apply(
+        lambda p: _pidx_db(p) < _pidx_db("08. ready for support transition")
+    )] if "phase" in _active.columns else _active
+    if "start_date" in _pre_trans.columns and not _pre_trans.empty:
+        _sd = pd.to_datetime(_pre_trans["start_date"], errors="coerce")
+        _months_active = (_snap_today - _sd).dt.days / 30.44
+        _proj_9mo  = _pre_trans[_months_active >= 9].copy()
+        _proj_12mo = _pre_trans[_months_active >= 12].copy()
+    else:
+        _proj_9mo = _proj_12mo = pd.DataFrame()
 else:
-    _gls = _ihc = _mi = _stale = _rag_red = _rag_yellow = pd.DataFrame()
+    _gls = _ihc = _mi = _stale = _rag_red = _rag_yellow = _proj_9mo = _proj_12mo = pd.DataFrame()
 
 # ── This Week Briefing ────────────────────────────────────────────────────
 _p1, _p2, _p3 = [], [], []
@@ -838,35 +849,45 @@ else:
         _prod = _pt.split(":")[-1].strip().split()[0] if _pt else ""
         return f"{_cust} : {_prod}" if _prod else _cust
 
-    # ── My Projects group ─────────────────────────────────────────────────────
-    mp1, mp2, mp3, mp4, mp5, mp6, mp7, mp8 = st.columns(8)
-    with mp1:
+    # ── Row 1: Activity metrics ───────────────────────────────────────────────
+    r1a, r1b, r1c, r1d, r1e = st.columns(5)
+    with r1a:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
         for ph, cnt in _pc:
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{cnt} · {str(ph).split(".")[-1].strip()[:22]}</div>', unsafe_allow_html=True)
-    with mp2:
+    with r1b:
         _col = "#27AE60" if len(_gls) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
         for _, r in _gls.iterrows():
             _cust = str(r.get("project_name","")).split(" - ")[0].strip()
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with mp3:
+    with r1c:
         _col = "#F39C12" if len(_ihc) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare</div></div>', unsafe_allow_html=True)
         for _, r in _ihc.iterrows():
             _cust = str(r.get("project_name","")).split(" - ")[0].strip()
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with mp4:
+    with r1d:
+        _col = "#C0392B" if len(_mi) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    with r1e:
+        _col = "#C0392B" if len(_stale) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+
+    # ── Row 2: RAG & Risk ──────────────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="font-size:9px;margin:12px 0 6px;opacity:0.5">RAG &amp; Risk</div>', unsafe_allow_html=True)
+    r2a, r2b, r2c, r2d, r2e = st.columns(5)
+    with r2a:
         _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
         for _, _rr in _rag_red.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
-    with mp5:
+    with r2b:
         _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
         for _, _ry in _rag_yellow.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
-    with mp6:
+    with r2c:
         _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
         _col = "#F39C12" if _oh_snap > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
@@ -874,14 +895,18 @@ else:
             _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
             for _, _or in _oh_proj.head(3).iterrows():
                 st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
-
-
-    with mp7:
-        _col = "#C0392B" if len(_mi) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with mp8:
-        _col = "#C0392B" if len(_stale) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    with r2d:
+        _col = "#F39C12" if len(_proj_9mo) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9+ months active <span class="metric-help" data-tip="Active projects 9 or more months from Start Date that have not yet reached Phase 08. Ready for Support Transition.">ⓘ</span></div></div>', unsafe_allow_html=True)
+        for _, _p9 in _proj_9mo.head(3).iterrows():
+            _n9 = str(_p9.get("project_name","")).split(" - ")[0][:24]
+            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_n9}</div>', unsafe_allow_html=True)
+    with r2e:
+        _col = "#C0392B" if len(_proj_12mo) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_12mo)}</div><div class="metric-lbl">12+ months active <span class="metric-help" data-tip="Active projects at or beyond 12 months from Start Date that have not yet reached Phase 08. Ready for Support Transition. These may need an escalation review.">ⓘ</span></div></div>', unsafe_allow_html=True)
+        for _, _p12 in _proj_12mo.head(3).iterrows():
+            _n12 = str(_p12.get("project_name","")).split(" - ")[0][:24]
+            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_n12}</div>', unsafe_allow_html=True)
 
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)

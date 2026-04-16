@@ -332,8 +332,12 @@ def get_ff_scope(project_type: str, project_name: str = ""):
     # Premium project type — extract hours from project name
     if "premium" in pt:
         if project_name:
+            # Try IMPL10/IMPL20 SKU pattern first (from Time Item SKU in NS)
+            _sku_nums = _re_constants.findall(r"IMPL(\d+)", str(project_name).upper())
+            if _sku_nums:
+                return float(_sku_nums[0])
             # Look for standalone 10 or 20 in the project name
-            _nums = _re_constants.findall(r"\b(10|20)\b", str(project_name))
+            _nums = _re_constants.findall(r"(?<!\d)(10|20)(?!\d)", str(project_name))
             if _nums:
                 return float(_nums[0])
         # Fall back to DEFAULT_SCOPE premium entries if no match in name
