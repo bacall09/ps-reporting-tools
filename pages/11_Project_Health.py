@@ -72,12 +72,13 @@ my_drs = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
     pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
     if _va_region and role in ("manager", "manager_only", "reporting_only"):
-        from shared.constants import ACTIVE_EMPLOYEES
         _region_pms = {
             n for n, d in EMPLOYEE_LOCATION.items()
             if PS_REGION_MAP.get(PS_REGION_OVERRIDE.get(n, d), "") == _va_region
         }
-        my_drs = df_drs[pm_col.apply(lambda v: str(v).strip() in _region_pms)].copy()
+        my_drs = df_drs[pm_col.apply(
+            lambda v: any(name_matches(v, pm) for pm in _region_pms)
+        )].copy()
     elif role == "manager_only":
         my_drs = df_drs.copy()
     else:
@@ -280,21 +281,25 @@ if not _active.empty:
         _pm_parts = [p.strip() for p in _pm.split(",")]
         _pm_short = f"{_pm_parts[1].split()[0]} {_pm_parts[0]}" if len(_pm_parts) == 2 else _pm
 
+        _sd_row = r.get("start_date")
+        _sd_str = pd.Timestamp(_sd_row).strftime("%-d %b %Y") if pd.notna(_sd_row) else "—"
         _sched_rows.append({
             "Customer":      _cust[:30],
-            "Product":       _prod,
+            "Project Type":  _prod,
             "Phase":         _ph_lbl[:22],
+            "Start Date":    _sd_str,
             "Go-Live":       _gld_str,
             "Variance":      _var_str,
             "RAG":           _rag_pill,
             "Status":        _status_pill,
+            "Status Logic":  _status,
             "Consultant":    _pm_short,
         })
 
     _sched_df = pd.DataFrame(_sched_rows)
 
     # Show table as HTML for coloured pills
-    _cols_show = ["Customer","Product","Phase","Go-Live","Variance","RAG","Status"]
+    _cols_show = ["Customer","Project Type","Phase","Start Date","Go-Live","Variance","RAG","Status","Status Logic"]
     if role in ("manager","manager_only","reporting_only") or _va_region:
         _cols_show.append("Consultant")
 
@@ -308,9 +313,21 @@ if not _active.empty:
     for i, row in _sched_df[_cols_show].iterrows():
         _bg = "background:rgba(192,57,43,.04)" if row.get("Status","") and "risk" in row.get("Status","").lower() else ""
         _tbl_html += f"<tr style='border-bottom:0.5px solid rgba(128,128,128,.1);{_bg}'>"
+        _STATUS_EXPLAIN = {
+            "On track":   "Go-live is 14+ days away",
+            "Going live": "Go-live is within the next 14 days",
+            "Delayed":    "Go-live passed 1–30 days ago, not yet at Go-Live phase",
+            "At risk":    "Go-live passed 30+ days ago, not yet at Go-Live phase",
+            "Delivered":  "Project is at or past Go-Live phase",
+            "No date":    "No go-live date set in DRS",
+        }
         for c in _cols_show:
             _val = row[c]
-            _tbl_html += f"<td style='padding:8px 12px;color:inherit'>{_val}</td>"
+            if c == "Status Logic":
+                _explain = _STATUS_EXPLAIN.get(str(_val), "")
+                _tbl_html += f"<td style='padding:8px 12px;font-size:11px;opacity:.55'>{_explain}</td>"
+            else:
+                _tbl_html += f"<td style='padding:8px 12px;color:inherit'>{_val}</td>"
         _tbl_html += "</tr>"
     _tbl_html += "</tbody></table></div>"
     st.markdown(_tbl_html, unsafe_allow_html=True)
@@ -364,9 +381,12 @@ _scope_rows = []
 for _, r in _active.iterrows():
     _ptype = str(r.get("project_type","") or "")
     _pname = str(r.get("project_name","") or "")
-    _actual = float(r.get("actual_hours",0) or 0)
-    _budget = float(r.get("budgeted_hours",0) or 0)
-    _co     = float(r.get("change_order",0) or 0)
+    def _safe_float(v):
+        try: return float(str(v).replace(",","").strip() or 0)
+        except: return 0.0
+    _actual = _safe_float(r.get("actual_hours", 0))
+    _budget = _safe_float(r.get("budgeted_hours", 0))
+    _co     = _safe_float(r.get("change_order", 0))
     _total_scope = _budget + _co
     _ff_scope = get_ff_scope(_ptype, _pname)
     _scope = _ff_scope or (_total_scope if _total_scope > 0 else None)
