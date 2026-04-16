@@ -307,8 +307,8 @@ for _cn in sorted(_team_consultants):
     _n_oh      = int(_cm_oh.sum())
     if _n_proj == 0 and _n_oh == 0: continue
 
-    # RAG
-    _cm_rag = _cm_active.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+    # RAG — includes on-hold projects, matching Daily Briefing behaviour
+    _cm_rag = _cm.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
     _cm_red = int((_cm_rag == "red").sum())
     _cm_yel = int((_cm_rag == "yellow").sum())
 
