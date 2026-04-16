@@ -217,7 +217,11 @@ for _, row in df_drs.iterrows():
 
     # Legacy projects had no milestone tracking — skip all milestone checks
     _legacy_raw = _get(row, "legacy", "")
-    is_legacy = str(_legacy_raw).strip().lower() in ("yes", "true", "1", "y")
+    # Handle both string and boolean forms (loader normalises to bool)
+    is_legacy = (
+        _legacy_raw is True or
+        str(_legacy_raw).strip().lower() in ("yes", "true", "1", "y")
+    )
 
     def flag(severity, category, rule, description, expected=""):
         findings.append({
@@ -317,7 +321,22 @@ for _, row in df_drs.iterrows():
              "Update Client Responsiveness to reflect actual recent engagement.")
 
     # ── On Hold data quality checks ───────────────────────────────────────────
-    sentiment = str(_get(row, "client_sentiment", "") or "").strip().lower()
+    sentiment  = str(_get(row, "client_sentiment",       "") or "").strip().lower()
+    oh_reason  = str(_get(row, "on_hold_reason",         "") or "").strip()
+    oh_delay   = str(_get(row, "responsible_for_delay",  "") or "").strip()
+
+    if "hold" in status:
+        if not oh_reason or oh_reason in ("—", "nan", "None"):
+            flag("Warning", "On Hold Data Quality",
+                 "On Hold Reason not set",
+                 "Project is On Hold but no On Hold Reason has been recorded.",
+                 "Set On Hold Reason in the DRS — required for all on-hold projects.")
+        if not oh_delay or oh_delay in ("—", "nan", "None"):
+            flag("Warning", "On Hold Data Quality",
+                 "Responsible for Delay not set",
+                 "Project is On Hold but Responsible for Delay has not been recorded.",
+                 "Set Responsible for Delay in the DRS — required for all on-hold projects.")
+
     if "hold" in status and days_inac is not None and days_inac >= 14:
         if resp in ("highly engaged", "highly responsive", "responsive"):
             flag("Warning", "On Hold Data Quality",
