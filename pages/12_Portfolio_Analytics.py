@@ -141,14 +141,7 @@ else:
 pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
 
 def _in_team(v):
-    vl = resolve_name(str(v)).lower()
-    vs = str(v).strip().lower()
-    return any(
-        vl == _n.lower() or vs == _n.lower() or
-        vl == _n.split(",")[0].strip().lower() or
-        vs == _n.split(",")[0].strip().lower()
-        for _n in _team_consultants
-    )
+    return any(name_matches(v, _n) for _n in _team_consultants)
 
 team_drs = df_drs[pm_col.apply(_in_team)].copy() if _team_consultants else df_drs.copy()
 
@@ -280,7 +273,8 @@ def _sched_status_pa(row):
     if days >= -30: return "delayed"
     return "at_risk"
 
-_active["_sched_pa"] = _active.apply(_sched_status_pa, axis=1)
+team_drs["_sched_pa"] = team_drs.apply(_sched_status_pa, axis=1)
+_active = team_drs[~_ioh].copy()  # re-slice so _active has _sched_pa
 
 # Pre-score WHS once for all consultants
 _whs_lookup = {}
@@ -316,12 +310,11 @@ for _cn in sorted(_team_consultants):
     _cm_red = int((_cm_rag == "red").sum())
     _cm_yel = int((_cm_rag == "yellow").sum())
 
-    # Schedule counts — compute per consultant from _active with _sched_pa column
-    _cm_idx    = _cm_active.index
-    _cm_sched  = _active.loc[_active.index.isin(_cm_idx), "_sched_pa"] if "_sched_pa" in _active.columns else pd.Series(dtype=str)
-    _n_on_track = int(_cm_sched.isin(["on_track","going_live","delivered"]).sum())
-    _n_delayed  = int((_cm_sched == "delayed").sum())
-    _n_at_risk  = int((_cm_sched == "at_risk").sum())
+    # Schedule counts — compute directly on this consultant's active projects
+    _cm_sched_vals = _cm_active.apply(_sched_status_pa, axis=1)
+    _n_on_track = int(_cm_sched_vals.isin(["on_track","going_live","delivered"]).sum())
+    _n_delayed  = int((_cm_sched_vals == "delayed").sum())
+    _n_at_risk  = int((_cm_sched_vals == "at_risk").sum())
 
     # WHS score — looked up from pre-scored dict
     _whs_val = _whs_lookup.get(_cn)
@@ -347,14 +340,17 @@ for _cn in sorted(_team_consultants):
             # Use AVAIL_HOURS lookup — same as Daily Briefing
             _cn_loc = EMPLOYEE_LOCATION.get(_cn, "")
             if isinstance(_cn_loc, tuple): _cn_loc = _cn_loc[0]
-            _cn_avail = AVAIL_HOURS.get(_cn_loc, {}).get(_month_key_pa)
-            if _cn_avail and _cn_avail > 0:
-                # Calculate credited hours (T&M + FF within scope) like Daily Briefing
-                _bt_ns = _cm_month_ns.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
-                _tm_h  = float(_cm_month_ns[_bt_ns == "t&m"]["hours"].sum() or 0)
-                _ff_h  = float(_cm_month_ns[(_bt_ns != "internal") & (_bt_ns != "t&m")]["hours"].sum() or 0)
-                _util_h = _tm_h + _ff_h  # simplified: full FF credit (no scope cap at this level)
-                _cm_util_pct = round(100 * _util_h / _cn_avail)
+            _cn_region = PS_REGION_OVERRIDE.get(_cn, PS_REGION_MAP.get(_cn_loc, ""))
+            _cn_avail = (AVAIL_HOURS.get(_cn_loc, {}).get(_month_key_pa)
+                      or AVAIL_HOURS.get(_cn_region, {}).get(_month_key_pa))
+            if _cn_avail and float(_cn_avail) > 0:
+                # T&M full credit + FF hours (simplified — no scope cap, consistent with
+                # Daily Briefing direction; small variance possible on overrun projects)
+                _bt_ns  = _cm_month_ns.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+                _tm_h   = float(_cm_month_ns[_bt_ns == "t&m"]["hours"].sum() or 0)
+                _ff_h   = float(_cm_month_ns[(_bt_ns != "internal") & (_bt_ns != "t&m")]["hours"].sum() or 0)
+                _util_h = _tm_h + _ff_h
+                _cm_util_pct = round(100 * _util_h / float(_cn_avail))
                 _cm_util = f"{_cm_util_pct}%"
 
     _cn_parts = [p.strip() for p in _cn.split(",")]
