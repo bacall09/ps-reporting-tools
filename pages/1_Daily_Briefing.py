@@ -796,26 +796,30 @@ else:
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{cnt} · {str(ph).split(".")[-1].strip()[:22]}</div>', unsafe_allow_html=True)
     with snap2:
         _col = "#27AE60" if len(_gls) > 0 else "inherit"
-        st.markdown(f'<a href="/My_Projects" target="_self" style="text-decoration:none;color:inherit"><div class="metric-card" style="cursor:pointer"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week ↗</div></div></a>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
+        if st.button("→ My Projects", key="snap_gls", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
         for _, r in _gls.iterrows():
             _cust = str(r.get("project_name",""))
             _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
     with snap3:
         _col = "#F39C12" if len(_ihc) > 0 else "inherit"
-        st.markdown(f'<a href="/My_Projects" target="_self" style="text-decoration:none;color:inherit"><div class="metric-card" style="cursor:pointer"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare (week 1) ↗</div></div></a>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare (week 1)</div></div>', unsafe_allow_html=True)
+        if st.button("→ My Projects", key="snap_ihc", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
         for _, r in _ihc.iterrows():
             _cust = str(r.get("project_name",""))
             _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
             st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
     with snap4:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
-        st.markdown(f'<a href="/Customer_Engagement" target="_self" style="text-decoration:none;color:inherit"><div class="metric-card" style="cursor:pointer"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email ↗</div></div></a>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email</div></div>', unsafe_allow_html=True)
+        if st.button("→ Customer Engagement", key="snap_mi", use_container_width=True): st.switch_page("pages/2_Customer_Reengagement.py")
         if len(_mi) > 0:
             st.markdown('<div style="font-size:13px;opacity:.55">Excl. legacy projects</div>', unsafe_allow_html=True)
     with snap5:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
-        st.markdown(f'<a href="/Customer_Engagement" target="_self" style="text-decoration:none;color:inherit"><div class="metric-card" style="cursor:pointer"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement ↗</div></div></a>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement</div></div>', unsafe_allow_html=True)
+        if st.button("→ Customer Engagement", key="snap_stale", use_container_width=True): st.switch_page("pages/2_Customer_Reengagement.py")
         if len(_stale) > 0:
             st.markdown('<div style="font-size:13px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)
     def _rag_label(r):
@@ -831,18 +835,21 @@ else:
 
     with snap6:
         _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
-        st.markdown(f'<a href="/My_Projects" target="_self" style="text-decoration:none;color:inherit"><div class="metric-card" style="cursor:pointer"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG ↗</div></div></a>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
+        if st.button("→ My Projects", key="snap_red", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
         for _, _rr in _rag_red.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
     with snap7:
         _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
-        st.markdown(f'<a href="/My_Projects" target="_self" style="text-decoration:none;color:inherit"><div class="metric-card" style="cursor:pointer"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG ↗</div></div></a>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
+        if st.button("→ My Projects", key="snap_yel", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
         for _, _ry in _rag_yellow.head(3).iterrows():
             st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
     with snap8:
         _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
         _col = "#F39C12" if _oh_snap > 0 else "inherit"
-        st.markdown(f'<a href="/My_Projects" target="_self" style="text-decoration:none;color:inherit"><div class="metric-card" style="cursor:pointer"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold ↗</div></div></a>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
+        if st.button("→ My Projects", key="snap_oh", use_container_width=True): st.switch_page("pages/8_My_Projects.py")
         if _oh_snap > 0:
             _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
             for _, _or in _oh_proj.head(3).iterrows():
