@@ -165,8 +165,9 @@ def _pidx(p):
 # ── Portfolio Snapshot metrics ────────────────────────────────────────────────
 _n_active   = len(_active)
 _n_onhold   = int(_ioh.sum())
-_n_total    = _n_active + _n_onhold   # total = active + on-hold (not all DRS rows)
+_n_total    = len(team_drs)           # all rows for this team/consultant
 _n_team     = len(_team_consultants)
+_oh_denom   = _n_active + _n_onhold   # for on-hold rate: active+onhold (not total which may include completed)
 
 _rag_col    = _active.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
 _n_red      = int((_rag_col == "red").sum())
@@ -174,7 +175,7 @@ _n_yellow   = int((_rag_col == "yellow").sum())
 _n_at_risk  = _n_red + _n_yellow
 _risk_pct   = round(100 * _n_at_risk / _n_active) if _n_active else 0
 
-_oh_pct     = round(100 * _n_onhold / _n_total) if _n_total else 0
+_oh_pct     = round(100 * _n_onhold / _oh_denom) if _oh_denom else 0
 
 # Avg project duration (months from start to today for active)
 _durations  = []
@@ -282,9 +283,9 @@ try:
     from shared.whs import score_projects, build_consultant_summary
     if df_drs is not None and not df_drs.empty:
         _whs_df_all, _ = score_projects(df_drs)
-        _whs_summ_all  = build_consultant_summary(_whs_df_all)
+        _whs_summ_all, _ = build_consultant_summary(_whs_df_all)  # returns (df, missing_count)
         for _, _wr in _whs_summ_all.iterrows():
-            _wcs = str(_wr.get("consultant","") or "")
+            _wcs = str(_wr.get("project_manager","") or "")  # column is project_manager not consultant
             for _cn2 in _team_consultants:
                 if name_matches(_wcs, _cn2):
                     _whs_lookup[_cn2] = round(float(_wr.get("total_score", 0)), 1)
