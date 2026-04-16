@@ -76,21 +76,40 @@ st.markdown('<hr style="margin:20px 0;opacity:0.15">', unsafe_allow_html=True)
 st.markdown('<div class="section-label">Add Entry</div>', unsafe_allow_html=True)
 
 # Build project dropdown from DRS session data filtered to this consultant
-_df_drs_te = st.session_state.get("df_drs")
+_df_drs_te  = st.session_state.get("df_drs")
+_drs_loaded = _df_drs_te is not None and not _df_drs_te.empty
 _proj_options = {}  # {display_name: project_id}
-if _df_drs_te is not None and not _df_drs_te.empty:
+
+if _drs_loaded:
     from shared.constants import name_matches
-    _my_drs = _df_drs_te[_df_drs_te["project_manager"].apply(
-        lambda v: name_matches(v, _session_name)
-    )] if "project_manager" in _df_drs_te.columns else _df_drs_te
-    if not _my_drs.empty and "project_name" in _my_drs.columns:
+    # Try filtering to this consultant's projects
+    if "project_manager" in _df_drs_te.columns:
+        _my_drs = _df_drs_te[_df_drs_te["project_manager"].apply(
+            lambda v: name_matches(v, _session_name)
+        )]
+        # If name match returns nothing, show all as fallback with a note
+        if _my_drs.empty:
+            _my_drs = _df_drs_te
+            _proj_match_warn = True
+        else:
+            _proj_match_warn = False
+    else:
+        _my_drs = _df_drs_te
+        _proj_match_warn = False
+
+    if "project_name" in _my_drs.columns:
         for _, _pr in _my_drs.iterrows():
             _pname = str(_pr.get("project_name","") or "").strip()
             _pid   = str(_pr.get("project_id","") or "").strip()
             if _pname and _pname not in ("nan","None"):
                 _proj_options[_pname] = _pid
+else:
+    _proj_match_warn = False
 
 _proj_names = sorted(_proj_options.keys())
+
+if not _drs_loaded:
+    st.info("Load SS DRS on the Home page to enable the project dropdown.", icon="ℹ️")
 
 with st.form("te_add_form", clear_on_submit=True):
     fc1, fc2, fc3 = st.columns([2, 2, 1])
@@ -98,9 +117,11 @@ with st.form("te_add_form", clear_on_submit=True):
         if _proj_names:
             _f_proj_name = st.selectbox("Project *", ["— Select project —"] + _proj_names)
             _f_proj_id   = _proj_options.get(_f_proj_name, "") if _f_proj_name != "— Select project —" else ""
-            st.caption(f"Project ID: {_f_proj_id}" if _f_proj_id else "Project ID: —")
+            if _f_proj_id:
+                st.caption(f"Project ID: {_f_proj_id}")
+            if _proj_match_warn:
+                st.caption("⚠️ Showing all projects — name match to your profile not found")
         else:
-            st.caption("Load SS DRS on Home page to enable project dropdown")
             _f_proj_name = st.text_input("Project Name *", placeholder="e.g. Acme Corp - ZCapture Implementation")
             _f_proj_id   = st.text_input("Project ID *", placeholder="e.g. 157425")
     with fc2:

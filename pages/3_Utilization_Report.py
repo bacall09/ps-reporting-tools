@@ -358,7 +358,7 @@ def auto_detect_columns(df):
     checks = {
         "employee":      ["employee", "employee name", "name", "resource"],
         "project":       ["project", "project name", "job"],
-        "project_type":  ["project type", "type", "project_type"],
+        "project_type":  ["project type", "type", "project_type", "time item sku", "item sku", "sku"],
         "date":          ["date", "time entry date", "entry date", "work date"],
         "hours":         ["hours", "duration", "hours logged", "time", "qty"],
         "approval":      ["approval status", "approval", "status"],

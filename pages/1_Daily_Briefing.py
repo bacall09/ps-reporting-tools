@@ -813,7 +813,7 @@ else:
         return f"{_cust} : {_prod}" if _prod else _cust
 
     # ── My Projects group ─────────────────────────────────────────────────────
-    mp1, mp2, mp3, mp4, mp5, mp6 = st.columns(6)
+    mp1, mp2, mp3, mp4, mp5, mp6, mp7, mp8 = st.columns(8)
     with mp1:
         st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
         for ph, cnt in _pc:
@@ -850,12 +850,10 @@ else:
                 st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
 
 
-    # ── Customer Engagement group ─────────────────────────────────────────────
-    ce1, ce2 = st.columns(2)
-    with ce1:
+    with mp7:
         _col = "#C0392B" if len(_mi) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with ce2:
+    with mp8:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
 
