@@ -84,9 +84,10 @@ st.markdown("""
                      font-size:10px;color:rgba(128,128,128,.4)}
     .req-nice::before{content:'○';color:rgba(128,128,128,.35)}
     .no-data-msg{text-align:center;padding:36px;opacity:.4;font-size:14px}
-    [data-testid="stFileUploader"] section{padding:6px 10px!important}
-    [data-testid="stFileUploaderDropzoneInstructions"]{display:none!important}
-    [data-testid="stFileUploader"] button{font-size:13px!important}
+    [data-testid="stFileUploader"] section{padding:10px 14px!important;min-height:unset!important}
+    [data-testid="stFileUploaderDropzone"]{min-height:unset!important;padding:8px 12px!important}
+    [data-testid="stFileUploaderDropzoneInstructions"] span{font-size:12px!important}
+    [data-testid="stFileUploaderDropzoneInstructions"] small{display:none!important}
     [data-testid="stFileUploader"] label{display:none!important}
 </style>
 """, unsafe_allow_html=True)
@@ -325,26 +326,35 @@ def _extract_products_from_text(text: str) -> list[str]:
 
 
 def _read_docx_text(uploaded_file) -> tuple[str, str]:
-    """Extract plain text from a .docx using python-docx.
+    """Extract plain text from a .docx using stdlib only (zipfile + xml).
+    No python-docx dependency needed — .docx is a zip containing XML.
     Returns (text, error_message) — error_message is empty string on success."""
     try:
-        import docx as docxlib
-        # Streamlit UploadedFile: read bytes, wrap in BytesIO
+        import zipfile
+        from xml.etree import ElementTree as ET
         raw_bytes = uploaded_file.getvalue()
-        doc = docxlib.Document(io.BytesIO(raw_bytes))
+        zf = zipfile.ZipFile(io.BytesIO(raw_bytes))
+        xml_content = zf.read("word/document.xml")
+        tree = ET.fromstring(xml_content)
+        W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
         lines = []
-        for para in doc.paragraphs:
-            style = para.style.name if para.style else ""
-            text = para.text.strip()
+        for para in tree.iter(f"{{{W}}}p"):
+            pPr = para.find(f"{{{W}}}pPr")
+            style_id = ""
+            if pPr is not None:
+                pStyle = pPr.find(f"{{{W}}}pStyle")
+                if pStyle is not None:
+                    style_id = pStyle.get(f"{{{W}}}val", "")
+            text = "".join(
+                node.text or "" for node in para.iter(f"{{{W}}}t")
+            ).strip()
             if not text:
                 continue
-            if "Heading" in style:
-                lines.append(f"### {text}")
-            else:
-                lines.append(f"- {text}")
+            is_heading = bool(re.search(r"heading|^[123]$", style_id, re.IGNORECASE))
+            lines.append(f"### {text}" if is_heading else f"- {text}")
         result = "\n".join(lines)
         if not result.strip():
-            return "", "The document appears to be empty or could not be read."
+            return "", "Document appears empty — check the file and try again."
         return result, ""
     except Exception as e:
         return "", f"Error reading .docx: {e}"
