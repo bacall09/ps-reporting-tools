@@ -28,7 +28,7 @@ st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
     html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
-    h1,h2,h3,h4,p,div,label,button,span{font-family:'Manrope',sans-serif!important}
+    h1,h2,h3,h4,p,label,button{font-family:'Manrope',sans-serif!important}
     .section-label{font-size:13px;font-weight:700;text-transform:uppercase;
                    letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
     .divider{border:none;border-top:1px solid rgba(128,128,128,.15);margin:20px 0}
