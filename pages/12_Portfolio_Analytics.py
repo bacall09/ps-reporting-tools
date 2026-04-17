@@ -23,13 +23,13 @@ st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
     html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
-    .section-label{font-size:11px;font-weight:700;text-transform:uppercase;
+    .section-label { font-size: 13px;font-weight:700;text-transform:uppercase;
                    letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
     .metric-card{border:1px solid rgba(128,128,128,.2);border-radius:8px;
                  padding:16px 20px;margin-bottom:4px}
-    .metric-val{font-size:26px;font-weight:700;color:inherit}
-    .metric-lbl{font-size:12px;opacity:.6;margin-top:2px}
-    .metric-sub{font-size:11px;opacity:.5;margin-top:3px}
+    .metric-val { font-size: 32px;font-weight:700;color:inherit}
+    .metric-lbl { font-size: 14px;opacity:.6;margin-top:2px}
+    .metric-sub{font-size:13px;opacity:.5;margin-top:3px}
     .divider{border:none;border-top:1px solid rgba(128,128,128,.2);margin:20px 0}
     .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;
           border-radius:10px;letter-spacing:.8px}
@@ -93,7 +93,7 @@ st.markdown(f"""
             margin-bottom:24px;font-family:Manrope,sans-serif;
             position:relative;overflow:hidden'>
   {_zone_svg}
-  <div style='font-size:10px;font-weight:700;letter-spacing:2.5px;
+  <div style='font-size:13px;font-weight:700;letter-spacing:2.5px;
               text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>
       Professional Services · Tools</div>
   <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>
@@ -445,27 +445,27 @@ if _cw_rows:
     _BD = "border-left:0.5px solid rgba(128,128,128,.15)"  # group divider
 
     _cw_html = f"""<div style='border:0.5px solid rgba(128,128,128,.2);border-radius:10px;overflow:hidden'>
-<table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:12px'>
+<table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:14px'>
 <thead>
 <tr style='border-bottom:0.5px solid rgba(128,128,128,.15)'>
-  <th rowspan='2' style='padding:7px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55;border-right:0.5px solid rgba(128,128,128,.15);vertical-align:bottom'>Consultant</th>
+  <th rowspan='2' style='padding:7px 10px;text-align:left;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55;border-right:0.5px solid rgba(128,128,128,.15);vertical-align:bottom'>Consultant</th>
   <th colspan='3' style='padding:4px 10px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.45;border-bottom:0.5px solid rgba(128,128,128,.15)'>Workload</th>
   <th colspan='2' style='padding:4px 10px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.45;border-bottom:0.5px solid rgba(128,128,128,.15);border-left:0.5px solid rgba(128,128,128,.15)'>RAG</th>
   <th colspan='3' style='padding:4px 10px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.45;border-bottom:0.5px solid rgba(128,128,128,.15);border-left:0.5px solid rgba(128,128,128,.15)'>Schedule</th>
   <th colspan='2' style='padding:4px 10px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.45;border-bottom:0.5px solid rgba(128,128,128,.15);border-left:0.5px solid rgba(128,128,128,.15)'>Scope</th>
-  <th rowspan='2' style='padding:7px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15);vertical-align:bottom'>Util %</th>
+  <th rowspan='2' style='padding:7px 10px;text-align:right;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15);vertical-align:bottom'>Util %</th>
 </tr>
 <tr style='border-bottom:1px solid rgba(128,128,128,.2)'>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55'>WHS</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55'>Active</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55'>On hold</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15)'>🔴</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55'>🟡</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15)'>On track</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55'>Delayed</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55'>At risk</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15)'>Overrun</th>
-  <th style='padding:3px 10px 7px;text-align:right;font-size:10px;font-weight:700;opacity:.55'>Near limit</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55'>WHS</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55'>Active</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55'>On hold</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15)'>🔴</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55'>🟡</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15)'>On track</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55'>Delayed</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55'>At risk</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55;border-left:0.5px solid rgba(128,128,128,.15)'>Overrun</th>
+  <th style='padding:3px 10px 7px;text-align:right;font-size:12px;font-weight:700;opacity:.55'>Near limit</th>
 </tr>
 </thead><tbody>"""
 
@@ -520,7 +520,7 @@ if "project_type" in _active.columns:
             _bar_w = round(100 * cnt / _max_count)
             st.markdown(f"""
             <div style='margin-bottom:10px'>
-              <div style='display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px'>
+              <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
                 <span>{prod}</span>
                 <span style='opacity:.55'>{cnt} · {_pct}%</span>
               </div>
@@ -534,7 +534,7 @@ if "project_type" in _active.columns:
             _bar_w = round(100 * cnt / _max_count)
             st.markdown(f"""
             <div style='margin-bottom:10px'>
-              <div style='display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px'>
+              <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
                 <span>{prod}</span>
                 <span style='opacity:.55'>{cnt} · {_pct}%</span>
               </div>
@@ -588,7 +588,7 @@ if "phase" in _active.columns:
                 _bar_w = round(100 * cnt / _max_ph)
                 st.markdown(f"""
                 <div style='margin-bottom:10px'>
-                  <div style='display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px'>
+                  <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
                     <span>{ _abbr}</span>
                     <span style='opacity:.55'>{cnt} · {_pct}%</span>
                   </div>

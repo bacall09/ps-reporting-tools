@@ -28,12 +28,12 @@ st.markdown("""
     h1,h2,h3,h4,p,div,label,button { font-family: 'Manrope', sans-serif !important; }
     .brief-header  { font-size: 24px; font-weight: 700; color: inherit; margin-bottom: 4px; }
     .brief-sub     { font-size: 13px; margin-bottom: 20px; opacity: 0.6; }
-    .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+    .section-label { font-size: 13px; font-weight: 700; text-transform: uppercase;
                      letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
     .metric-card   { background: transparent; border: 1px solid rgba(128,128,128,0.2);
                      border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
-    .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
-    .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+    .metric-val { font-size: 32px; font-weight: 700; color: inherit; }
+    .metric-lbl { font-size: 14px; opacity: 0.6; margin-top: 2px; }
     .divider { border: none; border-top: 1px solid rgba(128,128,128,0.2); margin: 20px 0; }
     .fx-note { font-size: 11px; opacity: 0.5; font-style: italic; }
 </style>

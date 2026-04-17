@@ -51,18 +51,18 @@ st.markdown("""
         h1,h2,h3,h4,p,div,label,button { font-family: 'Manrope', sans-serif !important; }
         .brief-header  { font-size: 24px; font-weight: 700; color: inherit; margin-bottom: 4px; }
         .brief-sub     { font-size: 13px; margin-bottom: 20px; opacity: 0.6; }
-        .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+        .section-label { font-size: 13px; font-weight: 700; text-transform: uppercase;
                          letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
         .metric-card   { background: transparent; border: 1px solid rgba(128,128,128,0.2);
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
-        .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
-        .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+        .metric-val { font-size: 32px; font-weight: 700; color: inherit; }
+        .metric-lbl { font-size: 14px; opacity: 0.6; margin-top: 2px; }
         .snap-btn { display:block; width:100%; text-align:center; font-size:11px;
             color:inherit !important; opacity:0.5; padding:2px 0; margin-top:2px;
             border:1px solid rgba(128,128,128,0.25); border-radius:4px;
             text-decoration:none; cursor:pointer; background:transparent; }
         .snap-btn:hover { opacity:0.9; background:rgba(128,128,128,0.08); }
-        .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
+        .metric-help { display:inline-block; margin-left:5px; font-size:13px; opacity:0.55;
                          cursor:help; position:relative; }
         .metric-help:hover::after {
             content: attr(data-tip);
@@ -470,7 +470,7 @@ if _p1 or _p2 or _p3:
 
     _bhtml = """<div style='border-radius:8px;border:1px solid rgba(59,158,255,0.2);overflow:hidden;margin-bottom:16px;font-family:Manrope,sans-serif'>
   <div style='background:rgba(59,158,255,0.07);padding:10px 20px;border-bottom:1px solid rgba(59,158,255,0.15);display:flex;align-items:center;gap:10px'>
-<span style='font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>This Week&#39;s Focus</span>
+<span style='font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>This Week&#39;s Focus</span>
 <span style='font-size:11px;color:var(--text-color,inherit);opacity:0.35;margin-left:auto'>Rule-based · AI briefings coming soon</span>
   </div>
   <div style='padding:18px 22px;display:flex;flex-direction:column;gap:14px'>"""
@@ -479,7 +479,7 @@ if _p1 or _p2 or _p3:
         _bhtml += f"""<div style='display:flex;gap:14px;align-items:flex-start'>
 <div style='flex-shrink:0;width:3px;background:#27AE60;border-radius:2px;align-self:stretch;min-height:36px'></div>
 <div>
-  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#27AE60;margin-bottom:5px'>Friendly reminder</div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#27AE60;margin-bottom:5px'>Friendly reminder</div>
   <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_reminder.strip()}</div>
 </div>
   </div>"""
@@ -489,7 +489,7 @@ if _p1 or _p2 or _p3:
         _bhtml += f"""{_sep_r}<div style='display:flex;gap:14px;align-items:flex-start'>
 <div style='flex-shrink:0;width:3px;background:#C0392B;border-radius:2px;align-self:stretch;min-height:36px'></div>
 <div>
-  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#C0392B;margin-bottom:5px'>Needs attention</div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#C0392B;margin-bottom:5px'>Needs attention</div>
   <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_attn.strip()}</div>
 </div>
   </div>"""
@@ -499,7 +499,7 @@ if _p1 or _p2 or _p3:
         _bhtml += f"""{_sep}<div style='display:flex;gap:14px;align-items:flex-start'>
 <div style='flex-shrink:0;width:3px;background:#3B9EFF;border-radius:2px;align-self:stretch;min-height:36px'></div>
 <div>
-  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:5px'>Quick wins this week</div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:5px'>Quick wins this week</div>
   <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_quick.strip()}</div>
 </div>
   </div>"""
@@ -509,7 +509,7 @@ if _p1 or _p2 or _p3:
         _bhtml += f"""{_sep2}<div style='display:flex;gap:14px;align-items:flex-start'>
 <div style='flex-shrink:0;width:3px;background:rgba(128,128,128,0.3);border-radius:2px;align-self:stretch;min-height:36px'></div>
 <div>
-  <div style='font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:inherit;opacity:0.45;margin-bottom:5px'>Housekeeping</div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:inherit;opacity:0.45;margin-bottom:5px'>Housekeeping</div>
   <div style='font-size:13px;color:inherit;opacity:0.6;line-height:1.7'>{_para_house.strip()}</div>
 </div>
   </div>"""
@@ -915,12 +915,12 @@ else:
         _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
         for _, _rr in _rag_red.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
     with r2b:
         _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
         for _, _ry in _rag_yellow.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
     with r2c:
         _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
         _col = "#F39C12" if _oh_snap > 0 else "inherit"
@@ -928,17 +928,17 @@ else:
         if _oh_snap > 0:
             _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
             for _, _or in _oh_proj.head(3).iterrows():
-                st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
     with r2d:
         _col = "#F39C12" if len(_proj_9mo) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9+ months active <span class="metric-help" data-tip="Active projects 9 or more months from Start Date that have not yet reached Phase 08. Ready for Support Transition.">ⓘ</span></div></div>', unsafe_allow_html=True)
         for _, _p9 in _proj_9mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_p9)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p9)}</div>', unsafe_allow_html=True)
     with r2e:
         _col = "#C0392B" if len(_proj_12mo) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_12mo)}</div><div class="metric-lbl">12+ months active <span class="metric-help" data-tip="Active projects at or beyond 12 months from Start Date that have not yet reached Phase 08. May need escalation review.">ⓘ</span></div></div>', unsafe_allow_html=True)
         for _, _p12 in _proj_12mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_p12)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p12)}</div>', unsafe_allow_html=True)
 
     # ── Section: My Projects — Snapshot ───────────────────────────────────────
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
@@ -984,8 +984,8 @@ else:
                 _card_style = "opacity:0.5" if ph == "Unassigned" else ""
                 st.markdown(
                     f'<div class="metric-card" style="padding:8px 10px;{_card_style}">' +
-                    f'<div class="metric-val" style="font-size:20px">{cnt}</div>' +
-                    f'<div class="metric-lbl" style="font-size:10px">{_abbr}</div></div>',
+                    f'<div class="metric-val" style="font-size:24px">{cnt}</div>' +
+                    f'<div class="metric-lbl" style="font-size:12px">{_abbr}</div></div>',
                     unsafe_allow_html=True
                 )
 

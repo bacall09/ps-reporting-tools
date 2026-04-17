@@ -19,7 +19,7 @@ st.markdown("""
     .meta-label{font-weight:700;opacity:.7;display:block}
     .pill-data{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:rgba(59,158,255,.1);color:#3B9EFF;letter-spacing:.5px;margin-right:4px}
     .pill-role{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:rgba(128,128,128,.1);opacity:.7;letter-spacing:.5px;margin-right:4px}
-    .section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
+    .section-label { font-size: 13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
 </style>
 """, unsafe_allow_html=True)
 

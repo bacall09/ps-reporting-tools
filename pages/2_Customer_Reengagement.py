@@ -180,7 +180,8 @@ st.markdown("""
             color: #1e2c63;
             margin-bottom: 8px;
         }
-    </style>
+            .section-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
+</style>
 """, unsafe_allow_html=True)
 
 # ── Scroll to anchor if navigated from Daily Briefing ──────────────────────────
@@ -875,7 +876,7 @@ def main():
         _role_label = "Manager" if is_manager else "Consultant"
     else:
         # Not identified on Home — show Step 1 as before
-        st.subheader("Step 2 — Who are you?")
+        st.markdown('<div class="section-label">Step 2 — Who are you?</div>', unsafe_allow_html=True)
         _u_col, _r_col = st.columns([3, 2])
         with _u_col:
             selected_user = st.selectbox(
@@ -910,7 +911,7 @@ def main():
     ns_file   = None
 
     if not _session_loaded:
-        st.subheader("Step 3 — Upload Reports")
+        st.markdown('<div class="section-label">Step 3 — Upload Reports</div>', unsafe_allow_html=True)
         st.caption("Upload one or more reports — more reports = better inactivity detection.")
         up1, up2, up3 = st.columns([3, 3, 3])
         with up1:
@@ -1050,7 +1051,7 @@ def main():
 
     # ── Project overview table ─────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Your Projects")
+    st.markdown('<div class="section-label">Your Projects</div>', unsafe_allow_html=True)
     if df_drs is not None and not df_drs.empty:
         today_ts = pd.Timestamp.today().normalize()
 
@@ -1090,7 +1091,7 @@ Used when no NS entries and no milestones are present.
             """)
 
         # ── This Week's Initial Engagement Actions ───────────────────────
-        st.subheader("This Week's Initial Engagement Actions")
+        st.markdown('<div class="section-label">This Week&#39;s Initial Engagement Actions</div>', unsafe_allow_html=True)
         st.caption("Non-legacy projects with no Intro. Email Sent date — first outreach needed.")
 
         _intro_df = pd.DataFrame()
@@ -1128,7 +1129,7 @@ Used when no NS entries and no milestones are present.
         st.markdown("---")
 
         # ── Weekly Action List ────────────────────────────────────────────
-        st.subheader("This Week's Re-Engagement Actions")
+        st.markdown('<div class="section-label">This Week&#39;s Re-Engagement Actions</div>', unsafe_allow_html=True)
 
         # Projects needing action: 30+ days inactive, not on hold, not recently logged
         _logged_projects = {e.get("project") for e in _load_log()
@@ -1219,7 +1220,7 @@ Used when no NS entries and no milestones are present.
         st.info("Upload SS DRS to see your project overview.")
 
     st.markdown("---")
-    st.subheader("Step 1 — Select a Project")
+    st.markdown('<div class="section-label">Step 1 — Select a Project</div>', unsafe_allow_html=True)
 
     # ── Column resolution — works for both SFDC and DRS modes ─────────────
     if mode == "sfdc":
@@ -1349,7 +1350,7 @@ Used when no NS entries and no milestones are present.
 
     # Days inactive input
     st.markdown("---")
-    st.subheader("Step 2 — Set Context")
+    st.markdown('<div class="section-label">Step 2 — Set Context</div>', unsafe_allow_html=True)
 
     # ── Effective tier — considers both calculated days AND any template override ──
     # Template selector is in Step 4 (rendered later) but persists in session state
@@ -1494,7 +1495,7 @@ Used when no NS entries and no milestones are present.
 
     # ── Contacts ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Step 3 — Select Recipients")
+    st.markdown('<div class="section-label">Step 3 — Select Recipients</div>', unsafe_allow_html=True)
 
     # Safe defaults — overridden below if contacts are found
     to_emails             = []
@@ -1652,7 +1653,7 @@ Used when no NS entries and no milestones are present.
         if int(days_inactive) >= 60:
             st.warning("⚠️ No prior outreach logged for this project. Per sequencing rules, start with Tier 1 before escalating — unless Tier 1 was sent outside this tool.")
 
-    st.subheader("Step 4 — Template")
+    st.markdown('<div class="section-label">Step 4 — Template</div>', unsafe_allow_html=True)
 
     suggested = suggest_tier(int(days_inactive)) or list(TEMPLATES.keys())[0]
     tier_names = list(TEMPLATES.keys())
@@ -1701,7 +1702,7 @@ Used when no NS entries and no milestones are present.
 
     # ── Preview ───────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("Step 5 — Review & Send")
+    st.markdown('<div class="section-label">Step 5 — Review & Send</div>', unsafe_allow_html=True)
 
     # Remaining placeholders
     remaining = extract_placeholders(body) + extract_placeholders(subject)

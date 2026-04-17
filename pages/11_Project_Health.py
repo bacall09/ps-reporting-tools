@@ -21,13 +21,13 @@ st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
     html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
-    .section-label{font-size:11px;font-weight:700;text-transform:uppercase;
+    .section-label { font-size: 13px;font-weight:700;text-transform:uppercase;
                    letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
     .metric-card{border:1px solid rgba(128,128,128,.2);border-radius:8px;
                  padding:16px 20px;margin-bottom:4px}
-    .metric-val{font-size:26px;font-weight:700;color:inherit}
-    .metric-lbl{font-size:12px;opacity:.6;margin-top:2px}
-    .metric-sub{font-size:11px;opacity:.5;margin-top:3px}
+    .metric-val { font-size: 32px;font-weight:700;color:inherit}
+    .metric-lbl { font-size: 14px;opacity:.6;margin-top:2px}
+    .metric-sub{font-size:13px;opacity:.5;margin-top:3px}
     .divider{border:none;border-top:1px solid rgba(128,128,128,.2);margin:20px 0}
     .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;
           border-radius:10px;letter-spacing:.8px}
@@ -111,7 +111,7 @@ st.markdown(f"""
             margin-bottom:24px;font-family:Manrope,sans-serif;
             position:relative;overflow:hidden'>
   {_zone_svg}
-  <div style='font-size:10px;font-weight:700;letter-spacing:2.5px;
+  <div style='font-size:13px;font-weight:700;letter-spacing:2.5px;
               text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>
       Professional Services · Tools</div>
   <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>
@@ -358,10 +358,10 @@ if not _active.empty:
     # ── Render HTML table with pills ──────────────────────────────────────────
     _tbl_html = """<div style='border:0.5px solid rgba(128,128,128,.2);border-radius:10px;
                                overflow:hidden;margin-bottom:4px'>
-    <table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:12px'>
+    <table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:14px'>
     <thead><tr style='border-bottom:1px solid rgba(128,128,128,.2)'>"""
     for c in _cols_show:
-        _tbl_html += f"<th style='padding:8px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>{c}</th>"
+        _tbl_html += f"<th style='padding:8px 12px;text-align:left;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>{c}</th>"
     _tbl_html += "</tr></thead><tbody>"
 
     _STATUS_EXPLAIN = {
@@ -536,9 +536,9 @@ if _scope_rows:
     # Top 8 by burn %
     st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
     def _th(label, align="left"):
-        return f"<th style='padding:8px 12px;text-align:{align};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>{label}</th>"
+        return f"<th style='padding:8px 12px;text-align:{align};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;opacity:.55'>{label}</th>"
     _tbl2 = """<div style='border:0.5px solid rgba(128,128,128,.2);border-radius:10px;overflow:hidden'>
-    <table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:12px'>
+    <table style='width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;font-size:14px'>
     <thead><tr style='border-bottom:1px solid rgba(128,128,128,.2)'>"""
     _tbl2 += _th("Customer") + _th("Project Type") + _th("Phase") + _th("Phase ceiling","right") + _th("Scope","right") + _th("Used","right") + _th("Burn %")
     _tbl2 += "</tr></thead><tbody>"
@@ -558,9 +558,9 @@ if _scope_rows:
         </div>"""
         _flag_reason = ""
         if row["_burn"] > 100:
-            _flag_reason = f'<span style="font-size:10px;color:#C0392B;margin-left:4px">overrun</span>'
+            _flag_reason = f'<span style="font-size:12px;color:#C0392B;margin-left:4px">overrun</span>'
         elif row["_ahead_of_phase"]:
-            _flag_reason = f'<span style="font-size:10px;color:#F39C12;margin-left:4px">ahead of phase</span>'
+            _flag_reason = f'<span style="font-size:12px;color:#F39C12;margin-left:4px">ahead of phase</span>'
         _tbl2 += f"""<tr style='border-bottom:0.5px solid rgba(128,128,128,.1)'>
           <td style='padding:8px 12px'>{row["Customer"]}{_flag_reason}</td>
           <td style='padding:8px 12px;opacity:.75'>{row["Project Type"]}</td>

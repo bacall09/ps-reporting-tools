@@ -25,11 +25,11 @@ st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
     html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
-    .section-label{font-size:11px;font-weight:700;text-transform:uppercase;
+    .section-label { font-size: 13px;font-weight:700;text-transform:uppercase;
                    letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
     .metric-card{border:1px solid rgba(128,128,128,.2);border-radius:8px;padding:16px 20px;margin-bottom:12px}
-    .metric-val{font-size:26px;font-weight:700}
-    .metric-lbl{font-size:12px;opacity:.6;margin-top:2px}
+    .metric-val { font-size: 32px;font-weight:700}
+    .metric-lbl { font-size: 14px;opacity:.6;margin-top:2px}
     .pf{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;
         border-radius:4px;margin-right:4px;margin-bottom:3px}
     .pf-e{background:rgba(192,57,43,0.15);color:#C0392B}

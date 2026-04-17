@@ -1443,7 +1443,8 @@ def main():
         <style>
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
-        </style>
+                    .section-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
+</style>
     """, unsafe_allow_html=True)
 
     # Dynamic title suffix from View As
@@ -1676,7 +1677,7 @@ A project is flagged if no time has been booked within the NS report window:
             else:
                 st.success("No stale projects detected — all active projects have recent time entries.")
         else:
-            st.markdown("#### Stale Projects — No Recent Time Booked")
+            st.markdown('<div class="section-label">Stale Projects — No Recent Time Booked</div>', unsafe_allow_html=True)
             _ns_period_str = f"{pd.to_datetime(ns_df['date'], errors='coerce').min().strftime('%-d %b') if ns_df is not None and 'date' in ns_df.columns else '—'} — {pd.to_datetime(ns_df['date'], errors='coerce').max().strftime('%-d %b %Y') if ns_df is not None and 'date' in ns_df.columns else '—'}"
             st.caption(
                 f"14d+ = no time in 14–29 days  ·  30d+ = no time in 30–59 days  ·  "
@@ -1694,7 +1695,7 @@ A project is flagged if no time has been booked within the NS report window:
 
 
     st.markdown("---")
-    st.subheader("Step 3 — Generate Report")
+    st.markdown('<div class="section-label">Step 3 — Generate Report</div>', unsafe_allow_html=True)
     excel_buf = build_excel(scored_df, consultant_df, missing_pm, as_of, ns_min_date)
     fname = f"Workload_Health_Score_{datetime.today().strftime('%Y%m%d')}.xlsx"
     st.download_button(
