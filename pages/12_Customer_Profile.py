@@ -308,19 +308,23 @@ def _parse_data_used(text: str) -> dict:
 
 
 def _extract_products_from_text(text: str) -> list[str]:
-    """Guess product tags from document content."""
+    """Extract Zone product tags from document — strict matching only.
+    Uses explicit Zone-prefixed terms or unambiguous product names to avoid
+    false positives from generic words like 'billing', 'payments', 'approvals'."""
     known = {
-        "ZoneCapture": ["zonecapture", "zone capture", "capture"],
-        "ZoneApprovals": ["zoneapprovals", "zone approvals", "approvals"],
-        "AP Payments": ["ap payments", "zone payments", "zonepayments", "payments"],
-        "e-Invoicing": ["e-invoicing", "einvoicing"],
-        "Reconcile": ["reconcile", "zonereconcile"],
-        "ZoneBilling": ["zonebilling", "billing"],
+        "ZoneCapture":   [r"zonecapture", r"zone capture", r"zone\s+capture"],
+        "ZoneApprovals": [r"zoneapprovals", r"zone approvals", r"zone\s+approvals"],
+        "AP Payments":   [r"zone\s*ap\s*payments", r"zone\s*payments", r"ap payments module"],
+        "e-Invoicing":   [r"e-invoicing", r"einvoicing", r"zone.*invoic"],
+        "Reconcile":     [r"zonereconcile", r"zone reconcile"],
+        "ZoneBilling":   [r"zonebilling", r"zone billing"],
+        "ZonePremium":   [r"zonepremium", r"zone premium"],
     }
+    import re as _re
     found = []
     tl = text.lower()
-    for label, kws in known.items():
-        if any(kw in tl for kw in kws):
+    for label, patterns in known.items():
+        if any(_re.search(p, tl) for p in patterns):
             found.append(label)
     return found
 
@@ -500,11 +504,6 @@ if len(customer_docs) > 1:
     active_doc = customer_docs[opp_labels.index(_opp_tab)]
 else:
     active_doc = customer_docs[0]
-    # Show remove button quietly
-    with st.expander("Manage docs", expanded=False):
-        if st.button("Remove this doc"):
-            st.session_state["cp_gong_docs"][selected_customer] = []
-            st.rerun()
 
 d = active_doc  # shorthand
 
@@ -520,6 +519,10 @@ if calls_info:
     data_meta.append(f"{calls_info} calls analysed")
 if emails_info and emails_info != "0":
     data_meta.append(f"{emails_info} emails analysed")
+# Extract SF Opp ID from URL e.g. .../Opportunity/006Uh00000hvNLhIAM/view
+_opp_id_match = re.search(r"/Opportunity/([A-Za-z0-9]+)/", d.get("opp_link", ""))
+if _opp_id_match:
+    data_meta.append(f"SF Opp: {_opp_id_match.group(1)}")
 data_meta_str = " · ".join(data_meta) if data_meta else ""
 
 product_pills = "".join(
@@ -531,6 +534,21 @@ opp_link_html = (
     f'text-decoration:none">↗ SFDC opportunity</a>'
     if d["opp_link"] else ""
 )
+
+st.markdown("""
+<div class="ai-stub" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:700;color:#4472C4">Ask about this customer</div>
+        <span style="font-size:11px;color:rgba(128,128,128,.45)">AI · available when API keys are configured</span>
+    </div>
+    <div style="font-size:12px;opacity:.45;font-style:italic;line-height:1.6">
+        e.g. "What were their biggest concerns about change management?"
+        &nbsp;·&nbsp; "Which commitments carry the most risk?"
+        &nbsp;·&nbsp; "Summarise the key technical complexity"
+    </div>
+</div>
+<hr class='divider' style='margin:12px 0 16px'>
+""", unsafe_allow_html=True)
 
 st.markdown(f"""
 <div style='margin-bottom:4px'>
@@ -620,44 +638,40 @@ with tab_stakeholders:
     if not d["stakeholders"]:
         st.markdown('<div class="no-data-msg">No stakeholders parsed.</div>', unsafe_allow_html=True)
     else:
-        # Split internal / external
         internal = [s for s in d["stakeholders"] if s["internal"]]
         external = [s for s in d["stakeholders"] if not s["internal"]]
-
         col_ext, col_int = st.columns(2)
 
-        def _render_stakeholders(stakeholders, label):
-            st.markdown(f'<div class="section-label">{label}</div>', unsafe_allow_html=True)
+        def _build_stakeholder_html(stakeholders):
             if not stakeholders:
-                st.caption("None listed.")
-                return
+                return "<div style='font-size:13px;opacity:.4;padding:8px'>None listed.</div>"
             rows_html = ""
             for s in stakeholders:
                 initials = _initials(s["name"])
-                av_class = "avatar avatar-int" if s["internal"] else "avatar"
-                role_note = f'<span class="pill pill-grey" style="font-size:10px">{s["role_note"]}</span>' if s["role_note"] else ""
-                title_str = f'<span style="font-size:11px;opacity:.6">{s["title"]}</span>' if s["title"] else ""
+                av_cls = "avatar avatar-int" if s["internal"] else "avatar"
+                role_note = (f'<span class="pill pill-grey" style="font-size:10px">'
+                             f'{s["role_note"]}</span>') if s["role_note"] else ""
+                title_str = (f'<span style="font-size:11px;opacity:.6">{s["title"]}</span>') if s["title"] else ""
                 email_str = (
-                    f'<a href="mailto:{s["email"]}" style="font-size:11px;color:#3B9EFF;opacity:.7">'
-                    f'{s["email"]}</a>'
+                    f'<a href="mailto:{s["email"]}" style="font-size:11px;color:#3B9EFF;opacity:.7">{s["email"]}</a>'
                     if s["email"] and "@" in s["email"] else ""
                 )
-                rows_html += f"""
-                <div class="stakeholder-row">
-                    <div class="{av_class}">{initials}</div>
-                    <div style="flex:1;min-width:0">
-                        <div style="font-size:13px;font-weight:600">{s["name"]}</div>
-                        <div>{title_str} {email_str}</div>
-                    </div>
-                    {role_note}
-                </div>"""
-            st.markdown(f'<div class="cp-card" style="padding:8px 14px">{rows_html}</div>',
-                        unsafe_allow_html=True)
+                rows_html += (
+                    f'<div class="stakeholder-row">'
+                    f'<div class="{av_cls}">{initials}</div>'
+                    f'<div style="flex:1;min-width:0">'
+                    f'<div style="font-size:13px;font-weight:600">{s["name"]}</div>'
+                    f'<div>{title_str} {email_str}</div>'
+                    f'</div>{role_note}</div>'
+                )
+            return f'<div class="cp-card" style="padding:8px 14px">{rows_html}</div>'
 
         with col_ext:
-            _render_stakeholders(external, "Customer contacts")
+            st.markdown('<div class="section-label">Customer contacts</div>', unsafe_allow_html=True)
+            st.markdown(_build_stakeholder_html(external), unsafe_allow_html=True)
         with col_int:
-            _render_stakeholders(internal, "Zone team")
+            st.markdown('<div class="section-label">Zone team</div>', unsafe_allow_html=True)
+            st.markdown(_build_stakeholder_html(internal), unsafe_allow_html=True)
 
 
 # ─── TAB: REQUIREMENTS ───────────────────────────────────────────────────────
@@ -780,37 +794,14 @@ with tab_usage:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 6 — AI STUB
-# ══════════════════════════════════════════════════════════════════════════════
-
-st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+# ── Remove doc + Footer ───────────────────────────────────────────────────────
+_rcol1, _rcol2, _rcol3 = st.columns([3, 1, 3])
+with _rcol2:
+    if st.button("Remove doc", type="secondary", use_container_width=True):
+        st.session_state["cp_gong_docs"][selected_customer] = []
+        st.rerun()
 st.markdown("""
-<div class="section-label">
-    Ask about this customer
-    <span style="font-size:11px;font-weight:400;color:rgba(128,128,128,.5);
-                 text-transform:none;letter-spacing:0;margin-left:8px">
-        AI · available when API keys are configured
-    </span>
-</div>
-<div class="ai-stub">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;
-                letter-spacing:.8px;opacity:.4;margin-bottom:8px">
-        Claude AI — coming soon
-    </div>
-    <div style="font-size:13px;opacity:.5;font-style:italic;padding:8px 0">
-        e.g. "What were their biggest concerns about change management?"
-        · "Which commitments carry the most risk?"
-        · "Summarise the Orange subsidiary complexity"
-    </div>
-    <div style="font-size:11px;opacity:.4;margin-top:8px">
-        Claude will answer using the Gong handover, requirements, and usage data for this customer.
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ── Footer ────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="font-size:11px;opacity:.35;text-align:center;margin-top:32px">
+<div style="font-size:11px;opacity:.35;text-align:center;margin-top:16px">
     PS Projects & Tools · Internal use only · Data loaded this session only
 </div>
 """, unsafe_allow_html=True)
