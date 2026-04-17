@@ -21,6 +21,21 @@ st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wid
 
 st.logo("zone_ps_logo.svg", size="large", link=None)
 
+st.markdown("""<style>
+html body [data-testid="stFileUploaderDropzoneInstructions"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+html body [data-testid="stFileUploaderDropzone"] {
+    min-height: unset !important;
+    padding: 4px !important;
+    border: 1px solid rgba(128,128,128,0.2) !important;
+    border-radius: 4px !important;
+}
+</style>""", unsafe_allow_html=True)
+
 
 
 # ── Register navigation (must be called before any other st.* that could fail) ──
