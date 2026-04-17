@@ -463,17 +463,13 @@ if df_drs is not None and not df_drs.empty and "project_name" in df_drs.columns:
 if "cp_gong_docs" not in st.session_state:
     st.session_state["cp_gong_docs"] = {}
 
+_autofill = st.session_state.pop("_cp_autofill_customer", "")
+_autofill_opp = st.session_state.pop("_cp_autofill_opp", "")
+
 col_sel, col_upload = st.columns([1, 1])
 
 with col_sel:
     st.markdown('<div class="section-label">Customer</div>', unsafe_allow_html=True)
-    _autofill = st.session_state.pop("_cp_autofill_customer", "")
-    _autofill_opp = st.session_state.pop("_cp_autofill_opp", "")
-    if _autofill:
-        _autofill_msg = f"Filename parsed — Customer: **{_autofill}**"
-        if _autofill_opp:
-            _autofill_msg += f" · Opportunity: **{_autofill_opp}**"
-        st.info(_autofill_msg)
 
     if drs_customers:
         customer_options = ["— Select a customer —"] + drs_customers + ["+ Enter manually"]
@@ -534,9 +530,25 @@ with col_upload:
             if parsed["opp_link"] not in existing_links or not parsed["opp_link"]:
                 docs.append(parsed)
                 st.session_state["cp_gong_docs"][selected_customer] = docs
-                st.success(f"Loaded: {uploaded.name}")
+                st.session_state["_cp_notif_doc"] = f"✓ Loaded: {uploaded.name}"
+                st.rerun()
             else:
-                st.info("This opportunity doc is already loaded.")
+                st.session_state["_cp_notif_doc"] = "This opportunity doc is already loaded."
+
+# ── Inline notifications (same row, after upload processing) ─────────────────
+_notif_customer = st.session_state.pop("_cp_notif_customer", "")
+_notif_doc = st.session_state.pop("_cp_notif_doc", "")
+if _autofill or _notif_customer or _notif_doc:
+    _nc1, _nc2 = st.columns([1, 1])
+    with _nc1:
+        if _autofill:
+            _msg = f"Customer: **{_autofill}**"
+            if _autofill_opp:
+                _msg += f" · Opp: **{_autofill_opp}**"
+            st.info(_msg)
+    with _nc2:
+        if _notif_doc:
+            st.info(_notif_doc)
 
 if not selected_customer:
     st.markdown("""
@@ -663,8 +675,8 @@ st.markdown(f"""
 # SECTION 5 — TABS
 # ══════════════════════════════════════════════════════════════════════════════
 
-tab_overview, tab_stakeholders, tab_requirements, tab_risks, tab_usage = st.tabs([
-    "Overview", "Stakeholders", "Requirements", "Risks & Commitments", "Usage"
+tab_overview, tab_stakeholders, tab_requirements, tab_usecases, tab_risks, tab_usage = st.tabs([
+    "Overview", "Stakeholders", "Requirements", "Use Cases", "Risks & Commitments", "Usage"
 ])
 
 
@@ -800,10 +812,14 @@ with tab_requirements:
             st.markdown(f'<div class="cp-card" style="padding:10px 14px">{rows}</div>',
                         unsafe_allow_html=True)
 
-    # Use cases
-    if d["use_cases"]:
-        st.markdown('<div class="section-label" style="margin-top:20px">Use cases</div>',
-                    unsafe_allow_html=True)
+
+
+
+# ─── TAB: USE CASES ──────────────────────────────────────────────────────────
+with tab_usecases:
+    if not d["use_cases"]:
+        st.markdown('<div class="no-data-msg">No use cases parsed.</div>', unsafe_allow_html=True)
+    else:
         uc_html = ""
         for text, flagged in d["use_cases"]:
             flag_html = '<span class="cp-flag">review</span>' if flagged else ""
@@ -815,31 +831,50 @@ with tab_requirements:
 # ─── TAB: RISKS & COMMITMENTS ────────────────────────────────────────────────
 with tab_risks:
 
-    # Sales commitments
-    st.markdown('<div class="section-label">Sales commitments</div>', unsafe_allow_html=True)
-    if not d["commitments"]:
-        st.caption("No commitments parsed.")
-    else:
-        commit_html = ""
-        for c in d["commitments"]:
+    # Sales commitments — split into implementation vs commercial
+    _COMMERCIAL_KEYWORDS = [
+        "discount", "pricing", "price", "license", "licence", "cad", "usd", "cost",
+        "free", "invoice", "payment", "quote", "tier", "upgrade", "implementation fee",
+        "send email", "send timeslot", "send material", "send notes", "send agenda",
+        "schedule", "demo", "meeting", "call", "follow", "distribute", "share",
+        "record", "recorded", "session is recorded",
+    ]
+    def _is_commercial(text):
+        tl = text.lower()
+        return any(kw in tl for kw in _COMMERCIAL_KEYWORDS)
+
+    ps_commits = [c for c in d["commitments"] if not _is_commercial(c["text"])]
+    comm_commits = [c for c in d["commitments"] if _is_commercial(c["text"])]
+
+    def _render_commit_list(commits, muted=False):
+        html = ""
+        for c in commits:
             if c["status"] == "aligned":
                 icon = '<span style="color:#27AE60;font-size:15px">✓</span>'
             elif c["status"] == "review":
                 icon = '<span style="color:#D68910;font-size:15px">⚠</span>'
             else:
                 icon = '<span style="color:#C0392B;font-size:15px">✕</span>'
-            text_style = ' style="opacity:.6"' if c["status"] == "risk" else ""
-            commit_html += f"""
-            <div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;
-                        border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;
-                        line-height:1.6">
-                {icon}
-                <span{text_style}>{c["text"]}</span>
-            </div>"""
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{commit_html}</div>',
+            opacity = ' style="opacity:.5"' if muted else (' style="opacity:.6"' if c["status"] == "risk" else "")
+            html += (f'<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;'
+                     f'border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;line-height:1.6">'
+                     f'{icon}<span{opacity}>{c["text"]}</span></div>')
+        return html
+
+    st.markdown('<div class="section-label">PS & implementation commitments</div>', unsafe_allow_html=True)
+    if not ps_commits:
+        st.caption("No implementation commitments parsed.")
+    else:
+        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_commit_list(ps_commits)}</div>',
                     unsafe_allow_html=True)
 
-        # Legend
+    if comm_commits:
+        st.markdown('<div class="section-label" style="margin-top:16px;opacity:.6">Commercial & process commitments</div>',
+                    unsafe_allow_html=True)
+        st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.7">{_render_commit_list(comm_commits, muted=True)}</div>',
+                    unsafe_allow_html=True)
+
+    if d["commitments"]:
         st.markdown("""
         <div style="font-size:11px;opacity:.45;margin-top:4px">
             ✓ aligned &nbsp;·&nbsp; ⚠ needs review &nbsp;·&nbsp; ✕ risk / flag
