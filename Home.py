@@ -21,23 +21,23 @@ st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wid
 
 # ── Register navigation (must be called before any other st.* that could fail) ──
 _consultant_pages = [
-    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing",         icon=None),
-    st.Page("pages/8_My_Projects.py",            title="My Projects",            icon=None),
-    st.Page("pages/11_Project_Health.py",        title="Project Health",         icon=None),
-    st.Page("pages/115_Customer_Profile.py",     title="Customer Profile",       icon=None),
-    st.Page("pages/2_Customer_Reengagement.py",  title="Customer Engagement",    icon=None),
-    st.Page("pages/3_Utilization_Report.py",     title="Utilization Report",     icon=None),
-    st.Page("pages/4_Workload_Health_Score.py",  title="Workload Health Score",  icon=None),
-    st.Page("pages/6_DRS_Health_Check.py",       title="DRS Health Check",       icon=None),
-    st.Page("pages/10_Time_Entries.py",           title="Time Entries",           icon=None),
+    st.Page("views/1_Daily_Briefing.py",        title="Daily Briefing",         icon=None),
+    st.Page("views/8_My_Projects.py",            title="My Projects",            icon=None),
+    st.Page("views/11_Project_Health.py",        title="Project Health",         icon=None),
+    st.Page("views/115_Customer_Profile.py",     title="Customer Profile",       icon=None),
+    st.Page("views/2_Customer_Reengagement.py",  title="Customer Engagement",    icon=None),
+    st.Page("views/3_Utilization_Report.py",     title="Utilization Report",     icon=None),
+    st.Page("views/4_Workload_Health_Score.py",  title="Workload Health Score",  icon=None),
+    st.Page("views/6_DRS_Health_Check.py",       title="DRS Health Check",       icon=None),
+    st.Page("views/10_Time_Entries.py",           title="Time Entries",           icon=None),
 ]
 _manager_pages = [
-    st.Page("pages/13_Portfolio_Analytics.py",   title="Portfolio Analytics",    icon=None),
-    st.Page("pages/5_Capacity_Outlook.py",       title="Capacity Outlook",       icon=None),
-    st.Page("pages/9_Revenue_Report.py",         title="Revenue Report",         icon=None),
+    st.Page("views/13_Portfolio_Analytics.py",   title="Portfolio Analytics",    icon=None),
+    st.Page("views/5_Capacity_Outlook.py",       title="Capacity Outlook",       icon=None),
+    st.Page("views/9_Revenue_Report.py",         title="Revenue Report",         icon=None),
 ]
 _help_pages = [
-    st.Page("pages/9_Help.py", title="Help", icon=None),
+    st.Page("views/9_Help.py", title="Help", icon=None),
 ]
 
 # ── Build credentials ─────────────────────────────────────────────────────────
