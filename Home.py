@@ -48,22 +48,26 @@ def _to_dict(obj):
     except (TypeError, ValueError):
         return obj
 
-_secrets_creds = st.secrets.get("credentials", {})
-_creds = {
-    "usernames": {
-        u: _to_dict(d)
-        for u, d in _to_dict(_secrets_creds.get("usernames", {})).items()
+try:
+    _secrets_creds = st.secrets.get("credentials", {})
+    _creds = {
+        "usernames": {
+            u: _to_dict(d)
+            for u, d in _to_dict(_secrets_creds.get("usernames", {})).items()
+        }
     }
-}
-_cookie_raw = _to_dict(st.secrets.get("cookie", {}))
-_cookie = _cookie_raw or {"name": "ps_tools_auth", "key": "fallback_key", "expiry_days": 30}
-
-authenticator = stauth.Authenticate(
-    credentials        = _creds,
-    cookie_name        = _cookie.get("name", "ps_tools_auth"),
-    cookie_key         = _cookie.get("key", "fallback_key"),
-    cookie_expiry_days = int(_cookie.get("expiry_days", 30)),
-)
+    _cookie_raw = _to_dict(st.secrets.get("cookie", {}))
+    _cookie = _cookie_raw or {"name": "ps_tools_auth", "key": "fallback_key", "expiry_days": 30}
+    authenticator = stauth.Authenticate(
+        credentials        = _creds,
+        cookie_name        = _cookie.get("name", "ps_tools_auth"),
+        cookie_key         = _cookie.get("key", "fallback_key"),
+        cookie_expiry_days = int(_cookie.get("expiry_days", 30)),
+    )
+except Exception as _auth_init_err:
+    _creds = {"usernames": {}}
+    _cookie = {"name": "ps_tools_auth", "key": "fallback_key", "expiry_days": 30}
+    authenticator = None
 
 # ── Auth state ────────────────────────────────────────────────────────────────
 _auth_user   = st.session_state.get("username", "")
