@@ -84,10 +84,9 @@ st.markdown("""
                      font-size:10px;color:rgba(128,128,128,.4)}
     .req-nice::before{content:'○';color:rgba(128,128,128,.35)}
     .no-data-msg{text-align:center;padding:36px;opacity:.4;font-size:14px}
-    /* Streamlit 1.56.0 file uploader — hide drag-drop text, keep button */
-    [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; }
-    [data-testid="stFileUploaderDropzone"] { min-height: unset !important; padding: 0 !important; border: none !important; background: transparent !important; }
-    [data-testid="stFileUploader"] section { padding: 0 !important; }
+    /* Streamlit 1.56.0 file uploader — high specificity to beat emotion cache */
+    html body [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
+    html body [data-testid="stFileUploaderDropzone"] { min-height: unset !important; padding: 4px !important; border: 1px solid rgba(128,128,128,0.2) !important; border-radius: 4px !important; }
 </style>
 """, unsafe_allow_html=True)
 
