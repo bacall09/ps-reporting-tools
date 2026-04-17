@@ -672,75 +672,200 @@ st.markdown(f"""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SECTION 4b — DRS PROJECT STRIP
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Pull matching DRS rows for this customer
+_drs_match = None
+if df_drs is not None and not df_drs.empty and selected_customer:
+    _name_col = "project_name" if "project_name" in df_drs.columns else None
+    _acct_col = "account" if "account" in df_drs.columns else None
+    if _name_col:
+        _drs_match = df_drs[
+            df_drs[_name_col].fillna("").str.lower().str.contains(
+                re.escape(selected_customer.lower()[:12]), na=False
+            )
+        ]
+        if _drs_match.empty and _acct_col:
+            _drs_match = df_drs[
+                df_drs[_acct_col].fillna("").str.lower().str.contains(
+                    re.escape(selected_customer.lower()[:12]), na=False
+                )
+            ]
+
+# Phase order for progress bar
+_PHASE_ORDER = [
+    "00. onboarding", "01. requirements and design", "02. configuration",
+    "03. enablement/training", "04. uat", "05. prep for go-live",
+    "06. go-live (hypercare)", "08. ready for support transition",
+    "10. complete/pending final billing"
+]
+_PHASE_LABELS = ["Onboarding", "Req & Design", "Config", "Enablement", "UAT",
+                 "Pre-Go-Live", "Hypercare", "Support Tx", "Complete"]
+
+def _phase_index(phase_str):
+    if not phase_str:
+        return -1
+    pl = str(phase_str).lower().strip()
+    for i, p in enumerate(_PHASE_ORDER):
+        if pl.startswith(p[:6]):
+            return i
+    return -1
+
+if _drs_match is not None and not _drs_match.empty:
+    _dr = _drs_match.iloc[0]
+    _phase     = str(_dr.get("phase", "—")).strip()
+    _phase_idx = _phase_index(_phase)
+    _cons      = str(_dr.get("project_manager", "—")).strip()
+    _proj_type = str(_dr.get("project_type", "—")).strip()
+    _days      = _dr.get("days_inactive", None)
+    _last_act  = _dr.get("last_activity_date", _dr.get("last_ns_entry", None))
+
+    # Phase progress bar HTML
+    _bar_labels = "".join(
+        f'<div style="flex:1;font-size:9px;color:rgba(128,128,128,.5);text-align:center">{l}</div>'
+        for l in _PHASE_LABELS
+    )
+    def _step_color(i):
+        if i < _phase_idx: return "#27AE60"
+        if i == _phase_idx: return "#4472C4"
+        return "rgba(128,128,128,.2)"
+    _bar_steps = "".join(
+        f'<div style="flex:1;height:4px;border-radius:2px;background:{_step_color(i)}"></div>'
+        for i in range(len(_PHASE_LABELS))
+    )
+
+    _last_str = "—"
+    _days_str = ""
+    if _last_act is not None:
+        try:
+            import pandas as pd
+            _la = pd.to_datetime(_last_act)
+            _last_str = _la.strftime("%b %d, %Y")
+            _d = int(_days) if _days is not None and str(_days) != "nan" else (pd.Timestamp.today() - _la).days
+            if _d >= 0:
+                _days_str = f'<div style="font-size:11px;color:rgba(128,128,128,.5)">{_d} days ago</div>'
+        except Exception:
+            _last_str = str(_last_act)[:10]
+
+    st.markdown(f"""
+<div style='background:var(--cp-card-bg,rgba(128,128,128,.05));border:0.5px solid rgba(128,128,128,.15);
+            border-radius:10px;padding:14px 18px;margin-bottom:16px'>
+    <div style='display:flex;align-items:center;gap:6px;margin-bottom:10px'>
+        <div style='width:8px;height:8px;border-radius:50%;background:#4472C4;flex-shrink:0'></div>
+        <div style='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+                    color:rgba(128,128,128,.6)'>DRS — project data</div>
+        <div style='margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;
+                    border-radius:20px;background:rgba(128,128,128,.08);
+                    color:rgba(128,128,128,.5);border:0.5px dashed rgba(128,128,128,.3)'>
+            Live sync — Phase 2
+        </div>
+    </div>
+    <div style='display:flex;gap:0;margin-bottom:4px'>{_bar_labels}</div>
+    <div style='display:flex;gap:3px;margin-bottom:12px'>{_bar_steps}</div>
+    <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:12px'>
+        <div>
+            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+                        color:rgba(128,128,128,.5);margin-bottom:2px'>Phase</div>
+            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_phase}</div>
+        </div>
+        <div>
+            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+                        color:rgba(128,128,128,.5);margin-bottom:2px'>Last activity</div>
+            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_last_str}</div>
+            {_days_str}
+        </div>
+        <div>
+            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+                        color:rgba(128,128,128,.5);margin-bottom:2px'>Consultant</div>
+            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_cons}</div>
+        </div>
+        <div>
+            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+                        color:rgba(128,128,128,.5);margin-bottom:2px'>Project type</div>
+            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_proj_type}</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SECTION 5 — TABS
 # ══════════════════════════════════════════════════════════════════════════════
 
-tab_overview, tab_stakeholders, tab_requirements, tab_usecases, tab_risks, tab_usage = st.tabs([
-    "Overview", "Stakeholders", "Requirements", "Use Cases", "Risks & Commitments", "Usage"
+tab_overview, tab_stakeholders, tab_requirements, tab_usecases, tab_risks, tab_notes, tab_usage = st.tabs([
+    "Overview", "Stakeholders", "Requirements", "Use Cases", "Risks & Commitments", "Notes", "Usage"
 ])
 
 
 # ─── TAB: OVERVIEW ───────────────────────────────────────────────────────────
 with tab_overview:
 
-    # Summary
-    if d["summary"]:
-        st.markdown('<div class="section-label">Summary</div>', unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="cp-card" style="font-size:14px;line-height:1.75;color:inherit">
-            {d["summary"]}
-        </div>
-        """, unsafe_allow_html=True)
+    # ── Two-column condensed layout ──────────────────────────────────────────
+    _ov_col1, _ov_col2 = st.columns([1, 1])
 
-    # Pain points + Info gaps side by side
-    col_pp, col_ig = st.columns(2)
+    with _ov_col1:
+        # Summary card
+        if d["summary"]:
+            st.markdown('<div class="section-label">Summary</div>', unsafe_allow_html=True)
+            st.markdown(f'''
+<div class="cp-card" style="font-size:13px;line-height:1.7;color:inherit">
+    {d["summary"]}
+</div>''', unsafe_allow_html=True)
 
-    with col_pp:
-        st.markdown('<div class="section-label">Pain points</div>', unsafe_allow_html=True)
+        # Pain points
         if d["pain_points"]:
-            bullets_html = ""
-            for text, flagged in d["pain_points"]:
-                flag_html = '<span class="cp-flag">review</span>' if flagged else ""
-                bullets_html += f'<div class="cp-bullet">{text}{flag_html}</div>'
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{bullets_html}</div>',
+            st.markdown('<div class="section-label" style="margin-top:16px">Pain points</div>',
                         unsafe_allow_html=True)
-        else:
-            st.caption("No pain points parsed.")
+            pp_html = "".join(f'<div class="cp-bullet">{t}{'<span class="cp-flag">review</span>' if f else ""}</div>'
+                              for t, f in d["pain_points"])
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{pp_html}</div>',
+                        unsafe_allow_html=True)
 
-    with col_ig:
-        st.markdown('<div class="section-label">Information gaps</div>', unsafe_allow_html=True)
-        if d["info_gaps"]:
-            gaps_html = "".join(
-                f'<div class="info-gap-row">{g}</div>'
-                for g in d["info_gaps"]
+    with _ov_col2:
+        # Top requirements (first 4)
+        if d["requirements"]:
+            st.markdown('<div class="section-label">Key requirements</div>', unsafe_allow_html=True)
+            _top_req = d["requirements"][:4]
+            req_html = "".join(
+                f'<div class="req-row {("req-nice" if rtype=="nice" else "")}">{text}</div>'
+                for text, rtype in _top_req
             )
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{gaps_html}</div>',
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{req_html}</div>',
                         unsafe_allow_html=True)
-        else:
-            st.caption("No information gaps parsed.")
+            if len(d["requirements"]) > 4:
+                st.caption(f"{len(d['requirements']) - 4} more requirements in the Requirements tab.")
 
-    # Technical environment
-    if d["tech_env"]:
-        st.markdown('<div class="section-label">Technical environment</div>', unsafe_allow_html=True)
-        tech_html = ""
-        for text, flagged in d["tech_env"]:
-            flag_html = '<span class="cp-flag">review</span>' if flagged else ""
-            tech_html += f'<div class="cp-bullet">{text}{flag_html}</div>'
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{tech_html}</div>',
+        # Watch items — risks flagged + commitments at risk
+        _watch = [r for r in d.get("risks", []) if r.get("flagged")] +                  [c for c in d.get("commitments", []) if c.get("status") == "risk"]
+        if _watch:
+            st.markdown('<div class="section-label" style="margin-top:16px">Watch items</div>',
+                        unsafe_allow_html=True)
+            watch_html = ""
+            for item in _watch[:4]:
+                text = item.get("text", "")
+                color = "#C0392B" if item.get("status") == "risk" else "#D68910"
+                watch_html += (f'<div style="display:flex;gap:8px;align-items:flex-start;'
+                               f'padding:5px 0;border-bottom:0.5px solid rgba(128,128,128,.1);'
+                               f'font-size:13px;line-height:1.6">'
+                               f'<span style="color:{color};flex-shrink:0;font-size:14px">'
+                               f'{"✕" if item.get("status")=="risk" else "⚠"}</span>'
+                               f'<span>{text}</span></div>')
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{watch_html}</div>',
+                        unsafe_allow_html=True)
+        elif not d["requirements"] and not d["pain_points"]:
+            st.markdown('<div class="no-data-msg">Upload a Gong doc to populate intelligence.</div>',
+                        unsafe_allow_html=True)
+
+    # Information gaps — shown full width at bottom of overview
+    if d.get("info_gaps"):
+        st.markdown('<div class="section-label" style="margin-top:8px">Information gaps</div>',
+                    unsafe_allow_html=True)
+        ig_html = "".join(f'<div class="info-gap-row">{g}</div>' for g in d["info_gaps"])
+        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{ig_html}</div>',
                     unsafe_allow_html=True)
 
-    # Timeline & delivery constraints
-    if d["timeline"]:
-        st.markdown('<div class="section-label">Delivery constraints & timeline</div>', unsafe_allow_html=True)
-        tl_html = ""
-        for text, flagged in d["timeline"]:
-            flag_html = '<span class="cp-flag">review</span>' if flagged else ""
-            tl_html += f'<div class="cp-bullet">{text}{flag_html}</div>'
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{tl_html}</div>',
-                    unsafe_allow_html=True)
 
-
-# ─── TAB: STAKEHOLDERS ───────────────────────────────────────────────────────
 with tab_stakeholders:
     if not d["stakeholders"]:
         st.markdown('<div class="no-data-msg">No stakeholders parsed.</div>', unsafe_allow_html=True)
@@ -937,6 +1062,58 @@ with tab_risks:
             if org_risks:
                 st.markdown('<div class="section-label" style="margin-top:16px">Org readiness & timeline</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(org_risks)}</div>', unsafe_allow_html=True)
+# ─── TAB: NOTES ──────────────────────────────────────────────────────────────
+with tab_notes:
+    # Session-keyed notes: stored as list of dicts {author, ts, text}
+    _notes_key = f"cp_notes_{selected_customer}"
+    if _notes_key not in st.session_state:
+        st.session_state[_notes_key] = []
+
+    _notes = st.session_state[_notes_key]
+
+    # New note input
+    st.markdown('<div class="section-label">Add a note</div>', unsafe_allow_html=True)
+    _note_text = st.text_area(
+        "Note",
+        placeholder="e.g. Maarten confirmed NS access is pending. Session 2 scheduled for Apr 22.",
+        height=90,
+        label_visibility="collapsed",
+        key=f"cp_note_input_{selected_customer}"
+    )
+    if st.button("Save note", key=f"cp_note_save_{selected_customer}"):
+        if _note_text.strip():
+            from datetime import datetime as _dt
+            st.session_state[_notes_key].insert(0, {
+                "author": _session_name,
+                "ts": _dt.now().strftime("%b %d, %Y · %I:%M %p"),
+                "text": _note_text.strip()
+            })
+            st.rerun()
+
+    # Display existing notes
+    if _notes:
+        st.markdown('<div class="section-label" style="margin-top:16px">Notes</div>',
+                    unsafe_allow_html=True)
+        for _n in _notes:
+            _author_short = _n["author"].split(",")[0] if "," in _n["author"] else _n["author"]
+            st.markdown(f"""
+<div style="background:var(--cp-card-bg,rgba(128,128,128,.05));border:0.5px solid rgba(128,128,128,.15);
+            border-radius:8px;padding:10px 14px;margin-bottom:8px">
+    <div style="font-size:11px;color:rgba(128,128,128,.5);margin-bottom:4px">
+        {_author_short} &nbsp;·&nbsp; {_n["ts"]}
+    </div>
+    <div style="font-size:13px;line-height:1.6;color:var(--color-text-primary)">{_n["text"]}</div>
+</div>""", unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="no-data-msg">No notes yet — add one above.</div>',
+                    unsafe_allow_html=True)
+
+    st.markdown("""
+<div style="font-size:11px;opacity:.4;margin-top:16px;text-align:center">
+    Notes are session-only until persistent storage is enabled in Phase 2.
+</div>""", unsafe_allow_html=True)
+
+
 # ─── TAB: USAGE ──────────────────────────────────────────────────────────────
 with tab_usage:
     st.markdown('<div class="section-label">NetSuite usage data</div>', unsafe_allow_html=True)

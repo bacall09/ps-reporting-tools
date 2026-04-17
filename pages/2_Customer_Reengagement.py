@@ -1748,7 +1748,7 @@ Used when no NS entries and no milestones are present.
     _phase_clean = re.sub(r'^\d+\.\s*', '', current_phase).strip()
 
     # Sanitised customer name for ps-support+ email address (no spaces/special chars)
-    _customer_slug = re.sub(r"[^a-zA-Z0-9]", "", str(account_name or "CUSTOMER").replace(" ", ""))
+    _customer_slug = re.sub(r"[^a-zA-Z0-9]", "", str(account or "CUSTOMER").replace(" ", ""))
 
     fields = {
         "CUSTOMER CONTACT NAME":  primary_contact_first,
