@@ -364,6 +364,29 @@ def _read_docx_text(uploaded_file) -> tuple[str, str]:
         return "", f"Error reading .docx: {e}"
 
 
+def _parse_filename(filename: str) -> dict:
+    """Extract customer, opp name, and date from Gong handover filename.
+    Expected format: Handover - {OppName}-{CustomerName}-{YYYY-MM-DD}.docx
+    Example: Handover - ZonePayroll 66 emps for Life Trading-Life Trading-2026-04-15.docx
+    Returns dict with keys: customer, opp_name, close_date (all may be empty strings).
+    """
+    name = filename.replace(".docx", "").strip()
+    name = re.sub(r"^Handover\s*-\s*", "", name, flags=re.IGNORECASE).strip()
+    date_match = re.search(r"[-\s](\d{4}-\d{2}-\d{2})$", name)
+    close_date = date_match.group(1) if date_match else ""
+    if close_date:
+        name = name[:date_match.start()].strip().rstrip("-").strip()
+    if " - " in name:
+        parts = name.rsplit(" - ", 1)
+        opp_name, customer = parts[0].strip(), parts[1].strip()
+    elif "-" in name:
+        parts = name.rsplit("-", 1)
+        opp_name, customer = parts[0].strip(), parts[1].strip()
+    else:
+        opp_name = customer = name
+    return {"customer": customer, "opp_name": opp_name, "close_date": close_date}
+
+
 def _parse_gong_doc(raw_text: str, customer_name: str) -> dict:
     """Parse full Gong doc text into structured intelligence dict."""
     return {
@@ -389,6 +412,45 @@ def _parse_gong_doc(raw_text: str, customer_name: str) -> dict:
 # SECTION 2 — CUSTOMER SELECTOR + UPLOAD
 # ══════════════════════════════════════════════════════════════════════════════
 
+st.markdown("""
+<div style='background:var(--color-background-secondary, rgba(59,158,255,0.05));
+            border-left:4px solid #3B9EFF;border-radius:6px;
+            padding:16px 20px;margin:0 0 20px;font-family:Manrope,sans-serif'>
+    <div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+                color:#3B9EFF;margin-bottom:10px'>Roadmap</div>
+    <div style='display:flex;gap:32px;flex-wrap:wrap'>
+        <div style='flex:1;min-width:220px'>
+            <span style='background:#1E2C63;color:#fff;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>PHASE 1 · NOW</span>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;line-height:1.6'>
+                Upload a Gong AI handover <strong>.docx</strong> for any customer to surface
+                pain points, stakeholders, requirements, commitments, risks, and information gaps
+                — structured and ready before your first call.
+            </p>
+        </div>
+        <div style='flex:1;min-width:220px'>
+            <span style='background:rgba(59,158,255,0.15);color:#3B9EFF;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px;
+                         border:1px solid rgba(59,158,255,0.4)'>PHASE 2 · COMING SOON</span>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;opacity:0.65;line-height:1.6'>
+                <strong>AI Q&amp;A powered by Claude</strong> — ask natural language questions
+                about any customer using their Gong intelligence, requirements, and NetSuite
+                usage data as context.
+            </p>
+        </div>
+        <div style='flex:1;min-width:220px'>
+            <span style='background:rgba(59,158,255,0.15);color:#3B9EFF;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px;
+                         border:1px solid rgba(59,158,255,0.4)'>PHASE 3 · PLANNED</span>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;opacity:0.65;line-height:1.6'>
+                <strong>NetSuite usage sync</strong> — first login, active users, module adoption,
+                and activity trend pulled directly from NetSuite alongside the handover intelligence.
+            </p>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 # Build customer list from DRS
 df_drs = st.session_state.get("df_drs")
 drs_customers = []
@@ -409,19 +471,33 @@ col_sel, col_upload = st.columns([1, 1])
 
 with col_sel:
     st.markdown('<div class="section-label">Customer</div>', unsafe_allow_html=True)
+    _autofill = st.session_state.pop("_cp_autofill_customer", "")
+    _autofill_opp = st.session_state.pop("_cp_autofill_opp", "")
+    if _autofill:
+        st.info(f"Customer auto-filled from filename: **{_autofill}**" +
+                (f" · Opp: {_autofill_opp}" if _autofill_opp else ""))
+
     if drs_customers:
         customer_options = ["— Select a customer —"] + drs_customers + ["+ Enter manually"]
-        _sel = st.selectbox("Customer", customer_options, label_visibility="collapsed")
+        _default_idx = 0
+        if _autofill and _autofill in drs_customers:
+            _default_idx = drs_customers.index(_autofill) + 1
+        _sel = st.selectbox("Customer", customer_options, index=_default_idx,
+                            label_visibility="collapsed")
         if _sel == "+ Enter manually":
-            selected_customer = st.text_input("Customer name", placeholder="e.g. Habyt GmbH",
+            selected_customer = st.text_input("Customer name",
+                                              value=_autofill,
+                                              placeholder="e.g. Habyt GmbH",
                                               label_visibility="collapsed")
         elif _sel == "— Select a customer —":
-            selected_customer = ""
+            selected_customer = _autofill  # use autofill even if not in DRS list
         else:
             selected_customer = _sel
     else:
         st.markdown('<div style="font-size:12px;opacity:.5;margin-bottom:6px">DRS not loaded — enter name manually</div>', unsafe_allow_html=True)
-        selected_customer = st.text_input("Customer name", placeholder="e.g. Habyt GmbH",
+        selected_customer = st.text_input("Customer name",
+                                          value=_autofill,
+                                          placeholder="e.g. Habyt GmbH",
                                           label_visibility="collapsed")
 
 with col_upload:
@@ -433,6 +509,14 @@ with col_upload:
         label_visibility="hidden",
     )
 
+    # Auto-fill customer name from filename if it follows the Gong naming convention
+    if uploaded and not selected_customer:
+        _fn_parsed = _parse_filename(uploaded.name)
+        if _fn_parsed["customer"]:
+            st.session_state["_cp_autofill_customer"] = _fn_parsed["customer"]
+            st.session_state["_cp_autofill_opp"] = _fn_parsed["opp_name"]
+            st.rerun()
+
     if uploaded and selected_customer:
         raw_text, err = _read_docx_text(uploaded)
         if err:
@@ -441,6 +525,12 @@ with col_upload:
             st.error("Document appears empty — check the file and try again.")
         else:
             parsed = _parse_gong_doc(raw_text, selected_customer)
+            # Enrich with filename metadata if available
+            _fn_meta = _parse_filename(uploaded.name)
+            if _fn_meta["opp_name"] and not parsed.get("opp_name"):
+                parsed["opp_name"] = _fn_meta["opp_name"]
+            if _fn_meta["close_date"] and not parsed.get("close_date"):
+                parsed["close_date"] = _fn_meta["close_date"]
             docs = st.session_state["cp_gong_docs"].get(selected_customer, [])
             existing_links = [d.get("opp_link", "") for d in docs]
             if parsed["opp_link"] not in existing_links or not parsed["opp_link"]:

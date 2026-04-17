@@ -55,24 +55,24 @@ if _roster and st.session_state.get("consultant_name") != _roster:
 
 # ── Register navigation ───────────────────────────────────────────────────────
 _consultant_pages = [
-    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing"),
-    st.Page("pages/8_My_Projects.py",            title="My Projects"),
-    st.Page("pages/11_Project_Health.py",        title="Project Health"),
-    st.Page("pages/12_Customer_Profile.py",      title="Customer Profile"),
-    st.Page("pages/2_Customer_Reengagement.py", title="Customer Engagement"),
-    st.Page("pages/3_Utilization_Report.py",    title="Utilization Report"),
-    st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score"),
-    st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check"),
-    st.Page("pages/10_Time_Entries.py",          title="Time Entries"),
-    # st.Page("pages/7_Vibe_Check.py",          title="Vibe Check ✨"),  # hidden
+    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing", icon=None),
+    st.Page("pages/8_My_Projects.py",            title="My Projects", icon=None),
+    st.Page("pages/11_Project_Health.py",        title="Project Health", icon=None),
+    st.Page("pages/12_Customer_Profile.py",      title="Customer Profile", icon=None),
+    st.Page("pages/2_Customer_Reengagement.py", title="Customer Engagement", icon=None),
+    st.Page("pages/3_Utilization_Report.py",    title="Utilization Report", icon=None),
+    st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score", icon=None),
+    st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check", icon=None),
+    st.Page("pages/10_Time_Entries.py",          title="Time Entries", icon=None),
+    # st.Page("pages/7_Vibe_Check.py",          title="Vibe Check ✨", icon=None),  # hidden
 ]
 _manager_pages = [
-    st.Page("pages/12_Portfolio_Analytics.py",  title="Portfolio Analytics"),
-    st.Page("pages/5_Capacity_Outlook.py",      title="Capacity Outlook"),
-    st.Page("pages/9_Revenue_Report.py",        title="Revenue Report"),
+    st.Page("pages/12_Portfolio_Analytics.py",  title="Portfolio Analytics", icon=None),
+    st.Page("pages/5_Capacity_Outlook.py",      title="Capacity Outlook", icon=None),
+    st.Page("pages/9_Revenue_Report.py",        title="Revenue Report", icon=None),
 ]
 _help_pages = [
-    st.Page("pages/9_Help.py", title="Help"),
+    st.Page("pages/9_Help.py", title="Help", icon=None),
 ]
 
 if _role in ("manager", "manager_only"):
