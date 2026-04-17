@@ -240,7 +240,7 @@ with st.sidebar:
 
     ns_ua_file = (
         st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned", label_visibility="collapsed",
-                         help="Required for Capacity Outlook", label_visibility="collapsed")
+                         help="Required for Capacity Outlook")
         if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     if _upload_role in ("manager","manager_only","reporting_only"):
@@ -248,12 +248,12 @@ with st.sidebar:
 
     rev_file = (
         st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue", label_visibility="collapsed",
-                         help="Required for Revenue Report", label_visibility="collapsed")
+                         help="Required for Revenue Report")
         if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     tm_sow_file = (
         st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow", label_visibility="collapsed",
-                         help="Required for T&M Revenue Report", label_visibility="collapsed")
+                         help="Required for T&M Revenue Report")
         if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     # Clear stale versioned caches on new deploy
