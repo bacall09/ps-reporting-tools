@@ -19,44 +19,27 @@ _LOADER_VERSION = "v20260415a"
 
 st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wide")
 
-st.logo("zone_ps_logo.svg", size="large", link=None)
-
-st.markdown("""<style>
-html body [data-testid="stFileUploaderDropzoneInstructions"] {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    overflow: hidden !important;
-}
-html body [data-testid="stFileUploaderDropzone"] {
-    min-height: unset !important;
-    padding: 4px !important;
-    border: 1px solid rgba(128,128,128,0.2) !important;
-    border-radius: 4px !important;
-}
-</style>""", unsafe_allow_html=True)
-
 
 
 # ── Register navigation (must be called before any other st.* that could fail) ──
 _consultant_pages = [
-    st.Page("views/1_Daily_Briefing.py",        title="Daily Briefing",        icon="📋"),
-    st.Page("views/8_My_Projects.py",            title="My Projects",           icon="📁"),
-    st.Page("views/11_Project_Health.py",        title="Project Health",        icon="🏥"),
-    st.Page("views/99_Customer_Profile.py",     title="Customer Profile",      icon="👤"),
-    st.Page("views/2_Customer_Reengagement.py",  title="Customer Engagement",   icon="💬"),
-    st.Page("views/3_Utilization_Report.py",     title="Utilization Report",    icon="📊"),
-    st.Page("views/4_Workload_Health_Score.py",  title="Workload Health Score", icon="⚖️"),
-    st.Page("views/6_DRS_Health_Check.py",       title="DRS Health Check",      icon="🔍"),
-    st.Page("views/10_Time_Entries.py",           title="Time Entries",          icon="⏱️"),
+    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing",        icon="📋"),
+    st.Page("pages/8_My_Projects.py",            title="My Projects",           icon="📁"),
+    st.Page("pages/11_Project_Health.py",        title="Project Health",        icon="🏥"),
+    st.Page("pages/99_Customer_Profile.py",     title="Customer Profile",      icon="👤"),
+    st.Page("pages/2_Customer_Reengagement.py",  title="Customer Engagement",   icon="💬"),
+    st.Page("pages/3_Utilization_Report.py",     title="Utilization Report",    icon="📊"),
+    st.Page("pages/4_Workload_Health_Score.py",  title="Workload Health Score", icon="⚖️"),
+    st.Page("pages/6_DRS_Health_Check.py",       title="DRS Health Check",      icon="🔍"),
+    st.Page("pages/10_Time_Entries.py",           title="Time Entries",          icon="⏱️"),
 ]
 _manager_pages = [
-    st.Page("views/13_Portfolio_Analytics.py",   title="Portfolio Analytics",   icon="📈"),
-    st.Page("views/5_Capacity_Outlook.py",       title="Capacity Outlook",      icon="🗓️"),
-    st.Page("views/9_Revenue_Report.py",         title="Revenue Report",        icon="💰"),
+    st.Page("pages/13_Portfolio_Analytics.py",   title="Portfolio Analytics",   icon="📈"),
+    st.Page("pages/5_Capacity_Outlook.py",       title="Capacity Outlook",      icon="🗓️"),
+    st.Page("pages/9_Revenue_Report.py",         title="Revenue Report",        icon="💰"),
 ]
 _help_pages = [
-    st.Page("views/9_Help.py", title="Help",                                    icon="❓"),
+    st.Page("pages/9_Help.py", title="Help",                                    icon="❓"),
 ]
 
 # ── Build credentials ─────────────────────────────────────────────────────────
@@ -104,6 +87,24 @@ elif _role == "reporting_only":
     pg = st.navigation({"Management": _manager_pages})
 else:
     pg = st.navigation({"My Tools": _consultant_pages, "Info": _help_pages})
+
+# ── Logo + global styles (after navigation to avoid _mpa_v1 conflict) ───────────
+st.logo("zone_ps_logo.svg", size="large", link=None)
+
+st.markdown("""<style>
+html body [data-testid="stFileUploaderDropzoneInstructions"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+html body [data-testid="stFileUploaderDropzone"] {
+    min-height: unset !important;
+    padding: 4px !important;
+    border: 1px solid rgba(128,128,128,0.2) !important;
+    border-radius: 4px !important;
+}
+</style>""", unsafe_allow_html=True)
 
 # ── Login gate (shown instead of page content when not authenticated) ─────────
 if not st.session_state.get("authentication_status"):
