@@ -85,10 +85,12 @@ st.markdown("""
     .req-nice::before{content:'○';color:rgba(128,128,128,.35)}
     .no-data-msg{text-align:center;padding:36px;opacity:.4;font-size:14px}
     [data-testid="stFileUploader"] section{padding:10px 14px!important;min-height:unset!important}
-    [data-testid="stFileUploaderDropzone"]{min-height:unset!important;padding:8px 12px!important}
-    [data-testid="stFileUploaderDropzoneInstructions"] span{font-size:12px!important}
+    [data-testid="stFileUploaderDropzone"]{min-height:48px!important;padding:8px 12px!important;display:flex!important;align-items:center!important}
+    [data-testid="stFileUploaderDropzoneInstructions"]{flex:1!important}
+    [data-testid="stFileUploaderDropzoneInstructions"] span{font-size:12px!important;display:block!important}
     [data-testid="stFileUploaderDropzoneInstructions"] small{display:none!important}
     [data-testid="stFileUploader"] label{display:none!important}
+    [data-testid="stFileUploader"] button[kind="secondary"]{min-height:32px!important;padding:4px 12px!important}
 </style>
 """, unsafe_allow_html=True)
 
@@ -474,8 +476,10 @@ with col_sel:
     _autofill = st.session_state.pop("_cp_autofill_customer", "")
     _autofill_opp = st.session_state.pop("_cp_autofill_opp", "")
     if _autofill:
-        st.info(f"Customer auto-filled from filename: **{_autofill}**" +
-                (f" · Opp: {_autofill_opp}" if _autofill_opp else ""))
+        _autofill_msg = f"Filename parsed — Customer: **{_autofill}**"
+        if _autofill_opp:
+            _autofill_msg += f" · Opportunity: **{_autofill_opp}**"
+        st.info(_autofill_msg)
 
     if drs_customers:
         customer_options = ["— Select a customer —"] + drs_customers + ["+ Enter manually"]
@@ -640,12 +644,19 @@ st.markdown("""
 <hr class='divider' style='margin:12px 0 16px'>
 """, unsafe_allow_html=True)
 
+_opp_name_display = d.get("opp_name", "")
+_opp_name_html = (
+    f'<div style="font-size:13px;color:rgba(128,128,128,.55);margin-top:2px;margin-bottom:2px">'
+    f'Opp: {_opp_name_display}</div>'
+    if _opp_name_display else ""
+)
 st.markdown(f"""
 <div style='margin-bottom:4px'>
     <span style='font-size:22px;font-weight:700'>{selected_customer}</span>
     {opp_link_html}
 </div>
-<div style='margin-bottom:12px;font-size:13px;color:rgba(128,128,128,.7)'>
+{_opp_name_html}
+<div style='margin-bottom:8px;font-size:13px;color:rgba(128,128,128,.7)'>
     {data_meta_str}
 </div>
 <div style='margin-bottom:20px'>

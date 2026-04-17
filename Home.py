@@ -19,6 +19,15 @@ _LOADER_VERSION = "v20260415a"
 
 st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wide")
 
+st.markdown("""<style>
+    [data-testid="stFileUploader"] section{padding:10px 14px!important;min-height:unset!important}
+    [data-testid="stFileUploaderDropzone"]{min-height:48px!important;padding:8px 12px!important;display:flex!important;align-items:center!important}
+    [data-testid="stFileUploaderDropzoneInstructions"]{flex:1!important}
+    [data-testid="stFileUploaderDropzoneInstructions"] span{font-size:12px!important;display:block!important}
+    [data-testid="stFileUploaderDropzoneInstructions"] small{display:none!important}
+    [data-testid="stFileUploader"] button[kind="secondary"]{min-height:32px!important;padding:4px 12px!important}
+</style>""", unsafe_allow_html=True)
+
 # ── Register navigation (must be called before any other st.* that could fail) ──
 _consultant_pages = [
     st.Page("views/1_Daily_Briefing.py",        title="Daily Briefing",         icon=None),
