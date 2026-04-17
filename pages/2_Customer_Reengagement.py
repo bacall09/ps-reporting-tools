@@ -369,6 +369,59 @@ Professional Services | Zone & Co"""
     },
 }
 
+# ── Lifecycle templates (welcome, go-live, project close) ────────────────────
+# These are triggered by project phase/event, not by days inactive.
+# Add product-specific variants as they are confirmed.
+LIFECYCLE_TEMPLATES = {
+    "Welcome — ZoneCapture": {
+        "category": "welcome",
+        "product":  "ZoneCapture",
+        "subject":  "Welcome to ZoneCapture!",
+        "cc_guidance": "CC: Account Manager if available.",
+        "body": """Hi {CUSTOMER CONTACT NAME} and team,
+
+It's a pleasure to meet you — and a very warm welcome to ZoneCapture!
+
+My name is {CONSULTANT NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+YOUR PROJECT JOURNEY
+
+What to Expect
+Your implementation includes (3) ZoneCapture dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation here: https://drive.google.com/file/d/1mT_XNOaeHhsJD-dlyFqoITNZujIce-it/view which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+ZCapture Sessions
+- Configuration Enablement (1 hr) — Initial setup + core functions. Participants should include NS Admin or SME.
+- Application Walkthrough (1–1.5 hrs) — Intro to system, including key functionalities and product-specific processes.
+- Workshop / Q&A (1 hr) — UAT progress check-in, optimise setup and answer questions.
+
+Before We Begin
+To help us get started smoothly, please complete the following:
+
+NetSuite Environment
+Provide admin access to your NetSuite environment using this email address: ps-support+{CUSTOMER_SLUG}@zoneandco.com
+
+ZoneCapture
+Complete the required Requirements Form: https://app.smartsheet.com/b/form/972d9581faa84aada526e28563ff017e with details of your business requirements and setup preferences.
+
+Additional preparation guidance can be found here: https://docs.google.com/document/d/1d8bB_0Ul37uPFgbo-_Phy_vIDShtMQRrNrzcrnKlwfk/edit?tab=t.0#heading=h.rdfvih1ork0x
+
+Key Resources
+- ZCapture Project Plan: https://app.smartsheet.com/sheets/7VHfFgjXQMf6W2J5Fwc82FPrjXf4pF882WxrpMx1?view=grid — View the tasks, approx. timelines, and responsibilities for the implementation. Note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+- ZoneCapture Knowledge Base: https://capture-help.zoneandco.com/hc/en-us — Explore our product documentation and FAQs to get familiar with ZoneCapture's features and functionality.
+
+Next Steps
+Once we've received the above, our team will review your requirement details and begin the Configuration Phase, which typically takes approx. 1–2 weeks (as outlined in your project plan). Our team will then reach out to schedule your Enablement Session.
+
+In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture!
+
+Looking forward to working together,
+
+Kind regards,
+{IMPLEMENTATION CONSULTANT}
+Professional Services │ Zone & Co""",
+    },
+}
+
 TIER_COLORS = {1: "#EAF9F1", 2: "#FEF9E7", 3: "#FDECED", 4: "#f0e6ff"}
 TIER_TEXT   = {1: "#1E8449", 2: "#9C6500", 3: "#C0392B", 4: "#6c3483"}
 
@@ -1656,7 +1709,8 @@ Used when no NS entries and no milestones are present.
     st.markdown('<div class="section-label">Step 4 — Template</div>', unsafe_allow_html=True)
 
     suggested = suggest_tier(int(days_inactive)) or list(TEMPLATES.keys())[0]
-    tier_names = list(TEMPLATES.keys())
+    # Combine re-engagement tiers + lifecycle templates in selector
+    tier_names = list(TEMPLATES.keys()) + [f"── {k}" for k in LIFECYCLE_TEMPLATES.keys()]
     suggested_idx = tier_names.index(suggested) if suggested in tier_names else 0
 
     t1, t2 = st.columns([3, 3])
@@ -1670,8 +1724,14 @@ Used when no NS entries and no milestones are present.
                                           key=f"tmpl_select_{str(selected_proj)[:30].replace(chr(32),'_')}",
                                           label_visibility="visible")
 
-    tmpl_info = TEMPLATES[selected_template]
-    tier_num  = tmpl_info["tier"]
+    # Resolve from either TEMPLATES or LIFECYCLE_TEMPLATES
+    _lc_key = selected_template.replace("── ", "") if selected_template.startswith("── ") else None
+    if _lc_key and _lc_key in LIFECYCLE_TEMPLATES:
+        tmpl_info = LIFECYCLE_TEMPLATES[_lc_key]
+        tier_num  = 0  # lifecycle templates have no tier number
+    else:
+        tmpl_info = TEMPLATES[selected_template]
+        tier_num  = tmpl_info["tier"]
 
     # CC guidance
     cc_raw = tmpl_info["cc_guidance"].replace("{ACCOUNT MANAGER}", am if am else "{ACCOUNT MANAGER}")
@@ -1687,15 +1747,20 @@ Used when no NS entries and no milestones are present.
     # Strip numeric prefix from phase for clean template insertion (e.g. "02. Configuration" → "Configuration")
     _phase_clean = re.sub(r'^\d+\.\s*', '', current_phase).strip()
 
+    # Sanitised customer name for ps-support+ email address (no spaces/special chars)
+    _customer_slug = re.sub(r"[^a-zA-Z0-9]", "", str(account_name or "CUSTOMER").replace(" ", ""))
+
     fields = {
         "CUSTOMER CONTACT NAME":  primary_contact_first,
         "PRODUCT NAME":           product_name,
         "CURRENT PHASE":          _phase_clean,
         "LAST ACTIVITY DATE":     last_activity.strftime("%B %d, %Y"),
         "IMPLEMENTATION CONSULTANT": consultant_name,
+        "CONSULTANT NAME":        consultant_name,
         "ACCOUNT MANAGER":        str(am) if am else "",
         "REMAINING SESSIONS":     remaining_sessions,
         "SERVICE TERM EXPIRY":    service_expiry.strftime("%B %d, %Y") if service_expiry else "[SERVICE TERM EXPIRY — please enter manually]",
+        "CUSTOMER_SLUG":          _customer_slug,
     }
 
     subject, body, _ = fill_template(selected_template, fields)
