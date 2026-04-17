@@ -19,6 +19,27 @@ _LOADER_VERSION = "v20260415a"
 
 st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wide")
 
+# ── Register navigation (must be called before any other st.* that could fail) ──
+_consultant_pages = [
+    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing",         icon=None),
+    st.Page("pages/8_My_Projects.py",            title="My Projects",            icon=None),
+    st.Page("pages/11_Project_Health.py",        title="Project Health",         icon=None),
+    st.Page("pages/115_Customer_Profile.py",     title="Customer Profile",       icon=None),
+    st.Page("pages/2_Customer_Reengagement.py",  title="Customer Engagement",    icon=None),
+    st.Page("pages/3_Utilization_Report.py",     title="Utilization Report",     icon=None),
+    st.Page("pages/4_Workload_Health_Score.py",  title="Workload Health Score",  icon=None),
+    st.Page("pages/6_DRS_Health_Check.py",       title="DRS Health Check",       icon=None),
+    st.Page("pages/10_Time_Entries.py",           title="Time Entries",           icon=None),
+]
+_manager_pages = [
+    st.Page("pages/13_Portfolio_Analytics.py",   title="Portfolio Analytics",    icon=None),
+    st.Page("pages/5_Capacity_Outlook.py",       title="Capacity Outlook",       icon=None),
+    st.Page("pages/9_Revenue_Report.py",         title="Revenue Report",         icon=None),
+]
+_help_pages = [
+    st.Page("pages/9_Help.py", title="Help", icon=None),
+]
+
 # ── Build credentials ─────────────────────────────────────────────────────────
 def _to_dict(obj):
     try:
@@ -53,28 +74,7 @@ _role        = get_role(_roster) if _roster else None
 if _roster and st.session_state.get("consultant_name") != _roster:
     st.session_state["consultant_name"] = _roster
 
-# ── Register navigation ───────────────────────────────────────────────────────
-_consultant_pages = [
-    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing", icon=None),
-    st.Page("pages/8_My_Projects.py",            title="My Projects", icon=None),
-    st.Page("pages/11_Project_Health.py",        title="Project Health", icon=None),
-    st.Page("pages/115_Customer_Profile.py",      title="Customer Profile", icon=None),
-    st.Page("pages/2_Customer_Reengagement.py", title="Customer Engagement", icon=None),
-    st.Page("pages/3_Utilization_Report.py",    title="Utilization Report", icon=None),
-    st.Page("pages/4_Workload_Health_Score.py", title="Workload Health Score", icon=None),
-    st.Page("pages/6_DRS_Health_Check.py",      title="DRS Health Check", icon=None),
-    st.Page("pages/10_Time_Entries.py",          title="Time Entries", icon=None),
-    # st.Page("pages/7_Vibe_Check.py",          title="Vibe Check ✨", icon=None),  # hidden
-]
-_manager_pages = [
-    st.Page("pages/12_Portfolio_Analytics.py",  title="Portfolio Analytics", icon=None),
-    st.Page("pages/5_Capacity_Outlook.py",      title="Capacity Outlook", icon=None),
-    st.Page("pages/9_Revenue_Report.py",        title="Revenue Report", icon=None),
-]
-_help_pages = [
-    st.Page("pages/9_Help.py", title="Help", icon=None),
-]
-
+# ── Navigation (page lists defined above, called here with role context) ────────
 if _role in ("manager", "manager_only"):
     pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages, "Info": _help_pages})
 elif _role == "reporting_only":
