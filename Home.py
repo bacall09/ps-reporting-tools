@@ -19,7 +19,7 @@ _LOADER_VERSION = "v20260415a"
 
 st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wide")
 
-st.logo("zone_ps_logo.svg", link=None)
+st.logo("zone_ps_logo.svg", size="large", link=None)
 
 
 

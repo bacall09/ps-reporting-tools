@@ -1,6 +1,6 @@
-<svg width="120" height="44" viewBox="0 0 120 44" xmlns="http://www.w3.org/2000/svg">
-  <rect width="120" height="44" rx="6" fill="#0E223D"/>
+<svg width="220" height="44" viewBox="0 0 220 44" xmlns="http://www.w3.org/2000/svg">
+  <rect width="220" height="44" rx="6" fill="#0E223D"/>
   <rect x="0" y="0" width="4" height="44" rx="2" fill="#08A9B7"/>
-  <text x="14" y="20" font-family="Manrope, sans-serif" font-size="15" font-weight="800" fill="#ffffff" letter-spacing="0.5">Zone PS</text>
-  <text x="14" y="34" font-family="Manrope, sans-serif" font-size="8" font-weight="500" fill="#08A9B7" letter-spacing="2">PLATFORM</text>
+  <text x="16" y="20" font-family="Manrope, sans-serif" font-size="15" font-weight="800" fill="#ffffff" letter-spacing="0.5">Zone PS</text>
+  <text x="16" y="34" font-family="Manrope, sans-serif" font-size="8" font-weight="500" fill="#08A9B7" letter-spacing="2">PLATFORM</text>
 </svg>
