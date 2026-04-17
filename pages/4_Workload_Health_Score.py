@@ -5,6 +5,8 @@ a weighted workload score per consultant across active FF projects.
 """
 import streamlit as st
 from shared.whs import (
+
+
     PHASE_WEIGHTS, INACTIVE_PHASES, WHS_LOW, WHS_MEDIUM,
     workload_level, client_health_multiplier, risk_multiplier,
     get_phase_weight, get_ps_region, score_projects, build_consultant_summary,
@@ -12,6 +14,8 @@ from shared.whs import (
 )
 import pandas as pd
 import io
+
+st.session_state["current_page"] = "Workload Health Score"
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1439,7 +1443,8 @@ def main():
         <style>
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
-        </style>
+                    .section-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
+</style>
     """, unsafe_allow_html=True)
 
     # Dynamic title suffix from View As
@@ -1453,9 +1458,9 @@ def main():
         _title_sfx = ""
 
     st.markdown(f"""
-        <div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
-            <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
+        <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
+    <svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);opacity:0.06;width:200px;height:200px;pointer-events:none' viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'><g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435ZM1445.252,792.261c-7.628-38.507-22.817-74.472-43.124-107.897-35.582-58.566-85.801-106.77-139.329-149.092-69.784-55.176-145.355-102.407-225.163-141.162-2.165-1.052-4.941.388-5.391,1.627-.426,1.171-.463,3.413.931,4.628,20.341,17.734,39.847,35.55,58.599,55.093,13.286,14.465,26.223,28.012,37.022,44.544,19.784,30.289,35.735,62.168,50.127,95.397,34.512,31.926,64.863,67.358,90.813,106.359,42.427,63.765,57.696,142.663,37.453,217.116-11.436,42.061-34.763,80.507-64.388,112.265-55.859,59.882-133.144,94.711-214.71,99.157-32.507,1.773-64.093-.538-96.013-6.503-28.16-5.262-70.299-23.997-96.538-36.626-2.312-1.112-4.605-.743-6.449.974-12.635,11.76-25.076,22.901-39.051,33.146l-43.32,31.757c-2.68,1.965-2.195,5.562.439,7.808,70.707,60.309,165.779,100.179,259.837,97.033,39.996-1.336,78.686-6.594,117.486-16.111,94.178-23.099,174.952-71.91,236.526-146.957,23.873-29.096,44.355-60.51,59.779-94.956,29.172-65.148,38.357-137.461,24.463-207.601ZM601.099,242.903c-12.268,10.522-48.215,44.405-47.219,60.482.993,16.01,10.781,31.195,25.227,38.155,14.47,6.972,41.303-10.055,53.886-18.311l65.495-42.972c26.305-17.259,52.496-32.716,80.08-47.834l57.464-31.494c20.451-11.209,41.123-19.851,63.235-27.448,35.852-12.318,72.313-18.084,110.322-17.747,29.787.263,58.398,3.408,86.939,11.449,44.037,12.405,82.745,35.987,114.027,69.974,20.347,22.106,37.598,45.332,51.026,71.732,6.962,13.688,13.008,27.156,16.103,42.311,6.48,31.729,12.267,85.992-.676,115.916-6.013,13.902-13.009,26.627-18.289,40.753-.847,2.264-.768,4.767,1.387,6.461l81.366,63.967c2.003,1.574,5.098.298,6.46-1.592,19.285-26.745,34.599-55.578,45.667-86.804,10.617-29.953,15.416-60.246,15.218-92.192-.482-77.938-29.055-152.791-79.976-211.891-67.16-77.946-169.264-137.487-272.877-146.244-33.524-2.834-66.192-1.328-99.421,3.091-82.214,10.934-149.21,45.218-216.385,92.267-48.269,33.807-94.373,69.644-139.062,107.973ZM72.687,567.553c20.03,44.974,54.35,86.652,88.718,121.568,19.447,19.756,38.882,38.258,60.393,55.711l73.052,59.268c30.921,25.086,74.954,56.331,111.096,72.278,11.713,5.168,23.385,8.99,35.917,11.295,12.922,2.375,24.878,1.136,37.309-3.088,18.441-6.266,35.538-14.698,52.671-24.006,1.792-.974,2.85-2.213,3.058-3.936.179-1.483-.47-3.163-1.914-4.548-14.129-13.542-27.174-27.284-42.195-40.056l-78.193-66.48-93.5-82.422c-23.176-20.43-44.471-41.737-65.536-64.239-15.19-16.227-28.591-32.64-40.05-51.639-20.601-34.157-31.396-72.282-30.182-112.398.614-20.279,2.364-39.861,7.45-59.369,8.872-34.031,50.72-76.652,77.451-99.125,3.767-7.04,2.459-14.401,2.885-21.735.884-15.227,3.244-29.908,5.647-44.959,4.285-26.824,22.718-58.984,38.899-80.638,1.348-1.805,1.936-3.535.891-4.937-.951-1.277-2.618-2.49-4.589-2.222-52.436,7.145-104.92,34.806-146.088,67.704-25.632,20.484-48.458,43.456-68.934,69.137-46.339,58.118-62.952,131.49-53.428,204.864,4.697,36.186,14.376,70.75,29.171,103.971ZM1196.886,310.029c-4.882-10.39-12.371-18.773-20.659-26.723-18.771-18.007-40.425-31.674-64.291-42.362-57.569-25.783-110.906-28.064-173.214-22.213-61.067,5.735-111.183,25.069-164.567,54.081-24.678,13.412-48.301,26.866-71.885,42.28l-105.247,68.787c-85.308,55.756-195.138,156.138-256.755,237.876-1.598,2.12-2.206,4.81-.222,6.912l76.342,80.886c1.468,1.556,2.9,1.672,4.715,1.249,1.397-.326,1.99-1.717,2.793-3.377,3.117-6.44,6.665-11.977,11.238-17.864,38.52-49.59,82.099-94.54,130.222-135.261,40.87-34.583,82.783-67.442,126.68-98.902,83.71-59.991,188.529-115.793,291.15-127.921,23.653-2.795,46.328-.575,69.656,3.405,27.197,4.641,52.661,12.543,78.69,21.347l38.004,12.855c13.849,4.685,27.221-3.226,30.503-17.755,2.725-12.064,2.293-25.708-3.154-37.301Z'/></g></svg>
+            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
             <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Workload Health Score{_title_sfx}</h1>
             <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Weighted project scoring across active Fixed Fee engagements — by consultant and phase. Each project scored by phase weight × client health × risk multiplier.</p>
         </div>
@@ -1564,6 +1569,8 @@ def main():
     high     = len(consultant_df[consultant_df["workload_level"] == "High"])
     medium   = len(consultant_df[consultant_df["workload_level"] == "Medium"])
     low      = len(consultant_df[consultant_df["workload_level"] == "Low"])
+    avg_whs  = round(consultant_df["total_score"].mean(), 1) if not consultant_df.empty else 0.0
+    _whs_col_t, _whs_lbl_t = workload_level(avg_whs) if avg_whs else ("#718096", "—")
     active_projects = scored_df[scored_df["active"]]["project_id"].nunique()
     total_projects  = scored_df[scored_df["total_project"]]["project_id"].nunique() if "total_project" in scored_df.columns else active_projects
 
@@ -1576,7 +1583,7 @@ def main():
         return f"<div style='font-size:14px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px'>{label}</div><div style='font-size:36px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.1'>{value}</div>{pill}"
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.markdown(metric_card("Consultants Scored",          f"{total:,}"),             unsafe_allow_html=True)
+    with m1: st.markdown(metric_card("WHS Score",                   f"{avg_whs}"),             unsafe_allow_html=True)
     with m2: st.markdown(metric_card("Consultant High Workload",    f"{high}",    "At or over capacity",  "#C0392B"), unsafe_allow_html=True)
     with m3: st.markdown(metric_card("Consultant Medium Workload",  f"{medium}",  "Monitor for changes",  "#f39c12"), unsafe_allow_html=True)
     with m4: st.markdown(metric_card("Total FF Projects",           f"{total_projects:,}"),     unsafe_allow_html=True)
@@ -1611,7 +1618,7 @@ A project is flagged if no time has been booked within the NS report window:
         """)
 
     # ── Preview tabs ──────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs(["By Consultant", "At-Risk", "Stale Projects", "Phase Duration"])
+    tab1, tab2, tab3 = st.tabs(["By Consultant", "At-Risk", "Stale Projects"])
     with tab1:
         display_con = consultant_df.rename(columns={
             "project_manager":      "Consultant",
@@ -1670,7 +1677,7 @@ A project is flagged if no time has been booked within the NS report window:
             else:
                 st.success("No stale projects detected — all active projects have recent time entries.")
         else:
-            st.markdown("#### Stale Projects — No Recent Time Booked")
+            st.markdown('<div class="section-label">Stale Projects — No Recent Time Booked</div>', unsafe_allow_html=True)
             _ns_period_str = f"{pd.to_datetime(ns_df['date'], errors='coerce').min().strftime('%-d %b') if ns_df is not None and 'date' in ns_df.columns else '—'} — {pd.to_datetime(ns_df['date'], errors='coerce').max().strftime('%-d %b %Y') if ns_df is not None and 'date' in ns_df.columns else '—'}"
             st.caption(
                 f"14d+ = no time in 14–29 days  ·  30d+ = no time in 30–59 days  ·  "
@@ -1686,112 +1693,9 @@ A project is flagged if no time has been booked within the NS report window:
             st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
             st.dataframe(stale_df, hide_index=True, use_container_width=True)
 
-    with tab4:
-        st.markdown("#### Phase Duration — Time Spent per Delivery Phase")
-        if not milestone_cols:
-            st.info("No milestone columns detected in your SS DRS export. Milestone columns are added to newer projects — upload a DRS export that includes milestone date columns to enable this view.")
-        else:
-            wide_df, long_df = build_phase_duration(ss_df, milestone_cols)
-
-            if wide_df.empty:
-                st.info("No phase duration data could be calculated. Ensure your SS DRS export includes project start dates and milestone columns.")
-            else:
-                # Coerce all phase (days) columns to nullable int for clean display
-                for _dc in [col for col in wide_df.columns if col.endswith("(days)")]:
-                    wide_df[_dc] = pd.to_numeric(wide_df[_dc], errors="coerce").astype("Int64")
-                if "days_open" in wide_df.columns:
-                    wide_df["days_open"] = pd.to_numeric(wide_df["days_open"], errors="coerce").astype("Int64")
-
-                has_data = wide_df["milestone_data_available"].sum() if "milestone_data_available" in wide_df.columns else 0
-                total    = len(wide_df)
-                st.caption(
-                    f"{has_data:,} of {total:,} project(s) have milestone data · "
-                    f"Projects with NULL milestones show projected durations based on product-type benchmarks · "
-                    f"data_source: Milestone | Projected (new) | Projected (historical)"
-                )
-
-                # ── Filters ───────────────────────────────────────────────
-                _pf1, _pf2, _pf3 = st.columns([2, 2, 2])
-                with _pf1:
-                    _pm_opts = sorted(wide_df["project_manager"].dropna().astype(str).unique()) if "project_manager" in wide_df.columns else []
-                    _pm_filt = st.multiselect("Consultant / PM", _pm_opts, default=_pm_opts, key="pd_pm")
-                with _pf2:
-                    _type_opts = sorted(wide_df["project_type"].dropna().astype(str).unique()) if "project_type" in wide_df.columns else []
-                    _type_filt = st.multiselect("Project Type", _type_opts, default=_type_opts, key="pd_type")
-                with _pf3:
-                    _status_opts = sorted(wide_df["status"].dropna().astype(str).unique()) if "status" in wide_df.columns else []
-                    _status_filt = st.multiselect("Status", _status_opts, default=_status_opts, key="pd_status")
-
-                # Apply filters to wide_df
-                _wdf = wide_df.copy()
-                if _pm_filt     and "project_manager" in _wdf.columns: _wdf = _wdf[_wdf["project_manager"].isin(_pm_filt)]
-                if _type_filt   and "project_type"    in _wdf.columns: _wdf = _wdf[_wdf["project_type"].isin(_type_filt)]
-                if _status_filt and "status"          in _wdf.columns: _wdf = _wdf[_wdf["status"].isin(_status_filt)]
-
-                st.caption(f"{len(_wdf):,} project(s) shown")
-
-                # ── Wide view: heatmap-style ───────────────────────────────
-                st.markdown("**By Project — Days in Each Phase**")
-                phase_day_cols = [c for c in _wdf.columns if c.endswith("(days)")]
-                proj_cols      = [c for c in _wdf.columns if "(proj end)" in c or c in ("projected_go_live", "projected_close")]
-                display_cols   = ["project_name", "project_manager", "project_type",
-                                  "current_phase", "status", "start_date",
-                                  "days_open", "data_source",
-                                  "projected_go_live", "projected_close"] + phase_day_cols
-                display_cols   = [c for c in display_cols if c in _wdf.columns]
-
-                def _color_days(val):
-                    try:
-                        v = float(val)
-                        if v > 60:  return "background-color:#FFC7CE;color:#9C0006"
-                        if v > 30:  return "background-color:#FFEB9C;color:#9C6500"
-                        if v > 0:   return "background-color:#C6EFCE;color:#276221"
-                    except: pass
-                    return ""
-
-                # Build clean column rename map — phase "(days)" cols stay as-is for now
-                _col_rename = {
-                    "project_name":       "Project",
-                    "project_manager":    "Consultant / PM",
-                    "project_type":       "Type",
-                    "current_phase":      "Current Phase",
-                    "status":             "Status",
-                    "start_date":         "Start Date",
-                    "days_open":          "Days Open",
-                    "data_source":        "Data Source",
-                    "projected_go_live":  "Proj. Go-Live",
-                    "projected_close":    "Proj. Close",
-                }
-                styled_wide = _wdf[display_cols].rename(columns=_col_rename)
-                _style_cols = [_col_rename.get(c, c) for c in phase_day_cols if _col_rename.get(c, c) in styled_wide.columns] +                               ([_col_rename.get(c,c) for c in phase_day_cols if c in styled_wide.columns])
-                _style_cols = list(dict.fromkeys(  # deduplicate
-                    c for c in phase_day_cols if c in styled_wide.columns
-                ))
-                styled_obj = styled_wide.style.applymap(_color_days, subset=_style_cols) if _style_cols else styled_wide.style
-                st.dataframe(styled_obj, hide_index=True, use_container_width=True)
-
-                # ── Long view: for Tableau export ─────────────────────────
-                with st.expander("Long format (Tableau-ready) — one row per project per phase", expanded=False):
-                    if long_df.empty:
-                        st.info("No long-format data available.")
-                    else:
-                        _ldf = long_df.copy()
-                        if _pm_filt     and "project_manager" in _ldf.columns: _ldf = _ldf[_ldf["project_manager"].isin(_pm_filt)]
-                        if _type_filt   and "project_type"    in _ldf.columns: _ldf = _ldf[_ldf["project_type"].isin(_type_filt)]
-                        if _status_filt and "status"          in _ldf.columns: _ldf = _ldf[_ldf["status"].isin(_status_filt)]
-                        st.dataframe(_ldf, hide_index=True, use_container_width=True)
-
-                # ── Average days per phase (summary) ─────────────────────
-                if phase_day_cols:
-                    st.markdown("**Average Days per Phase — All Filtered Projects**")
-                    avg_data = {col.replace(" (days)", ""): [int(round(_wdf[col].dropna().mean(), 0))] for col in phase_day_cols if _wdf[col].notna().any()}
-                    if avg_data:
-                        avg_df = pd.DataFrame(avg_data)
-                        st.dataframe(avg_df.style.applymap(_color_days), hide_index=True, use_container_width=True)
-
 
     st.markdown("---")
-    st.subheader("Step 3 — Generate Report")
+    st.markdown('<div class="section-label">Step 3 — Generate Report</div>', unsafe_allow_html=True)
     excel_buf = build_excel(scored_df, consultant_df, missing_pm, as_of, ns_min_date)
     fname = f"Workload_Health_Score_{datetime.today().strftime('%Y%m%d')}.xlsx"
     st.download_button(

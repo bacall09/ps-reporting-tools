@@ -3,6 +3,7 @@ PS Tools — Shared Constants
 Employee roster, role assignments, column maps, templates.
 Updated: 2026-03-22 v2
 """
+import re as _re_constants
 
 # ── Streamlit permission roles ─────────────────────────────────────────────────
 # Manager-only: see all pages, do NOT appear in consultant dropdowns
@@ -191,6 +192,14 @@ SS_COL_MAP = {
     "overall rag":           "rag",
     "start date":            "start_date",
     "go live date":          "go_live_date",
+    "est. go-live date":      "go_live_date",
+    "estimated go-live":      "go_live_date",
+    "original go-live date":  "original_go_live_date",
+    "original go live date":  "original_go_live_date",
+    "forecast go-live date":  "forecast_go_live_date",
+    "forecast go live date":  "forecast_go_live_date",
+    "actual go-live date":    "actual_go_live_date",
+    "actual go live date":    "actual_go_live_date",
     "% complete":            "pct_complete",
     "project type":          "project_type",
     "status":                "status",
@@ -208,6 +217,13 @@ SS_COL_MAP = {
     "change order":          "change_order",
     "partner name":          "partner_name",
     "on hold reason":        "on_hold_reason",
+    "legacy":                "legacy",
+    "risk owner":            "risk_owner",
+    "risk detail":           "risk_detail",
+    "responsible for delay": "responsible_for_delay",
+    "delay summary":         "delay_summary",
+    "jira links":            "jira_links",
+    "jira":                  "jira_links",
     "project manager":       "project_manager",
     "billing type":          "billing_type",
     "billing":               "billing_type",
@@ -310,11 +326,35 @@ DEFAULT_SCOPE = {
     "Additional Subsidiary":    2,
 }
 
-def get_ff_scope(project_type: str):
-    """Return scoped hours for a project type, or None if not found / T&M."""
+def get_ff_scope(project_type: str, project_name: str = ""):
+    """Return scoped hours for a project type, or None if not found / T&M.
+
+    For ZoneApp: Premium projects, extracts hours from the project name
+    e.g. 'Acme - ZA - 20 Premium Implementation' → 20
+    Falls back to DEFAULT_SCOPE lookup if no number found in name.
+    """
     if not project_type:
         return None
     pt = str(project_type).strip().lower()
+
+    # Premium project type — extract hours from project name
+    if "premium" in pt:
+        if project_name:
+            # Try IMPL10/IMPL20 SKU pattern first (from Time Item SKU in NS)
+            _sku_nums = _re_constants.findall(r"IMPL(\d+)", str(project_name).upper())
+            if _sku_nums:
+                return float(_sku_nums[0])
+            # Look for standalone 10 or 20 in the project name
+            _nums = _re_constants.findall(r"(?<!\d)(10|20)(?!\d)", str(project_name))
+            if _nums:
+                return float(_nums[0])
+        # Fall back to DEFAULT_SCOPE premium entries if no match in name
+        _prem_matches = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                         if "premium" in k.strip().lower() and k.strip().lower() in pt]
+        if _prem_matches:
+            return max(_prem_matches, key=lambda x: len(x[0]))[1]
+        return None  # Can't determine — surface as NO SCOPE DEFINED
+
     matches = [(k, float(v)) for k, v in DEFAULT_SCOPE.items() if k.strip().lower() in pt]
     if not matches:
         return None

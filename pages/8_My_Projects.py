@@ -8,6 +8,8 @@ import pandas as pd
 import io
 from datetime import date, timedelta
 
+st.session_state["current_page"] = "My Projects"
+
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
     MILESTONE_COLS_MAP, get_role, is_manager,
@@ -23,11 +25,11 @@ st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
     html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
-    .section-label{font-size:11px;font-weight:700;text-transform:uppercase;
+    .section-label { font-size: 13px;font-weight:700;text-transform:uppercase;
                    letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
     .metric-card{border:1px solid rgba(128,128,128,.2);border-radius:8px;padding:16px 20px;margin-bottom:12px}
-    .metric-val{font-size:26px;font-weight:700}
-    .metric-lbl{font-size:12px;opacity:.6;margin-top:2px}
+    .metric-val { font-size: 32px;font-weight:700}
+    .metric-lbl { font-size: 14px;opacity:.6;margin-top:2px}
     .pf{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;
         border-radius:4px;margin-right:4px;margin-bottom:3px}
     .pf-e{background:rgba(192,57,43,0.15);color:#C0392B}
@@ -79,6 +81,8 @@ if role == "manager":
     _pick = st.session_state.get("home_browse", "— My own view —")
     if _pick and _pick.startswith("── ") and _pick.endswith(" ──"):
         _va_region = _pick[3:-3].strip()
+    elif _pick in ("👥 All team", "All team"):
+        _va_region = "__ALL__"   # special flag for all-team view
     elif _pick and _pick not in ("— My own view —", "— Select —", ""):
         view_as    = _pick
         _va_region = None
@@ -94,21 +98,25 @@ if df_drs is None:
 pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
 
 if _va_region and role == "manager":
-    # Region view — show all consultants in this region
-    _region_consultants = set()
-    for n in CONSULTANT_DROPDOWN:
-        _nl = EMPLOYEE_LOCATION.get(n, "")
-        _nr = PS_REGION_OVERRIDE.get(n, PS_REGION_MAP.get(_nl, "Other"))
-        if _nr == _va_region:
-            _region_consultants.add(n.lower())
-            _vp2 = [p.strip() for p in n.split(",")]
-            _region_consultants.add(_vp2[0].lower())
-            if len(_vp2) == 2:
-                _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
-    my_drs = df_drs[pm_col.apply(lambda v: resolve_name(str(v)).lower() in _region_consultants or str(v).strip().lower() in _region_consultants)].copy()
-    if my_drs.empty:
-        st.info(f"No projects found for the {_va_region} region in DRS.")
-        st.stop()
+    if _va_region == "__ALL__":
+        # All team — show every project
+        my_drs = df_drs.copy()
+    else:
+        # Region view — show all consultants in this region
+        _region_consultants = set()
+        for n in CONSULTANT_DROPDOWN:
+            _nl = EMPLOYEE_LOCATION.get(n, "")
+            _nr = PS_REGION_OVERRIDE.get(n, PS_REGION_MAP.get(_nl, "Other"))
+            if _nr == _va_region:
+                _region_consultants.add(n.lower())
+                _vp2 = [p.strip() for p in n.split(",")]
+                _region_consultants.add(_vp2[0].lower())
+                if len(_vp2) == 2:
+                    _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
+        my_drs = df_drs[pm_col.apply(lambda v: resolve_name(str(v)).lower() in _region_consultants or str(v).strip().lower() in _region_consultants)].copy()
+        if my_drs.empty:
+            st.info(f"No projects found for the {_va_region} region in DRS.")
+            st.stop()
 elif view_as == selected and role == "manager_only":
     # Pure manager (no own projects) — prompt to use View As
     st.info(f"You are logged in as a manager. Use 'View as' to browse a consultant or region.")
@@ -133,7 +141,7 @@ active = my_drs[~_ioh].copy()
 # ── Flags ─────────────────────────────────────────────────────────────────────
 def _flags(row):
     out=[]; phase=str(row.get("phase","")or"").strip()
-    go_live=row.get("go_live_date"); start_dt=row.get("start_date")
+    go_live=row.get("effective_go_live_date") or row.get("go_live_date"); start_dt=row.get("start_date")
     is_leg=bool(row.get("legacy",False)); pi=_pidx(phase)
     if pd.notna(go_live) and pi>=0:
         if pd.Timestamp(go_live)<today and pi<_pidx("06. go-live"):
@@ -161,14 +169,44 @@ if not active.empty:
 else:
     for c in ["_flags","_ne","_nw","_needs"]: active[c]=None
 
+# ── On Hold flags ──────────────────────────────────────────────────────────────
+def _oh_flags(row):
+    out = []
+    days     = int(row.get("days_inactive", -1) or -1)
+    resp     = str(row.get("client_responsiveness","") or "").strip().lower()
+    sent     = str(row.get("client_sentiment","") or "").strip().lower()
+    reason   = str(row.get("on_hold_reason","") or "").strip()
+    delay_by = str(row.get("responsible_for_delay","") or "").strip()
+
+    # Missing mandatory on-hold fields
+    if not reason or reason in ("—","nan","None"):
+        out.append(("warn","on_hold_reason","On Hold Reason not set — required for all on-hold projects",True))
+    if not delay_by or delay_by in ("—","nan","None"):
+        out.append(("warn","responsible_for_delay","Responsible for Delay not set — required for all on-hold projects",True))
+
+    # Engagement/sentiment inconsistent with on-hold status
+    if days >= 14:
+        if resp in ("highly engaged","highly responsive","responsive"):
+            out.append(("warn","client_responsiveness",
+                f"Client Responsiveness '{row.get('client_responsiveness','')}' inconsistent with {days}d on hold",True))
+        if sent in ("positive",):
+            out.append(("warn","client_sentiment",
+                f"Client Sentiment 'Positive' inconsistent with {days}d on hold",True))
+    return out
+
+if not on_hold.empty:
+    on_hold["_flags"] = on_hold.apply(_oh_flags, axis=1)
+else:
+    on_hold["_flags"] = None
+
 # ── Header ────────────────────────────────────────────────────────────────────
-_dn = (_va_region + " Team" if _va_region
+_dn = ("Global Team" if _va_region == "__ALL__" else _va_region + " Team" if _va_region
        else view_as.split(",")[1].strip()+" "+view_as.split(",")[0] if "," in view_as
        else view_as)
 st.markdown(f"""
-<div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
-    <div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>
-    <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · My Work</div>
+<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
+    <svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);opacity:0.06;width:200px;height:200px;pointer-events:none' viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'><g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435ZM1445.252,792.261c-7.628-38.507-22.817-74.472-43.124-107.897-35.582-58.566-85.801-106.77-139.329-149.092-69.784-55.176-145.355-102.407-225.163-141.162-2.165-1.052-4.941.388-5.391,1.627-.426,1.171-.463,3.413.931,4.628,20.341,17.734,39.847,35.55,58.599,55.093,13.286,14.465,26.223,28.012,37.022,44.544,19.784,30.289,35.735,62.168,50.127,95.397,34.512,31.926,64.863,67.358,90.813,106.359,42.427,63.765,57.696,142.663,37.453,217.116-11.436,42.061-34.763,80.507-64.388,112.265-55.859,59.882-133.144,94.711-214.71,99.157-32.507,1.773-64.093-.538-96.013-6.503-28.16-5.262-70.299-23.997-96.538-36.626-2.312-1.112-4.605-.743-6.449.974-12.635,11.76-25.076,22.901-39.051,33.146l-43.32,31.757c-2.68,1.965-2.195,5.562.439,7.808,70.707,60.309,165.779,100.179,259.837,97.033,39.996-1.336,78.686-6.594,117.486-16.111,94.178-23.099,174.952-71.91,236.526-146.957,23.873-29.096,44.355-60.51,59.779-94.956,29.172-65.148,38.357-137.461,24.463-207.601ZM601.099,242.903c-12.268,10.522-48.215,44.405-47.219,60.482.993,16.01,10.781,31.195,25.227,38.155,14.47,6.972,41.303-10.055,53.886-18.311l65.495-42.972c26.305-17.259,52.496-32.716,80.08-47.834l57.464-31.494c20.451-11.209,41.123-19.851,63.235-27.448,35.852-12.318,72.313-18.084,110.322-17.747,29.787.263,58.398,3.408,86.939,11.449,44.037,12.405,82.745,35.987,114.027,69.974,20.347,22.106,37.598,45.332,51.026,71.732,6.962,13.688,13.008,27.156,16.103,42.311,6.48,31.729,12.267,85.992-.676,115.916-6.013,13.902-13.009,26.627-18.289,40.753-.847,2.264-.768,4.767,1.387,6.461l81.366,63.967c2.003,1.574,5.098.298,6.46-1.592,19.285-26.745,34.599-55.578,45.667-86.804,10.617-29.953,15.416-60.246,15.218-92.192-.482-77.938-29.055-152.791-79.976-211.891-67.16-77.946-169.264-137.487-272.877-146.244-33.524-2.834-66.192-1.328-99.421,3.091-82.214,10.934-149.21,45.218-216.385,92.267-48.269,33.807-94.373,69.644-139.062,107.973ZM72.687,567.553c20.03,44.974,54.35,86.652,88.718,121.568,19.447,19.756,38.882,38.258,60.393,55.711l73.052,59.268c30.921,25.086,74.954,56.331,111.096,72.278,11.713,5.168,23.385,8.99,35.917,11.295,12.922,2.375,24.878,1.136,37.309-3.088,18.441-6.266,35.538-14.698,52.671-24.006,1.792-.974,2.85-2.213,3.058-3.936.179-1.483-.47-3.163-1.914-4.548-14.129-13.542-27.174-27.284-42.195-40.056l-78.193-66.48-93.5-82.422c-23.176-20.43-44.471-41.737-65.536-64.239-15.19-16.227-28.591-32.64-40.05-51.639-20.601-34.157-31.396-72.282-30.182-112.398.614-20.279,2.364-39.861,7.45-59.369,8.872-34.031,50.72-76.652,77.451-99.125,3.767-7.04,2.459-14.401,2.885-21.735.884-15.227,3.244-29.908,5.647-44.959,4.285-26.824,22.718-58.984,38.899-80.638,1.348-1.805,1.936-3.535.891-4.937-.951-1.277-2.618-2.49-4.589-2.222-52.436,7.145-104.92,34.806-146.088,67.704-25.632,20.484-48.458,43.456-68.934,69.137-46.339,58.118-62.952,131.49-53.428,204.864,4.697,36.186,14.376,70.75,29.171,103.971ZM1196.886,310.029c-4.882-10.39-12.371-18.773-20.659-26.723-18.771-18.007-40.425-31.674-64.291-42.362-57.569-25.783-110.906-28.064-173.214-22.213-61.067,5.735-111.183,25.069-164.567,54.081-24.678,13.412-48.301,26.866-71.885,42.28l-105.247,68.787c-85.308,55.756-195.138,156.138-256.755,237.876-1.598,2.12-2.206,4.81-.222,6.912l76.342,80.886c1.468,1.556,2.9,1.672,4.715,1.249,1.397-.326,1.99-1.717,2.793-3.377,3.117-6.44,6.665-11.977,11.238-17.864,38.52-49.59,82.099-94.54,130.222-135.261,40.87-34.583,82.783-67.442,126.68-98.902,83.71-59.991,188.529-115.793,291.15-127.921,23.653-2.795,46.328-.575,69.656,3.405,27.197,4.641,52.661,12.543,78.69,21.347l38.004,12.855c13.849,4.685,27.221-3.226,30.503-17.755,2.725-12.064,2.293-25.708-3.154-37.301Z'/></g></svg>
+    <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · My Work</div>
     <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>My Projects — {_dn}</h1>
     <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>{today.strftime("%A, %B %-d %Y")} · {len(active)} active · {len(on_hold)} on hold</p>
 </div>
@@ -248,11 +286,25 @@ def _rag_emoji(val):
 
 def _engagement_flag(row):
     flags = []
-    _days = int(row.get("days_inactive", -1) or -1)
-    _leg  = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
-    _no_i = not pd.notna(row.get("ms_intro_email")) or str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT")
-    if not _leg and _no_i:
+    _days  = int(row.get("days_inactive", -1) or -1)
+    _leg   = str(row.get("legacy","")).strip().lower() in ("true","yes","1")
+    _phase = str(row.get("phase","") or "").strip().lower()
+    _htd   = row.get("_htd_val", 0) or 0  # hours to date — if >0 work has started
+    _start = row.get("start_date")
+
+    # Determine if project is genuinely new/early enough to flag missing intro:
+    # Skip flag if: legacy, has hours logged (work started = intro likely happened),
+    # or phase is past onboarding
+    _past_onboarding = any(p in _phase for p in ["config","enablement","training",
+                           "uat","prep","go-live","hypercare","support","transition","ready"])
+    _has_hours = float(_htd) > 0 if _htd != "" else False
+
+    _no_i = (not pd.notna(row.get("ms_intro_email")) or
+             str(row.get("ms_intro_email","")).strip() in ("","nan","None","NaT"))
+
+    if not _leg and _no_i and not _past_onboarding and not _has_hours:
         flags.append("No intro")
+
     if _days >= 30:
         flags.append(f"{_days}d inactive")
     elif _days >= 14:
@@ -264,7 +316,7 @@ def _to_edit_row(row):
     needs = "⚠️" if any(sev=="error" for sev,_,_m,_ in fl) else ("⚠️" if any(sev=="warn" for sev,_,_m,_ in fl) else "")
     def _ms(col):
         v = row.get(col)
-        return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
+        return pd.Timestamp(v).date() if pd.notna(v) else None
 
 
     def _dt(col):
@@ -278,7 +330,7 @@ def _to_edit_row(row):
     _pid_key   = _clean_pid(row.get("project_id", ""))
     _is_tm     = ("t&m" in _bill_raw or "time" in _bill_raw
                   or _pid_key in _ns_tm_pids)  # confirmed T&M from NS
-    _ff_scope  = get_ff_scope(_ptype_raw)
+    _ff_scope  = get_ff_scope(_ptype_raw, _pn)
     if _is_tm:
         # T&M scope from NS Time Detail "T&M Scope" column (max per project_id)
         # Falls back to hours sum if column not present in export
@@ -288,7 +340,14 @@ def _to_edit_row(row):
     else:
         _scope = ""
     _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
-    _bal = round(float(_scope) - float(_htd), 2) if _scope != "" and _htd != "" else ""
+    # Balance: scope - htd. If no NS data yet (htd=""), show full scope as remaining
+    if _scope != "" and _htd != "":
+        _bal = round(float(_scope) - float(_htd), 2)
+    elif _scope != "":
+        _bal = float(_scope)  # no hours logged yet — full scope remaining
+        _htd = 0.0
+    else:
+        _bal = ""
     # Balance cell flag logic
     _phase_raw = str(row.get("phase","") or "").strip().lower()
     _closed_phases = {"08. ready for support transition","09. phase 2 scoping","closed","complete"}
@@ -296,7 +355,7 @@ def _to_edit_row(row):
     _bal_flag = ""
     if _bal != "" and _scope not in ("", 0):
         _pct_remaining = float(_bal) / float(_scope) if float(_scope) != 0 else 0
-        if float(_bal) <= 0 and _phase_raw not in _closed_phases:
+        if float(_bal) < 0 and _phase_raw not in _closed_phases:
             _bal_flag = "red"
         elif _pct_remaining <= 0.10 and _phase_raw not in _late_phases and _phase_raw not in _closed_phases:
             _bal_flag = "yellow"
@@ -320,7 +379,7 @@ def _to_edit_row(row):
         "Hours to Date":        _htd,
         "Balance":              _bal,
         "_bal_flag":            _bal_flag,
-        "Engagement":           _engagement_flag(row),
+        "Engagement":           _engagement_flag({**dict(row), "_htd_val": _htd}),
         "Intro Email Sent":     _ms("ms_intro_email"),
         "Config Start":         _ms("ms_config_start"),
         "Enablement Session":   _ms("ms_enablement"),
@@ -351,7 +410,7 @@ col_cfg = {
     "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
     "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
     "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
-    "Status":                st.column_config.TextColumn("Status",            disabled=True),
+    "Status":                st.column_config.SelectboxColumn("Status", options=["In Progress","On Hold","Closed","Complete","Cancelled"], width="medium"),
     "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
     "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
     "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
@@ -360,10 +419,10 @@ col_cfg = {
     "Balance":               st.column_config.TextColumn("Balance",            disabled=True, width="small"),
     "Engagement":            st.column_config.TextColumn("Engagement",         disabled=True, width="medium"),
     "_bal_flag":             None,
-    **{c: st.column_config.TextColumn(c, width="small") for c in _ms_cols},
+    **{c: st.column_config.DateColumn(c, min_value=date(2020,1,1), max_value=date(2030,12,31), width="small") for c in _ms_cols},
 }
 
-st.caption("Edit Phase, Schedule Health, or milestone dates directly in the table. Export to CSV to update Smartsheet.")
+st.caption("Columns with the edit icon sync back to Smartsheet — edit and export to CSV to update DRS. Greyed columns are derived or read-only.")
 st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
 _btn_col1, _btn_col2 = st.columns([1, 1])
 with _btn_col1:
@@ -402,13 +461,13 @@ _display_df = edit_df.copy()
 if "Balance" in _display_df.columns and "_bal_flag" in _display_df.columns:
     def _fmt_bal(row):
         val = row["Balance"]
-        flag = row["_bal_flag"]
-        if val == "": return val
+        flag = str(row.get("_bal_flag","") or "")
+        if val == "" or val is None: return val
         try:
             fval = float(val)
             if flag == "red":    return f"🔴 {fval:,.2f}"
             if flag == "yellow": return f"🟡 {fval:,.2f}"
-            return fval
+            return round(fval, 2)
         except Exception:
             return val
     _display_df["Balance"] = _display_df.apply(_fmt_bal, axis=1)
@@ -456,6 +515,49 @@ if not _inactive_projs.empty:
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ── On Hold field value maps ──────────────────────────────────────────────────
+_OH_REASON_OPTS   = ["—","Zone Product Dependency","Zone Program Dependency",
+                     "NetSuite Dependency","Client Requested","Client Unresponsive"]
+_OH_RESP_OPTS     = ["—","Highly Engaged","Neutral","Not Responsive"]
+_OH_SENTIMENT_OPTS= ["—","Positive","Neutral","Concerned"]
+_OH_RISK_OPTS     = ["—","Low","Medium","High","Escalated"]
+_OH_OWNER_OPTS    = ["—","Client","Product","PS","Sales","Marketing","Support","3rd Party","N/A"]
+_OH_DELAY_OPTS    = ["—","Zone","Client","3rd Party"]
+
+def _clean(val):
+    """Normalise blank/nan/None to —."""
+    v = str(val or "").strip()
+    return "—" if v in ("", "nan", "None", "NaT") else v
+
+def _delay_summary_prompt(r):
+    """Auto-generate a Delay Summary prompt from available fields."""
+    reason   = str(r.get("on_hold_reason","") or "")
+    days     = r.get("days_inactive", 0) or 0
+    risk     = str(r.get("risk_level","") or "")
+    owner    = str(r.get("risk_owner","") or "")
+    delay_by = str(r.get("responsible_for_delay","") or "")
+    parts = []
+    if reason and reason not in ("—",""):
+        parts.append(reason)
+    if days and int(days) > 0:
+        parts.append(f"inactive {int(days)}d")
+    if risk and risk not in ("—",""):
+        parts.append(f"{risk} risk")
+    if owner and owner not in ("—",""):
+        parts.append(f"owner: {owner}")
+    if delay_by and delay_by not in ("—",""):
+        parts.append(f"delay: {delay_by}")
+    return " · ".join(parts) if parts else ""
+
+# ── Risk level emoji helper ────────────────────────────────────────────────────
+def _risk_emoji(val):
+    v = str(val or "").strip().lower()
+    if v == "escalated": return "🚨 Escalated"
+    if v == "high":      return "🔴 High"
+    if v == "medium":    return "🟡 Medium"
+    if v == "low":       return "🟢 Low"
+    return str(val or "—")
+
 # SECTION 4 — On Hold
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown('<div class="section-label">On Hold</div>', unsafe_allow_html=True)
@@ -464,23 +566,101 @@ if on_hold.empty:
 else:
     _oh_rows = []
     for _, r in on_hold.iterrows():
+        _ds_existing = str(r.get("delay_summary","") or "").strip()
+        _ds = _ds_existing if _ds_existing and _ds_existing not in ("—","nan","None") else _delay_summary_prompt(r)
+        _rag_v = _rag_emoji(r.get("rag"))
         _oh_row = {
-            "Project":      str(r.get("project_name", "")),
-            "Phase":          str(r.get("phase", "—")),
-            "RAG":            _rag_emoji(r.get("rag")) if _rag_emoji(r.get("rag")) != "—" else "⚠️ No RAG",
-            "Last Milestone": str(r.get("last_milestone","") or "—"),
-            "Days Inactive":  int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
-            "Inactivity Source": str(r.get("_inactivity_source","") or "—"),
-            "Engagement":     _engagement_flag(r),
-            "Go Live":        pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
+            "RAG":                   _rag_v if _rag_v != "—" else "⚠️ No RAG",
+            "Flags":                 ("⚠️" if any(s=="error" for s,*_ in (r.get("_flags") or []))
+                                  else ("⚠️" if (r.get("_flags") or []) else "")),
+            "Customer":              str(r.get("project_name","")).split(" - ")[0].strip() if " - " in str(r.get("project_name","")) else str(r.get("project_name","")),
+            "Project Type":          str(r.get("project_type","") or "—"),
+            "Start Date":            pd.Timestamp(r["start_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("start_date")) else "—",
+            "Est. Go-Live":          pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
+            "Phase":                 str(r.get("phase", "—")),
+            "On Hold Reason":        _clean(r.get("on_hold_reason")) if _clean(r.get("on_hold_reason")) != "—" else None,
+            "Days Inactive":         int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
+            "Inactivity Source":     _clean(r.get("_inactivity_source")),
+            "Last Milestone":        _clean(r.get("last_milestone")),
+            "Client Responsiveness": _clean(r.get("client_responsiveness")) if _clean(r.get("client_responsiveness")) != "—" else None,
+            "Client Sentiment":      _clean(r.get("client_sentiment")) if _clean(r.get("client_sentiment")) != "—" else None,
+            "Risk Level":            _risk_emoji(r.get("risk_level")),
+            "Risk Owner":            _clean(r.get("risk_owner")) if _clean(r.get("risk_owner")) != "—" else None,
+            "Risk Detail":           _clean(r.get("risk_detail")),
+            "Responsible for Delay": _clean(r.get("responsible_for_delay")) if _clean(r.get("responsible_for_delay")) != "—" else None,
+            "Delay Summary":         _ds,
+            "JIRA Links":            _clean(r.get("jira_links")),
         }
         if _va_region:
             _oh_row["Consultant"] = str(r.get("project_manager", "") or "")
         _oh_rows.append(_oh_row)
-    _oh_df = pd.DataFrame(_oh_rows)
-    # Put Consultant second if present
-    if "Consultant" in _oh_df.columns:
-        _oh_df = _oh_df[["Project", "Consultant"] + [c for c in _oh_df.columns if c not in ("Project", "Consultant")]]
-    st.dataframe(_oh_df, use_container_width=True, hide_index=True)
 
-st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:20px">PS Reporting Tools · Internal use only · Data loaded this session only</div>',unsafe_allow_html=True)
+    _oh_df = pd.DataFrame(_oh_rows)
+
+    # Column order — insert Consultant after RAG if region view
+    if "Consultant" in _oh_df.columns:
+        _col_order = ["Flags","RAG","Customer","Consultant","Project Type","Start Date","Est. Go-Live",
+                       "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
+                       "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
+                       "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
+    else:
+        _col_order = ["Flags","RAG","Customer","Project Type","Start Date","Est. Go-Live",
+                      "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
+                      "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
+                      "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
+    _oh_df = _oh_df[[c for c in _col_order if c in _oh_df.columns]]
+
+    # ✦ = SS syncable (editable) | no mark = derived/read-only
+    st.caption("Columns with the edit icon sync back to Smartsheet — edit and export to CSV to update DRS. Greyed columns are derived or read-only.")
+    _oh_edited = st.data_editor(
+        _oh_df,
+        column_config={
+            "Flags":                 st.column_config.TextColumn("Flags",                  disabled=True, width="small"),
+            "RAG":                   st.column_config.TextColumn("RAG",                    disabled=True, width="small"),
+            "Customer":              st.column_config.TextColumn("Customer",                disabled=True, width="medium"),
+            "Project Type":          st.column_config.TextColumn("Project Type",            disabled=True, width="medium"),
+            "Start Date":            st.column_config.TextColumn("Start Date",              disabled=True, width="small"),
+            "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",            disabled=True, width="small"),
+            "Phase":                 st.column_config.SelectboxColumn("Phase", options=PHASE_OPTIONS, width="medium"),
+            "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason",  options=_OH_REASON_OPTS,     width="medium"),
+            "Days Inactive":         st.column_config.NumberColumn("Days Inactive",         disabled=True, width="small"),
+            "Inactivity Source":     st.column_config.TextColumn("Inactivity Source",       disabled=True, width="small"),
+            "Last Milestone":        st.column_config.TextColumn("Last Milestone",          disabled=True, width="medium"),
+            "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness", options=_OH_RESP_OPTS, width="medium"),
+            "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment", options=_OH_SENTIMENT_OPTS, width="small"),
+            "Risk Level":            st.column_config.SelectboxColumn("Risk Level",       options=_OH_RISK_OPTS,       width="small"),
+            "Risk Owner":            st.column_config.SelectboxColumn("Risk Owner",       options=_OH_OWNER_OPTS,      width="small"),
+            "Risk Detail":           st.column_config.TextColumn("Risk Detail",           width="large"),
+            "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay", options=_OH_DELAY_OPTS, width="medium"),
+            "Delay Summary":         st.column_config.TextColumn("Delay Summary",         width="large"),
+            "JIRA Links":            st.column_config.TextColumn("JIRA Links",             width="medium",
+                                         help="Comma-separated JIRA ticket URLs, e.g. https://zone.atlassian.net/browse/ZPS-123"),
+        },
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key="oh_edit_table",
+    )
+
+    # Export bar
+    _oh_sync_cols = ["Customer","Project Type","On Hold Reason","Responsible for Delay","Client Responsiveness","Client Sentiment",
+                     "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
+    _oh_changed = _oh_edited[_oh_sync_cols].fillna("").ne(_oh_df[[c for c in _oh_sync_cols if c in _oh_df.columns]].fillna("")).any(axis=1) if not _oh_edited.empty else pd.Series(False, index=_oh_edited.index)
+    _oh_ex1, _oh_ex2 = st.columns([3,1])
+    with _oh_ex1:
+        if _oh_changed.any():
+            st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {_oh_changed.sum()} on-hold project(s) edited — ready to export</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span style="font-size:12px;opacity:.5">Edit ✦ columns above then export to sync with DRS</span>', unsafe_allow_html=True)
+    with _oh_ex2:
+        _oh_buf = __import__("io").BytesIO()
+        _oh_edited[_oh_sync_cols].to_csv(_oh_buf, index=False)
+        st.download_button(
+            label="⬇ Export to CSV",
+            data=_oh_buf.getvalue(),
+            file_name=f"on_hold_updates_{__import__('datetime').date.today().isoformat()}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:20px">PS Projects & Tools · Internal use only · Data loaded this session only</div>',unsafe_allow_html=True)

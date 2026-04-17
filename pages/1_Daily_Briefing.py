@@ -6,6 +6,8 @@ import streamlit as st
 import pandas as pd
 from datetime import date, datetime
 
+st.session_state["current_page"] = "Daily Briefing"
+
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
     MILESTONE_COLS_MAP, get_role, is_manager, LEAVER_EXIT_DATES,
@@ -49,22 +51,27 @@ st.markdown("""
         h1,h2,h3,h4,p,div,label,button { font-family: 'Manrope', sans-serif !important; }
         .brief-header  { font-size: 24px; font-weight: 700; color: inherit; margin-bottom: 4px; }
         .brief-sub     { font-size: 13px; margin-bottom: 20px; opacity: 0.6; }
-        .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+        .section-label { font-size: 13px; font-weight: 700; text-transform: uppercase;
                          letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
         .metric-card   { background: transparent; border: 1px solid rgba(128,128,128,0.2);
                          border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
-        .metric-val    { font-size: 26px; font-weight: 700; color: inherit; }
-        .metric-lbl    { font-size: 12px; opacity: 0.6; margin-top: 2px; }
-        .metric-help   { display:inline-block; margin-left:5px; font-size:11px; opacity:0.55;
+        .metric-val { font-size: 32px; font-weight: 700; color: inherit; }
+        .metric-lbl { font-size: 14px; opacity: 0.6; margin-top: 2px; }
+        .snap-btn { display:block; width:100%; text-align:center; font-size:11px;
+            color:inherit !important; opacity:0.5; padding:2px 0; margin-top:2px;
+            border:1px solid rgba(128,128,128,0.25); border-radius:4px;
+            text-decoration:none; cursor:pointer; background:transparent; }
+        .snap-btn:hover { opacity:0.9; background:rgba(128,128,128,0.08); }
+        .metric-help { display:inline-block; margin-left:5px; font-size:13px; opacity:0.55;
                          cursor:help; position:relative; }
         .metric-help:hover::after {
             content: attr(data-tip);
             position:absolute; left:50%; transform:translateX(-50%);
-            top:calc(100% + 8px); background:#0E223D; color:#fff;
-            font-size:12.5px; font-weight:500; padding:11px 15px; border-radius:8px;
-            white-space:normal; width:280px; z-index:99999; line-height:1.65;
-            box-shadow:0 4px 20px rgba(0,0,0,0.6); opacity:1 !important;
-            letter-spacing:0.1px;
+            top:calc(100% + 8px); background:#0E223D; color:#ffffff;
+            font-size:13px; font-weight:600; padding:12px 16px; border-radius:8px;
+            white-space:normal; width:290px; z-index:99999; line-height:1.7;
+            box-shadow:0 4px 20px rgba(0,0,0,0.7); opacity:1 !important;
+            letter-spacing:0.15px; border:1px solid rgba(59,158,255,0.3);
             pointer-events:none;
         }
         .action-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:6px;}
@@ -74,6 +81,18 @@ st.markdown("""
         .badge-gray  {background:rgba(128,128,128,0.12);color:inherit;opacity:0.7;}
         .badge-green {background:rgba(39,174,96,0.15);color:#27AE60;}
         .divider{border:none;border-top:1px solid rgba(128,128,128,0.2);margin:20px 0;}
+        /* Util metric value colors via data attribute on parent column */
+        [data-util-color="green"] [data-testid="stMetricValue"] { color:#27AE60 !important; }
+        [data-util-color="amber"] [data-testid="stMetricValue"] { color:#F39C12 !important; }
+        [data-util-color="red"]   [data-testid="stMetricValue"] { color:#C0392B !important; }
+        [data-util-color="grey"]  [data-testid="stMetricValue"] { color:#718096 !important; }
+        button[data-testid="baseButton-secondary"] {
+            font-size: 11px !important;
+            padding: 2px 6px !important;
+            min-height: 24px !important;
+            height: 24px !important;
+            line-height: 20px !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -299,18 +318,17 @@ if isinstance(loc, tuple): loc = loc[0]
 region = PS_REGION_OVERRIDE.get(selected, PS_REGION_MAP.get(loc, ""))
 _region_pill = (
     f"<span style='display:inline-block;margin-top:12px;padding:4px 12px;border-radius:20px;"
-    f"background:rgba(255,75,64,0.15);border:1px solid rgba(255,75,64,0.35);color:#ff4b40;"
+    f"background:rgba(59,158,255,0.15);border:1px solid rgba(59,158,255,0.35);color:#3B9EFF;"
     f"font-size:11px;font-weight:700;letter-spacing:.5px'>{region}</span>"
 ) if region else ""
 _sub_str = " · ".join(_sub_parts)
 
 st.markdown(
-    f"<div style='background:#1B2B5E;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;"
+    f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;"
     f"font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
-    f"<div style='position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;"
-    f"background:radial-gradient(circle,rgba(91,141,239,0.15) 0%,transparent 70%);pointer-events:none'></div>"
-    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
-    f"color:#ff4b40;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Daily Briefing</div>"
+    f"<svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);opacity:0.06;width:200px;height:200px;pointer-events:none' viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'><g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435ZM1445.252,792.261c-7.628-38.507-22.817-74.472-43.124-107.897-35.582-58.566-85.801-106.77-139.329-149.092-69.784-55.176-145.355-102.407-225.163-141.162-2.165-1.052-4.941.388-5.391,1.627-.426,1.171-.463,3.413.931,4.628,20.341,17.734,39.847,35.55,58.599,55.093,13.286,14.465,26.223,28.012,37.022,44.544,19.784,30.289,35.735,62.168,50.127,95.397,34.512,31.926,64.863,67.358,90.813,106.359,42.427,63.765,57.696,142.663,37.453,217.116-11.436,42.061-34.763,80.507-64.388,112.265-55.859,59.882-133.144,94.711-214.71,99.157-32.507,1.773-64.093-.538-96.013-6.503-28.16-5.262-70.299-23.997-96.538-36.626-2.312-1.112-4.605-.743-6.449.974-12.635,11.76-25.076,22.901-39.051,33.146l-43.32,31.757c-2.68,1.965-2.195,5.562.439,7.808,70.707,60.309,165.779,100.179,259.837,97.033,39.996-1.336,78.686-6.594,117.486-16.111,94.178-23.099,174.952-71.91,236.526-146.957,23.873-29.096,44.355-60.51,59.779-94.956,29.172-65.148,38.357-137.461,24.463-207.601ZM601.099,242.903c-12.268,10.522-48.215,44.405-47.219,60.482.993,16.01,10.781,31.195,25.227,38.155,14.47,6.972,41.303-10.055,53.886-18.311l65.495-42.972c26.305-17.259,52.496-32.716,80.08-47.834l57.464-31.494c20.451-11.209,41.123-19.851,63.235-27.448,35.852-12.318,72.313-18.084,110.322-17.747,29.787.263,58.398,3.408,86.939,11.449,44.037,12.405,82.745,35.987,114.027,69.974,20.347,22.106,37.598,45.332,51.026,71.732,6.962,13.688,13.008,27.156,16.103,42.311,6.48,31.729,12.267,85.992-.676,115.916-6.013,13.902-13.009,26.627-18.289,40.753-.847,2.264-.768,4.767,1.387,6.461l81.366,63.967c2.003,1.574,5.098.298,6.46-1.592,19.285-26.745,34.599-55.578,45.667-86.804,10.617-29.953,15.416-60.246,15.218-92.192-.482-77.938-29.055-152.791-79.976-211.891-67.16-77.946-169.264-137.487-272.877-146.244-33.524-2.834-66.192-1.328-99.421,3.091-82.214,10.934-149.21,45.218-216.385,92.267-48.269,33.807-94.373,69.644-139.062,107.973ZM72.687,567.553c20.03,44.974,54.35,86.652,88.718,121.568,19.447,19.756,38.882,38.258,60.393,55.711l73.052,59.268c30.921,25.086,74.954,56.331,111.096,72.278,11.713,5.168,23.385,8.99,35.917,11.295,12.922,2.375,24.878,1.136,37.309-3.088,18.441-6.266,35.538-14.698,52.671-24.006,1.792-.974,2.85-2.213,3.058-3.936.179-1.483-.47-3.163-1.914-4.548-14.129-13.542-27.174-27.284-42.195-40.056l-78.193-66.48-93.5-82.422c-23.176-20.43-44.471-41.737-65.536-64.239-15.19-16.227-28.591-32.64-40.05-51.639-20.601-34.157-31.396-72.282-30.182-112.398.614-20.279,2.364-39.861,7.45-59.369,8.872-34.031,50.72-76.652,77.451-99.125,3.767-7.04,2.459-14.401,2.885-21.735.884-15.227,3.244-29.908,5.647-44.959,4.285-26.824,22.718-58.984,38.899-80.638,1.348-1.805,1.936-3.535.891-4.937-.951-1.277-2.618-2.49-4.589-2.222-52.436,7.145-104.92,34.806-146.088,67.704-25.632,20.484-48.458,43.456-68.934,69.137-46.339,58.118-62.952,131.49-53.428,204.864,4.697,36.186,14.376,70.75,29.171,103.971ZM1196.886,310.029c-4.882-10.39-12.371-18.773-20.659-26.723-18.771-18.007-40.425-31.674-64.291-42.362-57.569-25.783-110.906-28.064-173.214-22.213-61.067,5.735-111.183,25.069-164.567,54.081-24.678,13.412-48.301,26.866-71.885,42.28l-105.247,68.787c-85.308,55.756-195.138,156.138-256.755,237.876-1.598,2.12-2.206,4.81-.222,6.912l76.342,80.886c1.468,1.556,2.9,1.672,4.715,1.249,1.397-.326,1.99-1.717,2.793-3.377,3.117-6.44,6.665-11.977,11.238-17.864,38.52-49.59,82.099-94.54,130.222-135.261,40.87-34.583,82.783-67.442,126.68-98.902,83.71-59.991,188.529-115.793,291.15-127.921,23.653-2.795,46.328-.575,69.656,3.405,27.197,4.641,52.661,12.543,78.69,21.347l38.004,12.855c13.849,4.685,27.221-3.226,30.503-17.755,2.725-12.064,2.293-25.708-3.154-37.301Z'/></g></svg>"
+        f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+    f"color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Daily Briefing</div>"
     f"<h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>"
     f"{_greeting}, {_my_display}</h1>"
     f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>"
@@ -319,6 +337,186 @@ st.markdown(
     f"</div>",
     unsafe_allow_html=True
 )
+
+# ── Pre-compute snapshot data so briefing can appear before utilization ───────
+_ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool) if not my_projects.empty else pd.Series(dtype=bool)
+_active  = my_projects[~_ioh].copy() if not my_projects.empty else pd.DataFrame()
+_snap_today = pd.Timestamp.today().normalize()
+_snap_n7    = _snap_today + pd.Timedelta(days=7)
+_snap_14    = _snap_today - pd.Timedelta(days=14)
+_PHASE_ORDER_DB = ["00. onboarding","01. requirements and design","02. configuration",
+                "03. enablement/training","04. uat","05. prep for go-live",
+                "06. go-live","07. data migration","08. ready for support transition","09. phase 2 scoping"]
+def _pidx_db(p):
+    pl = str(p).strip().lower()
+    for i, ph in enumerate(_PHASE_ORDER_DB):
+        if pl.startswith(ph[:6]) or ph in pl or pl in ph: return i
+    return -1
+if not _active.empty:
+    _gld_col = "effective_go_live_date" if "effective_go_live_date" in _active.columns else "go_live_date"
+    _gls = (_active[_active[_gld_col].notna() & (_active[_gld_col] >= _snap_today) & (_active[_gld_col] <= _snap_n7)]
+            .sort_values(_gld_col) if _gld_col in _active.columns else pd.DataFrame())
+    _ihc = (_active[_active[_gld_col].notna() & (_active[_gld_col] >= _snap_14) & (_active[_gld_col] < _snap_today)]
+            .sort_values(_gld_col) if _gld_col in _active.columns else pd.DataFrame())
+    _leg_s    = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
+    _onb_plus = _active["phase"].fillna("").apply(lambda p: _pidx_db(p) >= 0)
+    _no_intro = (~_active["ms_intro_email"].notna()) if "ms_intro_email" in _active.columns else pd.Series(True, index=_active.index)
+    _mi       = _active[(~_leg_s) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
+    _stale    = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False) if "days_inactive" in _active.columns else pd.DataFrame()
+    _rag_red  = pd.DataFrame(); _rag_yellow = pd.DataFrame()
+    # Include on-hold projects in RAG — a red on-hold is still a red
+    _all_proj = my_projects.copy() if not my_projects.empty else pd.DataFrame()
+    if "rag" in _all_proj.columns:
+        _rv = _all_proj["rag"].fillna("").astype(str).str.strip().str.lower()
+        _rag_red = _all_proj[_rv == "red"]; _rag_yellow = _all_proj[_rv == "yellow"]
+    # Projects 9+ and 12+ months from start, not yet at phase 08
+    _pre_trans = _active[_active["phase"].fillna("").apply(
+        lambda p: _pidx_db(p) < _pidx_db("08. ready for support transition")
+    )] if "phase" in _active.columns else _active
+    if "start_date" in _pre_trans.columns and not _pre_trans.empty:
+        _sd = pd.to_datetime(_pre_trans["start_date"], errors="coerce")
+        _months_active = (_snap_today - _sd).dt.days / 30.44
+        _proj_9mo  = _pre_trans[_months_active >= 9].copy()
+        _proj_12mo = _pre_trans[_months_active >= 12].copy()
+    else:
+        _proj_9mo = _proj_12mo = pd.DataFrame()
+else:
+    _gls = _ihc = _mi = _stale = _rag_red = _rag_yellow = _proj_9mo = _proj_12mo = pd.DataFrame()
+
+# ── This Week Briefing ────────────────────────────────────────────────────
+_p1, _p2, _p3 = [], [], []
+
+if len(_rag_red) > 0:
+    _red_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_red.head(3).iterrows())
+    _p1.append(f"**{len(_rag_red)} project{'s' if len(_rag_red)>1 else ''} flagged Red RAG** ({_red_names}{'...' if len(_rag_red)>3 else ''}) — these need your attention first.")
+
+if len(_gls) > 0:
+    _gl_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _gls.iterrows())
+    _p1.append(f"**{len(_gls)} project{'s are' if len(_gls)>1 else ' is'} going live this week** ({_gl_names}) — confirm readiness and have cutover support in place.")
+
+if len(_ihc) > 0:
+    _ihc_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:20] for _, r in _ihc.head(3).iterrows())
+    _p1.append(f"**{len(_ihc)} project{'s are' if len(_ihc)>1 else ' is'} in hypercare** ({_ihc_names}) — check in proactively and log any post-go-live issues.")
+
+if len(_rag_yellow) > 0:
+    _yel_names = ", ".join(str(r.get("project_name","")).split(" - ")[0][:25] for _, r in _rag_yellow.head(2).iterrows())
+    _p2.append(f"**{len(_rag_yellow)} Yellow RAG project{'s' if len(_rag_yellow)>1 else ''}** ({_yel_names}) — review blockers before they escalate to Red.")
+
+if len(_stale) > 0:
+    _stale_top  = _stale.iloc[0]
+    _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0][:25]
+    _stale_days = int(_stale_top.get("days_inactive", 0))
+    if len(_stale) == 1:
+        _p2.append(f"**1 project needs re-engagement** ({_stale_name}, {_stale_days}d inactive) — send a check-in to re-establish momentum.")
+    else:
+        _p2.append(f"**{len(_stale)} projects need re-engagement**, led by {_stale_name} ({_stale_days}d inactive) — use Customer Engagement to draft outreach.")
+
+if len(_mi) > 0:
+    _p2.append(f"**{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email** — a quick win to close before end of week.")
+
+_oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+if _oh_count > 0:
+    _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
+
+if _p1 or _p2 or _p3:
+
+    # Build paragraph prose — conversational, not bullet list
+    def _proj_list(df, n=3):
+        names = [str(r.get("project_name","")).split(" - ")[0].strip()[:28] for _, r in df.head(n).iterrows()]
+        if len(df) > n: names.append(f"and {len(df)-n} more")
+        return ", ".join(names)
+
+    _para_attn = ""
+    if len(_rag_red) > 0:
+        _para_attn += f"{len(_rag_red)} project{'s are' if len(_rag_red)>1 else ' is'} on Red RAG ({_proj_list(_rag_red)}). "
+    if len(_gls) > 0:
+        _para_attn += f"{'With' if _para_attn else ''} {_proj_list(_gls)} {'is' if len(_gls)==1 else 'are'} going live this week — confirm cutover readiness before the end of the day. "
+    if len(_mi) > 0:
+        _para_attn += f"{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email date — if already sent, logging them is a quick close. "
+    if len(_stale) > 0:
+        _stale_top  = _stale.iloc[0]
+        _stale_name = str(_stale_top.get("project_name","")).split(" - ")[0].strip()[:28]
+        _stale_days = int(_stale_top.get("days_inactive",0))
+        if len(_stale) == 1:
+            _para_attn += f"{_stale_name} hasn't had contact in {_stale_days} days — a short check-in would re-establish momentum. "
+        else:
+            _para_attn += f"{len(_stale)} projects are overdue for outreach, with {_stale_name} leading at {_stale_days} days inactive — use Customer Engagement to draft messages. "
+    if len(_proj_12mo) > 0:
+        _12mo_names = ", ".join(str(r.get("project_name","")).split(" - ")[0].strip()[:22] for _, r in _proj_12mo.head(2).iterrows())
+        _extra = f" and {len(_proj_12mo)-2} more" if len(_proj_12mo) > 2 else ""
+        _para_attn += f"{len(_proj_12mo)} project{'s have' if len(_proj_12mo)>1 else ' has'} been active for 12+ months without reaching support transition ({_12mo_names}{_extra}) — these likely need an escalation review."
+
+    _para_reminder = ""
+    if len(_gls) > 0 or len(_ihc) > 0:
+        _r_parts = []
+        if len(_gls) > 0:
+            _r_parts.append(f"{len(_gls)} customer{'s' if len(_gls)>1 else ''} going live this week")
+        if len(_ihc) > 0:
+            _r_parts.append(f"{len(_ihc)} in week-one hypercare")
+        _para_reminder = " and ".join(_r_parts) + " — a proactive check-in today would be timely."
+
+    _para_quick = ""
+    if len(_proj_9mo) > 0 and len(_proj_12mo) < len(_proj_9mo):
+        _9mo_only = len(_proj_9mo) - len(_proj_12mo)
+        if _9mo_only > 0:
+            _para_quick += f"{_9mo_only} project{'s are' if _9mo_only>1 else ' is'} approaching the 12-month mark — worth a proactive check on timeline and transition plan. "
+    if len(_rag_yellow) > 0:
+        _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation."
+
+    _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+    _para_house = ""
+    if _oh_count > 0:
+        _para_house = f"{_oh_count} project{'s are' if _oh_count>1 else ' is'} on hold. Make sure each has an On Hold Reason and Responsible for Delay recorded — these are flagged in DRS Health Check if missing."
+
+    _bhtml = """<div style='border-radius:8px;border:1px solid rgba(59,158,255,0.2);overflow:hidden;margin-bottom:16px;font-family:Manrope,sans-serif'>
+  <div style='background:rgba(59,158,255,0.07);padding:10px 20px;border-bottom:1px solid rgba(59,158,255,0.15);display:flex;align-items:center;gap:10px'>
+<span style='font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF'>This Week&#39;s Focus</span>
+<span style='font-size:11px;color:var(--text-color,inherit);opacity:0.35;margin-left:auto'>Rule-based · AI briefings coming soon</span>
+  </div>
+  <div style='padding:18px 22px;display:flex;flex-direction:column;gap:14px'>"""
+
+    if _para_reminder:
+        _bhtml += f"""<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:#27AE60;border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#27AE60;margin-bottom:5px'>Friendly reminder</div>
+  <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_reminder.strip()}</div>
+</div>
+  </div>"""
+
+    if _para_attn:
+        _sep_r = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if _para_reminder else ""
+        _bhtml += f"""{_sep_r}<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:#C0392B;border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#C0392B;margin-bottom:5px'>Needs attention</div>
+  <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_attn.strip()}</div>
+</div>
+  </div>"""
+
+    if _para_quick:
+        _sep = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if (_para_attn or _para_reminder) else ""
+        _bhtml += f"""{_sep}<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:#3B9EFF;border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:5px'>Quick wins this week</div>
+  <div style='font-size:13px;color:inherit;line-height:1.7'>{_para_quick.strip()}</div>
+</div>
+  </div>"""
+
+    if _para_house:
+        _sep2 = "<div style='height:1px;background:rgba(128,128,128,0.12)'></div>" if (_para_attn or _para_quick) else ""
+        _bhtml += f"""{_sep2}<div style='display:flex;gap:14px;align-items:flex-start'>
+<div style='flex-shrink:0;width:3px;background:rgba(128,128,128,0.3);border-radius:2px;align-self:stretch;min-height:36px'></div>
+<div>
+  <div style='font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:inherit;opacity:0.45;margin-bottom:5px'>Housekeeping</div>
+  <div style='font-size:13px;color:inherit;opacity:0.6;line-height:1.7'>{_para_house.strip()}</div>
+</div>
+  </div>"""
+
+    _bhtml += "</div></div>"
+    st.markdown(_bhtml, unsafe_allow_html=True)
+
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
@@ -381,44 +579,57 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values(["project", "date"])
 
-        # Build prior_htd — same formula as Util Report assign_credits
+        # Build prior_htd — exactly matching Util Report assign_credits:
+        # group by project only, prior = max(htd) - sum(period hours)
         prior_htd: dict = {}
         if "hours_to_date" in month_ns.columns:
-            _htd_grp_cols = [c for c in ["project","project_type"] if c in month_ns.columns]
-            for _key, _grp in month_ns.groupby(_htd_grp_cols):
-                _pk = tuple(" ".join(str(k).strip().split()) for k in (_key if isinstance(_key, tuple) else (_key,)))
+            for _proj_key, _grp in month_ns.groupby("project"):
+                _proj_n = " ".join(str(_proj_key).strip().split())
                 try:
-                    _max_htd  = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
-                    _period_h = float(_grp["hours"].sum() or 0)
-                    prior_htd[_pk] = max(0.0, _max_htd - _period_h)
+                    _max_htd   = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
+                    prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
                 except Exception:
-                    prior_htd[_pk] = 0.0
+                    prior_htd[_proj_n] = 0.0
 
+        import re as _re_db
         _con: dict = {}
         for _, _r in ff_rows.iterrows():
             _proj  = " ".join(str(_r.get("project","")).split())
             _ptype = str(_r.get("project_type","")).strip()
             _hrs   = float(_r.get("hours", 0) or 0)
-            _date  = str(_r.get("date", ""))[:10]
             if _hrs <= 0: continue
 
-            _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
-                   if k.strip().lower() in _ptype.lower()]
-            _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+            # Premium: check Time Item SKU for IMPL10/IMPL20 first (matches Util Report)
+            _ptype_lower = _ptype.strip().lower()
+            if "premium" in _ptype_lower:
+                _sku = str(_r.get("time_item_sku", "") or "")
+                _sku_nums = _re_db.findall(r"IMPL(\d+)", _sku.upper())
+                if _sku_nums:
+                    _sc = float(_sku_nums[0])
+                else:
+                    _proj_name = str(_r.get("project","") or "")
+                    _name_nums = _re_db.findall(r"(?<![\d])(10|20)(?![\d])", _proj_name)
+                    _sc = float(_name_nums[0]) if _name_nums else None
+            else:
+                _m  = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                       if k.strip().lower() in _ptype_lower]
+                _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
             if _sc is None:
                 ff_unscoped += _hrs
                 continue
 
-            _ck = (_proj, _ptype)  # composite key: project + product type
-            if _ck not in _con: _con[_ck] = prior_htd.get(_ck, prior_htd.get((_proj,), 0.0))
-            _used = _con[_ck]; _rem = _sc - _used
+            # Use project name as key — matching Util Report's consumed dict
+            if _proj not in _con:
+                _con[_proj] = prior_htd.get(_proj, 0.0)
+            _used = _con[_proj]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
             elif _hrs <= _rem:
-                ff_credit += _hrs; _con[_ck] = _used + _hrs
+                ff_credit += _hrs; _con[_proj] = _used + _hrs
             else:
-                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_ck] = _sc
+                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
 
     credit_hrs  = round(tm_hrs + ff_credit, 2)
     overrun_hrs  = round(ff_overrun, 2)
@@ -449,33 +660,53 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
-        v   = _fmt_hrs(avail)
-        lbl = "Available this month" if avail else "Available hrs (location not mapped)"
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{v}</div><div class="metric-lbl">{lbl}<span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
+        _lbl = "Available this month" if avail else "Available hrs (location not mapped)"
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(avail)}</div><div class="metric-lbl">{_lbl} <span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month<span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month <span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
     with c3:
         if util_pct is not None:
-            col = "#27AE60" if util_pct >= 70 else ("#F39C12" if util_pct >= 60 else "#C0392B")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{util_pct}%</div><div class="metric-lbl">Util % &nbsp;·&nbsp; {_fmt_hrs(util_hrs)} credited<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            # Pacing-aware colouring — compare MTD util against pro-rated target
+            _UTIL_TARGET = 70.0
+            _month_start = today.replace(day=1)
+            _month_end   = (today.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
+            _days_total  = len(pd.bdate_range(_month_start, _month_end))
+            _days_elapsed = len(pd.bdate_range(_month_start, today))
+            _pacing_pct  = round(_UTIL_TARGET * _days_elapsed / _days_total, 1) if _days_total else _UTIL_TARGET
+            _gap         = util_pct - _pacing_pct
+            if _gap >= 0:
+                _ucol      = "#27AE60"
+                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(39,174,96,.15);color:#27AE60">On pace · target {_pacing_pct}%</div>'
+            elif _gap >= -10:
+                _ucol      = "#F39C12"
+                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(243,156,18,.15);color:#F39C12">Behind pace · target {_pacing_pct}%</div>'
+            else:
+                _ucol      = "#C0392B"
+                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(192,57,43,.15);color:#C0392B">Behind target · goal {_UTIL_TARGET}%</div>'
+            st.markdown(
+                f'<div class="metric-card"><div class="metric-val" style="color:{_ucol}">{util_pct}%</div>' +
+                f'<div class="metric-lbl">Util % · {_fmt_hrs(util_hrs)} credited <span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Colour reflects pacing: compares MTD util against the pro-rated {_UTIL_TARGET}% target for how far through the month we are.">ⓘ</span></div>' +
+                f'{_pace_tag}</div>',
+                unsafe_allow_html=True
+            )
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Util %<span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Credits = T&M hours + Fixed Fee hours within Scope. Overrun hours and Internal/Admin hours are excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("Util %", "—", help="Utilization credit hours as a % of Available hours.")
     with c4:
         if overrun_pct is not None:
-            col = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{col}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % &nbsp;·&nbsp; {_fmt_hrs(overrun_hrs)} over budget<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            _ocol = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_ocol}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % · {_fmt_hrs(overrun_hrs)} over <span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">FF overrun %<span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("FF overrun %", "—", help="Fixed Fee hours logged beyond the scoped budget as a % of available hours.")
     with c5:
         if admin_pct is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % &nbsp;·&nbsp; {_fmt_hrs(admin_hrs)}<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % · {_fmt_hrs(admin_hrs)} <span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">Internal %<span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("Internal %", "—", help="Hours logged against Internal or Admin projects as a % of Available hours.")
     with c6:
         if _whs_score is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS &nbsp;·&nbsp; {_whs_label}<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS · {_whs_label} <span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="metric-card"><div class="metric-val">—</div><div class="metric-lbl">WHS<span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
+            st.metric("WHS", "—", help="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects.")
 
     # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
     if ff_unscoped > 0:
@@ -490,8 +721,6 @@ else:
             view_name.split(",")[1].strip() if "," in view_name else view_name
         )
         st.warning(f"No time entries found for **{_view_label_for_warn}** in the NS file.")
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ── Consultant breakdown table (group views only) ─────────────────────────────
 if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
@@ -592,8 +821,10 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
         if is_leaver and exit_dt:
             _display += " *"
 
+        _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
         return {
             "Consultant":    _display,
+            "WHS":           f"{_whs_s} · {_whs_l}" if _whs_s is not None else "—",
             "Avail h":       _avail_cn or "—",
             "FF Util h":     _ff_util or "—",
             "FF Overrun h":  _ff_over or "—",
@@ -615,6 +846,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             hide_index=True,
             column_config={
                 "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
+                "WHS":          st.column_config.TextColumn("WHS",          width="small"),
                 "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
                 "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
                 "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
@@ -632,119 +864,130 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2 — Project Snapshot
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">My Projects — Snapshot</div>', unsafe_allow_html=True)
 
 if df_drs is None:
     st.info("Upload SS DRS Export in the sidebar to see your project snapshot.")
 elif my_projects.empty:
     st.info("No projects found in the DRS file for your profile.")
 else:
-    _ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool)
-    _active  = my_projects[~_ioh].copy()
-    _today   = pd.Timestamp.today().normalize()
-    _n7      = _today + pd.Timedelta(days=7)
-    _14      = _today - pd.Timedelta(days=14)
+    _today = _snap_today; _n7 = _snap_n7; _14 = _snap_14
 
-    # Phase breakdown
-    _PHASE_ORDER = ["00. onboarding","01. requirements and design","02. configuration",
-                    "03. enablement/training","04. uat","05. prep for go-live",
-                    "06. go-live","07. data migration","08. ready for support transition","09. phase 2 scoping"]
-    def _pidx_db(p):
-        pl = str(p).strip().lower()
-        for i, ph in enumerate(_PHASE_ORDER):
-            if pl.startswith(ph[:6]) or ph in pl or pl in ph: return i
-        return -1
-
-    _pc = sorted(
-        [(("Unassigned" if str(ph) in ("—", "", "nan") else ph), cnt)
-         for ph, cnt in _active["phase"].fillna("Unassigned").value_counts().items()
-         if cnt > 0],
-        key=lambda x: (_pidx_db(x[0]) if x[0] != "Unassigned" else 999)
-    )
-
-    # Going live this week
-    _gls = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _today) & (_active["go_live_date"] <= _n7)]
-            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
-
-    # In hypercare
-    _ihc = (_active[_active["go_live_date"].notna() & (_active["go_live_date"] >= _14) & (_active["go_live_date"] < _today)]
-            .sort_values("go_live_date") if "go_live_date" in _active.columns else pd.DataFrame())
-
-    # Missing intro email
-    _leg      = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
-    _onb_plus = _active["phase"].fillna("").apply(lambda p: _pidx_db(p) >= 0)
-    _no_intro = (~_active["ms_intro_email"].notna()) if "ms_intro_email" in _active.columns else pd.Series(True, index=_active.index)
-    _mi       = _active[(~_leg) & _onb_plus & _no_intro] if "ms_intro_email" in _active.columns else pd.DataFrame()
-
-    # Unscoped hours banner — matches Util Report behaviour
-
-    # Re-engagement
-    _stale = pd.DataFrame()
-    if "days_inactive" in my_projects.columns:
-        _stale = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False)
-
-    # RAG counts — from Overall RAG column in DRS
-    _rag_red    = pd.DataFrame()
-    _rag_yellow = pd.DataFrame()
-    if "rag" in _active.columns:
-        _rag_vals   = _active["rag"].fillna("").astype(str).str.strip().str.lower()
-        _rag_red    = _active[_rag_vals == "red"]
-        _rag_yellow = _active[_rag_vals == "yellow"]
-
-    snap1, snap2, snap3, snap4, snap5, snap6, snap7 = st.columns(7)
-    with snap1:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
-        for ph, cnt in _pc:
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{cnt} · {str(ph).split(".")[-1].strip()[:22]}</div>', unsafe_allow_html=True)
-    with snap2:
-        _col = "#27AE60" if len(_gls) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
-        for _, r in _gls.iterrows():
-            _cust = str(r.get("project_name",""))
-            _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with snap3:
-        _col = "#F39C12" if len(_ihc) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare (week 1)</div></div>', unsafe_allow_html=True)
-        for _, r in _ihc.iterrows():
-            _cust = str(r.get("project_name",""))
-            _cust = _cust.split(" - ")[0].strip() if " - " in _cust else _cust[:28]
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with snap4:
-        _col = "#C0392B" if len(_mi) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email</div></div>', unsafe_allow_html=True)
-        if len(_mi) > 0:
-            st.markdown('<div style="font-size:13px;opacity:.55">Excl. legacy projects</div>', unsafe_allow_html=True)
-    with snap5:
-        _col = "#C0392B" if len(_stale) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement</div></div>', unsafe_allow_html=True)
-        if len(_stale) > 0:
-            st.markdown('<div style="font-size:13px;opacity:.55">14+ days inactive</div>', unsafe_allow_html=True)
     def _rag_label(r):
-        """Format as 'Customer : Product abbrev' for RAG card list items."""
-        _pn  = str(r.get("project_name","") or "")
-        _cust = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
-        _cust = _cust[:22]
+        _pn   = str(r.get("project_name","") or "")
+        _cust = _pn.split(" - ")[0].strip()[:22] if " - " in _pn else _pn[:22]
         _pt   = str(r.get("project_type","") or "")
-        # Abbreviate product type: strip ZoneApp:/ZoneBill: prefix, keep first word
-        _prod = _pt.split(":")[-1].strip() if ":" in _pt else _pt
-        _prod = _prod.split()[0] if _prod else ""
+        _prod = _pt.split(":")[-1].strip().split()[0] if _pt else ""
         return f"{_cust} : {_prod}" if _prod else _cust
 
-    with snap6:
+    # Phase breakdown — exclude Unassigned, sort by phase order
+    _PHASE_ABBREV = {
+        "00. onboarding":                   "Onboarding",
+        "01. requirements and design":       "Requirements and Design",
+        "02. configuration":                 "Configuration",
+        "03. enablement/training":           "Enablement/Training",
+        "04. uat":                           "UAT",
+        "05. prep for go-live":              "Prep for Go-Live",
+        "06. go-live":                       "Go-Live",
+        "07. data migration":                "Data Migration",
+        "08. ready for support transition":  "Ready for Support Transition",
+        "09. phase 2 scoping":               "Phase 2 Scoping",
+    }
+    _pc_all = {}
+    if "phase" in _active.columns:
+        for ph, cnt in _active["phase"].fillna("").value_counts().items():
+            _ph_clean = str(ph).strip()
+            if _ph_clean and _ph_clean not in ("", "nan", "None"):
+                _pc_all[_ph_clean] = cnt
+    # Sort by phase index, keep Unassigned at end
+    _pc_sorted = sorted(
+        [(ph, cnt) for ph, cnt in _pc_all.items()],
+        key=lambda x: (_pidx_db(x[0]) if _pidx_db(x[0]) >= 0 else 999)
+    )
+    # Separate unassigned
+    _pc_assigned   = [(ph, cnt) for ph, cnt in _pc_sorted if _pidx_db(ph) >= 0]
+    _unassigned_ct = sum(cnt for ph, cnt in _pc_sorted if _pidx_db(ph) < 0)
+
+    # ── Section: Utilization already above — now RAG & Risk ───────────────────
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">My Projects — RAG &amp; Risk</div>', unsafe_allow_html=True)
+    r2a, r2b, r2c, r2d, r2e = st.columns(5)
+    with r2a:
         _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
         for _, _rr in _rag_red.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
-    with snap7:
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
+    with r2b:
         _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
         for _, _ry in _rag_yellow.head(3).iterrows():
-            st.markdown(f'<div style="font-size:12px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
+    with r2c:
+        _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+        _col = "#F39C12" if _oh_snap > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
+        if _oh_snap > 0:
+            _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
+            for _, _or in _oh_proj.head(3).iterrows():
+                st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
+    with r2d:
+        _col = "#F39C12" if len(_proj_9mo) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9+ months active <span class="metric-help" data-tip="Active projects 9 or more months from Start Date that have not yet reached Phase 08. Ready for Support Transition.">ⓘ</span></div></div>', unsafe_allow_html=True)
+        for _, _p9 in _proj_9mo.head(3).iterrows():
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p9)}</div>', unsafe_allow_html=True)
+    with r2e:
+        _col = "#C0392B" if len(_proj_12mo) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_12mo)}</div><div class="metric-lbl">12+ months active <span class="metric-help" data-tip="Active projects at or beyond 12 months from Start Date that have not yet reached Phase 08. May need escalation review.">ⓘ</span></div></div>', unsafe_allow_html=True)
+        for _, _p12 in _proj_12mo.head(3).iterrows():
+            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p12)}</div>', unsafe_allow_html=True)
+
+    # ── Section: My Projects — Snapshot ───────────────────────────────────────
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">My Projects — Snapshot</div>', unsafe_allow_html=True)
+    r1a, r1b, r1c, r1d, r1e = st.columns(5)
+    with r1a:
+        _col = "#27AE60" if len(_gls) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
+        for _, r in _gls.iterrows():
+            _cust = str(r.get("project_name","")).split(" - ")[0].strip()
+            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
+    with r1b:
+        _col = "#F39C12" if len(_ihc) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare</div></div>', unsafe_allow_html=True)
+        for _, r in _ihc.iterrows():
+            _cust = str(r.get("project_name","")).split(" - ")[0].strip()
+            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
+    with r1c:
+        _col = "#C0392B" if len(_mi) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    with r1d:
+        _col = "#C0392B" if len(_stale) > 0 else "inherit"
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    with r1e:
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
+
+    # ── Phase breakdown row ────────────────────────────────────────────────────
+    # Build full list: assigned phases + Unassigned if any
+    _pc_display = list(_pc_assigned)
+    if _unassigned_ct > 0:
+        _pc_display.append(("Unassigned", _unassigned_ct))
+
+    if _pc_display:
+        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Project Phase Breakdown</div>', unsafe_allow_html=True)
+        _ph_cols = st.columns(len(_pc_display))
+        for _phi, (ph, cnt) in enumerate(_pc_display):
+            _abbr = (
+                "Unassigned" if ph == "Unassigned"
+                else _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:20])
+            )
+            with _ph_cols[_phi]:
+                _card_style = "opacity:0.5" if ph == "Unassigned" else ""
+                st.markdown(
+                    f'<div class="metric-card" style="padding:8px 10px;{_card_style}">' +
+                    f'<div class="metric-val" style="font-size:24px">{cnt}</div>' +
+                    f'<div class="metric-lbl" style="font-size:12px">{_abbr}</div></div>',
+                    unsafe_allow_html=True
+                )
 
 
-
-
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-st.caption("PS Reporting Tools · Internal use only · Data loaded this session only")
+st.caption("PS Projects & Tools · Internal use only · Data loaded this session only")

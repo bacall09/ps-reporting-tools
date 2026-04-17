@@ -76,12 +76,31 @@ def get_ps_region(name):
     if not name or str(name).strip().lower() in ("", "nan", "none"):
         return "Unknown"
     name = str(name).strip()
+    # Try exact match first
     if name in PS_REGION_OVERRIDE:
         return PS_REGION_OVERRIDE[name]
     loc = EMPLOYEE_LOCATION.get(name, "")
-    if isinstance(loc, tuple):
-        loc = loc[0]
-    return PS_REGION_MAP.get(loc, "Unknown")
+    if loc:
+        if isinstance(loc, tuple): loc = loc[0]
+        return PS_REGION_MAP.get(loc, "Unknown")
+    # Try reversing "First Last" → "Last, First"
+    parts = name.split()
+    if len(parts) == 2:
+        reversed_name = f"{parts[1]}, {parts[0]}"
+        if reversed_name in PS_REGION_OVERRIDE:
+            return PS_REGION_OVERRIDE[reversed_name]
+        loc2 = EMPLOYEE_LOCATION.get(reversed_name, "")
+        if loc2:
+            if isinstance(loc2, tuple): loc2 = loc2[0]
+            return PS_REGION_MAP.get(loc2, "Unknown")
+    # Try last name only match
+    last = parts[0] if parts else ""
+    for key in EMPLOYEE_LOCATION:
+        if key.split(",")[0].strip().lower() == last.lower():
+            loc3 = EMPLOYEE_LOCATION[key]
+            if isinstance(loc3, tuple): loc3 = loc3[0]
+            return PS_REGION_MAP.get(loc3, "Unknown")
+    return "Unknown"
 
 
 def score_projects(ss_df, ns_df=None):
@@ -205,14 +224,16 @@ def consultant_whs(name, ss_df):
     Return (score, label, colour) for a single consultant given a DRS DataFrame.
     Convenience wrapper for Daily Briefing metric card.
     """
-    if ss_df is None or ss_df.empty:
+    if ss_df is None or ss_df.empty or not name:
         return None, "—", "#718096"
     try:
+        from shared.constants import name_matches
         scored   = score_projects(ss_df)
         summary, _ = build_consultant_summary(scored, ss_df)
-        row = summary[summary["project_manager"].astype(str).str.strip() == name.strip()]
+        # Use fuzzy name matching consistent with the rest of the app
+        row = summary[summary["project_manager"].apply(lambda v: name_matches(v, name))]
         if row.empty:
-            return 0.0, "Low", GREEN
+            return None, "—", "#718096"
         score = float(row.iloc[0]["total_score"])
         label, colour = workload_level(score)
         return score, label, colour

@@ -1244,3 +1244,113 @@ def build_excel(df, scope_map, consumed):
     buf.seek(0)
     return buf
 
+
+def calc_consultant_util(ns_rows, month_key, scope_map, avail_hours):
+    """
+    Calculate util % for a single consultant for a given month.
+    Matches Daily Briefing logic exactly: T&M full credit + FF capped at scope.
+    
+    Args:
+        ns_rows: DataFrame of NS time entries for this consultant (all months)
+        month_key: "YYYY-MM" string
+        scope_map: DEFAULT_SCOPE dict
+        avail_hours: float, total available hours for this consultant this month
+    
+    Returns:
+        dict with keys: util_pct, util_hrs, overrun_pct, overrun_hrs,
+                        admin_pct, admin_hrs, tm_hrs, ff_credit, ff_overrun
+    """
+    import re as _re_util
+    import pandas as _pd_util
+
+    empty = dict(util_pct=None, util_hrs=0.0, overrun_pct=None, overrun_hrs=0.0,
+                 admin_pct=None, admin_hrs=0.0, tm_hrs=0.0, ff_credit=0.0, ff_overrun=0.0)
+
+    if ns_rows is None or ns_rows.empty or not avail_hours:
+        return empty
+
+    ns_rows = ns_rows.copy()
+    if "date" in ns_rows.columns:
+        ns_rows["date"] = _pd_util.to_datetime(ns_rows["date"], errors="coerce")
+
+    month_ns = ns_rows[ns_rows["date"].dt.strftime("%Y-%m") == month_key].copy()
+    if month_ns.empty:
+        return empty
+
+    bt_col = "billing_type" if "billing_type" in month_ns.columns else None
+    if bt_col:
+        _bt = month_ns[bt_col].fillna("").str.strip().str.lower()
+        admin_hrs = round(float(month_ns[_bt == "internal"]["hours"].sum() or 0), 2)
+        tm_hrs    = round(float(month_ns[_bt == "t&m"]["hours"].sum() or 0), 2)
+        ff_rows   = month_ns[(_bt != "internal") & (_bt != "t&m")].copy()
+    else:
+        admin_hrs = 0.0
+        tm_hrs    = round(float(month_ns["hours"].sum() or 0), 2)
+        ff_rows   = _pd_util.DataFrame()
+
+    ff_credit = 0.0; ff_overrun = 0.0
+
+    if not ff_rows.empty and "project" in ff_rows.columns:
+        ff_rows = ff_rows.sort_values(["project", "date"])
+
+        prior_htd = {}
+        if "hours_to_date" in month_ns.columns:
+            for _proj_key, _grp in month_ns.groupby("project"):
+                _proj_n = " ".join(str(_proj_key).strip().split())
+                try:
+                    _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
+                    prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
+                except Exception:
+                    prior_htd[_proj_n] = 0.0
+
+        _con = {}
+        for _, _r in ff_rows.iterrows():
+            _proj  = " ".join(str(_r.get("project", "")).split())
+            _ptype = str(_r.get("project_type", "")).strip()
+            _hrs   = float(_r.get("hours", 0) or 0)
+            if _hrs <= 0: continue
+
+            _ptype_lower = _ptype.lower()
+            if "premium" in _ptype_lower:
+                _sku = str(_r.get("time_item_sku", "") or "")
+                _sku_nums = _re_util.findall(r"IMPL(\d+)", _sku.upper())
+                if _sku_nums:
+                    _sc = float(_sku_nums[0])
+                else:
+                    _name_nums = _re_util.findall(r"(?<!\d)(10|20)(?!\d)", str(_r.get("project", "")))
+                    _sc = float(_name_nums[0]) if _name_nums else None
+            else:
+                _m  = [(k, float(v)) for k, v in scope_map.items()
+                       if k.strip().lower() in _ptype_lower]
+                _sc = max(_m, key=lambda x: len(x[0]))[1] if _m else None
+
+            if _sc is None:
+                continue
+
+            if _proj not in _con:
+                _con[_proj] = prior_htd.get(_proj, 0.0)
+            _used = _con[_proj]; _rem = _sc - _used
+            if _rem <= 0:
+                ff_overrun += _hrs
+            elif _hrs <= _rem:
+                ff_credit += _hrs; _con[_proj] = _used + _hrs
+            else:
+                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
+
+    ff_credit  = round(ff_credit, 2)
+    ff_overrun = round(ff_overrun, 2)
+    util_hrs   = round(tm_hrs + ff_credit, 2)
+    avail      = float(avail_hours)
+
+    return dict(
+        util_pct     = round(util_hrs    / avail * 100, 1) if avail else None,
+        util_hrs     = util_hrs,
+        overrun_pct  = round(ff_overrun  / avail * 100, 1) if avail else None,
+        overrun_hrs  = ff_overrun,
+        admin_pct    = round(admin_hrs   / avail * 100, 1) if avail else None,
+        admin_hrs    = admin_hrs,
+        tm_hrs       = tm_hrs,
+        ff_credit    = ff_credit,
+        ff_overrun   = ff_overrun,
+    )
