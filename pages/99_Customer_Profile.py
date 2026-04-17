@@ -568,26 +568,29 @@ st.markdown("<hr class='divider'>", unsafe_allow_html=True)
 # SECTION 3 — OPPORTUNITY SELECTOR (if multiple docs)
 # ══════════════════════════════════════════════════════════════════════════════
 
-if not customer_docs:
+_has_gong_doc = bool(customer_docs)
+
+if not _has_gong_doc:
     st.markdown(f"""
     <div style='margin-bottom:16px'>
         <span style='font-size:20px;font-weight:700'>{selected_customer}</span>
     </div>
-    <div class='no-data-msg'>
-        No Gong handover docs uploaded for this customer yet.<br>
-        <span style='font-size:12px;opacity:.6'>Upload a .docx file above to populate the profile.</span>
+    <div class='no-data-msg' style='margin-bottom:12px'>
+        No Gong handover doc uploaded yet.<br>
+        <span style='font-size:12px;opacity:.6'>Upload a .docx above to populate intelligence sections — DRS and Notes are available without it.</span>
     </div>
     """, unsafe_allow_html=True)
-    st.stop()
 
-# Build opportunity tab labels
+# ── Opp selector (only if Gong doc uploaded) ─────────────────────────────────
 def _opp_label(doc: dict, idx: int) -> str:
     products = " · ".join(doc["products"][:3]) if doc["products"] else f"Opportunity {idx+1}"
     calls = doc["data_used"].get("Calls analyzed", "")
     calls_str = f" · {calls} calls" if calls and calls != "0" else ""
     return f"{products}{calls_str}"
 
-if len(customer_docs) > 1:
+d = None  # will be set below if Gong doc available
+
+if _has_gong_doc and len(customer_docs) > 1:
     st.markdown('<div class="section-label">Opportunities</div>', unsafe_allow_html=True)
     opp_labels = [_opp_label(d, i) for i, d in enumerate(customer_docs)]
     # Add remove option
@@ -602,40 +605,34 @@ if len(customer_docs) > 1:
             st.rerun()
         st.stop()
     active_doc = customer_docs[opp_labels.index(_opp_tab)]
-else:
-    active_doc = customer_docs[0]
-
-d = active_doc  # shorthand
+    d = active_doc
+elif _has_gong_doc:
+    d = customer_docs[0]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4 — CUSTOMER HEADER
+# SECTION 4 — CUSTOMER HEADER (Gong doc required)
 # ══════════════════════════════════════════════════════════════════════════════
 
-calls_info = d["data_used"].get("Calls analyzed", "")
-emails_info = d["data_used"].get("Emails analyzed", "")
-data_meta = []
-if calls_info:
-    data_meta.append(f"{calls_info} calls analysed")
-if emails_info and emails_info != "0":
-    data_meta.append(f"{emails_info} emails analysed")
-# Extract SF Opp ID from URL e.g. .../Opportunity/006Uh00000hvNLhIAM/view
-_opp_id_match = re.search(r"/Opportunity/([A-Za-z0-9]+)/", d.get("opp_link", ""))
-if _opp_id_match:
-    data_meta.append(f"SF Opp: {_opp_id_match.group(1)}")
-data_meta_str = " · ".join(data_meta) if data_meta else ""
-
-product_pills = "".join(
-    f'<span class="pill pill-teal">{p}</span>' for p in d["products"]
-)
-opp_link_html = (
-    f'<a href="{d["opp_link"]}" target="_blank" '
-    f'style="font-size:12px;color:#3B9EFF;opacity:.7;margin-left:12px;'
-    f'text-decoration:none">↗ SFDC opportunity</a>'
-    if d["opp_link"] else ""
-)
-
-st.markdown("""
+if d is not None:
+    calls_info  = d["data_used"].get("Calls analyzed", "")
+    emails_info = d["data_used"].get("Emails analyzed", "")
+    data_meta = []
+    if calls_info:
+        data_meta.append(f"{calls_info} calls analysed")
+    if emails_info and emails_info != "0":
+        data_meta.append(f"{emails_info} emails analysed")
+    _opp_id_match = re.search(r"/Opportunity/([A-Za-z0-9]+)/", d.get("opp_link", ""))
+    if _opp_id_match:
+        data_meta.append(f"SF Opp: {_opp_id_match.group(1)}")
+    data_meta_str  = " · ".join(data_meta) if data_meta else ""
+    product_pills  = "".join(f'<span class="pill pill-teal">{p}</span>' for p in d["products"])
+    opp_link_html  = (
+        f'<a href="{d["opp_link"]}" target="_blank" '
+        f'style="font-size:12px;color:#3B9EFF;opacity:.7;margin-left:12px;text-decoration:none">↗ SFDC opportunity</a>'
+        if d["opp_link"] else ""
+    )
+    st.markdown("""
 <div class="ai-stub" style="margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
         <div style="font-size:13px;font-weight:700;color:#4472C4">Ask about this customer</div>
@@ -649,14 +646,12 @@ st.markdown("""
 </div>
 <hr class='divider' style='margin:12px 0 16px'>
 """, unsafe_allow_html=True)
-
-_opp_name_display = d.get("opp_name", "")
-_opp_name_html = (
-    f'<div style="font-size:13px;color:rgba(128,128,128,.55);margin-top:2px;margin-bottom:2px">'
-    f'Opp: {_opp_name_display}</div>'
-    if _opp_name_display else ""
-)
-st.markdown(f"""
+    _opp_name_display = d.get("opp_name", "")
+    _opp_name_html = (
+        f'<div style="font-size:13px;color:rgba(128,128,128,.55);margin-top:2px;margin-bottom:2px">Opp: {_opp_name_display}</div>'
+        if _opp_name_display else ""
+    )
+    st.markdown(f"""
 <div style='margin-bottom:4px'>
     <span style='font-size:22px;font-weight:700'>{selected_customer}</span>
     {opp_link_html}
@@ -669,7 +664,6 @@ st.markdown(f"""
     {product_pills}
 </div>
 """, unsafe_allow_html=True)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4b — DRS PROJECT STRIP
@@ -797,271 +791,287 @@ tab_overview, tab_stakeholders, tab_requirements, tab_usecases, tab_risks, tab_n
     "Overview", "Stakeholders", "Requirements", "Use Cases", "Risks & Commitments", "Notes", "Usage"
 ])
 
-
 # ─── TAB: OVERVIEW ───────────────────────────────────────────────────────────
 with tab_overview:
-
-    # ── Two-column condensed layout ──────────────────────────────────────────
-    _ov_col1, _ov_col2 = st.columns([1, 1])
-
-    with _ov_col1:
-        # Summary card
-        if d["summary"]:
-            st.markdown('<div class="section-label">Summary</div>', unsafe_allow_html=True)
-            st.markdown(f'''
-<div class="cp-card" style="font-size:13px;line-height:1.7;color:inherit">
-    {d["summary"]}
-</div>''', unsafe_allow_html=True)
-
-        # Pain points
-        if d["pain_points"]:
-            st.markdown('<div class="section-label" style="margin-top:16px">Pain points</div>',
-                        unsafe_allow_html=True)
-            pp_html = "".join(f'<div class="cp-bullet">{t}{'<span class="cp-flag">review</span>' if f else ""}</div>'
-                              for t, f in d["pain_points"])
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{pp_html}</div>',
-                        unsafe_allow_html=True)
-
-    with _ov_col2:
-        # Top requirements (first 4)
-        if d["requirements"]:
-            st.markdown('<div class="section-label">Key requirements</div>', unsafe_allow_html=True)
-            _top_req = d["requirements"][:4]
-            req_html = "".join(
-                f'<div class="req-row {("req-nice" if rtype=="nice" else "")}">{text}</div>'
-                for text, rtype in _top_req
-            )
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{req_html}</div>',
-                        unsafe_allow_html=True)
-            if len(d["requirements"]) > 4:
-                st.caption(f"{len(d['requirements']) - 4} more requirements in the Requirements tab.")
-
-        # Watch items — risks flagged + commitments at risk
-        _watch = [r for r in d.get("risks", []) if r.get("flagged")] +                  [c for c in d.get("commitments", []) if c.get("status") == "risk"]
-        if _watch:
-            st.markdown('<div class="section-label" style="margin-top:16px">Watch items</div>',
-                        unsafe_allow_html=True)
-            watch_html = ""
-            for item in _watch[:4]:
-                text = item.get("text", "")
-                color = "#C0392B" if item.get("status") == "risk" else "#D68910"
-                watch_html += (f'<div style="display:flex;gap:8px;align-items:flex-start;'
-                               f'padding:5px 0;border-bottom:0.5px solid rgba(128,128,128,.1);'
-                               f'font-size:13px;line-height:1.6">'
-                               f'<span style="color:{color};flex-shrink:0;font-size:14px">'
-                               f'{"✕" if item.get("status")=="risk" else "⚠"}</span>'
-                               f'<span>{text}</span></div>')
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{watch_html}</div>',
-                        unsafe_allow_html=True)
-        elif not d["requirements"] and not d["pain_points"]:
-            st.markdown('<div class="no-data-msg">Upload a Gong doc to populate intelligence.</div>',
-                        unsafe_allow_html=True)
-
-    # Information gaps — shown full width at bottom of overview
-    if d.get("info_gaps"):
-        st.markdown('<div class="section-label" style="margin-top:8px">Information gaps</div>',
+    if d is None:
+        st.markdown('<div class="no-data-msg">Upload a Gong handover doc to populate intelligence.</div>',
                     unsafe_allow_html=True)
-        ig_html = "".join(f'<div class="info-gap-row">{g}</div>' for g in d["info_gaps"])
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{ig_html}</div>',
-                    unsafe_allow_html=True)
-
-
-with tab_stakeholders:
-    if not d["stakeholders"]:
-        st.markdown('<div class="no-data-msg">No stakeholders parsed.</div>', unsafe_allow_html=True)
     else:
-        internal = [s for s in d["stakeholders"] if s["internal"]]
-        external = [s for s in d["stakeholders"] if not s["internal"]]
-        col_ext, col_int = st.columns(2)
-
-        def _build_stakeholder_html(stakeholders):
-            if not stakeholders:
-                return "<div style='font-size:13px;opacity:.4;padding:8px'>None listed.</div>"
-            rows_html = ""
-            for s in stakeholders:
-                initials = _initials(s["name"])
-                av_cls = "avatar avatar-int" if s["internal"] else "avatar"
-                role_note = (f'<span class="pill pill-grey" style="font-size:10px">'
-                             f'{s["role_note"]}</span>') if s["role_note"] else ""
-                title_str = (f'<span style="font-size:11px;opacity:.6">{s["title"]}</span>') if s["title"] else ""
-                email_str = (
-                    f'<a href="mailto:{s["email"]}" style="font-size:11px;color:#3B9EFF;opacity:.7">{s["email"]}</a>'
-                    if s["email"] and "@" in s["email"] else ""
+        _ov_col1, _ov_col2 = st.columns([1, 1])
+        with _ov_col1:
+            if d["summary"]:
+                st.markdown('<div class="section-label">Summary</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="cp-card" style="font-size:13px;line-height:1.7;color:inherit">{d["summary"]}</div>',
+                            unsafe_allow_html=True)
+            if d["pain_points"]:
+                st.markdown('<div class="section-label" style="margin-top:16px">Pain points</div>',
+                            unsafe_allow_html=True)
+                pp_html = "".join(
+                    '<div class="cp-bullet">' + t + ('<span class="cp-flag">review</span>' if f else "") + "</div>"
+                    for t, f in d["pain_points"]
                 )
-                rows_html += (
-                    f'<div class="stakeholder-row">'
-                    f'<div class="{av_cls}">{initials}</div>'
-                    f'<div style="flex:1;min-width:0">'
-                    f'<div style="font-size:13px;font-weight:600">{s["name"]}</div>'
-                    f'<div>{title_str} {email_str}</div>'
-                    f'</div>{role_note}</div>'
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{pp_html}</div>',
+                            unsafe_allow_html=True)
+        with _ov_col2:
+            req_flat = []
+            if d.get("requirements"):
+                r = d["requirements"]
+                req_flat = (r if isinstance(r, list) else r.get("must", []) + r.get("nice", []))
+            if req_flat:
+                st.markdown('<div class="section-label">Key requirements</div>', unsafe_allow_html=True)
+                req_html = "".join(
+                    '<div class="req-row">' + (t[0] if isinstance(t, tuple) else t) + "</div>"
+                    for t in req_flat[:4]
                 )
-            return f'<div class="cp-card" style="padding:8px 14px">{rows_html}</div>'
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{req_html}</div>',
+                            unsafe_allow_html=True)
+                if len(req_flat) > 4:
+                    st.caption(f"{len(req_flat) - 4} more in the Requirements tab.")
+            _watch = [r for r in d.get("risks", []) if r.get("flagged")] +                      [c for c in d.get("commitments", []) if c.get("status") == "risk"]
+            if _watch:
+                st.markdown('<div class="section-label" style="margin-top:16px">Watch items</div>',
+                            unsafe_allow_html=True)
+                watch_html = ""
+                for item in _watch[:4]:
+                    _wtext = item.get("text", "")
+                    _wcolor = "#C0392B" if item.get("status") == "risk" else "#D68910"
+                    _wicon = "✕" if item.get("status") == "risk" else "⚠"
+                    watch_html += (
+                        f'<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;'
+                        f'border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;line-height:1.6">'
+                        f'<span style="color:{_wcolor};flex-shrink:0">{_wicon}</span>'
+                        f'<span>{_wtext}</span></div>'
+                    )
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{watch_html}</div>',
+                            unsafe_allow_html=True)
+        if d.get("info_gaps"):
+            st.markdown('<div class="section-label" style="margin-top:8px">Information gaps</div>',
+                        unsafe_allow_html=True)
+            ig_html = "".join(f'<div class="info-gap-row">{g}</div>' for g in d["info_gaps"])
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{ig_html}</div>',
+                        unsafe_allow_html=True)
 
-        with col_ext:
-            st.markdown('<div class="section-label">Customer contacts</div>', unsafe_allow_html=True)
-            st.markdown(_build_stakeholder_html(external), unsafe_allow_html=True)
-        with col_int:
-            st.markdown('<div class="section-label">Zone team</div>', unsafe_allow_html=True)
-            st.markdown(_build_stakeholder_html(internal), unsafe_allow_html=True)
+
+# ─── TAB: STAKEHOLDERS ───────────────────────────────────────────────────────
+with tab_stakeholders:
+    if d is None:
+        st.markdown('<div class="no-data-msg">Upload a Gong handover doc to view Stakeholders.</div>',
+                    unsafe_allow_html=True)
+    else:
+        if not d["stakeholders"]:
+            st.markdown('<div class="no-data-msg">No stakeholders parsed.</div>', unsafe_allow_html=True)
+        else:
+            internal = [s for s in d["stakeholders"] if s["internal"]]
+            external = [s for s in d["stakeholders"] if not s["internal"]]
+            col_ext, col_int = st.columns(2)
+
+            def _build_stakeholder_html(stakeholders):
+                if not stakeholders:
+                    return "<div style='font-size:13px;opacity:.4;padding:8px'>None listed.</div>"
+                rows_html = ""
+                for s in stakeholders:
+                    initials = _initials(s["name"])
+                    av_cls = "avatar avatar-int" if s["internal"] else "avatar"
+                    role_note = (f'<span class="pill pill-grey" style="font-size:10px">{s["role_note"]}</span>') if s["role_note"] else ""
+                    title_str = (f'<span style="font-size:11px;opacity:.6">{s["title"]}</span>') if s["title"] else ""
+                    email_str = (
+                        f'<a href="mailto:{s["email"]}" style="font-size:11px;color:#3B9EFF;opacity:.7">{s["email"]}</a>'
+                        if s["email"] and "@" in s["email"] else ""
+                    )
+                    rows_html += (
+                        f'<div class="stakeholder-row">'
+                        f'<div class="{av_cls}">{initials}</div>'
+                        f'<div style="flex:1;min-width:0">'
+                        f'<div style="font-size:13px;font-weight:600">{s["name"]}</div>'
+                        f'<div>{title_str} {email_str}</div>'
+                        f'</div>{role_note}</div>'
+                    )
+                return f'<div class="cp-card" style="padding:8px 14px">{rows_html}</div>'
+
+            with col_ext:
+                st.markdown('<div class="section-label">Customer contacts</div>', unsafe_allow_html=True)
+                st.markdown(_build_stakeholder_html(external), unsafe_allow_html=True)
+            with col_int:
+                st.markdown('<div class="section-label">Zone team</div>', unsafe_allow_html=True)
+                st.markdown(_build_stakeholder_html(internal), unsafe_allow_html=True)
 
 
 # ─── TAB: REQUIREMENTS ───────────────────────────────────────────────────────
 with tab_requirements:
-    req = d["requirements"]
-    must = req.get("must", [])
-    nice = req.get("nice", [])
-
-    if not must and not nice:
-        st.markdown('<div class="no-data-msg">No requirements parsed.</div>', unsafe_allow_html=True)
+    if d is None:
+        st.markdown('<div class="no-data-msg">Upload a Gong handover doc to view Requirements.</div>',
+                    unsafe_allow_html=True)
     else:
-        col_must, col_nice = st.columns(2)
-
-        with col_must:
-            st.markdown(f'<div class="section-label">Must-have <span style="font-size:11px;font-weight:400;opacity:.5;text-transform:none;letter-spacing:0">({len(must)})</span></div>',
-                        unsafe_allow_html=True)
-            rows = ""
-            for item, flagged in [_strip_flag(r) for r in must]:
-                flag_html = '<span class="cp-flag">review</span>' if flagged else ""
-                rows += f'<div class="req-row">{item}{flag_html}</div>'
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{rows}</div>',
-                        unsafe_allow_html=True)
-
-        with col_nice:
-            st.markdown(f'<div class="section-label">Nice-to-have <span style="font-size:11px;font-weight:400;opacity:.5;text-transform:none;letter-spacing:0">({len(nice)})</span></div>',
-                        unsafe_allow_html=True)
-            rows = ""
-            for item, flagged in [_strip_flag(r) for r in nice]:
-                flag_html = '<span class="cp-flag">review</span>' if flagged else ""
-                rows += f'<div class="req-nice req-row">{item}{flag_html}</div>'
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{rows}</div>',
-                        unsafe_allow_html=True)
-
-
+        req = d["requirements"]
+        must = req.get("must", []) if isinstance(req, dict) else []
+        nice = req.get("nice", []) if isinstance(req, dict) else []
+        if not must and not nice:
+            st.markdown('<div class="no-data-msg">No requirements parsed.</div>', unsafe_allow_html=True)
+        else:
+            col_must, col_nice = st.columns(2)
+            with col_must:
+                st.markdown(
+                    f'<div class="section-label">Must-have <span style="font-size:11px;font-weight:400;opacity:.5;text-transform:none;letter-spacing:0">({len(must)})</span></div>',
+                    unsafe_allow_html=True)
+                rows = ""
+                for item, flagged in [_strip_flag(r) for r in must]:
+                    flag_html = '<span class="cp-flag">review</span>' if flagged else ""
+                    rows += f'<div class="req-row">{item}{flag_html}</div>'
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{rows}</div>',
+                            unsafe_allow_html=True)
+            with col_nice:
+                st.markdown(
+                    f'<div class="section-label">Nice-to-have <span style="font-size:11px;font-weight:400;opacity:.5;text-transform:none;letter-spacing:0">({len(nice)})</span></div>',
+                    unsafe_allow_html=True)
+                rows = ""
+                for item, flagged in [_strip_flag(r) for r in nice]:
+                    flag_html = '<span class="cp-flag">review</span>' if flagged else ""
+                    rows += f'<div class="req-nice req-row">{item}{flag_html}</div>'
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{rows}</div>',
+                            unsafe_allow_html=True)
 
 
 # ─── TAB: USE CASES ──────────────────────────────────────────────────────────
 with tab_usecases:
-    if not d["use_cases"]:
-        st.markdown('<div class="no-data-msg">No use cases parsed.</div>', unsafe_allow_html=True)
-    else:
-        uc_html = ""
-        for text, flagged in d["use_cases"]:
-            flag_html = '<span class="cp-flag">review</span>' if flagged else ""
-            uc_html += f'<div class="cp-bullet">{text}{flag_html}</div>'
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{uc_html}</div>',
+    if d is None:
+        st.markdown('<div class="no-data-msg">Upload a Gong handover doc to view Use Cases.</div>',
                     unsafe_allow_html=True)
-
+    else:
+        if not d["use_cases"]:
+            st.markdown('<div class="no-data-msg">No use cases parsed.</div>', unsafe_allow_html=True)
+        else:
+            uc_html = ""
+            for text, flagged in d["use_cases"]:
+                flag_html = '<span class="cp-flag">review</span>' if flagged else ""
+                uc_html += f'<div class="cp-bullet">{text}{flag_html}</div>'
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{uc_html}</div>',
+                        unsafe_allow_html=True)
 
 # ─── TAB: RISKS & COMMITMENTS ────────────────────────────────────────────────
 with tab_risks:
+    if d is None:
+        st.markdown('<div class="no-data-msg">Upload a Gong handover doc to view Risks & Commitments.</div>',
+                    unsafe_allow_html=True)
+    else:
+        _PRODUCT_KW = [
+            "solution", "zone capture", "zone approvals", "capture tool",
+            "approval workflow", "non-netsuite users", "auto-populate",
+            "gen ai", "ocr", "out-of-the-box", "capabilities",
+            "vendor payments directly from netsuite", "gl accounts tagged",
+            "invoice capture", "participate in the approval", "pending approval",
+            "existing approval workflows", "needing a netsuite license",
+            "standard implementation", "premium implementation",
+            "configur", "integrat", "suiteapp",
+        ]
+        _COMMERCIAL_KW = [
+            "discount", "pricing", "price", "% discount", "usd", "free add-on",
+            "tiering breakdown", "work closely with", "q1", "q2", "threshold",
+            "approved discount", "same 50%", "35% approved", "advanced 1000",
+            "higher tiers", "50% license", "50% discount on licens",
+        ]
+        _PROCESS_KW = [
+            "send general material", "send email timeslots", "send timeslots",
+            "refresh the team", "ahead of the demo", "first week of february",
+            "last week of january", "ready for the wednesday",
+            "share notes and the agenda", "session is recorded",
+            "will be distributed", "provide a quote and estimate",
+        ]
 
-    _PRODUCT_KW = [
-        "solution", "zone capture", "zone approvals", "capture tool",
-        "approval workflow", "non-netsuite users", "auto-populate",
-        "gen ai", "ocr", "out-of-the-box", "capabilities",
-        "vendor payments directly from netsuite", "gl accounts tagged",
-        "invoice capture", "participate in the approval", "pending approval",
-        "existing approval workflows", "needing a netsuite license",
-        "standard implementation", "premium implementation",
-        "configur", "integrat", "suiteapp",
-    ]
-    _COMMERCIAL_KW = [
-        "discount", "pricing", "price", "% discount", "usd", "free add-on",
-        "tiering breakdown", "work closely with", "q1", "q2", "threshold",
-        "approved discount", "same 50%", "35% approved", "advanced 1000",
-        "higher tiers", "50% license", "50% discount on licens",
-    ]
-    _PROCESS_KW = [
-        "send general material", "send email timeslots", "send timeslots",
-        "refresh the team", "ahead of the demo", "first week of february",
-        "last week of january", "ready for the wednesday",
-        "share notes and the agenda", "session is recorded",
-        "will be distributed", "provide a quote and estimate",
-    ]
-    def _classify_commit(text):
-        tl = text.lower()
-        if any(kw in tl for kw in _PRODUCT_KW):
+        def _classify_commit(text):
+            tl = text.lower()
+            if any(kw in tl for kw in _PRODUCT_KW):
+                return "ps"
+            if any(kw in tl for kw in _COMMERCIAL_KW):
+                return "commercial"
+            if any(kw in tl for kw in _PROCESS_KW):
+                return "process"
             return "ps"
-        if any(kw in tl for kw in _COMMERCIAL_KW):
-            return "commercial"
-        if any(kw in tl for kw in _PROCESS_KW):
-            return "process"
-        return "ps"
 
-    def _render_commit_list(commits, muted=False):
-        html = ""
-        for c in commits:
-            if c["status"] == "aligned":
-                icon = '<span style="color:#27AE60;font-size:15px">✓</span>'
-            elif c["status"] == "review":
-                icon = '<span style="color:#D68910;font-size:15px">⚠</span>'
+        def _render_commit_list(commits, muted=False):
+            html = ""
+            for c in commits:
+                if c["status"] == "aligned":
+                    icon = '<span style="color:#27AE60;font-size:15px">✓</span>'
+                elif c["status"] == "review":
+                    icon = '<span style="color:#D68910;font-size:15px">⚠</span>'
+                else:
+                    icon = '<span style="color:#C0392B;font-size:15px">✕</span>'
+                opacity = ' style="opacity:.5"' if muted else (' style="opacity:.6"' if c["status"] == "risk" else "")
+                html += (f'<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;'
+                         f'border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;line-height:1.6">'
+                         f'{icon}<span{opacity}>{c["text"]}</span></div>')
+            return html
+
+        def _render_risk_list(risks):
+            badge_map = {
+                "tech":     ("Technical",    "risk-tech"),
+                "exp":      ("Expectation",  "risk-exp"),
+                "org":      ("Org readiness","risk-org"),
+                "timeline": ("Timeline",     "risk-timeline"),
+            }
+            html = ""
+            for r in risks:
+                label, css = badge_map.get(r["badge"], ("Risk", "risk-tech"))
+                flag_html = '<span class="cp-flag">review</span>' if r["flagged"] else ""
+                html += (f'<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;'
+                         f'border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;line-height:1.6">'
+                         f'<span class="risk-badge {css}">{label}</span>'
+                         f'<span>{r["text"]}{flag_html}</span></div>')
+            return html
+
+        ps_commits   = [c for c in d["commitments"] if _classify_commit(c["text"]) == "ps"]
+        comm_commits = [c for c in d["commitments"] if _classify_commit(c["text"]) == "commercial"]
+        proc_commits = [c for c in d["commitments"] if _classify_commit(c["text"]) == "process"]
+        tech_risks   = [r for r in d["risks"] if r["badge"] == "tech"]
+        exp_risks    = [r for r in d["risks"] if r["badge"] == "exp"]
+        org_risks    = [r for r in d["risks"] if r["badge"] in ("org", "timeline")]
+
+        legend = """<div style="font-size:11px;opacity:.45;margin-top:6px">
+            ✓ aligned &nbsp;·&nbsp; ⚠ needs review &nbsp;·&nbsp; ✕ risk / flag
+        </div>"""
+
+        sub_commits, sub_risks = st.tabs(["Commitments", "Risks"])
+
+        with sub_commits:
+            st.markdown('<div class="section-label">PS & implementation</div>', unsafe_allow_html=True)
+            if ps_commits:
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_commit_list(ps_commits)}</div>',
+                            unsafe_allow_html=True)
             else:
-                icon = '<span style="color:#C0392B;font-size:15px">✕</span>'
-            opacity = ' style="opacity:.5"' if muted else (' style="opacity:.6"' if c["status"] == "risk" else "")
-            html += (f'<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0;'
-                     f'border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;line-height:1.6">'
-                     f'{icon}<span{opacity}>{c["text"]}</span></div>')
-        return html
+                st.caption("None parsed.")
+            if comm_commits:
+                st.markdown('<div class="section-label" style="margin-top:16px">Commercial</div>',
+                            unsafe_allow_html=True)
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.75">{_render_commit_list(comm_commits, muted=True)}</div>',
+                            unsafe_allow_html=True)
+            if proc_commits:
+                st.markdown('<div class="section-label" style="margin-top:16px">Process & scheduling</div>',
+                            unsafe_allow_html=True)
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.65">{_render_commit_list(proc_commits, muted=True)}</div>',
+                            unsafe_allow_html=True)
+            if d["commitments"]:
+                st.markdown(legend, unsafe_allow_html=True)
 
-    def _render_risk_list(risks):
-        badge_map = {
-            "tech":     ("Technical",    "risk-tech"),
-            "exp":      ("Expectation",  "risk-exp"),
-            "org":      ("Org readiness","risk-org"),
-            "timeline": ("Timeline",     "risk-timeline"),
-        }
-        html = ""
-        for r in risks:
-            label, css = badge_map.get(r["badge"], ("Risk", "risk-tech"))
-            flag_html = '<span class="cp-flag">review</span>' if r["flagged"] else ""
-            html += (f'<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;'
-                     f'border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;line-height:1.6">'
-                     f'<span class="risk-badge {css}">{label}</span>'
-                     f'<span>{r["text"]}{flag_html}</span></div>')
-        return html
+        with sub_risks:
+            if not d["risks"]:
+                st.markdown('<div class="no-data-msg">No risks parsed.</div>', unsafe_allow_html=True)
+            else:
+                if tech_risks:
+                    st.markdown('<div class="section-label">Technical complexity</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(tech_risks)}</div>',
+                                unsafe_allow_html=True)
+                if exp_risks:
+                    st.markdown('<div class="section-label" style="margin-top:16px">Expectation alignment</div>',
+                                unsafe_allow_html=True)
+                    st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(exp_risks)}</div>',
+                                unsafe_allow_html=True)
+                if org_risks:
+                    st.markdown('<div class="section-label" style="margin-top:16px">Org readiness & timeline</div>',
+                                unsafe_allow_html=True)
+                    st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(org_risks)}</div>',
+                                unsafe_allow_html=True)
 
-    ps_commits   = [c for c in d["commitments"] if _classify_commit(c["text"]) == "ps"]
-    comm_commits = [c for c in d["commitments"] if _classify_commit(c["text"]) == "commercial"]
-    proc_commits = [c for c in d["commitments"] if _classify_commit(c["text"]) == "process"]
-    tech_risks   = [r for r in d["risks"] if r["badge"] == "tech"]
-    exp_risks    = [r for r in d["risks"] if r["badge"] == "exp"]
-    org_risks    = [r for r in d["risks"] if r["badge"] in ("org", "timeline")]
 
-    legend = """<div style="font-size:11px;opacity:.45;margin-top:6px">
-        ✓ aligned &nbsp;·&nbsp; ⚠ needs review &nbsp;·&nbsp; ✕ risk / flag
-    </div>"""
-
-    sub_commits, sub_risks = st.tabs(["Commitments", "Risks"])
-
-    with sub_commits:
-        st.markdown('<div class="section-label">PS & implementation</div>', unsafe_allow_html=True)
-        if ps_commits:
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_commit_list(ps_commits)}</div>', unsafe_allow_html=True)
-        else:
-            st.caption("None parsed.")
-        if comm_commits:
-            st.markdown('<div class="section-label" style="margin-top:16px">Commercial</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.75">{_render_commit_list(comm_commits, muted=True)}</div>', unsafe_allow_html=True)
-        if proc_commits:
-            st.markdown('<div class="section-label" style="margin-top:16px">Process & scheduling</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.65">{_render_commit_list(proc_commits, muted=True)}</div>', unsafe_allow_html=True)
-        if d["commitments"]:
-            st.markdown(legend, unsafe_allow_html=True)
-
-    with sub_risks:
-        if not d["risks"]:
-            st.markdown('<div class="no-data-msg">No risks parsed.</div>', unsafe_allow_html=True)
-        else:
-            if tech_risks:
-                st.markdown('<div class="section-label">Technical complexity</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(tech_risks)}</div>', unsafe_allow_html=True)
-            if exp_risks:
-                st.markdown('<div class="section-label" style="margin-top:16px">Expectation alignment</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(exp_risks)}</div>', unsafe_allow_html=True)
-            if org_risks:
-                st.markdown('<div class="section-label" style="margin-top:16px">Org readiness & timeline</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(org_risks)}</div>', unsafe_allow_html=True)
 # ─── TAB: NOTES ──────────────────────────────────────────────────────────────
 with tab_notes:
     # Session-keyed notes: stored as list of dicts {author, ts, text}
