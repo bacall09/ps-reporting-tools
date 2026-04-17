@@ -84,6 +84,10 @@ st.markdown("""
                      font-size:10px;color:rgba(128,128,128,.4)}
     .req-nice::before{content:'○';color:rgba(128,128,128,.35)}
     .no-data-msg{text-align:center;padding:36px;opacity:.4;font-size:14px}
+    [data-testid="stFileUploader"] section{padding:6px 10px!important}
+    [data-testid="stFileUploaderDropzoneInstructions"]{display:none!important}
+    [data-testid="stFileUploader"] button{font-size:13px!important}
+    [data-testid="stFileUploader"] label{display:none!important}
 </style>
 """, unsafe_allow_html=True)
 
@@ -320,11 +324,14 @@ def _extract_products_from_text(text: str) -> list[str]:
     return found
 
 
-def _read_docx_text(uploaded_file) -> str:
-    """Extract plain text from a .docx using python-docx."""
+def _read_docx_text(uploaded_file) -> tuple[str, str]:
+    """Extract plain text from a .docx using python-docx.
+    Returns (text, error_message) — error_message is empty string on success."""
     try:
-        import docx
-        doc = docx.Document(io.BytesIO(uploaded_file.read()))
+        import docx as docxlib
+        # Streamlit UploadedFile: read bytes, wrap in BytesIO
+        raw_bytes = uploaded_file.getvalue()
+        doc = docxlib.Document(io.BytesIO(raw_bytes))
         lines = []
         for para in doc.paragraphs:
             style = para.style.name if para.style else ""
@@ -332,14 +339,15 @@ def _read_docx_text(uploaded_file) -> str:
             if not text:
                 continue
             if "Heading" in style:
-                level = re.search(r"\d+", style)
-                prefix = "###" if (level and int(level.group()) <= 2) else "###"
-                lines.append(f"{prefix} {text}")
+                lines.append(f"### {text}")
             else:
                 lines.append(f"- {text}")
-        return "\n".join(lines)
+        result = "\n".join(lines)
+        if not result.strip():
+            return "", "The document appears to be empty or could not be read."
+        return result, ""
     except Exception as e:
-        return ""
+        return "", f"Error reading .docx: {e}"
 
 
 def _parse_gong_doc(raw_text: str, customer_name: str) -> dict:
@@ -391,32 +399,35 @@ with col_sel:
         customer_options = ["— Select a customer —"] + drs_customers + ["+ Enter manually"]
         _sel = st.selectbox("Customer", customer_options, label_visibility="collapsed")
         if _sel == "+ Enter manually":
-            selected_customer = st.text_input("Customer name", placeholder="e.g. Habyt GmbH")
+            selected_customer = st.text_input("Customer name", placeholder="e.g. Habyt GmbH",
+                                              label_visibility="collapsed")
         elif _sel == "— Select a customer —":
             selected_customer = ""
         else:
             selected_customer = _sel
     else:
-        st.caption("DRS not loaded — enter customer name manually.")
-        selected_customer = st.text_input("Customer name", placeholder="e.g. Habyt GmbH")
+        st.markdown('<div style="font-size:12px;opacity:.5;margin-bottom:6px">DRS not loaded — enter name manually</div>', unsafe_allow_html=True)
+        selected_customer = st.text_input("Customer name", placeholder="e.g. Habyt GmbH",
+                                          label_visibility="collapsed")
 
 with col_upload:
     st.markdown('<div class="section-label">Gong handover doc</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:12px;opacity:.45;margin-bottom:6px">Session only · .docx · re-upload each session</div>', unsafe_allow_html=True)
     uploaded = st.file_uploader(
-        "Upload Gong doc",
+        "Gong doc",
         type=["docx"],
-        label_visibility="collapsed",
-        help="Upload the Gong AI handover .docx for this customer. Session only — re-upload each session.",
+        label_visibility="hidden",
     )
 
     if uploaded and selected_customer:
-        raw_text = _read_docx_text(uploaded)
-        if not raw_text:
-            st.error("Could not read the .docx file. Please check the file and try again.")
+        raw_text, err = _read_docx_text(uploaded)
+        if err:
+            st.error(f"Could not read the file: {err}")
+        elif not raw_text.strip():
+            st.error("Document appears empty — check the file and try again.")
         else:
             parsed = _parse_gong_doc(raw_text, selected_customer)
             docs = st.session_state["cp_gong_docs"].get(selected_customer, [])
-            # Check if this doc is already loaded (by opp link or filename)
             existing_links = [d.get("opp_link", "") for d in docs]
             if parsed["opp_link"] not in existing_links or not parsed["opp_link"]:
                 docs.append(parsed)
