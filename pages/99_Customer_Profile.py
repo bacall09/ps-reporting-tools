@@ -504,7 +504,7 @@ with col_upload:
     uploaded = st.file_uploader(
         "Gong doc",
         type=["docx"],
-        label_visibility="hidden",
+        label_visibility="collapsed",
     )
 
     # Auto-fill customer name from filename if it follows the Gong naming convention
