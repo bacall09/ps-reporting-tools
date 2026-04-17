@@ -84,13 +84,11 @@ st.markdown("""
                      font-size:10px;color:rgba(128,128,128,.4)}
     .req-nice::before{content:'○';color:rgba(128,128,128,.35)}
     .no-data-msg{text-align:center;padding:36px;opacity:.4;font-size:14px}
-    [data-testid="stFileUploader"] section{padding:10px 14px!important;min-height:unset!important}
-    [data-testid="stFileUploaderDropzone"]{min-height:48px!important;padding:8px 12px!important;display:flex!important;align-items:center!important}
-    [data-testid="stFileUploaderDropzoneInstructions"]{flex:1!important}
-    [data-testid="stFileUploaderDropzoneInstructions"] span{font-size:12px!important;display:block!important}
-    [data-testid="stFileUploaderDropzoneInstructions"] small{display:none!important}
-    [data-testid="stFileUploader"] label{display:none!important}
-    [data-testid="stFileUploader"] button[kind="secondary"]{min-height:32px!important;padding:4px 12px!important}
+    /* Streamlit 1.56.0 file uploader fix */
+    div[data-testid="stFileUploaderDropzone"] > div:first-child { display: none !important; }
+    div[data-testid="stFileUploaderDropzone"] { padding: 4px 0 !important; min-height: unset !important; }
+    div[data-testid="stFileUploader"] section { padding: 4px 0 !important; }
+    div[data-testid="stFileUploader"] section > input + div { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 

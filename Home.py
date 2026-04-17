@@ -20,13 +20,13 @@ _LOADER_VERSION = "v20260415a"
 st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wide")
 
 st.markdown("""<style>
-    [data-testid="stFileUploader"] section{padding:10px 14px!important;min-height:unset!important}
-    [data-testid="stFileUploaderDropzone"]{min-height:48px!important;padding:8px 12px!important;display:flex!important;align-items:center!important}
-    [data-testid="stFileUploaderDropzoneInstructions"]{flex:1!important}
-    [data-testid="stFileUploaderDropzoneInstructions"] span{font-size:12px!important;display:block!important}
-    [data-testid="stFileUploaderDropzoneInstructions"] small{display:none!important}
-    [data-testid="stFileUploader"] button[kind="secondary"]{min-height:32px!important;padding:4px 12px!important}
+/* Streamlit 1.56.0 file uploader fix — collapse dropzone to button-only */
+div[data-testid="stFileUploaderDropzone"] > div:first-child { display: none !important; }
+div[data-testid="stFileUploaderDropzone"] { padding: 4px 0 !important; min-height: unset !important; }
+div[data-testid="stFileUploader"] section { padding: 4px 0 !important; }
+div[data-testid="stFileUploader"] section > input + div { display: none !important; }
 </style>""", unsafe_allow_html=True)
+
 
 # ── Register navigation (must be called before any other st.* that could fail) ──
 _consultant_pages = [
@@ -229,31 +229,31 @@ with st.sidebar:
     st.markdown("**Upload data**")
     st.caption("Upload once — available across all pages this session.")
 
-    drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs")
+    drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs", label_visibility="collapsed")
     st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
 
-    ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns")
+    ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns", label_visibility="collapsed")
     st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&amp;saverun=T&amp;whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Time Detail Search</a>', unsafe_allow_html=True)
 
-    sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc")
+    sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc", label_visibility="collapsed")
     st.markdown('<a href="https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SFDC Contacts (Google Drive)</a>', unsafe_allow_html=True)
 
     ns_ua_file = (
-        st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned",
-                         help="Required for Capacity Outlook")
+        st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned", label_visibility="collapsed",
+                         help="Required for Capacity Outlook", label_visibility="collapsed")
         if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     if _upload_role in ("manager","manager_only","reporting_only"):
         st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Unassigned Projects</a>', unsafe_allow_html=True)
 
     rev_file = (
-        st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue",
-                         help="Required for Revenue Report")
+        st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue", label_visibility="collapsed",
+                         help="Required for Revenue Report", label_visibility="collapsed")
         if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     tm_sow_file = (
-        st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow",
-                         help="Required for T&M Revenue Report")
+        st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow", label_visibility="collapsed",
+                         help="Required for T&M Revenue Report", label_visibility="collapsed")
         if _upload_role in ("manager","manager_only","reporting_only") else None
     )
     # Clear stale versioned caches on new deploy
