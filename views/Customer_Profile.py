@@ -84,9 +84,7 @@ st.markdown("""
                      font-size:10px;color:rgba(128,128,128,.4)}
     .req-nice::before{content:'○';color:rgba(128,128,128,.35)}
     .no-data-msg{text-align:center;padding:36px;opacity:.4;font-size:14px}
-    /* Streamlit 1.56.0 file uploader — high specificity to beat emotion cache */
-    html body [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
-    html body [data-testid="stFileUploaderDropzone"] { min-height: unset !important; padding: 4px !important; border: 1px solid rgba(128,128,128,0.2) !important; border-radius: 4px !important; }
+    /* file uploader CSS handled globally in Home.py */
 </style>
 """, unsafe_allow_html=True)
 

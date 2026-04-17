@@ -40,7 +40,7 @@ _consultant_pages = [
     st.Page("views/1_Daily_Briefing.py",        title="Daily Briefing",         icon=None),
     st.Page("views/8_My_Projects.py",            title="My Projects",            icon=None),
     st.Page("views/11_Project_Health.py",        title="Project Health",         icon=None),
-    st.Page("views/Customer_Profile.py",     title="Customer Profile",       icon=None, url_path="customer-profile"),
+    st.Page("views/Customer_Profile.py",     title="Customer Profile",       icon=""),
     st.Page("views/2_Customer_Reengagement.py",  title="Customer Engagement",    icon=None),
     st.Page("views/3_Utilization_Report.py",     title="Utilization Report",     icon=None),
     st.Page("views/4_Workload_Health_Score.py",  title="Workload Health Score",  icon=None),
