@@ -742,46 +742,25 @@ if _drs_match is not None and not _drs_match.empty:
         except Exception:
             _last_str = str(_last_act)[:10]
 
-    st.markdown(f"""
-<div style='background:var(--cp-card-bg,rgba(128,128,128,.05));border:0.5px solid rgba(128,128,128,.15);
-            border-radius:10px;padding:14px 18px;margin-bottom:16px'>
-    <div style='display:flex;align-items:center;gap:6px;margin-bottom:10px'>
-        <div style='width:8px;height:8px;border-radius:50%;background:#4472C4;flex-shrink:0'></div>
-        <div style='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
-                    color:rgba(128,128,128,.6)'>DRS — project data</div>
-        <div style='margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;
-                    border-radius:20px;background:rgba(128,128,128,.08);
-                    color:rgba(128,128,128,.5);border:0.5px dashed rgba(128,128,128,.3)'>
-            Live sync — Phase 2
-        </div>
-    </div>
-    <div style='display:flex;gap:0;margin-bottom:4px'>{_bar_labels}</div>
-    <div style='display:flex;gap:3px;margin-bottom:12px'>{_bar_steps}</div>
-    <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:12px'>
-        <div>
-            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
-                        color:rgba(128,128,128,.5);margin-bottom:2px'>Phase</div>
-            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_phase}</div>
-        </div>
-        <div>
-            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
-                        color:rgba(128,128,128,.5);margin-bottom:2px'>Last activity</div>
-            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_last_str}</div>
-            {_days_str}
-        </div>
-        <div>
-            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
-                        color:rgba(128,128,128,.5);margin-bottom:2px'>Consultant</div>
-            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_cons}</div>
-        </div>
-        <div>
-            <div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;
-                        color:rgba(128,128,128,.5);margin-bottom:2px'>Project type</div>
-            <div style='font-size:13px;font-weight:500;color:var(--color-text-primary)'>{_proj_type}</div>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+    _lbl_s = "font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(128,128,128,.5);margin-bottom:2px"
+    _val_s = "font-size:13px;font-weight:500;color:var(--color-text-primary)"
+    _drs_html = "".join([
+        "<div style=\"background:rgba(128,128,128,.05);border:0.5px solid rgba(128,128,128,.15);border-radius:10px;padding:14px 18px;margin-bottom:16px\">",
+        "<div style=\"display:flex;align-items:center;gap:6px;margin-bottom:10px\">",
+        "<div style=\"width:8px;height:8px;border-radius:50%;background:#4472C4;flex-shrink:0\"></div>",
+        "<div style=\"font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgba(128,128,128,.6)\">DRS \u2014 project data</div>",
+        "<div style=\"margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(128,128,128,.08);color:rgba(128,128,128,.5);border:0.5px dashed rgba(128,128,128,.3)\">Live sync \u2014 Phase 2</div>",
+        "</div>",
+        f"<div style=\"display:flex;gap:0;margin-bottom:4px\">{_bar_labels}</div>",
+        f"<div style=\"display:flex;gap:3px;margin-bottom:12px\">{_bar_steps}</div>",
+        "<div style=\"display:grid;grid-template-columns:repeat(4,1fr);gap:12px\">",
+        f"<div><div style=\"{_lbl_s}\">Phase</div><div style=\"{_val_s}\">{_phase}</div></div>",
+        f"<div><div style=\"{_lbl_s}\">Last activity</div><div style=\"{_val_s}\">{_last_str}</div>{_days_str}</div>",
+        f"<div><div style=\"{_lbl_s}\">Consultant</div><div style=\"{_val_s}\">{_cons}</div></div>",
+        f"<div><div style=\"{_lbl_s}\">Project type</div><div style=\"{_val_s}\">{_proj_type}</div></div>",
+        "</div></div>",
+    ])
+    st.markdown(_drs_html, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 5 — TABS
