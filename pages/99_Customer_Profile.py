@@ -831,20 +831,38 @@ with tab_usecases:
 # ─── TAB: RISKS & COMMITMENTS ────────────────────────────────────────────────
 with tab_risks:
 
-    # Sales commitments — split into implementation vs commercial
-    _COMMERCIAL_KEYWORDS = [
-        "discount", "pricing", "price", "license", "licence", "cad", "usd", "cost",
-        "free", "invoice", "payment", "quote", "tier", "upgrade", "implementation fee",
-        "send email", "send timeslot", "send material", "send notes", "send agenda",
-        "schedule", "demo", "meeting", "call", "follow", "distribute", "share",
-        "record", "recorded", "session is recorded",
+    _PRODUCT_KW = [
+        "solution", "zone capture", "zone approvals", "capture tool",
+        "approval workflow", "non-netsuite users", "auto-populate",
+        "gen ai", "ocr", "out-of-the-box", "capabilities",
+        "vendor payments directly from netsuite", "gl accounts tagged",
+        "invoice capture", "participate in the approval", "pending approval",
+        "existing approval workflows", "needing a netsuite license",
+        "standard implementation", "premium implementation",
+        "configur", "integrat", "suiteapp",
     ]
-    def _is_commercial(text):
+    _COMMERCIAL_KW = [
+        "discount", "pricing", "price", "% discount", "usd", "free add-on",
+        "tiering breakdown", "work closely with", "q1", "q2", "threshold",
+        "approved discount", "same 50%", "35% approved", "advanced 1000",
+        "higher tiers", "50% license", "50% discount on licens",
+    ]
+    _PROCESS_KW = [
+        "send general material", "send email timeslots", "send timeslots",
+        "refresh the team", "ahead of the demo", "first week of february",
+        "last week of january", "ready for the wednesday",
+        "share notes and the agenda", "session is recorded",
+        "will be distributed", "provide a quote and estimate",
+    ]
+    def _classify_commit(text):
         tl = text.lower()
-        return any(kw in tl for kw in _COMMERCIAL_KEYWORDS)
-
-    ps_commits = [c for c in d["commitments"] if not _is_commercial(c["text"])]
-    comm_commits = [c for c in d["commitments"] if _is_commercial(c["text"])]
+        if any(kw in tl for kw in _PRODUCT_KW):
+            return "ps"
+        if any(kw in tl for kw in _COMMERCIAL_KW):
+            return "commercial"
+        if any(kw in tl for kw in _PROCESS_KW):
+            return "process"
+        return "ps"
 
     def _render_commit_list(commits, muted=False):
         html = ""
@@ -861,53 +879,64 @@ with tab_risks:
                      f'{icon}<span{opacity}>{c["text"]}</span></div>')
         return html
 
-    st.markdown('<div class="section-label">PS & implementation commitments</div>', unsafe_allow_html=True)
-    if not ps_commits:
-        st.caption("No implementation commitments parsed.")
-    else:
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_commit_list(ps_commits)}</div>',
-                    unsafe_allow_html=True)
-
-    if comm_commits:
-        st.markdown('<div class="section-label" style="margin-top:16px;opacity:.6">Commercial & process commitments</div>',
-                    unsafe_allow_html=True)
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.7">{_render_commit_list(comm_commits, muted=True)}</div>',
-                    unsafe_allow_html=True)
-
-    if d["commitments"]:
-        st.markdown("""
-        <div style="font-size:11px;opacity:.45;margin-top:4px">
-            ✓ aligned &nbsp;·&nbsp; ⚠ needs review &nbsp;·&nbsp; ✕ risk / flag
-        </div>""", unsafe_allow_html=True)
-
-    st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-
-    # Risks
-    st.markdown('<div class="section-label">Risks</div>', unsafe_allow_html=True)
-    if not d["risks"]:
-        st.caption("No risks parsed.")
-    else:
+    def _render_risk_list(risks):
         badge_map = {
             "tech":     ("Technical",    "risk-tech"),
             "exp":      ("Expectation",  "risk-exp"),
             "org":      ("Org readiness","risk-org"),
             "timeline": ("Timeline",     "risk-timeline"),
         }
-        risk_html = ""
-        for r in d["risks"]:
+        html = ""
+        for r in risks:
             label, css = badge_map.get(r["badge"], ("Risk", "risk-tech"))
             flag_html = '<span class="cp-flag">review</span>' if r["flagged"] else ""
-            risk_html += f"""
-            <div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;
-                        border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;
-                        line-height:1.6">
-                <span class="risk-badge {css}">{label}</span>
-                <span>{r["text"]}{flag_html}</span>
-            </div>"""
-        st.markdown(f'<div class="cp-card" style="padding:10px 14px">{risk_html}</div>',
-                    unsafe_allow_html=True)
+            html += (f'<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;'
+                     f'border-bottom:0.5px solid rgba(128,128,128,.1);font-size:13px;line-height:1.6">'
+                     f'<span class="risk-badge {css}">{label}</span>'
+                     f'<span>{r["text"]}{flag_html}</span></div>')
+        return html
 
+    ps_commits   = [c for c in d["commitments"] if _classify_commit(c["text"]) == "ps"]
+    comm_commits = [c for c in d["commitments"] if _classify_commit(c["text"]) == "commercial"]
+    proc_commits = [c for c in d["commitments"] if _classify_commit(c["text"]) == "process"]
+    tech_risks   = [r for r in d["risks"] if r["badge"] == "tech"]
+    exp_risks    = [r for r in d["risks"] if r["badge"] == "exp"]
+    org_risks    = [r for r in d["risks"] if r["badge"] in ("org", "timeline")]
 
+    legend = """<div style="font-size:11px;opacity:.45;margin-top:6px">
+        ✓ aligned &nbsp;·&nbsp; ⚠ needs review &nbsp;·&nbsp; ✕ risk / flag
+    </div>"""
+
+    sub_commits, sub_risks = st.tabs(["Commitments", "Risks"])
+
+    with sub_commits:
+        st.markdown('<div class="section-label">PS & implementation</div>', unsafe_allow_html=True)
+        if ps_commits:
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_commit_list(ps_commits)}</div>', unsafe_allow_html=True)
+        else:
+            st.caption("None parsed.")
+        if comm_commits:
+            st.markdown('<div class="section-label" style="margin-top:16px">Commercial</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.75">{_render_commit_list(comm_commits, muted=True)}</div>', unsafe_allow_html=True)
+        if proc_commits:
+            st.markdown('<div class="section-label" style="margin-top:16px">Process & scheduling</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="cp-card" style="padding:10px 14px;opacity:.65">{_render_commit_list(proc_commits, muted=True)}</div>', unsafe_allow_html=True)
+        if d["commitments"]:
+            st.markdown(legend, unsafe_allow_html=True)
+
+    with sub_risks:
+        if not d["risks"]:
+            st.markdown('<div class="no-data-msg">No risks parsed.</div>', unsafe_allow_html=True)
+        else:
+            if tech_risks:
+                st.markdown('<div class="section-label">Technical complexity</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(tech_risks)}</div>', unsafe_allow_html=True)
+            if exp_risks:
+                st.markdown('<div class="section-label" style="margin-top:16px">Expectation alignment</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(exp_risks)}</div>', unsafe_allow_html=True)
+            if org_risks:
+                st.markdown('<div class="section-label" style="margin-top:16px">Org readiness & timeline</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="cp-card" style="padding:10px 14px">{_render_risk_list(org_risks)}</div>', unsafe_allow_html=True)
 # ─── TAB: USAGE ──────────────────────────────────────────────────────────────
 with tab_usage:
     st.markdown('<div class="section-label">NetSuite usage data</div>', unsafe_allow_html=True)
