@@ -84,7 +84,7 @@ st.markdown("""
                      font-size:10px;color:rgba(128,128,128,.4)}
     .req-nice::before{content:'○';color:rgba(128,128,128,.35)}
     .no-data-msg{text-align:center;padding:36px;opacity:.4;font-size:14px}
-    /* file uploader CSS handled globally in Home.py */
+
 </style>
 """, unsafe_allow_html=True)
 
