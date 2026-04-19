@@ -1349,8 +1349,7 @@ with tab_stakeholders:
 
         # ── Render Zone team with two sections ────────────────────────────────
         def _zone_row_html(person, show_hrs=True):
-            _initials = _initials(person["name"]) if callable(_initials) else (
-                "".join(p[0].upper() for p in person["name"].split()[:2]))
+            _ini = "".join(p[0].upper() for p in person["name"].split()[:2])
             _title_s = (f'<div style="font-size:11px;color:var(--color-text-secondary)">{person["title"]}</div>') if person.get("title") else ""
             _rn = person.get("role_note", "")
             _rn_html = (f'<div style="font-size:10px;color:var(--color-text-tertiary);margin-top:1px">{_rn}</div>') if _rn else ""
@@ -1373,7 +1372,7 @@ with tab_stakeholders:
                 '<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:0.5px solid rgba(128,128,128,.1)">' 
                 f'<div style="width:30px;height:30px;border-radius:50%;background:rgba(8,169,183,.12);'
                 f'color:#0F6E56;display:flex;align-items:center;justify-content:center;'
-                f'font-size:11px;font-weight:500;flex-shrink:0">{_initials}</div>'
+                f'font-size:11px;font-weight:500;flex-shrink:0">{_ini}</div>'
                 f'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">{person["name"]}</div>'
                 f'{_title_s}{_rn_html}{_pill_html}</div>'
                 f'{_hrs_html}</div>'
