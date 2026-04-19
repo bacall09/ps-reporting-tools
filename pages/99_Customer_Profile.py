@@ -734,7 +734,13 @@ if df_drs is not None and not df_drs.empty and selected_customer:
     _sel_lower = selected_customer.strip().lower()
     if _name_col:
         _extracted = df_drs[_name_col].fillna("").apply(_extract_customer_name)
-        _drs_match = df_drs[_extracted.str.strip().str.lower() == _sel_lower]
+        _ext_lower = _extracted.str.strip().str.lower()
+        # Match exact OR prefix variants (same entity, different naming conventions)
+        _drs_match = df_drs[
+            (_ext_lower == _sel_lower) |
+            _ext_lower.str.startswith(_sel_lower) |
+            _ext_lower.apply(lambda x: _sel_lower.startswith(x) if x else False)
+        ]
         if _drs_match.empty and _acct_col:
             _drs_match = df_drs[df_drs[_acct_col].fillna("").str.strip().str.lower() == _sel_lower]
 
