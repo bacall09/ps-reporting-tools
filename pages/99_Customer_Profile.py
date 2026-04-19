@@ -707,7 +707,26 @@ def _phase_index(phase_str):
     return -1
 
 if _drs_match is not None and not _drs_match.empty:
-    _dr = _drs_match.iloc[0]
+    # Project selector when customer has multiple projects
+    _proj_col = "project_name" if "project_name" in _drs_match.columns else (
+                "project" if "project" in _drs_match.columns else None)
+
+    if len(_drs_match) > 1 and _proj_col:
+        _proj_labels = [str(r.get(_proj_col, f"Project {i+1}")).strip()
+                        for i, (_, r) in enumerate(_drs_match.iterrows())]
+        # Deduplicate
+        _seen_p, _proj_labels_dedup = {}, []
+        for lbl in _proj_labels:
+            _seen_p[lbl] = _seen_p.get(lbl, 0) + 1
+            _proj_labels_dedup.append(lbl if _seen_p[lbl] == 1 else f"{lbl} ({_seen_p[lbl]})")
+        st.markdown('<div class="section-label">Project</div>', unsafe_allow_html=True)
+        _sel_proj = st.selectbox("Select project", _proj_labels_dedup,
+                                 key=f"cp_proj_sel_{selected_customer}",
+                                 label_visibility="collapsed")
+        _dr = _drs_match.iloc[_proj_labels_dedup.index(_sel_proj)]
+    else:
+        _dr = _drs_match.iloc[0]
+
     _phase     = str(_dr.get("phase", "—")).strip()
     _phase_idx = _phase_index(_phase)
     _cons      = str(_dr.get("project_manager", "—")).strip()
