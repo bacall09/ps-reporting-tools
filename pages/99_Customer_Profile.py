@@ -723,6 +723,13 @@ if d is not None:
 </div>
 """, unsafe_allow_html=True)
 
+# ── Quarter-hour rounding helper ─────────────────────────────────────────────
+def _fmt_hrs(h):
+    """Round to nearest 0.25 and format cleanly (drop .0 suffix)."""
+    if h is None: return "—"
+    rounded = round(float(h) * 4) / 4
+    return f"{rounded:g} hrs"
+
 # ── NS hours lookup (project_id → hours_to_date, last entry date) ────────────
 _ns_htd: dict       = {}   # project_id → hours_to_date (or sum of hours)
 _ns_last_entry: dict = {}  # project_id → most recent time entry date
@@ -903,13 +910,13 @@ def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=Non
 
     _hours_html = ""
     if _htd is not None or _scope is not None:
-        _htd_str   = f"{_htd:.1f} hrs" if _htd is not None else "—"
-        _scope_str = f"{_scope:.1f} hrs" if _scope is not None else "—"
+        _htd_str   = _fmt_hrs(_htd) if _htd is not None else "—"
+        _scope_str = _fmt_hrs(_scope) if _scope is not None else "—"
         _bal       = round(float(_scope) - float(_htd), 1) if _scope is not None and _htd is not None else None
         _bal_color = "color:#C0392B" if _bal is not None and _bal < 0 else (
                      "color:#D68910" if _bal is not None and _scope and _bal / float(_scope) <= 0.10 else
                      "color:var(--color-text-primary)")
-        _bal_str   = f"{_bal:+.1f} hrs" if _bal is not None else "—"
+        _bal_str   = (("+" if _bal > 0 else "") + _fmt_hrs(_bal)) if _bal is not None else "—"
         _hours_html = (
             "<div style=\"margin-top:8px;padding-top:8px;border-top:0.5px solid rgba(128,128,128,.12);display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px\">"
             "<div><div style=\"" + lbl_s + "\">Scope</div><div style=\"" + val_s + "\">" + _scope_str + "</div></div>"
@@ -1366,7 +1373,7 @@ with tab_stakeholders:
             _hrs_html = ""
             if show_hrs and _h is not None:
                 _hrs_html = ('<div style="margin-left:auto;text-align:right;padding-left:8px;flex-shrink:0">'
-                             f'<div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">{_h:.1f} hrs</div>'
+                             f'<div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">{_fmt_hrs(_h)}</div>'
                              '<div style="font-size:10px;color:var(--color-text-tertiary)">booked</div></div>')
             return (
                 '<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:0.5px solid rgba(128,128,128,.1)">' 
