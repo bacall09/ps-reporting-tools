@@ -762,6 +762,22 @@ if df_ns is not None and not df_ns.empty:
             _tm_mask = _ns_clean["billing_type"].fillna("").str.lower().str.contains("t&m|time")
             _ns_tm_pids = {str(p) for p in _ns_clean.loc[_tm_mask, _ns_id_col].dropna() if p}
 
+        # Per-project per-person hours: {project_id: {employee_name: hours}}
+        _ns_person_hrs: dict = {}
+        _emp_col = "employee" if "employee" in _ns_clean.columns else None
+        _hrs_col = "hours" if "hours" in _ns_clean.columns else (
+                   "hours_to_date" if "hours_to_date" in _ns_clean.columns else None)
+        if _emp_col and _hrs_col:
+            for (_pid, _emp), _grp in _ns_clean.groupby([_ns_id_col, _emp_col]):
+                _pid_k = str(_pid).strip().lower()
+                _emp_k = str(_emp).strip()
+                if _pid_k and _emp_k:
+                    _h = round(float(_grp[_hrs_col].dropna().astype(float).sum()), 1)
+                    if _h > 0:
+                        if _pid_k not in _ns_person_hrs:
+                            _ns_person_hrs[_pid_k] = {}
+                        _ns_person_hrs[_pid_k][_emp_k] = _h
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4b — DRS PROJECT CARDS (all active projects for this customer)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1240,56 +1256,146 @@ with tab_stakeholders:
                         "email": _am_email, "roles": [], "is_primary": False,
                         "role_note": "", "source": "sfdc", "internal": True,
                     })
-        # Pull consultants from DRS project cards
-        _drs_consultants = []
+        # ── Helper: resolve role title from name ─────────────────────────────────
+        def _resolve_title(name):
+            gr = get_role(name)
+            er = EMPLOYEE_ROLES.get(name, {})
+            if gr == "consultant" and not er:
+                parts = name.split()
+                flipped = f"{parts[-1]}, {' '.join(parts[:-1])}" if len(parts) >= 2 else name
+                gr = get_role(flipped)
+                er = EMPLOYEE_ROLES.get(flipped, {})
+            er_role = er.get("role", "")
+            if gr in ("manager", "manager_only") or er_role == "Project Manager":
+                return "Project Manager"
+            if "senior" in er_role.lower():
+                return "Senior Consultant"
+            return "Implementation Consultant"
+
+        # ── Assigned: DRS project managers ───────────────────────────────────
+        _drs_assigned = []
+        _assigned_names = set()
         if _drs_match is not None and not _drs_match.empty:
-            _pm_col = "project_manager" if "project_manager" in _drs_match.columns else None
-            _pn_col = "project_name" if "project_name" in _drs_match.columns else None
-            if _pm_col:
-                _seen_pm = set()
+            _pm_col2 = "project_manager" if "project_manager" in _drs_match.columns else None
+            _pn_col2 = "project_name" if "project_name" in _drs_match.columns else None
+            _pid_col2 = "project_id" if "project_id" in _drs_match.columns else None
+            if _pm_col2:
+                _seen_asgn = set()
                 for _, _pm_row in _drs_match.iterrows():
-                    _pm_name = str(_pm_row.get(_pm_col, "") or "").strip()
-                    _pn_name = str(_pm_row.get(_pn_col, "") or "").strip() if _pn_col else ""
-                    if _pm_name and _pm_name != "—" and _pm_name not in _seen_pm:
-                        _seen_pm.add(_pm_name)
-                        # DRS may store "First Last" or "Last, First" -- try both
-                        # against get_role() and EMPLOYEE_ROLES
-                        _gr = get_role(_pm_name)
-                        _er_direct = EMPLOYEE_ROLES.get(_pm_name, {})
-                        # Try "Last, First" variant (flip "First Last")
-                        _name_parts = _pm_name.split()
-                        _flipped = f"{_name_parts[-1]}, {' '.join(_name_parts[:-1])}" if len(_name_parts) >= 2 else _pm_name
-                        if _gr == "consultant" and not _er_direct:
-                            _gr = get_role(_flipped)
-                        _er = _er_direct or EMPLOYEE_ROLES.get(_flipped, {})
-                        _er_role = _er.get("role", "")
-                        _title = (
-                            "Project Manager" if _gr in ("manager", "manager_only") or _er_role == "Project Manager"
-                            else "Implementation Consultant"
-                        )
-                        _drs_consultants.append({
+                    _pm_name = str(_pm_row.get(_pm_col2, "") or "").strip()
+                    _pn_name = str(_pm_row.get(_pn_col2, "") or "").strip() if _pn_col2 else ""
+                    _pid_val = str(_pm_row.get(_pid_col2, "") or "").strip().lower() if _pid_col2 else ""
+                    if _pm_name and _pm_name != "—" and _pm_name not in _seen_asgn:
+                        _seen_asgn.add(_pm_name)
+                        _assigned_names.add(_pm_name.lower())
+                        # Per-project hours for this person
+                        _p_hrs = _ns_person_hrs.get(_pid_val, {}).get(_pm_name) if _pid_val else None
+                        _drs_assigned.append({
                             "name":      _pm_name,
-                            "title":     _title,
+                            "title":     _resolve_title(_pm_name),
                             "email":     "",
                             "roles":     [],
                             "is_primary": False,
-                            "role_note": _pn_name[:40] + ("…" if len(_pn_name) > 40 else ""),
+                            "role_note": _pn_name[:38] + ("…" if len(_pn_name) > 38 else ""),
                             "source":    "drs",
                             "internal":  True,
+                            "hrs":       _p_hrs,
                         })
 
-        _zone_team = _sfdc_am_contacts + _drs_consultants + _gong_internal
-        # Deduplicate by name
+        # Add SFDC AM (no hours)
+        _sfdc_am_with_hrs = [{**c, "hrs": None} for c in _sfdc_am_contacts]
+
+        # Add Gong internal (no hours)
+        _gong_int_with_hrs = [{**c, "hrs": None} for c in _gong_internal]
+
+        # Assigned = SFDC AM + DRS + Gong internal, deduped by name
+        _assigned_all = _sfdc_am_with_hrs + _drs_assigned + _gong_int_with_hrs
         _seen_zone = set()
-        _zone_dedup = []
-        for _zt in _zone_team:
-            if _zt["name"] not in _seen_zone:
-                _seen_zone.add(_zt["name"])
-                _zone_dedup.append(_zt)
-        if not _zone_dedup:
-            st.caption("Zone team contacts will appear here from Gong doc, SFDC, or DRS.")
+        _assigned_dedup = []
+        for _zt in _assigned_all:
+            _n = _zt["name"].lower()
+            if _n not in _seen_zone:
+                _seen_zone.add(_n)
+                _assigned_dedup.append(_zt)
+
+        # ── NS contributors: booked time but not assigned ─────────────────────
+        _ns_contributors = []
+        if _drs_match is not None and not _drs_match.empty and _ns_person_hrs:
+            _pid_col3 = "project_id" if "project_id" in _drs_match.columns else None
+            _contrib_seen = set()
+            for _, _pr in _drs_match.iterrows():
+                _pid_v = str(_pr.get(_pid_col3, "") or "").strip().lower() if _pid_col3 else ""
+                if not _pid_v or _pid_v not in _ns_person_hrs:
+                    continue
+                for _emp_name, _hrs in _ns_person_hrs[_pid_v].items():
+                    if _emp_name.lower() in _seen_zone:
+                        continue  # already in assigned
+                    if _emp_name.lower() in _contrib_seen:
+                        continue
+                    _contrib_seen.add(_emp_name.lower())
+                    _ns_contributors.append({
+                        "name":      _emp_name,
+                        "title":     _resolve_title(_emp_name),
+                        "email":     "",
+                        "roles":     [],
+                        "is_primary": False,
+                        "role_note": "",
+                        "source":    "ns",
+                        "internal":  True,
+                        "hrs":       _hrs,
+                    })
+            # Sort contributors by hours desc
+            _ns_contributors.sort(key=lambda x: x.get("hrs") or 0, reverse=True)
+
+        # ── Render Zone team with two sections ────────────────────────────────
+        def _zone_row_html(person, show_hrs=True):
+            _initials = _initials(person["name"]) if callable(_initials) else (
+                "".join(p[0].upper() for p in person["name"].split()[:2]))
+            _title_s = (f'<div style="font-size:11px;color:var(--color-text-secondary)">{person["title"]}</div>') if person.get("title") else ""
+            _rn = person.get("role_note", "")
+            _rn_html = (f'<div style="font-size:10px;color:var(--color-text-tertiary);margin-top:1px">{_rn}</div>') if _rn else ""
+            # Source pill
+            _src = person.get("source", "")
+            _pill_map = {"drs": ("#4472C4", "DRS"), "sfdc": ("#27AE60", "SFDC"),
+                         "gong": ("#D68910", "Gong"), "ns": ("rgba(128,128,128,.6)", "NS time")}
+            _pc, _pl = _pill_map.get(_src, ("rgba(128,128,128,.6)", _src))
+            _pill_html = (f'<span style="display:inline-block;font-size:9px;font-weight:700;'
+                          f'padding:1px 6px;border-radius:20px;background:{_pc}18;'
+                          f'color:{_pc};margin-top:3px">{_pl}</span>')
+            # Hours
+            _h = person.get("hrs")
+            _hrs_html = ""
+            if show_hrs and _h is not None:
+                _hrs_html = ('<div style="margin-left:auto;text-align:right;padding-left:8px;flex-shrink:0">'
+                             f'<div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">{_h:.1f} hrs</div>'
+                             '<div style="font-size:10px;color:var(--color-text-tertiary)">booked</div></div>')
+            return (
+                '<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:0.5px solid rgba(128,128,128,.1)">' 
+                f'<div style="width:30px;height:30px;border-radius:50%;background:rgba(8,169,183,.12);'
+                f'color:#0F6E56;display:flex;align-items:center;justify-content:center;'
+                f'font-size:11px;font-weight:500;flex-shrink:0">{_initials}</div>'
+                f'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">{person["name"]}</div>'
+                f'{_title_s}{_rn_html}{_pill_html}</div>'
+                f'{_hrs_html}</div>'
+            )
+
+        _zone_html = '<div style="background:var(--color-background-primary);border:0.5px solid rgba(128,128,128,.15);border-radius:10px;padding:10px 14px">'
+
+        if not _assigned_dedup and not _ns_contributors:
+            _zone_html += '<div style="font-size:13px;opacity:.4;padding:8px">Zone team contacts will appear here from Gong doc, SFDC, or DRS.</div>'
         else:
-            st.markdown(_build_stakeholder_html(_zone_dedup, show_source=False), unsafe_allow_html=True)
+            if _assigned_dedup:
+                _zone_html += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--color-text-tertiary);padding:4px 0 6px;border-bottom:0.5px solid rgba(128,128,128,.12);margin-bottom:2px">Assigned</div>'
+                for _p in _assigned_dedup:
+                    _zone_html += _zone_row_html(_p)
+            if _ns_contributors:
+                _zone_html += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--color-text-tertiary);padding:10px 0 6px;border-bottom:0.5px solid rgba(128,128,128,.12);margin-bottom:2px">Also contributed · NS time detail</div>'
+                for _p in _ns_contributors:
+                    _zone_html += _zone_row_html(_p)
+                _zone_html += '<div style="font-size:10px;color:var(--color-text-tertiary);margin-top:6px">Hours from NS time detail · this session only</div>'
+
+        _zone_html += '</div>'
+        st.markdown(_zone_html, unsafe_allow_html=True)
 
 
 # ─── TAB: REQUIREMENTS ───────────────────────────────────────────────────────
