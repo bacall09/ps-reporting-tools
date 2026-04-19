@@ -723,20 +723,44 @@ if d is not None:
 </div>
 """, unsafe_allow_html=True)
 
-# ── NS hours lookup (project_id → hours_to_date, scope) ──────────────────────
-_ns_htd: dict    = {}
-_ns_tm_hrs: dict = {}
-_ns_tm_pids: set = set()
+# ── NS hours lookup (project_id → hours_to_date, last entry date) ────────────
+_ns_htd: dict       = {}   # project_id → hours_to_date (or sum of hours)
+_ns_last_entry: dict = {}  # project_id → most recent time entry date
+_ns_tm_pids: set    = set()
+
 if df_ns is not None and not df_ns.empty:
     _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
-    if _ns_id_col and "hours_to_date" in df_ns.columns:
-        for _pid, _grp in df_ns.groupby(_ns_id_col):
-            _k = str(_pid).strip().lower()
-            if _k:
-                _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
-    if _ns_id_col and "billing_type" in df_ns.columns:
-        _tm_mask = df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")
-        _ns_tm_pids = {str(p).strip().lower() for p in df_ns.loc[_tm_mask, _ns_id_col].dropna()}
+    if _ns_id_col:
+        _ns_clean = df_ns.copy()
+        _ns_clean[_ns_id_col] = _ns_clean[_ns_id_col].astype(str).str.strip().str.lower()
+
+        # Hours: prefer hours_to_date column (pre-aggregated), fall back to summing hours
+        if "hours_to_date" in _ns_clean.columns:
+            for _pid, _grp in _ns_clean.groupby(_ns_id_col):
+                if _pid:
+                    _v = _grp["hours_to_date"].dropna().astype(float)
+                    if not _v.empty:
+                        _ns_htd[_pid] = round(float(_v.max()), 2)
+        elif "hours" in _ns_clean.columns:
+            for _pid, _grp in _ns_clean.groupby(_ns_id_col):
+                if _pid:
+                    _v = _grp["hours"].dropna().astype(float)
+                    if not _v.empty:
+                        _ns_htd[_pid] = round(float(_v.sum()), 2)
+
+        # Last entry date: max date per project
+        if "date" in _ns_clean.columns:
+            _ns_clean["date"] = pd.to_datetime(_ns_clean["date"], errors="coerce")
+            for _pid, _grp in _ns_clean.groupby(_ns_id_col):
+                if _pid:
+                    _d = _grp["date"].dropna()
+                    if not _d.empty:
+                        _ns_last_entry[_pid] = _d.max()
+
+        # T&M project IDs
+        if "billing_type" in _ns_clean.columns:
+            _tm_mask = _ns_clean["billing_type"].fillna("").str.lower().str.contains("t&m|time")
+            _ns_tm_pids = {str(p) for p in _ns_clean.loc[_tm_mask, _ns_id_col].dropna() if p}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4b — DRS PROJECT CARDS (all active projects for this customer)
@@ -789,7 +813,7 @@ def _project_status(phase_str):
         return "hold"
     return "active"
 
-def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=None):
+def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=None, ns_last_entry=None):
     import pandas as _pd
     phase     = str(row.get("phase", "") or "").strip()
     proj_name = str(row.get(proj_col, "") or "").strip()
@@ -800,6 +824,10 @@ def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=Non
     status    = _project_status(phase)
     pidx      = _phase_index(phase)
 
+    # Resolve last activity: DRS field → NS last entry dict → raw row fallback
+    _pid_for_last = str(row.get("project_id", "") or "").strip().lower()
+    if last_act is None and ns_last_entry and _pid_for_last in ns_last_entry:
+        last_act = ns_last_entry[_pid_for_last]
     last_str, days_str = "—", ""
     if last_act is not None:
         try:
@@ -939,7 +967,7 @@ if _drs_match is not None and not _drs_match.empty:
         _cards_html = "<div style=\"display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:8px\">"
         for _row in _display_rows:
             if _proj_col:
-                _cards_html += _build_project_card(_row, _proj_col, _lbl_s, _val_s, ns_htd=_ns_htd, ns_tm_pids=_ns_tm_pids)
+                _cards_html += _build_project_card(_row, _proj_col, _lbl_s, _val_s, ns_htd=_ns_htd, ns_tm_pids=_ns_tm_pids, ns_last_entry=_ns_last_entry)
         _cards_html += "</div>"
         st.markdown(_cards_html, unsafe_allow_html=True)
 
