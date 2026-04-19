@@ -723,35 +723,32 @@ if d is not None:
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4b — DRS PROJECT STRIP
+# SECTION 4b — DRS PROJECT CARDS (all active projects for this customer)
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Pull matching DRS rows for this customer
-# Match by extracted customer name (exact match on cleaned name) to avoid
-# "Connect NZ" matching both "Connect NZ" and "Connect NZ Group Limited" rows
+# Pull all matching DRS rows for this customer
 _drs_match = None
 if df_drs is not None and not df_drs.empty and selected_customer:
     _name_col = "project_name" if "project_name" in df_drs.columns else None
     _acct_col = "account" if "account" in df_drs.columns else None
     _sel_lower = selected_customer.strip().lower()
     if _name_col:
-        # Extract customer name from each project row and compare exactly
         _extracted = df_drs[_name_col].fillna("").apply(_extract_customer_name)
         _drs_match = df_drs[_extracted.str.strip().str.lower() == _sel_lower]
         if _drs_match.empty and _acct_col:
-            _drs_match = df_drs[
-                df_drs[_acct_col].fillna("").str.strip().str.lower() == _sel_lower
-            ]
+            _drs_match = df_drs[df_drs[_acct_col].fillna("").str.strip().str.lower() == _sel_lower]
 
-# Phase order for progress bar
 _PHASE_ORDER = [
     "00. onboarding", "01. requirements and design", "02. configuration",
     "03. enablement/training", "04. uat", "05. prep for go-live",
     "06. go-live (hypercare)", "08. ready for support transition",
     "10. complete/pending final billing"
 ]
-_PHASE_LABELS = ["Onboarding", "Req & Design", "Config", "Enablement", "UAT",
-                 "Pre-Go-Live", "Hypercare", "Support Tx", "Complete"]
+_PHASE_LABELS = ["Onboarding", "Req", "Config", "Enablement", "UAT",
+                 "Go-Live", "Hypercare", "Support Tx", "Complete"]
+_COMPLETE_PHASES = {"10. complete", "10. complete/pending final billing",
+                    "complete", "09. complete"}
+_HOLD_PHASES = {"11. on hold", "on hold"}
 
 def _phase_index(phase_str):
     if not phase_str:
@@ -762,80 +759,143 @@ def _phase_index(phase_str):
             return i
     return -1
 
-if _drs_match is not None and not _drs_match.empty:
-    # Project selector when customer has multiple projects
-    _proj_col = "project_name" if "project_name" in _drs_match.columns else (
-                "project" if "project" in _drs_match.columns else None)
+def _project_status(phase_str):
+    pl = str(phase_str).lower().strip()
+    if any(pl.startswith(p[:6]) for p in _COMPLETE_PHASES):
+        return "complete"
+    if any(pl.startswith(p[:6]) for p in _HOLD_PHASES):
+        return "hold"
+    return "active"
 
-    if len(_drs_match) > 1 and _proj_col:
-        _proj_labels = [str(r.get(_proj_col, f"Project {i+1}")).strip()
-                        for i, (_, r) in enumerate(_drs_match.iterrows())]
-        # Deduplicate
-        _seen_p, _proj_labels_dedup = {}, []
-        for lbl in _proj_labels:
-            _seen_p[lbl] = _seen_p.get(lbl, 0) + 1
-            _proj_labels_dedup.append(lbl if _seen_p[lbl] == 1 else f"{lbl} ({_seen_p[lbl]})")
-        st.markdown('<div class="section-label">Project</div>', unsafe_allow_html=True)
-        _sel_proj = st.selectbox("Select project", _proj_labels_dedup,
-                                 key=f"cp_proj_sel_{selected_customer}",
-                                 label_visibility="collapsed")
-        _dr = _drs_match.iloc[_proj_labels_dedup.index(_sel_proj)]
-    else:
-        _dr = _drs_match.iloc[0]
+def _build_project_card(row, proj_col, lbl_s, val_s):
+    import pandas as _pd
+    phase     = str(row.get("phase", "") or "").strip()
+    proj_name = str(row.get(proj_col, "") or "").strip()
+    cons      = str(row.get("project_manager", "—") or "—").strip()
+    proj_type = str(row.get("project_type", "—") or "—").strip()
+    days      = row.get("days_inactive", None)
+    last_act  = row.get("last_activity_date", row.get("last_ns_entry", None))
+    status    = _project_status(phase)
+    pidx      = _phase_index(phase)
 
-    _phase     = str(_dr.get("phase", "—")).strip()
-    _phase_idx = _phase_index(_phase)
-    _cons      = str(_dr.get("project_manager", "—")).strip()
-    _proj_type = str(_dr.get("project_type", "—")).strip()
-    _days      = _dr.get("days_inactive", None)
-    _last_act  = _dr.get("last_activity_date", _dr.get("last_ns_entry", None))
+    last_str, days_str = "—", ""
+    if last_act is not None:
+        try:
+            la = _pd.to_datetime(last_act)
+            last_str = la.strftime("%b %d, %Y")
+            d = int(days) if days is not None and str(days) != "nan" else (_pd.Timestamp.today() - la).days
+            if d >= 0:
+                days_str = "<div style=\"font-size:10px;color:rgba(128,128,128,.5)\">" + str(d) + " days ago</div>"
+        except Exception:
+            last_str = str(last_act)[:10]
 
-    # Phase progress bar HTML
-    _bar_labels = "".join(
-        f'<div style="flex:1;font-size:9px;color:rgba(128,128,128,.5);text-align:center">{l}</div>'
+    def step_color(i):
+        if status == "complete": return "#27AE60"
+        if i < pidx: return "#27AE60"
+        if i == pidx: return "#D68910" if status == "hold" else "#4472C4"
+        return "rgba(128,128,128,.2)"
+
+    lbl_div_style = "flex:1;font-size:8px;color:rgba(128,128,128,.45);text-align:center;overflow:hidden"
+    bar_labels = "".join(
+        "<div style=\"" + lbl_div_style + "\">" + l + "</div>"
         for l in _PHASE_LABELS
     )
-    def _step_color(i):
-        if i < _phase_idx: return "#27AE60"
-        if i == _phase_idx: return "#4472C4"
-        return "rgba(128,128,128,.2)"
-    _bar_steps = "".join(
-        f'<div style="flex:1;height:4px;border-radius:2px;background:{_step_color(i)}"></div>'
+    bar_steps = "".join(
+        "<div style=\"flex:1;height:3px;border-radius:2px;background:" + step_color(i) + "\"></div>"
         for i in range(len(_PHASE_LABELS))
     )
 
-    _last_str = "—"
-    _days_str = ""
-    if _last_act is not None:
-        try:
-            import pandas as pd
-            _la = pd.to_datetime(_last_act)
-            _last_str = _la.strftime("%b %d, %Y")
-            _d = int(_days) if _days is not None and str(_days) != "nan" else (pd.Timestamp.today() - _la).days
-            if _d >= 0:
-                _days_str = f'<div style="font-size:11px;color:rgba(128,128,128,.5)">{_d} days ago</div>'
-        except Exception:
-            _last_str = str(_last_act)[:10]
+    if status == "active":
+        pill = "<span style=\"display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(39,174,96,.12);color:#1A7A4A;margin-top:6px\">Active</span>"
+    elif status == "hold":
+        pill = "<span style=\"display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(214,137,16,.12);color:#854F0B;margin-top:6px\">On hold</span>"
+    else:
+        pill = "<span style=\"display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(128,128,128,.1);color:rgba(128,128,128,.6);margin-top:6px\">Complete</span>"
 
-    _lbl_s = "font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(128,128,128,.5);margin-bottom:2px"
-    _val_s = "font-size:13px;font-weight:500;color:var(--color-text-primary)"
-    _drs_html = "".join([
-        "<div style=\"background:rgba(128,128,128,.05);border:0.5px solid rgba(128,128,128,.15);border-radius:10px;padding:14px 18px;margin-bottom:16px\">",
-        "<div style=\"display:flex;align-items:center;gap:6px;margin-bottom:10px\">",
-        "<div style=\"width:8px;height:8px;border-radius:50%;background:#4472C4;flex-shrink:0\"></div>",
-        "<div style=\"font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgba(128,128,128,.6)\">DRS \u2014 project data</div>",
-        "<div style=\"margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(128,128,128,.08);color:rgba(128,128,128,.5);border:0.5px dashed rgba(128,128,128,.3)\">Live sync \u2014 Phase 2</div>",
-        "</div>",
-        f"<div style=\"display:flex;gap:0;margin-bottom:4px\">{_bar_labels}</div>",
-        f"<div style=\"display:flex;gap:3px;margin-bottom:12px\">{_bar_steps}</div>",
-        "<div style=\"display:grid;grid-template-columns:repeat(4,1fr);gap:12px\">",
-        f"<div><div style=\"{_lbl_s}\">Phase</div><div style=\"{_val_s}\">{_phase}</div></div>",
-        f"<div><div style=\"{_lbl_s}\">Last activity</div><div style=\"{_val_s}\">{_last_str}</div>{_days_str}</div>",
-        f"<div><div style=\"{_lbl_s}\">Consultant</div><div style=\"{_val_s}\">{_cons}</div></div>",
-        f"<div><div style=\"{_lbl_s}\">Project type</div><div style=\"{_val_s}\">{_proj_type}</div></div>",
-        "</div></div>",
-    ])
-    st.markdown(_drs_html, unsafe_allow_html=True)
+    border  = "0.5px solid rgba(214,137,16,.35)" if status == "hold" else "0.5px solid rgba(128,128,128,.15)"
+    opacity = "opacity:0.55;" if status == "complete" else ""
+
+    parts = [
+        "<div style=\"background:rgba(128,128,128,.04);border:" + border + ";border-radius:10px;padding:12px 14px;" + opacity + "\">",
+        "<div style=\"font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:8px;line-height:1.4\">" + proj_name + "</div>",
+        "<div style=\"display:flex;gap:0;margin-bottom:3px\">" + bar_labels + "</div>",
+        "<div style=\"display:flex;gap:2px;margin-bottom:10px\">" + bar_steps + "</div>",
+        "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:6px\">",
+        "<div><div style=\"" + lbl_s + "\">Phase</div><div style=\"" + val_s + "\">" + phase + "</div></div>",
+        "<div><div style=\"" + lbl_s + "\">Last activity</div><div style=\"" + val_s + "\">" + last_str + "</div>" + days_str + "</div>",
+        "<div><div style=\"" + lbl_s + "\">Consultant</div><div style=\"" + val_s + "\">" + cons + "</div></div>",
+        "<div><div style=\"" + lbl_s + "\">Type</div><div style=\"" + val_s + "\">" + proj_type + "</div></div>",
+        "</div>" + pill + "</div>",
+    ]
+    return "".join(parts)
+if _drs_match is not None and not _drs_match.empty:
+    import pandas as _pd2
+    _proj_col = "project_name" if "project_name" in _drs_match.columns else (
+                "project" if "project" in _drs_match.columns else None)
+    _lbl_s = "font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:rgba(128,128,128,.5);margin-bottom:1px"
+    _val_s = "font-size:12px;font-weight:500;color:var(--color-text-primary)"
+
+    # Split into active/hold and complete
+    _active_rows, _complete_rows = [], []
+    for _, _row in _drs_match.iterrows():
+        _ph = str(_row.get("phase", "") or "").lower().strip()
+        if any(_ph.startswith(p[:6]) for p in _COMPLETE_PHASES) or _ph == "complete":
+            _complete_rows.append(_row)
+        else:
+            _active_rows.append(_row)
+
+    # Header
+    _n_active = len(_active_rows)
+    _n_complete = len(_complete_rows)
+    _n_total = _n_active + _n_complete
+    _show_complete_key = f"cp_show_complete_{selected_customer}"
+    if _show_complete_key not in st.session_state:
+        st.session_state[_show_complete_key] = False
+
+    _hdr_col1, _hdr_col2 = st.columns([3, 1])
+    with _hdr_col1:
+        _hdr_html = (
+            "<div style=\"display:flex;align-items:center;gap:6px;margin-bottom:10px\">"
+            "<div style=\"width:8px;height:8px;border-radius:50%;background:#4472C4;flex-shrink:0\"></div>"
+            "<div style=\"font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgba(128,128,128,.6)\">DRS — project data</div>"
+            "<div style=\"margin-left:8px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(128,128,128,.08);color:rgba(128,128,128,.5);border:0.5px dashed rgba(128,128,128,.3)\">Live sync — Phase 2</div>"
+            "</div>"
+        )
+        st.markdown(_hdr_html, unsafe_allow_html=True)
+    with _hdr_col2:
+        if _n_complete > 0:
+            _show_complete = st.toggle(
+                f"Show {_n_complete} completed",
+                value=st.session_state[_show_complete_key],
+                key=_show_complete_key
+            )
+        else:
+            _show_complete = False
+
+    # Render active/hold cards in 2-col grid
+    _display_rows = _active_rows + (_complete_rows if _show_complete else [])
+
+    if _display_rows:
+        _cards_html = "<div style=\"display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:8px\">"
+        for _row in _display_rows:
+            if _proj_col:
+                _cards_html += _build_project_card(_row, _proj_col, _lbl_s, _val_s)
+        _cards_html += "</div>"
+        st.markdown(_cards_html, unsafe_allow_html=True)
+
+        # Summary line
+        _summary = f"{_n_total} project{'s' if _n_total != 1 else ''}"
+        _parts = []
+        _n_hold = sum(1 for r in _active_rows if _project_status(str(r.get("phase","") or "")) == "hold")
+        _n_act  = _n_active - _n_hold
+        if _n_act:   _parts.append(f"{_n_act} active")
+        if _n_hold:  _parts.append(f"{_n_hold} on hold")
+        if _n_complete: _parts.append(f"{_n_complete} complete")
+        st.markdown(
+            "<div style=\"font-size:11px;color:var(--color-text-tertiary);text-align:right;margin-bottom:8px\">"
+            + _summary + " · " + " · ".join(_parts) + "</div>",
+            unsafe_allow_html=True
+        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 5 — TABS
