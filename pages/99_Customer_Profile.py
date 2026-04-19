@@ -759,7 +759,7 @@ if df_ns is not None and not df_ns.empty:
 
         # T&M project IDs
         if "billing_type" in _ns_clean.columns:
-            _tm_mask = _ns_clean["billing_type"].fillna("").str.lower().str.contains("t&m|time")
+            _tm_mask = _ns_clean["billing_type"].fillna("").str.lower().str.contains("t&m|time", regex=True)
             _ns_tm_pids = {str(p) for p in _ns_clean.loc[_tm_mask, _ns_id_col].dropna() if p}
 
         # Per-project per-person hours: {project_id: {employee_name: hours}}
@@ -1105,7 +1105,7 @@ with tab_stakeholders:
     elif df_sfdc is not None and not df_sfdc.empty and selected_customer and "account" in df_sfdc.columns:
         _sfdc_rows = df_sfdc[
             df_sfdc["account"].fillna("").str.lower().str.contains(
-                selected_customer.lower()[:12], na=False
+                re.escape(selected_customer.lower()[:12]), na=False, regex=True
             )
         ]
         for _, _sr in _sfdc_rows.iterrows():
