@@ -486,11 +486,33 @@ if df_drs is not None and not df_drs.empty:
         _raw = df_drs["account"].dropna()
         drs_customers = sorted(set(str(r).strip() for r in _raw if str(r).strip()))
     elif "project_name" in df_drs.columns:
-        drs_customers = sorted(set(
+        _raw_extracted = set(
             _extract_customer_name(r)
             for r in df_drs["project_name"].dropna()
             if str(r).strip()
-        ))
+        )
+        # Consolidate names where one is a prefix of another (same entity, different naming)
+        # Keep longer name only if it adds a real legal suffix (Limited, Group, etc.)
+        # Otherwise keep the shorter/cleaner name
+        import re as _re2
+        _LEGAL = r'\b(limited|ltd|group|inc|gmbh|llc|corp|corporation|pty|plc|bv|ag)\b'
+        def _is_legal_ext(short, long):
+            extra = long[len(short):].strip()
+            return bool(_re2.search(_LEGAL, extra, _re2.IGNORECASE))
+        _consolidated = set()
+        for name in sorted(_raw_extracted, key=len, reverse=True):
+            _skip = False
+            for ex in _consolidated:
+                if ex.lower().startswith(name.lower()) and ex != name and _is_legal_ext(name, ex):
+                    _skip = True
+                    break
+            if not _skip:
+                _consolidated = {e for e in _consolidated if not (
+                    e.lower().startswith(name.lower()) and e != name
+                    and not _is_legal_ext(name, e)
+                )}
+                _consolidated.add(name)
+        drs_customers = sorted(_consolidated)
 
 # Session store for uploaded Gong docs: {customer_name: [parsed_doc, ...]}
 # NOTE: session-only storage — docs do not persist across page reloads.
@@ -705,21 +727,20 @@ if d is not None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Pull matching DRS rows for this customer
+# Match by extracted customer name (exact match on cleaned name) to avoid
+# "Connect NZ" matching both "Connect NZ" and "Connect NZ Group Limited" rows
 _drs_match = None
 if df_drs is not None and not df_drs.empty and selected_customer:
     _name_col = "project_name" if "project_name" in df_drs.columns else None
     _acct_col = "account" if "account" in df_drs.columns else None
+    _sel_lower = selected_customer.strip().lower()
     if _name_col:
-        _drs_match = df_drs[
-            df_drs[_name_col].fillna("").str.lower().str.contains(
-                re.escape(selected_customer.lower()[:12]), na=False
-            )
-        ]
+        # Extract customer name from each project row and compare exactly
+        _extracted = df_drs[_name_col].fillna("").apply(_extract_customer_name)
+        _drs_match = df_drs[_extracted.str.strip().str.lower() == _sel_lower]
         if _drs_match.empty and _acct_col:
             _drs_match = df_drs[
-                df_drs[_acct_col].fillna("").str.lower().str.contains(
-                    re.escape(selected_customer.lower()[:12]), na=False
-                )
+                df_drs[_acct_col].fillna("").str.strip().str.lower() == _sel_lower
             ]
 
 # Phase order for progress bar
