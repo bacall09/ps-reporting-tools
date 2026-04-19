@@ -1252,17 +1252,16 @@ with tab_stakeholders:
                     _pn_name = str(_pm_row.get(_pn_col, "") or "").strip() if _pn_col else ""
                     if _pm_name and _pm_name != "—" and _pm_name not in _seen_pm:
                         _seen_pm.add(_pm_name)
-                        st.caption(f"DEBUG pm_name={_pm_name!r} get_role={get_role(_pm_name)!r} in_er={_pm_name in EMPLOYEE_ROLES}")
-                        # Use get_role() which handles all name format variants
+                        # DRS may store "First Last" or "Last, First" -- try both
+                        # against get_role() and EMPLOYEE_ROLES
                         _gr = get_role(_pm_name)
-                        # Also try "First Last" if DRS stores "Last, First"
-                        if _gr == "consultant" and "," in _pm_name:
-                            _parts = [p.strip() for p in _pm_name.split(",", 1)]
-                            _gr = get_role(f"{_parts[1]} {_parts[0]}")
-                        # Also check EMPLOYEE_ROLES directly for the "role" field
-                        _er = (EMPLOYEE_ROLES.get(_pm_name) or
-                               EMPLOYEE_ROLES.get(f"{_parts[1]} {_parts[0]}" if "," in _pm_name else _pm_name)
-                               or {})
+                        _er_direct = EMPLOYEE_ROLES.get(_pm_name, {})
+                        # Try "Last, First" variant (flip "First Last")
+                        _name_parts = _pm_name.split()
+                        _flipped = f"{_name_parts[-1]}, {' '.join(_name_parts[:-1])}" if len(_name_parts) >= 2 else _pm_name
+                        if _gr == "consultant" and not _er_direct:
+                            _gr = get_role(_flipped)
+                        _er = _er_direct or EMPLOYEE_ROLES.get(_flipped, {})
                         _er_role = _er.get("role", "")
                         _title = (
                             "Project Manager" if _gr in ("manager", "manager_only") or _er_role == "Project Manager"
