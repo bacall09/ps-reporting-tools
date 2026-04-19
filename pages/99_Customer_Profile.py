@@ -12,7 +12,7 @@ from datetime import date
 st.session_state["current_page"] = "Customer Profile"
 
 from shared.constants import (
-    EMPLOYEE_ROLES, get_role, is_manager, name_matches,
+    EMPLOYEE_ROLES, get_role, is_manager, name_matches, get_ff_scope,
 )
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -450,6 +450,7 @@ st.markdown("""
 # Build customer list from DRS
 df_drs  = st.session_state.get("df_drs")
 df_sfdc = st.session_state.get("df_sfdc")
+df_ns   = st.session_state.get("df_ns")
 # ── Customer name extraction from project_name ───────────────────────────────
 _PC = ["ZEP","ZBilling","ZPayroll","ZoneCapture","ZoneApprovals","ZoneReconcile",
        "ZA","ZC","ZR","ZB","ZP"]
@@ -722,6 +723,21 @@ if d is not None:
 </div>
 """, unsafe_allow_html=True)
 
+# ── NS hours lookup (project_id → hours_to_date, scope) ──────────────────────
+_ns_htd: dict    = {}
+_ns_tm_hrs: dict = {}
+_ns_tm_pids: set = set()
+if df_ns is not None and not df_ns.empty:
+    _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
+    if _ns_id_col and "hours_to_date" in df_ns.columns:
+        for _pid, _grp in df_ns.groupby(_ns_id_col):
+            _k = str(_pid).strip().lower()
+            if _k:
+                _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
+    if _ns_id_col and "billing_type" in df_ns.columns:
+        _tm_mask = df_ns["billing_type"].fillna("").str.lower().str.contains("t&m|time")
+        _ns_tm_pids = {str(p).strip().lower() for p in df_ns.loc[_tm_mask, _ns_id_col].dropna()}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 4b — DRS PROJECT CARDS (all active projects for this customer)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -773,7 +789,7 @@ def _project_status(phase_str):
         return "hold"
     return "active"
 
-def _build_project_card(row, proj_col, lbl_s, val_s):
+def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=None):
     import pandas as _pd
     phase     = str(row.get("phase", "") or "").strip()
     proj_name = str(row.get(proj_col, "") or "").strip()
@@ -821,6 +837,32 @@ def _build_project_card(row, proj_col, lbl_s, val_s):
     border  = "0.5px solid rgba(214,137,16,.35)" if status == "hold" else "0.5px solid rgba(128,128,128,.15)"
     opacity = "opacity:0.55;" if status == "complete" else ""
 
+    # Hours data from NS
+    _pid_key = str(row.get("project_id", "") or "").strip().lower()
+    _ptype_raw = str(row.get("project_type", "") or "")
+    _bill_raw  = str(row.get("billing_type", "") or "").lower()
+    _is_tm     = "t&m" in _bill_raw or "time" in _bill_raw or (ns_tm_pids and _pid_key in ns_tm_pids)
+    _ff_scope  = get_ff_scope(_ptype_raw, proj_name) if not _is_tm else None
+    _htd       = ns_htd.get(_pid_key) if ns_htd and _pid_key else None
+    _scope     = _htd if _is_tm else (_ff_scope if _ff_scope is not None else None)
+
+    _hours_html = ""
+    if _htd is not None or _scope is not None:
+        _htd_str   = f"{_htd:.1f} hrs" if _htd is not None else "—"
+        _scope_str = f"{_scope:.1f} hrs" if _scope is not None else "—"
+        _bal       = round(float(_scope) - float(_htd), 1) if _scope is not None and _htd is not None else None
+        _bal_color = "color:#C0392B" if _bal is not None and _bal < 0 else (
+                     "color:#D68910" if _bal is not None and _scope and _bal / float(_scope) <= 0.10 else
+                     "color:var(--color-text-primary)")
+        _bal_str   = f"{_bal:+.1f} hrs" if _bal is not None else "—"
+        _hours_html = (
+            "<div style=\"margin-top:8px;padding-top:8px;border-top:0.5px solid rgba(128,128,128,.12);display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px\">"
+            "<div><div style=\"" + lbl_s + "\">Scope</div><div style=\"" + val_s + "\">" + _scope_str + "</div></div>"
+            "<div><div style=\"" + lbl_s + "\">Hours to date</div><div style=\"" + val_s + "\">" + _htd_str + "</div></div>"
+            "<div><div style=\"" + lbl_s + "\">Balance</div><div style=\"font-size:12px;font-weight:500;" + _bal_color + "\">" + _bal_str + "</div></div>"
+            "</div>"
+        )
+
     parts = [
         "<div style=\"background:rgba(128,128,128,.04);border:" + border + ";border-radius:10px;padding:12px 14px;" + opacity + "\">",
         "<div style=\"font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:8px;line-height:1.4\">" + proj_name + "</div>",
@@ -831,7 +873,7 @@ def _build_project_card(row, proj_col, lbl_s, val_s):
         "<div><div style=\"" + lbl_s + "\">Last activity</div><div style=\"" + val_s + "\">" + last_str + "</div>" + days_str + "</div>",
         "<div><div style=\"" + lbl_s + "\">Consultant</div><div style=\"" + val_s + "\">" + cons + "</div></div>",
         "<div><div style=\"" + lbl_s + "\">Type</div><div style=\"" + val_s + "\">" + proj_type + "</div></div>",
-        "</div>" + pill + "</div>",
+        "</div>" + _hours_html + pill + "</div>",
     ]
     return "".join(parts)
 if _drs_match is not None and not _drs_match.empty:
@@ -885,7 +927,7 @@ if _drs_match is not None and not _drs_match.empty:
         _cards_html = "<div style=\"display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:8px\">"
         for _row in _display_rows:
             if _proj_col:
-                _cards_html += _build_project_card(_row, _proj_col, _lbl_s, _val_s)
+                _cards_html += _build_project_card(_row, _proj_col, _lbl_s, _val_s, ns_htd=_ns_htd, ns_tm_pids=_ns_tm_pids)
         _cards_html += "</div>"
         st.markdown(_cards_html, unsafe_allow_html=True)
 
