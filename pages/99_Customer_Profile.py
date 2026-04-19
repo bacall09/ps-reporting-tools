@@ -837,6 +837,17 @@ def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=Non
     border  = "0.5px solid rgba(214,137,16,.35)" if status == "hold" else "0.5px solid rgba(128,128,128,.15)"
     opacity = "opacity:0.55;" if status == "complete" else ""
 
+    # Start date
+    _start_val = row.get("start_date", None)
+    start_str = "—"
+    if _start_val is not None:
+        try:
+            import pandas as _pd2
+            _sd = _pd2.to_datetime(_start_val)
+            start_str = _sd.strftime("%b %d, %Y")
+        except Exception:
+            start_str = str(_start_val)[:10]
+
     # Hours data from NS
     _pid_key = str(row.get("project_id", "") or "").strip().lower()
     _ptype_raw = str(row.get("project_type", "") or "")
@@ -873,6 +884,7 @@ def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=Non
         "<div><div style=\"" + lbl_s + "\">Last activity</div><div style=\"" + val_s + "\">" + last_str + "</div>" + days_str + "</div>",
         "<div><div style=\"" + lbl_s + "\">Consultant</div><div style=\"" + val_s + "\">" + cons + "</div></div>",
         "<div><div style=\"" + lbl_s + "\">Type</div><div style=\"" + val_s + "\">" + proj_type + "</div></div>",
+        "<div><div style=\"" + lbl_s + "\">Start date</div><div style=\"" + val_s + "\">" + start_str + "</div></div>",
         "</div>" + _hours_html + pill + "</div>",
     ]
     return "".join(parts)
@@ -1212,9 +1224,22 @@ with tab_stakeholders:
                     _pn_name = str(_pm_row.get(_pn_col, "") or "").strip() if _pn_col else ""
                     if _pm_name and _pm_name != "—" and _pm_name not in _seen_pm:
                         _seen_pm.add(_pm_name)
+                        # Look up actual role from roster
+                        # DRS stores names as "Last, First" -- try both formats
+                        _roster_role = EMPLOYEE_ROLES.get(_pm_name, {}).get("role", "")
+                        # Try reversed "First Last" format too
+                        if not _roster_role and "," in _pm_name:
+                            _parts = [p.strip() for p in _pm_name.split(",", 1)]
+                            _pm_name_fwd = f"{_parts[1]} {_parts[0]}"
+                            _roster_role = EMPLOYEE_ROLES.get(_pm_name_fwd, {}).get("role", "")
+                        _title = (
+                            "Project Manager" if _roster_role == "Project Manager"
+                            else "Senior Consultant" if "senior" in _roster_role.lower()
+                            else "Implementation Consultant"
+                        )
                         _drs_consultants.append({
                             "name":      _pm_name,
-                            "title":     "Implementation Consultant",
+                            "title":     _title,
                             "email":     "",
                             "roles":     [],
                             "is_primary": False,
