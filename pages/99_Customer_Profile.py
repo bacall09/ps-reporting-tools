@@ -1252,17 +1252,19 @@ with tab_stakeholders:
                     _pn_name = str(_pm_row.get(_pn_col, "") or "").strip() if _pn_col else ""
                     if _pm_name and _pm_name != "—" and _pm_name not in _seen_pm:
                         _seen_pm.add(_pm_name)
-                        # Look up actual role from roster
-                        # DRS stores names as "Last, First" -- try both formats
-                        _roster_role = EMPLOYEE_ROLES.get(_pm_name, {}).get("role", "")
-                        # Try reversed "First Last" format too
-                        if not _roster_role and "," in _pm_name:
+                        # Use get_role() which handles all name format variants
+                        _gr = get_role(_pm_name)
+                        # Also try "First Last" if DRS stores "Last, First"
+                        if _gr == "consultant" and "," in _pm_name:
                             _parts = [p.strip() for p in _pm_name.split(",", 1)]
-                            _pm_name_fwd = f"{_parts[1]} {_parts[0]}"
-                            _roster_role = EMPLOYEE_ROLES.get(_pm_name_fwd, {}).get("role", "")
+                            _gr = get_role(f"{_parts[1]} {_parts[0]}")
+                        # Also check EMPLOYEE_ROLES directly for the "role" field
+                        _er = (EMPLOYEE_ROLES.get(_pm_name) or
+                               EMPLOYEE_ROLES.get(f"{_parts[1]} {_parts[0]}" if "," in _pm_name else _pm_name)
+                               or {})
+                        _er_role = _er.get("role", "")
                         _title = (
-                            "Project Manager" if _roster_role == "Project Manager"
-                            else "Senior Consultant" if "senior" in _roster_role.lower()
+                            "Project Manager" if _gr in ("manager", "manager_only") or _er_role == "Project Manager"
                             else "Implementation Consultant"
                         )
                         _drs_consultants.append({
