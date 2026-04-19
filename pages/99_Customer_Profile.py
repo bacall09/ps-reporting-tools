@@ -448,7 +448,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Build customer list from DRS
-df_drs = st.session_state.get("df_drs")
+df_drs  = st.session_state.get("df_drs")
+df_sfdc = st.session_state.get("df_sfdc")
 drs_customers = []
 if df_drs is not None and not df_drs.empty and "project_name" in df_drs.columns:
     drs_customers = sorted(set(
@@ -852,46 +853,202 @@ with tab_overview:
 
 # ─── TAB: STAKEHOLDERS ───────────────────────────────────────────────────────
 with tab_stakeholders:
-    if d is None:
-        st.markdown('<div class="no-data-msg">Upload a Gong handover doc to view Stakeholders.</div>',
-                    unsafe_allow_html=True)
-    else:
-        if not d["stakeholders"]:
-            st.markdown('<div class="no-data-msg">No stakeholders parsed.</div>', unsafe_allow_html=True)
+
+    # ── Build SFDC contact list keyed by Opp ID ───────────────────────────────
+    _sfdc_contacts = []  # list of dicts
+    _opp_id = d.get("opp_link", "") if d else ""
+    import re as _re
+    _opp_id_match = _re.search(r"/Opportunity/([A-Za-z0-9]+)/", _opp_id)
+    _opp_id_clean = _opp_id_match.group(1) if _opp_id_match else None
+
+    if df_sfdc is not None and not df_sfdc.empty and _opp_id_clean and "opportunity_id" in df_sfdc.columns:
+        _sfdc_rows = df_sfdc[df_sfdc["opportunity_id"].astype(str).str.strip() == _opp_id_clean]
+        for _, _sr in _sfdc_rows.iterrows():
+            _fname = str(_sr.get("first_name", "") or "").strip()
+            _lname = str(_sr.get("last_name", "") or "").strip()
+            _fullname = f"{_fname} {_lname}".strip()
+            if not _fullname:
+                continue
+            _roles_raw = str(_sr.get("contact_roles", "") or "")
+            _roles = [r.strip() for r in _roles_raw.split(",") if r.strip()]
+            _is_primary = str(_sr.get("is_primary", "0")).strip() == "1"
+            _sfdc_contacts.append({
+                "name":      _fullname,
+                "title":     str(_sr.get("title", "") or "").strip(),
+                "email":     str(_sr.get("email", "") or "").strip(),
+                "roles":     _roles,
+                "is_primary": _is_primary,
+                "source":    "sfdc",
+                "internal":  False,
+            })
+
+    # Fall back to account name match if no opp ID
+    elif df_sfdc is not None and not df_sfdc.empty and selected_customer and "account" in df_sfdc.columns:
+        _sfdc_rows = df_sfdc[
+            df_sfdc["account"].fillna("").str.lower().str.contains(
+                selected_customer.lower()[:12], na=False
+            )
+        ]
+        for _, _sr in _sfdc_rows.iterrows():
+            _fname = str(_sr.get("first_name", "") or "").strip()
+            _lname = str(_sr.get("last_name", "") or "").strip()
+            _fullname = f"{_fname} {_lname}".strip()
+            if not _fullname:
+                continue
+            _roles_raw = str(_sr.get("contact_roles", "") or "")
+            _roles = [r.strip() for r in _roles_raw.split(",") if r.strip()]
+            _sfdc_contacts.append({
+                "name":      _fullname,
+                "title":     str(_sr.get("title", "") or "").strip(),
+                "email":     str(_sr.get("email", "") or "").strip(),
+                "roles":     _roles,
+                "is_primary": str(_sr.get("is_primary", "0")).strip() == "1",
+                "source":    "sfdc",
+                "internal":  False,
+            })
+
+    # ── Merge Gong + SFDC contacts ────────────────────────────────────────────
+    # Gong stakeholders marked internal stay as-is (Zone team)
+    # External Gong stakeholders: enrich from SFDC by name match, or add as Gong-only
+    # SFDC contacts not matched in Gong: add as SFDC-only
+    from rapidfuzz import fuzz as _fuzz
+
+    _gong_external = [s for s in (d["stakeholders"] if d else []) if not s["internal"]]
+    _gong_internal = [s for s in (d["stakeholders"] if d else []) if s["internal"]]
+
+    _merged_external = []
+    _sfdc_used = set()
+
+    for _gs in _gong_external:
+        _best_score, _best_idx = 0, None
+        for _i, _sc in enumerate(_sfdc_contacts):
+            if _i in _sfdc_used:
+                continue
+            _score = _fuzz.token_set_ratio(_gs["name"].lower(), _sc["name"].lower())
+            if _score > _best_score:
+                _best_score, _best_idx = _score, _i
+        if _best_idx is not None and _best_score >= 80:
+            # Merge: SFDC wins on email/title if Gong is empty, keep Gong role_note
+            _sc = _sfdc_contacts[_best_idx]
+            _sfdc_used.add(_best_idx)
+            _merged_external.append({
+                "name":      _sc["name"],
+                "title":     _sc["title"] or _gs["title"],
+                "email":     _sc["email"] or _gs["email"],
+                "roles":     _sc["roles"],
+                "is_primary": _sc["is_primary"],
+                "role_note": _gs.get("role_note", ""),
+                "source":    "both",
+                "internal":  False,
+            })
         else:
-            internal = [s for s in d["stakeholders"] if s["internal"]]
-            external = [s for s in d["stakeholders"] if not s["internal"]]
-            col_ext, col_int = st.columns(2)
+            # Gong only
+            _merged_external.append({
+                "name":      _gs["name"],
+                "title":     _gs["title"],
+                "email":     _gs["email"],
+                "roles":     [],
+                "is_primary": False,
+                "role_note": _gs.get("role_note", ""),
+                "source":    "gong",
+                "internal":  False,
+            })
 
-            def _build_stakeholder_html(stakeholders):
-                if not stakeholders:
-                    return "<div style='font-size:13px;opacity:.4;padding:8px'>None listed.</div>"
-                rows_html = ""
-                for s in stakeholders:
-                    initials = _initials(s["name"])
-                    av_cls = "avatar avatar-int" if s["internal"] else "avatar"
-                    role_note = (f'<span class="pill pill-grey" style="font-size:10px">{s["role_note"]}</span>') if s["role_note"] else ""
-                    title_str = (f'<span style="font-size:11px;opacity:.6">{s["title"]}</span>') if s["title"] else ""
-                    email_str = (
-                        f'<a href="mailto:{s["email"]}" style="font-size:11px;color:#3B9EFF;opacity:.7">{s["email"]}</a>'
-                        if s["email"] and "@" in s["email"] else ""
-                    )
-                    rows_html += (
-                        f'<div class="stakeholder-row">'
-                        f'<div class="{av_cls}">{initials}</div>'
-                        f'<div style="flex:1;min-width:0">'
-                        f'<div style="font-size:13px;font-weight:600">{s["name"]}</div>'
-                        f'<div>{title_str} {email_str}</div>'
-                        f'</div>{role_note}</div>'
-                    )
-                return f'<div class="cp-card" style="padding:8px 14px">{rows_html}</div>'
+    # Add unmatched SFDC contacts
+    for _i, _sc in enumerate(_sfdc_contacts):
+        if _i not in _sfdc_used:
+            _merged_external.append({**_sc, "role_note": ""})
 
-            with col_ext:
-                st.markdown('<div class="section-label">Customer contacts</div>', unsafe_allow_html=True)
-                st.markdown(_build_stakeholder_html(external), unsafe_allow_html=True)
-            with col_int:
-                st.markdown('<div class="section-label">Zone team</div>', unsafe_allow_html=True)
-                st.markdown(_build_stakeholder_html(internal), unsafe_allow_html=True)
+    # Sort: primary first, then by name
+    _merged_external.sort(key=lambda x: (not x.get("is_primary"), x["name"]))
+
+    # ── Render ────────────────────────────────────────────────────────────────
+    def _build_stakeholder_html(stakeholders, show_source=True):
+        if not stakeholders:
+            return "<div style='font-size:13px;opacity:.4;padding:8px'>None listed.</div>"
+        rows_html = ""
+        for s in stakeholders:
+            initials = _initials(s["name"])
+            av_cls = "avatar avatar-int" if s.get("internal") else "avatar"
+            # Role pills from SFDC contact_roles
+            role_pills = ""
+            _priority_roles = ["Decision Maker", "Primary Contact", "Implementation Contact", "Economic Buyer"]
+            for _r in s.get("roles", []):
+                if any(_r.lower() == p.lower() for p in _priority_roles):
+                    role_pills += f'<span class="pill pill-blue" style="font-size:10px">{_r}</span> '
+            # Gong role note as fallback
+            if not role_pills and s.get("role_note"):
+                role_pills = f'<span class="pill pill-grey" style="font-size:10px">{s["role_note"]}</span>'
+            title_str = (f'<span style="font-size:11px;opacity:.6">{s["title"]}</span>') if s.get("title") else ""
+            email_str = (
+                f'<a href="mailto:{s["email"]}" style="font-size:11px;color:#3B9EFF;opacity:.7">{s["email"]}</a>'
+                if s.get("email") and "@" in s["email"] else ""
+            )
+            # Source badge
+            _src = s.get("source", "")
+            if show_source and _src:
+                _src_color = {"sfdc": "#27AE60", "gong": "#D68910", "both": "#4472C4"}.get(_src, "#888")
+                _src_label = {"sfdc": "SFDC", "gong": "Gong", "both": "SFDC + Gong"}.get(_src, _src)
+                src_badge = (f'<span style="font-size:9px;font-weight:700;padding:1px 5px;'
+                             f'border-radius:8px;background:{_src_color}22;color:{_src_color};'
+                             f'margin-left:4px">{_src_label}</span>')
+            else:
+                src_badge = ""
+            primary_dot = '<span style="color:#4472C4;font-size:10px;margin-right:3px">●</span>' if s.get("is_primary") else ""
+            rows_html += (
+                f'<div class="stakeholder-row">'
+                f'<div class="{av_cls}">{initials}</div>'
+                f'<div style="flex:1;min-width:0">'
+                f'<div style="font-size:13px;font-weight:600">{primary_dot}{s["name"]}{src_badge}</div>'
+                f'<div>{title_str}</div>'
+                f'<div>{email_str}</div>'
+                f'<div style="margin-top:3px">{role_pills}</div>'
+                f'</div></div>'
+            )
+        return f'<div class="cp-card" style="padding:8px 14px">{rows_html}</div>'
+
+    col_ext, col_int = st.columns(2)
+
+    with col_ext:
+        _has_sfdc = bool(_sfdc_contacts)
+        _src_note = " <span style=\"font-size:10px;font-weight:400;opacity:.5;text-transform:none;letter-spacing:0\">· SFDC matched</span>" if _has_sfdc else ""
+        st.markdown(f'<div class="section-label">Customer contacts{_src_note}</div>', unsafe_allow_html=True)
+        if not _merged_external:
+            if df_sfdc is None:
+                st.caption("Upload SFDC Contacts to see customer stakeholders, or upload a Gong doc.")
+            else:
+                st.markdown('<div class="no-data-msg">No contacts found for this opportunity.</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(_build_stakeholder_html(_merged_external), unsafe_allow_html=True)
+
+    with col_int:
+        st.markdown('<div class="section-label">Zone team</div>', unsafe_allow_html=True)
+        # AM from SFDC
+        _sfdc_am_contacts = []
+        if df_sfdc is not None and not df_sfdc.empty and _opp_id_clean and "opportunity_id" in df_sfdc.columns:
+            _am_rows = df_sfdc[df_sfdc["opportunity_id"].astype(str).str.strip() == _opp_id_clean]
+            if not _am_rows.empty:
+                _am_row = _am_rows.iloc[0]
+                _am_name = str(_am_row.get("account_manager", "") or "").strip()
+                _am_email = str(_am_row.get("account_manager_email", "") or "").strip()
+                if _am_name:
+                    _sfdc_am_contacts.append({
+                        "name": _am_name, "title": "Account Manager",
+                        "email": _am_email, "roles": [], "is_primary": False,
+                        "role_note": "", "source": "sfdc", "internal": True,
+                    })
+        _zone_team = _sfdc_am_contacts + _gong_internal
+        # Deduplicate Zone team by name
+        _seen_zone = set()
+        _zone_dedup = []
+        for _zt in _zone_team:
+            if _zt["name"] not in _seen_zone:
+                _seen_zone.add(_zt["name"])
+                _zone_dedup.append(_zt)
+        if not _zone_dedup:
+            st.caption("Zone team contacts will appear here from Gong doc or SFDC.")
+        else:
+            st.markdown(_build_stakeholder_html(_zone_dedup, show_source=False), unsafe_allow_html=True)
 
 
 # ─── TAB: REQUIREMENTS ───────────────────────────────────────────────────────
