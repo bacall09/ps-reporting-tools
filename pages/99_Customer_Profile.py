@@ -450,13 +450,46 @@ st.markdown("""
 # Build customer list from DRS
 df_drs  = st.session_state.get("df_drs")
 df_sfdc = st.session_state.get("df_sfdc")
+# ── Customer name extraction from project_name ───────────────────────────────
+_PC = ["ZEP","ZBilling","ZPayroll","ZoneCapture","ZoneApprovals","ZoneReconcile",
+       "ZA","ZC","ZR","ZB","ZP"]
+_PW = ["Payroll","Billing","Capture","Approvals","Reconcile","Implementation",
+       "Optimization","Migration","Integration","Training","Support"]
+
+def _extract_customer_name(project_name):
+    """Extract clean customer name from DRS project_name field."""
+    import re as _re
+    n = str(project_name).strip()
+    # "Customer - XX - Description"
+    m = _re.match(r'^(.+?)\s*-\s*[A-Z]{1,4}\s*-\s*.+$', n)
+    if m: return m.group(1).strip()
+    # "Customer- ProductCode ..." e.g. "Connect NZ- ZEP Implementation"
+    m = _re.match(r'^(.+?)\s*-\s*(' + '|'.join(_PC) + r')', n, _re.IGNORECASE)
+    if m: return m.group(1).strip()
+    # "Customer- ProductWord ..."
+    m = _re.match(r'^(.+?)\s*-\s*(' + '|'.join(_PW) + r').+$', n, _re.IGNORECASE)
+    if m: return m.group(1).strip()
+    # "Customer ProductCode" no dash
+    for code in sorted(_PC, key=len, reverse=True):
+        m = _re.search(r'\s+' + _re.escape(code) + r'', n, _re.IGNORECASE)
+        if m and m.start() > 2: return n[:m.start()].strip()
+    # "Customer ProductWord" no dash
+    for word in _PW:
+        m = _re.search(r'\s+' + _re.escape(word) + r'', n, _re.IGNORECASE)
+        if m and m.start() > 3: return n[:m.start()].strip().rstrip('-').strip()
+    return n
+
 drs_customers = []
-if df_drs is not None and not df_drs.empty and "project_name" in df_drs.columns:
-    drs_customers = sorted(set(
-        str(r).split(" - ")[0].strip()
-        for r in df_drs["project_name"].dropna()
-        if str(r).strip()
-    ))
+if df_drs is not None and not df_drs.empty:
+    if "account" in df_drs.columns:
+        _raw = df_drs["account"].dropna()
+        drs_customers = sorted(set(str(r).strip() for r in _raw if str(r).strip()))
+    elif "project_name" in df_drs.columns:
+        drs_customers = sorted(set(
+            _extract_customer_name(r)
+            for r in df_drs["project_name"].dropna()
+            if str(r).strip()
+        ))
 
 # Session store for uploaded Gong docs: {customer_name: [parsed_doc, ...]}
 # NOTE: session-only storage — docs do not persist across page reloads.
