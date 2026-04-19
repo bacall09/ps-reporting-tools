@@ -1252,6 +1252,7 @@ with tab_stakeholders:
                     _pn_name = str(_pm_row.get(_pn_col, "") or "").strip() if _pn_col else ""
                     if _pm_name and _pm_name != "—" and _pm_name not in _seen_pm:
                         _seen_pm.add(_pm_name)
+                        st.caption(f"DEBUG pm_name={_pm_name!r} get_role={get_role(_pm_name)!r} in_er={_pm_name in EMPLOYEE_ROLES}")
                         # Use get_role() which handles all name format variants
                         _gr = get_role(_pm_name)
                         # Also try "First Last" if DRS stores "Last, First"
