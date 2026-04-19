@@ -1158,8 +1158,31 @@ with tab_stakeholders:
                         "email": _am_email, "roles": [], "is_primary": False,
                         "role_note": "", "source": "sfdc", "internal": True,
                     })
-        _zone_team = _sfdc_am_contacts + _gong_internal
-        # Deduplicate Zone team by name
+        # Pull consultants from DRS project cards
+        _drs_consultants = []
+        if _drs_match is not None and not _drs_match.empty:
+            _pm_col = "project_manager" if "project_manager" in _drs_match.columns else None
+            _pn_col = "project_name" if "project_name" in _drs_match.columns else None
+            if _pm_col:
+                _seen_pm = set()
+                for _, _pm_row in _drs_match.iterrows():
+                    _pm_name = str(_pm_row.get(_pm_col, "") or "").strip()
+                    _pn_name = str(_pm_row.get(_pn_col, "") or "").strip() if _pn_col else ""
+                    if _pm_name and _pm_name != "—" and _pm_name not in _seen_pm:
+                        _seen_pm.add(_pm_name)
+                        _drs_consultants.append({
+                            "name":      _pm_name,
+                            "title":     "Implementation Consultant",
+                            "email":     "",
+                            "roles":     [],
+                            "is_primary": False,
+                            "role_note": _pn_name[:40] + ("…" if len(_pn_name) > 40 else ""),
+                            "source":    "drs",
+                            "internal":  True,
+                        })
+
+        _zone_team = _sfdc_am_contacts + _drs_consultants + _gong_internal
+        # Deduplicate by name
         _seen_zone = set()
         _zone_dedup = []
         for _zt in _zone_team:
@@ -1167,7 +1190,7 @@ with tab_stakeholders:
                 _seen_zone.add(_zt["name"])
                 _zone_dedup.append(_zt)
         if not _zone_dedup:
-            st.caption("Zone team contacts will appear here from Gong doc or SFDC.")
+            st.caption("Zone team contacts will appear here from Gong doc, SFDC, or DRS.")
         else:
             st.markdown(_build_stakeholder_html(_zone_dedup, show_source=False), unsafe_allow_html=True)
 

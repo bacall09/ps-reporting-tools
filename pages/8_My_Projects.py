@@ -10,6 +10,41 @@ from datetime import date, timedelta
 
 st.session_state["current_page"] = "My Projects"
 
+# ── Customer name extraction (shared logic with Customer Profile) ─────────────
+_PC = ["ZEP","ZoneBilling","ZBilling","ZonePayroll","ZPayroll","ZoneCapture",
+       "ZoneApprovals","ZoneReconcile","ZA","ZC","ZR","ZB","ZP"]
+_PW = ["Payroll","Billing","Capture","Approvals","Reconcile","Implementation",
+       "Optimization","Migration","Integration","Training","Support","MSA"]
+
+def _extract_customer_name(project_name):
+    import re as _re
+    n = str(project_name).strip()
+    # "Customer - XX - Description"
+    m = _re.match(r'^(.+?)\s*-\s*[A-Z]{1,4}\s*-\s*.+$', n)
+    if m: return m.group(1).strip()
+    # "Customer- ProductCode ..."
+    _pc_pat = '|'.join(_PC)
+    m = _re.match(r'^(.+?)\s*-\s*(?:' + _pc_pat + r')(?:\s|$|-)', n, _re.IGNORECASE)
+    if m: return m.group(1).strip()
+    # "Customer- ProductWord ..."
+    _pw_pat = '|'.join(_PW)
+    m = _re.match(r'^(.+?)\s*-\s*(?:' + _pw_pat + r').+$', n, _re.IGNORECASE)
+    if m: return m.group(1).strip()
+    # "Customer : Customer" (duplicate separated by colon)
+    m = _re.match(r'^(.+?)\s*:\s*\1\s*$', n, _re.IGNORECASE)
+    if m: return m.group(1).strip()
+    # "Customer : Something" (colon separator)
+    if ' : ' in n: return n.split(' : ')[0].strip()
+    # "Customer ProductCode" no dash
+    for code in sorted(_PC, key=len, reverse=True):
+        m = _re.search(r'\s+' + _re.escape(code) + r'(?:\s|$|-)', n, _re.IGNORECASE)
+        if m and m.start() > 2: return n[:m.start()].strip()
+    # "Customer ProductWord" no dash
+    for word in _PW:
+        m = _re.search(r'\s+' + _re.escape(word) + r'(?:\s|$)', n, _re.IGNORECASE)
+        if m and m.start() > 3: return n[:m.start()].strip().rstrip('-').strip()
+    return n
+
 from shared.constants import (
     EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
     MILESTONE_COLS_MAP, get_role, is_manager,
@@ -323,7 +358,7 @@ def _to_edit_row(row):
         v = row.get(col)
         return pd.Timestamp(v).strftime("%Y-%m-%d") if pd.notna(v) else ""
     _pn    = str(row.get("project_name","") or "")
-    _cust  = _pn.split(" - ")[0].strip() if " - " in _pn else _pn
+    _cust  = _extract_customer_name(_pn)
     # Scope: FF → from DEFAULT_SCOPE table by project_type; T&M → total NS hours logged
     _ptype_raw = str(row.get("project_type", "") or "")
     _bill_raw  = str(row.get("billing_type", "") or "").strip().lower()
@@ -573,7 +608,7 @@ else:
             "RAG":                   _rag_v if _rag_v != "—" else "⚠️ No RAG",
             "Flags":                 ("⚠️" if any(s=="error" for s,*_ in (r.get("_flags") or []))
                                   else ("⚠️" if (r.get("_flags") or []) else "")),
-            "Customer":              str(r.get("project_name","")).split(" - ")[0].strip() if " - " in str(r.get("project_name","")) else str(r.get("project_name","")),
+            "Customer":              _extract_customer_name(str(r.get("project_name",""))),
             "Project Type":          str(r.get("project_type","") or "—"),
             "Start Date":            pd.Timestamp(r["start_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("start_date")) else "—",
             "Est. Go-Live":          pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
