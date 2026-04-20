@@ -522,12 +522,21 @@ changed = edited[editable_cols].fillna("").ne(edit_df[editable_cols].fillna(""))
 changed_df = edited[changed].copy() if changed.any() else pd.DataFrame()
 
 # ── Export bar ────────────────────────────────────────────────────────────
-ex1, ex2 = st.columns([3,1])
+from shared.smartsheet_api import ss_available, write_row_updates, WRITEBACK_FIELDS
+
+_ss_ready       = ss_available()
+_loaded_via_api = st.session_state.get("_drs_source") == "api"
+_has_row_ids    = "_ss_row_id" in active.columns
+
+# Status label
+ex1, ex2, ex3 = st.columns([3, 1, 1])
 with ex1:
     if changed.any():
         st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {changed.sum()} project(s) edited — ready to export</span>', unsafe_allow_html=True)
     else:
-        st.markdown('<span style="font-size:12px;opacity:.5">No edits yet — edit cells above then export</span>', unsafe_allow_html=True)
+        st.markdown('<span style="font-size:12px;opacity:.5">No edits yet — edit cells above then export or sync</span>', unsafe_allow_html=True)
+
+# CSV export (always available)
 with ex2:
     _export_df = changed_df if not changed_df.empty else edited
     _buf = io.BytesIO()
@@ -537,9 +546,76 @@ with ex2:
         data=_buf.getvalue(),
         file_name=f"drs_updates_{date.today().strftime('%Y%m%d')}.csv",
         mime="text/csv",
-        type="primary" if not changed_df.empty else "secondary",
+        type="primary" if (not changed_df.empty and not (_ss_ready and _has_row_ids)) else "secondary",
         use_container_width=True,
     )
+
+# Smartsheet sync (only when DRS loaded via API — row IDs available)
+with ex3:
+    if _ss_ready and _has_row_ids:
+        _sync_disabled = not changed.any()
+        if st.button(
+            "↑ Sync to Smartsheet",
+            key="mp_ss_sync",
+            disabled=_sync_disabled,
+            type="primary" if changed.any() else "secondary",
+            use_container_width=True,
+            help="Write edited fields directly back to the Smartsheet DRS" if not _sync_disabled
+                 else "No edits to sync — edit cells above first",
+        ):
+            # Build update payload — map display column names back to internal keys
+            _display_to_internal = {v: k for k, v in WRITEBACK_FIELDS.items()}
+            _editable_display_cols = list(WRITEBACK_FIELDS.values())
+
+            # Join edited table back to active df to recover _ss_row_id
+            # active has _ss_row_id; edited has display columns. Join on positional index.
+            _sync_rows = active[changed].copy()
+            _edited_changed = edited[changed].copy()
+
+            updates = []
+            for idx in _sync_rows.index:
+                _pos = list(_sync_rows.index).index(idx)
+                row_id    = _sync_rows.at[idx, "_ss_row_id"]
+                proj_name = _sync_rows.at[idx, "project_name"] if "project_name" in _sync_rows.columns else str(row_id)
+
+                changes = {}
+                for disp_col in _editable_display_cols:
+                    if disp_col not in _edited_changed.columns:
+                        continue
+                    internal_key = _display_to_internal.get(disp_col)
+                    if not internal_key:
+                        continue
+                    new_val = _edited_changed.iloc[_pos][disp_col]
+                    # Only include fields that actually changed vs original
+                    orig_val = edit_df.iloc[_pos][disp_col] if disp_col in edit_df.columns else None
+                    if str(new_val) != str(orig_val):
+                        changes[internal_key] = new_val
+
+                if changes:
+                    updates.append({
+                        "_ss_row_id":   row_id,
+                        "project_name": proj_name,
+                        "changes":      changes,
+                    })
+
+            if updates:
+                with st.spinner(f"Syncing {len(updates)} row(s) to Smartsheet…"):
+                    _ok, _errs = write_row_updates(updates)
+                if _ok:
+                    st.success(f"✓ {_ok} row(s) synced to Smartsheet.")
+                if _errs:
+                    for _e in _errs:
+                        st.warning(f"⚠ {_e}")
+            else:
+                st.info("No writable field changes detected.")
+    elif _ss_ready and not _has_row_ids:
+        st.button(
+            "↑ Sync to Smartsheet",
+            key="mp_ss_sync_disabled",
+            disabled=True,
+            use_container_width=True,
+            help="Reload DRS using 'Load from Smartsheet' on the Home page to enable direct sync",
+        )
 
 # ── Re-engagement shortcuts for inactive projects ─────────────────────────
 _inactive_projs = active[active["days_inactive"].fillna(0)>=14].sort_values("days_inactive", ascending=False)

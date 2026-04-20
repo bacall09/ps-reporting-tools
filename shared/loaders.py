@@ -167,12 +167,14 @@ def load_sfdc(file):
     return df
 
 
-def load_drs(file):
-    """Load SS DRS export and identify stale/unresponsive projects."""
-    if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file)
+def _normalise_drs_df(df: "pd.DataFrame") -> "pd.DataFrame":
+    """
+    Normalise a raw DRS DataFrame (from file upload or Smartsheet API).
+    Applies column renaming, date parsing, phase/billing filtering,
+    milestone parsing, inactivity scoring, and legacy flag.
+    Called by both load_drs() and smartsheet_api.load_sheet_as_df().
+    _ss_row_id column (added by API loader) is preserved untouched.
+    """
     df.columns = df.columns.str.strip()
     rename = {col: SS_COL_MAP_OUT[col.lower()] for col in df.columns if col.lower() in SS_COL_MAP_OUT}
     df = df.rename(columns=rename)
@@ -291,9 +293,19 @@ def load_drs(file):
         df["burn_pct"] = None
 
     # Store unmapped columns for debug
-    df.attrs["unmapped_cols"] = [c for c in df.columns if c not in SS_COL_MAP_OUT.values()]
+    df.attrs["unmapped_cols"] = [c for c in df.columns if c not in SS_COL_MAP_OUT.values()
+                                  and c != "_ss_row_id"]
 
     return df
+
+
+def load_drs(file):
+    """Load SS DRS export from an uploaded file (CSV or Excel)."""
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+    return _normalise_drs_df(df)
 
 
 def load_ns_time(file):

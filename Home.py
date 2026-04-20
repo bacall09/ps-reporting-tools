@@ -239,7 +239,26 @@ with st.sidebar:
     st.markdown("**Upload data**")
     st.caption("Upload once — available across all pages this session.")
 
-    drs_file  = st.file_uploader("SS DRS Export",  type=["xlsx","csv"], key="hub_drs", label_visibility="collapsed")
+    # ── DRS: API load or file upload ──────────────────────────────────────────
+    from shared.smartsheet_api import ss_available, load_sheet_as_df as _ss_load
+    _ss_ready = ss_available()
+    if _ss_ready:
+        _drs_col1, _drs_col2 = st.columns([2, 1])
+        with _drs_col1:
+            drs_file = st.file_uploader("SS DRS Export", type=["xlsx","csv"], key="hub_drs", label_visibility="collapsed")
+        with _drs_col2:
+            st.markdown('<div style="padding-top:6px"></div>', unsafe_allow_html=True)
+            if st.button("⟳ Load from Smartsheet", key="hub_drs_api", use_container_width=True,
+                         help="Fetch live DRS data directly from Smartsheet API"):
+                with st.spinner("Fetching from Smartsheet…"):
+                    try:
+                        st.session_state["df_drs"] = _ss_load()
+                        st.session_state["_drs_source"] = "api"
+                        st.success("DRS loaded from Smartsheet.")
+                    except Exception as _e:
+                        st.error(f"Smartsheet API error: {_e}")
+    else:
+        drs_file = st.file_uploader("SS DRS Export", type=["xlsx","csv"], key="hub_drs", label_visibility="collapsed")
     st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
 
     ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns", label_visibility="collapsed")
