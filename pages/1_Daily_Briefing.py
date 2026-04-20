@@ -376,8 +376,8 @@ if not _active.empty:
     if "start_date" in _pre_trans.columns and not _pre_trans.empty:
         _sd = pd.to_datetime(_pre_trans["start_date"], errors="coerce")
         _months_active = (_snap_today - _sd).dt.days / 30.44
-        _proj_9mo  = _pre_trans[_months_active >= 9].copy()
         _proj_12mo = _pre_trans[_months_active >= 12].copy()
+        _proj_9mo  = _pre_trans[(_months_active >= 9) & (_months_active < 12)].copy()
     else:
         _proj_9mo = _proj_12mo = pd.DataFrame()
 else:
@@ -456,10 +456,8 @@ if _p1 or _p2 or _p3:
         _para_reminder = " and ".join(_r_parts) + " — a proactive check-in today would be timely."
 
     _para_quick = ""
-    if len(_proj_9mo) > 0 and len(_proj_12mo) < len(_proj_9mo):
-        _9mo_only = len(_proj_9mo) - len(_proj_12mo)
-        if _9mo_only > 0:
-            _para_quick += f"{_9mo_only} project{'s are' if _9mo_only>1 else ' is'} approaching the 12-month mark — worth a proactive check on timeline and transition plan. "
+    if len(_proj_9mo) > 0:
+        _para_quick += f"{len(_proj_9mo)} project{'s are' if len(_proj_9mo)>1 else ' is'} approaching the 12-month mark (9–12 months active) — worth a proactive check on timeline and transition plan. "
     if len(_rag_yellow) > 0:
         _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation."
 
@@ -931,7 +929,7 @@ else:
                 st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
     with r2d:
         _col = "#F39C12" if len(_proj_9mo) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9+ months active <span class="metric-help" data-tip="Active projects 9 or more months from Start Date that have not yet reached Phase 08. Ready for Support Transition.">ⓘ</span></div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9–12 months active <span class="metric-help" data-tip="Active projects 9–12 months from Start Date that have not yet reached Phase 08. Approaching the 12-month mark.">ⓘ</span></div></div>', unsafe_allow_html=True)
         for _, _p9 in _proj_9mo.head(3).iterrows():
             st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p9)}</div>', unsafe_allow_html=True)
     with r2e:
