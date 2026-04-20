@@ -80,6 +80,20 @@ def ss_available() -> bool:
 
 # ── READ ──────────────────────────────────────────────────────────────────────
 
+def list_accessible_sheets() -> list[dict]:
+    """
+    Return a list of sheets the token can access: [{id, name, permalink}]
+    Useful for diagnosing permission issues — call from st.write() in Home.py temporarily.
+    """
+    headers = _get_headers()
+    resp = requests.get(f"{_SS_BASE}/sheets", headers=headers, timeout=15)
+    resp.raise_for_status()
+    return [
+        {"id": str(s["id"]), "name": s["name"], "permalink": s.get("permalink", "")}
+        for s in resp.json().get("data", [])
+    ]
+
+
 def fetch_sheet_as_df() -> pd.DataFrame:
     """
     Fetch the full DRS Smartsheet and return as a raw DataFrame.

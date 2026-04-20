@@ -89,7 +89,9 @@ else:
     pg = st.navigation({"My Tools": _consultant_pages, "Info": _help_pages})
 
 # ── Logo + global styles (after navigation to avoid _mpa_v1 conflict) ───────────
-st.logo("zone_ps_logo.svg", size="large", link=None)
+import os as _os
+if _os.path.exists("zone_ps_logo.svg"):
+    st.logo("zone_ps_logo.svg", size="large", link=None)
 
 st.markdown("""<style>
 html body [data-testid="stFileUploaderDropzoneInstructions"] {
@@ -239,20 +241,20 @@ with st.sidebar:
     st.markdown("**Upload data**")
     st.caption("Upload once — available across all pages this session.")
 
-    # ── DRS: API load or file upload ──────────────────────────────────────────
+    # ── DRS: file upload + optional API load button ────────────────────────────
     from shared.smartsheet_api import ss_available, load_sheet_as_df as _ss_load
     _ss_ready = ss_available()
-    _drs_col1, _drs_col2 = st.columns([2, 1])
-    with _drs_col1:
-        drs_file = st.file_uploader("SS DRS Export", type=["xlsx","csv"], key="hub_drs", label_visibility="collapsed")
-    with _drs_col2:
-        st.markdown('<div style="padding-top:6px"></div>', unsafe_allow_html=True)
+    drs_file = st.file_uploader("SS DRS Export", type=["xlsx","csv"], key="hub_drs", label_visibility="collapsed")
+    _drs_link_col, _drs_btn_col = st.columns([1, 1])
+    with _drs_link_col:
+        st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
+    with _drs_btn_col:
         if st.button(
-            "⟳ Load from Smartsheet",
+            "⟳ Load live from Smartsheet",
             key="hub_drs_api",
             use_container_width=True,
             disabled=not _ss_ready,
-            help="Fetch live DRS data directly from Smartsheet API" if _ss_ready else "smartsheet_token / smartsheet_sheet_id not found in secrets",
+            help="Fetch live DRS data directly from Smartsheet API" if _ss_ready else "SMARTSHEET_TOKEN / SMARTSHEET_DRS_ID not found in secrets",
         ):
             with st.spinner("Fetching from Smartsheet…"):
                 try:
@@ -261,7 +263,18 @@ with st.sidebar:
                     st.success("DRS loaded from Smartsheet.")
                 except Exception as _e:
                     st.error(f"Smartsheet API error: {_e}")
-    st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
+    if _ss_ready:
+        with st.expander("🔍 Debug: sheets visible to token", expanded=False):
+            try:
+                from shared.smartsheet_api import list_accessible_sheets
+                _visible = list_accessible_sheets()
+                if _visible:
+                    for _s in _visible:
+                        st.markdown(f'`{_s["id"]}` — {_s["name"]}')
+                else:
+                    st.warning("Token authenticated but no sheets returned — check sharing permissions.")
+            except Exception as _de:
+                st.error(f"Diagnostic error: {_de}")
 
     ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns", label_visibility="collapsed")
     st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&amp;saverun=T&amp;whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Time Detail Search</a>', unsafe_allow_html=True)
