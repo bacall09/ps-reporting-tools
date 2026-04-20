@@ -53,9 +53,9 @@ WRITEBACK_FIELDS = {
 
 def _get_headers() -> dict:
     """Build auth headers from Streamlit secrets."""
-    token = st.secrets.get("smartsheet_token", "")
+    token = st.secrets.get("SMARTSHEET_TOKEN", "")
     if not token:
-        raise ValueError("smartsheet_token not found in Streamlit secrets.")
+        raise ValueError("SMARTSHEET_TOKEN not found in Streamlit secrets.")
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type":  "application/json",
@@ -64,16 +64,16 @@ def _get_headers() -> dict:
 
 def _get_sheet_id() -> str:
     """Get sheet ID from Streamlit secrets."""
-    sheet_id = st.secrets.get("smartsheet_sheet_id", "")
+    sheet_id = st.secrets.get("SMARTSHEET_DRS_ID", "")
     if not sheet_id:
-        raise ValueError("smartsheet_sheet_id not found in Streamlit secrets.")
+        raise ValueError("SMARTSHEET_DRS_ID not found in Streamlit secrets.")
     return str(sheet_id).strip()
 
 
 def ss_available() -> bool:
     """Return True if Smartsheet secrets are configured."""
     try:
-        return bool(st.secrets.get("smartsheet_token")) and bool(st.secrets.get("smartsheet_sheet_id"))
+        return bool(st.secrets.get("SMARTSHEET_TOKEN")) and bool(st.secrets.get("SMARTSHEET_DRS_ID"))
     except Exception:
         return False
 
@@ -204,7 +204,7 @@ def write_row_updates(updates: list[dict]) -> tuple[int, list[str]]:
         return 0, []
 
     sheet_id   = _get_sheet_id()
-    token      = st.secrets.get("smartsheet_token", "")
+    token      = st.secrets.get("SMARTSHEET_TOKEN", "")
     headers    = _get_headers()
     col_map    = _get_column_map(sheet_id, token)  # lowercase title → columnId
 
