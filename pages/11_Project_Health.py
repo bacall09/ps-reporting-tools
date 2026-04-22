@@ -9,7 +9,7 @@ from datetime import date
 st.session_state["current_page"] = "Project Health"
 
 from shared.constants import (
-    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
+    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
     MILESTONE_COLS_MAP, get_role, is_manager,
     name_matches, get_ff_scope,
 )

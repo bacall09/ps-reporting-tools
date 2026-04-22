@@ -218,7 +218,12 @@ def _normalise_drs_df(df: "pd.DataFrame") -> "pd.DataFrame":
     # Filter to active FF projects only
     today = pd.Timestamp.today().normalize()
     if "phase" in df.columns:
-        df = df[~df["phase"].str.strip().str.lower().isin(INACTIVE_PHASES_OUT)]
+        _PHASE_10 = "10. complete/pending final billing"
+        # Tag phase-10 rows before filtering — status not yet Closed, need attention
+        df["_pending_close"] = df["phase"].str.strip().str.lower() == _PHASE_10
+        # Keep phase-10 rows in df (surfaced as alert); drop phases 12+
+        _drop_phases = {p for p in INACTIVE_PHASES_OUT if p != _PHASE_10}
+        df = df[~df["phase"].str.strip().str.lower().isin(_drop_phases)]
     if "billing_type" in df.columns:
         df = df[~df["billing_type"].str.strip().str.lower().isin({"t&m","time & material","time and material"})]
     # Calculate remaining sessions from milestone columns
@@ -236,10 +241,10 @@ def _normalise_drs_df(df: "pd.DataFrame") -> "pd.DataFrame":
 
     # Tag On Hold but keep in df — excluded from dropdown, shown in table
     ON_HOLD_VALS = {"on-hold","on hold","onhold","on_hold"}
-    if "status" in df.columns:
-        df["_on_hold"] = df["status"].str.strip().str.lower().isin(ON_HOLD_VALS)
-    else:
-        df["_on_hold"] = False
+    ON_HOLD_PHASES = {"11. on hold"}
+    _status_oh = df["status"].str.strip().str.lower().isin(ON_HOLD_VALS) if "status" in df.columns else pd.Series(False, index=df.index)
+    _phase_oh  = df["phase"].str.strip().str.lower().isin(ON_HOLD_PHASES) if "phase" in df.columns else pd.Series(False, index=df.index)
+    df["_on_hold"] = _status_oh | _phase_oh
 
     # ── Inactivity signal hierarchy (DRS-only baseline, NS overrides in calc_days_inactive) ──
     # 1. Last Milestone date — days since most recently completed milestone
