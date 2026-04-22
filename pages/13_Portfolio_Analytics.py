@@ -152,7 +152,14 @@ _leaver_drs     = df_drs[_all_pm_col.apply(_is_leaver_pm)].copy()
 _unassigned_drs = df_drs[_all_pm_col.apply(_is_unassigned_pm)].copy()
 _n_leaver       = int(_leaver_drs["project_id"].nunique()) if "project_id" in _leaver_drs.columns and not _leaver_drs.empty else len(_leaver_drs)
 _n_unassigned   = int(_unassigned_drs["project_id"].nunique()) if "project_id" in _unassigned_drs.columns and not _unassigned_drs.empty else len(_unassigned_drs)
-_pending_close_drs = df_drs[df_drs.get("_pending_close", pd.Series(False, index=df_drs.index)).astype(bool)].copy() if "_pending_close" in df_drs.columns else pd.DataFrame()
+# Derive pending_close from phase col if loader flag not present (cache fallback)
+if "_pending_close" in df_drs.columns:
+    _pc_mask = df_drs["_pending_close"].astype(bool)
+elif "phase" in df_drs.columns:
+    _pc_mask = df_drs["phase"].str.strip().str.lower() == "10. complete/pending final billing"
+else:
+    _pc_mask = pd.Series(False, index=df_drs.index)
+_pending_close_drs = df_drs[_pc_mask].copy()
 _n_pending_close   = int(_pending_close_drs["project_id"].nunique()) if "project_id" in _pending_close_drs.columns and not _pending_close_drs.empty else len(_pending_close_drs)
 
 # Active projects (not on hold)
@@ -207,44 +214,40 @@ else:
     _n_9mo = 0
 
 st.markdown('<div class="section-label">Portfolio Snapshot</div>', unsafe_allow_html=True)
-_ps_cols = st.columns(9)
+_ps_cols = st.columns(8)
 
 with _ps_cols[0]:
     st.markdown(f"""<div class="metric-card">
       <div class="metric-val">{_n_active}</div>
       <div class="metric-lbl">Active</div>
-      <div class="metric-sub">{_n_team} consultants</div>
+      <div class="metric-sub">{_n_team} consultants · {_oh_pct}% on hold</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[1]:
     st.markdown(f"""<div class="metric-card">
-      <div class="metric-val">{_n_onhold}</div>
+      <div class="metric-val" style="color:#F39C12">{_n_onhold}</div>
       <div class="metric-lbl">On hold</div>
-      <div class="metric-sub">{_oh_pct}% of total</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[2]:
     _lv_col = "#F39C12" if _n_leaver > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card" style="border-color:rgba(243,156,18,.35)">
+    st.markdown(f"""<div class="metric-card">
       <div class="metric-val" style="color:{_lv_col}">{_n_leaver}</div>
-      <div class="metric-lbl">Leaver-assigned</div>
-      <div class="metric-sub">need reassignment</div>
+      <div class="metric-lbl">Need reassignment</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[3]:
     _ua_col = "#C0392B" if _n_unassigned > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card" style="border-color:rgba(192,57,43,.35)">
+    st.markdown(f"""<div class="metric-card">
       <div class="metric-val" style="color:{_ua_col}">{_n_unassigned}</div>
       <div class="metric-lbl">Unassigned</div>
-      <div class="metric-sub">no PM in DRS</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[4]:
     _pc_col = "#F39C12" if _n_pending_close > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card" style="border-color:rgba(243,156,18,.35)">
+    st.markdown(f"""<div class="metric-card">
       <div class="metric-val" style="color:{_pc_col}">{_n_pending_close}</div>
       <div class="metric-lbl">Pending close</div>
-      <div class="metric-sub">phase 10, status open</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[5]:
@@ -256,23 +259,15 @@ with _ps_cols[5]:
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[6]:
-    _ohc = "#F39C12" if _oh_pct >= 20 else "inherit"
+    _dur_txt2 = f"{_avg_dur}mo" if _avg_dur else "—"
+    _durc2 = "#F39C12" if (_avg_dur or 0) >= 9 else "inherit"
     st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_ohc}">{_oh_pct}%</div>
-      <div class="metric-lbl">On-hold rate</div>
-      <div class="metric-sub">{_n_onhold} of {_n_total}</div>
-    </div>""", unsafe_allow_html=True)
-
-with _ps_cols[7]:
-    _dur_txt = f"{_avg_dur}mo" if _avg_dur else "—"
-    _durc = "#F39C12" if (_avg_dur or 0) >= 9 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_durc}">{_dur_txt}</div>
+      <div class="metric-val" style="color:{_durc2}">{_dur_txt2}</div>
       <div class="metric-lbl">Avg duration</div>
       <div class="metric-sub">active projects</div>
     </div>""", unsafe_allow_html=True)
 
-with _ps_cols[8]:
+with _ps_cols[7]:
     _9moc = "#F39C12" if _n_9mo > 0 else "inherit"
     st.markdown(f"""<div class="metric-card">
       <div class="metric-val" style="color:{_9moc}">{_n_9mo}</div>
@@ -285,7 +280,7 @@ if _n_leaver > 0 or _n_unassigned > 0 or _n_pending_close > 0:
     _exp1, _exp2, _exp3 = st.columns(3)
     if _n_leaver > 0:
         with _exp1:
-            with st.expander(f"⚠️ {_n_leaver} leaver-assigned project{'s' if _n_leaver != 1 else ''} — view & reassign"):
+            with st.expander(f"⚠️ {_n_leaver} project{'s' if _n_leaver != 1 else ''} need reassignment — view"):
                 _lv_cols = ["project_name","project_manager","project_type","_on_hold","ps_region"]
                 _lv_show = _leaver_drs[[c for c in _lv_cols if c in _leaver_drs.columns]].copy()
                 _lv_show = _lv_show.rename(columns={
@@ -328,42 +323,147 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.markdown('<div class="section-label">Product Mix</div>', unsafe_allow_html=True)
 
 if "project_type" in _active.columns:
-    _pt_counts = {}
-    for pt in _active["project_type"].fillna("Unknown"):
-        _pt = str(pt).strip()
-        _prod = _pt.split(":")[-1].strip() if ":" in _pt else _pt
-        if not _prod: _prod = "Unknown"
-        _pt_counts[_prod] = _pt_counts.get(_prod, 0) + 1
+    # ── Family → type keyword mapping ─────────────────────────────────────────
+    # Each tuple: (family_name, family_color, {type_keyword: display_label})
+    # project_type is matched case-insensitively after stripping "ZoneApp:" prefix
+    _FAMILIES = [
+        ("ZoneApps", "#1D9E75", {
+            "capture":             "Capture",
+            "approvals":           "Approvals",
+            "reconcile 2.0":       "Reconcile 2.0",
+            "reconcile psp":       "Reconcile PSP",
+            "reconcile":           "Reconcile",
+            "e-invoicing":         "e-Invoicing",
+            "einvoicing":          "e-Invoicing",
+            "cc statement import": "CC Statement Import",
+            "sftp connector":      "SFTP Connector",
+            "sftp":                "SFTP Connector",
+            "payments":            "Payments",
+            "ap payment":          "AP Payment",
+            "premium":             "Premium",
+            "consulting":          "Consulting",
+        }),
+        ("ZoneBilling", "#3266ad", {
+            "zab implementation":    "ZAB Implementation",
+            "zab partner":           "ZAB Partner Impl",
+            "zb_standard":           "ZB_Standard",
+            "zb standard":           "ZB_Standard",
+            "zb_premium":            "ZB_Premium",
+            "zb premium":            "ZB_Premium",
+            "optimization audit":    "Optimization Audit",
+            "subscription services": "Subscription Services",
+            "optimization":          "Optimization",
+        }),
+        ("ZonePayroll", "#D85A30", {
+            "zep: implementation": "ZEP Implementation",
+            "zep: optimization":   "ZEP Optimization",
+            "zep implementation":  "ZEP Implementation",
+            "zep optimization":    "ZEP Optimization",
+            "zep":                 "ZEP",
+            "implementation":      "Implementation",
+            "optimization":        "Optimization",
+            "support":             "Support",
+        }),
+        ("ZoneReporting", "#888780", {
+            "install":      "Install / DWH",
+            "dwh":          "Install / DWH",
+            "optimization": "Optimization",
+        }),
+    ]
 
-    _pt_sorted = sorted(_pt_counts.items(), key=lambda x: x[1], reverse=True)
-    _pt_total  = sum(v for _, v in _pt_sorted)
-    _max_count = max(v for _, v in _pt_sorted) if _pt_sorted else 1
+    def _classify_to_family(raw_pt):
+        """Return (family_name, type_label) for a raw project_type string."""
+        pt = str(raw_pt).strip()
+        # Strip ZoneApp:, ZoneBill:, ZonePay:, ZoneRpt: prefixes
+        if ":" in pt:
+            pt_clean = pt.split(":", 1)[1].strip().lower()
+            prefix   = pt.split(":", 1)[0].strip().lower()
+        else:
+            pt_clean = pt.lower()
+            prefix   = ""
+        # Determine family from prefix first
+        prefix_map = {
+            "zoneapp": 0, "zoneapps": 0,
+            "zonebill": 1, "zonebilling": 1,
+            "zonepay": 2, "zonepayroll": 2,
+            "zonerpt": 3, "zonereporting": 3,
+        }
+        family_idx = prefix_map.get(prefix, None)
+        # Search in the identified family (or all families if prefix unknown)
+        search_families = [_FAMILIES[family_idx]] if family_idx is not None else _FAMILIES
+        for fam_name, fam_col, kw_map in search_families:
+            # Longest-match first to avoid "reconcile" matching before "reconcile 2.0"
+            for kw in sorted(kw_map.keys(), key=len, reverse=True):
+                if kw in pt_clean:
+                    return fam_name, kw_map[kw]
+        return "Other", pt.split(":")[-1].strip() or pt
 
-    _pm_cols = st.columns(2)
-    with _pm_cols[0]:
-        for prod, cnt in _pt_sorted[:len(_pt_sorted)//2 + 1]:
-            _pct = round(100 * cnt / _pt_total) if _pt_total else 0
-            _bar_w = round(100 * cnt / _max_count)
+    # Count by family and type
+    _fam_type_counts = {}   # family_name → {type_label: count}
+    _fam_totals      = {}   # family_name → total
+    _other_counts    = {}   # for unmatched types
+    _grand_total     = 0
+
+    for raw_pt in _active["project_type"].fillna("Unknown"):
+        fam, typ = _classify_to_family(raw_pt)
+        if fam == "Other":
+            _other_counts[typ] = _other_counts.get(typ, 0) + 1
+        else:
+            if fam not in _fam_type_counts:
+                _fam_type_counts[fam] = {}
+            _fam_type_counts[fam][typ] = _fam_type_counts[fam].get(typ, 0) + 1
+        _fam_totals[fam] = _fam_totals.get(fam, 0) + 1
+        _grand_total += 1
+
+    _pm_left, _pm_right = st.columns(2)
+    _fam_left  = [f for f in _FAMILIES if f[0] in ("ZoneApps", "ZoneReporting")]
+    _fam_right = [f for f in _FAMILIES if f[0] in ("ZoneBilling", "ZonePayroll")]
+    if _other_counts:
+        _fam_right.append(("Other", "#B4B2A9", _other_counts))
+
+    def _render_family(fam_name, fam_col, kw_map_or_counts):
+        fam_total = _fam_totals.get(fam_name, 0)
+        if fam_total == 0:
+            return
+        fam_pct = round(100 * fam_total / _grand_total) if _grand_total else 0
+        # Family header + family-level bar (% of total portfolio)
+        st.markdown(
+            f"<div style='margin-bottom:6px'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px'>"
+            f"<span style='font-size:13px;font-weight:600;color:var(--color-text-primary)'>{fam_name}</span>"
+            f"<span style='font-size:12px;color:var(--color-text-secondary)'>{fam_total} · {fam_pct}%</span>"
+            f"</div>"
+            f"<div style='background:rgba(128,128,128,.12);border-radius:3px;height:5px'>"
+            f"<div style='height:5px;border-radius:3px;width:{fam_pct}%;background:{fam_col}'></div>"
+            f"</div></div>",
+            unsafe_allow_html=True
+        )
+        # Type rows indented
+        type_counts = _fam_type_counts.get(fam_name, {}) if fam_name != "Other" else _other_counts
+        if not type_counts:
+            return
+        type_max = max(type_counts.values()) or 1
+        for typ_lbl, typ_cnt in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            bar_w = round(100 * typ_cnt / type_max)
             st.markdown(
-                f"<div style='margin-bottom:10px'>"
-                f"<div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>"
-                f"<span>{prod}</span>"
-                f"<span style='opacity:.55'>{cnt} · {_pct}%</span></div>"
-                f"<div class='bar-track'><div class='bar-fill' style='width:{_bar_w}%;background:#3B9EFF'></div></div>"
+                f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;padding-left:10px'>"
+                f"<span style='font-size:12px;color:var(--color-text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{typ_lbl}</span>"
+                f"<div style='background:rgba(128,128,128,.12);border-radius:2px;height:3px;flex:2'>"
+                f"<div style='height:3px;border-radius:2px;width:{bar_w}%;background:{fam_col};opacity:0.65'></div></div>"
+                f"<span style='font-size:12px;color:var(--color-text-tertiary);min-width:24px;text-align:right'>{typ_cnt}</span>"
                 f"</div>",
-                unsafe_allow_html=True)
-    with _pm_cols[1]:
-        for prod, cnt in _pt_sorted[len(_pt_sorted)//2 + 1:]:
-            _pct = round(100 * cnt / _pt_total) if _pt_total else 0
-            _bar_w = round(100 * cnt / _max_count)
-            st.markdown(
-                f"<div style='margin-bottom:10px'>"
-                f"<div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>"
-                f"<span>{prod}</span>"
-                f"<span style='opacity:.55'>{cnt} · {_pct}%</span></div>"
-                f"<div class='bar-track'><div class='bar-fill' style='width:{_bar_w}%;background:#3B9EFF'></div></div>"
-                f"</div>",
-                unsafe_allow_html=True)
+                unsafe_allow_html=True
+            )
+        st.markdown("<div style='margin-bottom:14px'></div>", unsafe_allow_html=True)
+
+    with _pm_left:
+        for fam_name, fam_col, kw_map in _fam_left:
+            _render_family(fam_name, fam_col, kw_map)
+
+    with _pm_right:
+        for fam_name, fam_col, kw_map in _fam_right:
+            _render_family(fam_name, fam_col, kw_map)
+
 else:
     st.info("No project type data available.")
 

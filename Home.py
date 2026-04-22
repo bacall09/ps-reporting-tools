@@ -15,7 +15,7 @@ from shared.constants import (
 from shared.loaders import load_drs, load_ns_time, load_sfdc
 
 # Increment this when loaders change — forces session cache to invalidate
-_LOADER_VERSION = "v20260415a"
+_LOADER_VERSION = "v20260422a"
 
 st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wide")
 
