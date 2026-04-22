@@ -103,7 +103,9 @@ else:
 _view_label = ("Global Team" if _va_region == "__ALL__" else _va_region + " Team") if _va_region else (
     view_as if view_as != selected else selected
 )
-st.markdown(f"""
+_hero = st.empty()
+_hero.markdown(
+    f"""
 <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;
             margin-bottom:24px;font-family:Manrope,sans-serif;
             position:relative;overflow:hidden'>
@@ -117,7 +119,9 @@ st.markdown(f"""
             font-family:Manrope,sans-serif'>
       {_view_label} · {today.strftime("%A, %B %-d %Y")}</p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 if df_drs is None:
     st.info("Load SS DRS on the Home page to view Project Health.")

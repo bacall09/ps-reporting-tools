@@ -92,7 +92,9 @@ st.markdown("""
 _zone_svg = """"""
 
 # ── Hero banner ───────────────────────────────────────────────────────────────
-st.markdown(f"""
+_hero = st.empty()
+_hero.markdown(
+    f"""
 <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;
             margin-bottom:24px;font-family:Manrope,sans-serif;
             position:relative;overflow:hidden'>
@@ -107,7 +109,9 @@ st.markdown(f"""
     Gong handover intelligence — pain points, stakeholders, requirements,
     commitments and risks. Select a customer and upload their Gong export to begin.</p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

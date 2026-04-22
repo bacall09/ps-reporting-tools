@@ -211,14 +211,18 @@ def _title_suffix_from_browse():
         return f" — {parts[1] + ' ' + parts[0] if len(parts)==2 else b}"
     return ""
 
-st.markdown(f"""
+_hero = st.empty()
+_hero.markdown(
+    f"""
     <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
     
         <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Tools</div>
         <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Customer Engagement{_title_suffix_from_browse()}</h1>
         <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Tier-based re-engagement communications for on-hold or stalled projects — auto-suggests outreach level based on days inactive.</p>
     </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ── Phase Banner ─────────────────────────────────────────────────────────────
 st.markdown("""

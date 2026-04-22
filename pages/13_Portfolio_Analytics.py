@@ -85,7 +85,9 @@ elif role in ("manager", "manager_only", "reporting_only"):
 else:
     _vp = [p.strip() for p in selected.split(",")]
     _view_label = f"{_vp[1].split()[0]} {_vp[0]}" if len(_vp) == 2 else selected
-st.markdown(f"""
+_hero = st.empty()
+_hero.markdown(
+    f"""
 <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;
             margin-bottom:24px;font-family:Manrope,sans-serif;
             position:relative;overflow:hidden'>
@@ -99,7 +101,9 @@ st.markdown(f"""
             font-family:Manrope,sans-serif'>
       {_view_label} · {today.strftime("%B %Y")}</p>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 if df_drs is None:
     st.info("Load SS DRS on the Home page to view Portfolio Analytics.")
