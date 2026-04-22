@@ -244,10 +244,10 @@ with st.sidebar:
     st.markdown("**Upload data**")
     st.caption("Upload once — available across all pages this session.")
 
-    # ── DRS: file upload + optional API load button ────────────────────────────
+    # ── DRS: live load from Smartsheet API ────────────────────────────────────────
     from shared.smartsheet_api import ss_available, load_sheet_as_df as _ss_load
     _ss_ready = ss_available()
-    drs_file = st.file_uploader("SS DRS Export", type=["xlsx","csv"], key="hub_drs", label_visibility="collapsed")
+    drs_file = None
     _drs_link_col, _drs_btn_col = st.columns([1, 1])
     with _drs_link_col:
         st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
@@ -266,19 +266,6 @@ with st.sidebar:
                     st.success("DRS loaded from Smartsheet.")
                 except Exception as _e:
                     st.error(f"Smartsheet API error: {_e}")
-    if _ss_ready:
-        with st.expander("🔍 Debug: sheets visible to token", expanded=False):
-            try:
-                from shared.smartsheet_api import list_accessible_sheets
-                _visible = list_accessible_sheets()
-                if _visible:
-                    for _s in _visible:
-                        st.markdown(f'`{_s["id"]}` — {_s["name"]}')
-                else:
-                    st.warning("Token authenticated but no sheets returned — check sharing permissions.")
-            except Exception as _de:
-                st.error(f"Diagnostic error: {_de}")
-
     ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns", label_visibility="collapsed")
     st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&amp;saverun=T&amp;whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Time Detail Search</a>', unsafe_allow_html=True)
 
@@ -360,7 +347,7 @@ with st.sidebar:
             # Clear dataframes and uploader widget states
             keys_to_clear = [
                 "df_drs","df_ns","df_sfdc","df_ns_unassigned",
-                "hub_drs","hub_ns","hub_sfdc","hub_ns_unassigned",
+                "hub_ns","hub_sfdc","hub_ns_unassigned",
             ]
             # Also clear any FormData/file widget state Streamlit holds internally
             for k in list(st.session_state.keys()):
