@@ -34,23 +34,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Hero banner ───────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="te-hero">
-    <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-                color:#3B9EFF;margin-bottom:8px;font-family:Manrope,sans-serif">
-        PROFESSIONAL SERVICES · MY WORK
-    </div>
-    
-    <h1 style="color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif">
-        Time Entries
-    </h1>
-    <p style="color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;
-              font-family:Manrope,sans-serif;max-width:520px">
-        Log project activity during your session. Review, adjust, and export
-        draft time entries ready for NetSuite import.
-    </p>
-</div>
-""", unsafe_allow_html=True)
+_hero = st.empty()
+_hero.markdown("<div class='te-hero'><div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;font-family:Manrope,sans-serif'>Professional Services · My Work</div><h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif'>Time Entries</h1><p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;max-width:520px'>Log project activity during your session. Review, adjust, and export draft time entries ready for NetSuite import.</p></div>", unsafe_allow_html=True)
 
 # ── Summary metrics ───────────────────────────────────────────────────────────
 log_df = get_log_df()
