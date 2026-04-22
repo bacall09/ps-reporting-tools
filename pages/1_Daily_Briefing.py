@@ -151,7 +151,18 @@ view_variants = _name_variants(view_name)
 
 # Build set of names for region/manager views
 _view_name_set = None
-if view_name.startswith("REGION:"):
+if view_name == "ALL":
+    # ALL view: scope to active employees only (excludes leavers + unassigned)
+    # Build name variants for every active employee
+    _view_name_set = set()
+    for n in ACTIVE_EMPLOYEES:
+        parts = [p.strip() for p in n.split(",")]
+        _view_name_set.add(n.lower())
+        _view_name_set.add(parts[0].lower())
+        if len(parts) == 2:
+            _view_name_set.add(f"{parts[1]} {parts[0]}".lower())
+            _view_name_set.add(parts[1].lower())
+elif view_name.startswith("REGION:"):
     _region_sel = view_name.split(":", 1)[1]
     # Only include people who actually do product delivery for name matching
     _region_names = [
@@ -172,11 +183,8 @@ elif view_name == "ALL_MANAGERS":
 
 def _match_name(val):
     """Match a name value against the current view selection."""
-    if view_name == "ALL":
-        return True
     if _view_name_set is not None:
         v = str(val).strip().lower()
-        # Check full string match OR "First Last" / "Last, First" exact match
         return v in _view_name_set or any(
             v == ns or v.startswith(ns + " ") or v.endswith(" " + ns)
             for ns in _view_name_set

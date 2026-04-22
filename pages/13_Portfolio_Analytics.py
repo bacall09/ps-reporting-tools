@@ -14,6 +14,12 @@ from shared.constants import (
     MILESTONE_COLS_MAP, get_role, is_manager, name_matches,
     resolve_name, get_ff_scope, DEFAULT_SCOPE,
 )
+from shared.constants import NO_ACCESS
+try:
+    from shared.constants import _LEAVERS as _LEAVER_SET
+except ImportError:
+    _LEAVER_SET = set()
+_ALL_LEAVERS = set(NO_ACCESS) | _LEAVER_SET
 from shared.utils import calc_consultant_util
 from shared.config import (
     AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
@@ -105,11 +111,11 @@ def _get_region_consultants(region):
 if _va_region:
     _team_consultants = _get_region_consultants(_va_region)
 elif role == "manager_only":
-    _team_consultants = set(CONSULTANT_DROPDOWN)
+    _team_consultants = set(ACTIVE_EMPLOYEES)
 elif role in ("manager", "reporting_only"):
     _pick_curr = st.session_state.get("home_browse", "— My own view —")
     if _pick_curr in ("👥 All team", "All team"):
-        _team_consultants = set(CONSULTANT_DROPDOWN)
+        _team_consultants = set(ACTIVE_EMPLOYEES)
     elif view_as != selected:
         _team_consultants = {view_as}
     else:
@@ -130,6 +136,22 @@ def _in_team(v):
     return any(name_matches(v, _n) for _n in _team_consultants)
 
 team_drs = df_drs[pm_col.apply(_in_team)].copy() if _team_consultants else df_drs.copy()
+
+# ── Leaver-assigned and unassigned projects (always from full df_drs) ─────────
+def _is_leaver_pm(v):
+    v = str(v).strip()
+    if not v or v.lower() in ("", "nan", "none"): return False
+    return any(name_matches(v, ln) for ln in _ALL_LEAVERS)
+
+def _is_unassigned_pm(v):
+    v = str(v).strip()
+    return not v or v.lower() in ("", "nan", "none", "unassigned", "tbd")
+
+_all_pm_col     = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
+_leaver_drs     = df_drs[_all_pm_col.apply(_is_leaver_pm)].copy()
+_unassigned_drs = df_drs[_all_pm_col.apply(_is_unassigned_pm)].copy()
+_n_leaver       = int(_leaver_drs["project_id"].nunique()) if "project_id" in _leaver_drs.columns and not _leaver_drs.empty else len(_leaver_drs)
+_n_unassigned   = int(_unassigned_drs["project_id"].nunique()) if "project_id" in _unassigned_drs.columns and not _unassigned_drs.empty else len(_unassigned_drs)
 
 # Active projects (not on hold)
 _ioh     = team_drs.get("_on_hold", pd.Series(False, index=team_drs.index)).astype(bool)
@@ -177,23 +199,6 @@ if "start_date" in _active.columns:
 _avg_dur = round(sum(_durations) / len(_durations), 1) if _durations else None
 
 st.markdown('<div class="section-label">Portfolio Snapshot</div>', unsafe_allow_html=True)
-
-# ── Temporary count debug ─────────────────────────────────────────────────────
-with st.expander("🔍 Debug: project counts", expanded=False):
-    st.write(f"team_drs rows: {len(team_drs)}")
-    st.write(f"project_id col present: {'project_id' in team_drs.columns}")
-    if "project_id" in team_drs.columns:
-        st.write(f"team_drs project_id nunique: {team_drs['project_id'].nunique()}")
-        st.write(f"_active project_id nunique: {_active['project_id'].nunique() if not _active.empty else 0}")
-        st.write(f"on_hold project_id nunique: {team_drs[_ioh]['project_id'].nunique() if _ioh.any() else 0}")
-        dupes = team_drs[team_drs.duplicated('project_id', keep=False)][['project_id','project_name','project_manager','_on_hold']].sort_values('project_id')
-        st.write(f"Duplicate project_id rows: {len(dupes)}")
-        if not dupes.empty:
-            st.dataframe(dupes, use_container_width=True)
-    else:
-        st.write(f"Columns available: {list(team_drs.columns)}")
-# ── End debug ─────────────────────────────────────────────────────────────────
-
 ps1, ps2, ps3, ps4, ps5 = st.columns(5)
 with ps1:
     st.markdown(f"""<div class="metric-card">
@@ -239,6 +244,61 @@ with ps5:
       <div class="metric-lbl">9+ months active</div>
       <div class="metric-sub">excl. phase 08+</div>
     </div>""", unsafe_allow_html=True)
+
+# ── Workload Visibility ───────────────────────────────────────────────────────
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Workload visibility — full picture</div>', unsafe_allow_html=True)
+
+_wv1, _wv2, _wv3 = st.columns(3)
+
+with _wv1:
+    st.markdown(f"""<div class='metric-card'>
+      <div class='metric-val'>{_n_active_dc}</div>
+      <div class='metric-lbl'>Active — assigned</div>
+      <div class='metric-sub'>current team members</div>
+    </div>""", unsafe_allow_html=True)
+
+with _wv2:
+    _lv_col = "#F39C12" if _n_leaver > 0 else "inherit"
+    st.markdown(f"""<div class='metric-card' style='border-color:rgba(243,156,18,.4)'>
+      <div class='metric-val' style='color:{_lv_col}'>{_n_leaver}</div>
+      <div class='metric-lbl'>Leaver-assigned</div>
+      <div class='metric-sub'>need reassignment</div>
+    </div>""", unsafe_allow_html=True)
+    if _n_leaver > 0:
+        with st.expander("View leaver-assigned projects"):
+            _lv_cols = ["project_name","project_manager","project_type","_on_hold","ps_region"]
+            _lv_show = _leaver_drs[[c for c in _lv_cols if c in _leaver_drs.columns]].copy()
+            _lv_show = _lv_show.rename(columns={
+                "project_name": "Project", "project_manager": "Former PM",
+                "project_type": "Product", "_on_hold": "On Hold", "ps_region": "Region"
+            })
+            if "On Hold" in _lv_show.columns:
+                _lv_show["Status"] = _lv_show["On Hold"].apply(lambda x: "On Hold" if x else "Active")
+                _lv_show = _lv_show.drop(columns=["On Hold"])
+            st.dataframe(_lv_show, use_container_width=True, hide_index=True)
+
+with _wv3:
+    _ua_col = "#C0392B" if _n_unassigned > 0 else "inherit"
+    st.markdown(f"""<div class='metric-card' style='border-color:rgba(192,57,43,.4)'>
+      <div class='metric-val' style='color:{_ua_col}'>{_n_unassigned}</div>
+      <div class='metric-lbl'>Unassigned</div>
+      <div class='metric-sub'>no PM in DRS</div>
+    </div>""", unsafe_allow_html=True)
+    if _n_unassigned > 0:
+        with st.expander("View unassigned projects"):
+            _ua_cols = ["project_name","project_type","_on_hold","start_date"]
+            _ua_show = _unassigned_drs[[c for c in _ua_cols if c in _unassigned_drs.columns]].copy()
+            _ua_show = _ua_show.rename(columns={
+                "project_name": "Project", "project_type": "Product",
+                "_on_hold": "On Hold", "start_date": "Start Date"
+            })
+            if "On Hold" in _ua_show.columns:
+                _ua_show["Status"] = _ua_show["On Hold"].apply(lambda x: "On Hold" if x else "Active")
+                _ua_show = _ua_show.drop(columns=["On Hold"])
+            if "Start Date" in _ua_show.columns:
+                _ua_show["Start Date"] = pd.to_datetime(_ua_show["Start Date"], errors="coerce").dt.strftime("%b %Y").fillna("—")
+            st.dataframe(_ua_show, use_container_width=True, hide_index=True)
 
 # ── Consultant Workload Table ─────────────────────────────────────────────────
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
@@ -502,52 +562,63 @@ else:
 
 # ── Product Mix ───────────────────────────────────────────────────────────────
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
-st.markdown('<div class="section-label">Product Mix</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Product mix — active projects</div>', unsafe_allow_html=True)
 
 if "project_type" in _active.columns:
-    _pt_counts = {}
-    for pt in _active["project_type"].fillna("Unknown"):
-        _pt = str(pt).strip()
-        _prod = _pt.split(":")[-1].strip() if ":" in _pt else _pt
-        # Keep full product name (e.g. "AP Payment", "Capture", "ZoneApp: Billing")
-        # Just strip the "ZoneApp:" prefix if present
-        if not _prod: _prod = "Unknown"
-        _pt_counts[_prod] = _pt_counts.get(_prod, 0) + 1
+    # Option A grouping: each project counted once under its parent product family
+    # Add-ons roll up to their parent; project counted by highest-priority match
+    _PRODUCT_GROUPS = [
+        ("Capture",   ["capture", "approvals", "e-invoicing", "einvoicing", "e-inv", "zc-", "zca", "zcapture"],  "#1D9E75",
+         "incl. Approvals, e-Invoicing"),
+        ("Reconcile", ["reconcile", "cc statement", "psp", "sftp", "payment services", "zr-", "zre"],             "#534AB7",
+         "incl. CC Statement Import, PSP, SFTP"),
+        ("Billing",   ["billing", "premium", "ap payment", "zb-", "zbilling", "zbi"],                             "#3266ad",
+         "incl. ZB Premium, AP Payment"),
+        ("Payroll",   ["payroll", "zep", "zp-", "zpayroll"],                                                       "#D85A30",
+         "incl. ZEP"),
+        ("Reporting", ["reporting", "zreporting"],                                                                  "#888780",
+         ""),
+    ]
 
-    _pt_sorted = sorted(_pt_counts.items(), key=lambda x: x[1], ascending=False) \
-        if False else sorted(_pt_counts.items(), key=lambda x: x[1], reverse=True)
-    _pt_total  = sum(v for _, v in _pt_sorted)
-    _max_count = max(v for _, v in _pt_sorted) if _pt_sorted else 1
+    def _classify_pt(pt_str):
+        pt = str(pt_str).strip().lower()
+        # Strip ZoneApp: prefix
+        if ":" in pt: pt = pt.split(":")[-1].strip()
+        for group_name, keywords, _, _ in _PRODUCT_GROUPS:
+            if any(k in pt for k in keywords):
+                return group_name
+        return "Other"
 
-    _pm_cols = st.columns(2)
-    with _pm_cols[0]:
-        for prod, cnt in _pt_sorted[:len(_pt_sorted)//2 + 1]:
-            _pct = round(100 * cnt / _pt_total) if _pt_total else 0
-            _bar_w = round(100 * cnt / _max_count)
-            st.markdown(f"""
-            <div style='margin-bottom:10px'>
-              <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
-                <span>{prod}</span>
-                <span style='opacity:.55'>{cnt} · {_pct}%</span>
-              </div>
-              <div class='bar-track'>
-                <div class='bar-fill' style='width:{_bar_w}%;background:#3B9EFF'></div>
-              </div>
-            </div>""", unsafe_allow_html=True)
-    with _pm_cols[1]:
-        for prod, cnt in _pt_sorted[len(_pt_sorted)//2 + 1:]:
-            _pct = round(100 * cnt / _pt_total) if _pt_total else 0
-            _bar_w = round(100 * cnt / _max_count)
-            st.markdown(f"""
-            <div style='margin-bottom:10px'>
-              <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
-                <span>{prod}</span>
-                <span style='opacity:.55'>{cnt} · {_pct}%</span>
-              </div>
-              <div class='bar-track'>
-                <div class='bar-fill' style='width:{_bar_w}%;background:#3B9EFF'></div>
-              </div>
-            </div>""", unsafe_allow_html=True)
+    _grp_counts = {g[0]: 0 for g in _PRODUCT_GROUPS}
+    _grp_counts["Other"] = 0
+    for pt in _active["project_type"].fillna(""):
+        _grp_counts[_classify_pt(pt)] += 1
+
+    _grp_total = sum(_grp_counts.values()) or 1
+    _grp_max   = max(_grp_counts.values()) or 1
+    _grp_order = _PRODUCT_GROUPS + [("Other", [], "#B4B2A9", "unclassified")]
+
+    _mix_cols = st.columns(2)
+    _grp_list = [(g[0], _grp_counts[g[0]], g[2], g[3]) for g in _grp_order if _grp_counts.get(g[0], 0) > 0]
+    _half = (len(_grp_list) + 1) // 2
+
+    for _ci, _chunk in enumerate([_grp_list[:_half], _grp_list[_half:]]):
+        with _mix_cols[_ci]:
+            for _gname, _gcnt, _gcol, _gsub in _chunk:
+                _gpct  = round(100 * _gcnt / _grp_total)
+                _gbarw = round(100 * _gcnt / _grp_max)
+                _sub_html = f"<div style='font-size:11px;opacity:.5;margin-top:1px'>{_gsub}</div>" if _gsub else ""
+                st.markdown(f"""
+                <div style='margin-bottom:14px'>
+                  <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:2px'>
+                    <span style='font-weight:600'>{_gname}</span>
+                    <span style='opacity:.55'>{_gcnt} · {_gpct}%</span>
+                  </div>
+                  {_sub_html}
+                  <div class='bar-track' style='margin-top:5px'>
+                    <div class='bar-fill' style='width:{_gbarw}%;background:{_gcol}'></div>
+                  </div>
+                </div>""", unsafe_allow_html=True)
 else:
     st.info("No project type data available.")
 

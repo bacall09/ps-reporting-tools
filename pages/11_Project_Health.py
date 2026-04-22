@@ -72,7 +72,18 @@ if df_drs is not None and not df_drs.empty:
     pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
     if _va_region and role in ("manager", "manager_only", "reporting_only"):
         if _va_region == "__ALL__":
-            my_drs = df_drs.copy()
+            _all_names = set()
+            for _n in ACTIVE_EMPLOYEES:
+                _pts = [p.strip() for p in _n.split(",")]
+                _all_names.add(_n.lower())
+                _all_names.add(_pts[0].lower())
+                if len(_pts) == 2:
+                    _all_names.add(f"{_pts[1]} {_pts[0]}".lower())
+                    _all_names.add(_pts[1].lower())
+            my_drs = df_drs[pm_col.apply(
+                lambda v: str(v).strip().lower() in _all_names
+                       or any(str(v).strip().lower() == ns for ns in _all_names)
+            )].copy()
         else:
             from shared.constants import CONSULTANT_DROPDOWN, resolve_name
             _region_consultants = set()
@@ -90,7 +101,17 @@ if df_drs is not None and not df_drs.empty:
                        or str(v).strip().lower() in _region_consultants
             )].copy()
     elif role in ("manager_only", "reporting_only"):
-        my_drs = df_drs.copy()
+        _all_names2 = set()
+        for _n in ACTIVE_EMPLOYEES:
+            _pts = [p.strip() for p in _n.split(",")]
+            _all_names2.add(_n.lower())
+            _all_names2.add(_pts[0].lower())
+            if len(_pts) == 2:
+                _all_names2.add(f"{_pts[1]} {_pts[0]}".lower())
+                _all_names2.add(_pts[1].lower())
+        my_drs = df_drs[pm_col.apply(
+            lambda v: str(v).strip().lower() in _all_names2
+        )].copy()
     elif role == "manager" and view_as == selected:
         # Manager viewing own projects (no View As set)
         my_drs = df_drs[pm_col.apply(lambda v: name_matches(v, view_as))].copy()
