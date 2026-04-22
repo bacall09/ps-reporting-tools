@@ -90,10 +90,23 @@ EMPLOYEE_LOCATION = {
 
 # ── PS Region overrides (employee name → region, bypasses location mapping) ──
 PS_REGION_OVERRIDE = {
+    # ── Canonical (Last, First) entries ───────────────────────────────────────
     "NAQVI, SYED":         "EMEA",  # Canada-based but reports into EMEA
     "Cruz, Daniel":        "NOAM",  # Manila-based but reports into NOAM
     "Quiambao, Generalyn": "NOAM",  # Manila-based but reports into NOAM
     "Cadelina, Macoy":     "NOAM",  # Manila-based but reports into NOAM
+    # ── DRS display name aliases (First Last) ─────────────────────────────────
+    "Christopher Hopkins": "NOAM",
+    "Caroline Tuazon":     "APAC",  # DRS display for Tuazon, Carol
+    "Santi Longalong":     "APAC",  # DRS display for Longalong, Santiago
+    "Saji Selvakumar":     "NOAM",  # DRS display for Selvakumar, Sajithan — Canada
+    "Hassan Naqvi":        "EMEA",  # DRS display for NAQVI, SYED
+    "Jason Church":        "NOAM",
+    "Rod Centinaje":       "APAC",  # DRS display for Centinaje, Rhodechild
+    "Austin Olson":        "NOAM",
+    "Stefanie Snee":       "NOAM",
+    "Cheryll Gardner":     "NOAM",
+    "John Strauss":        "NOAM",
 }
 
 PS_REGION_MAP = {
