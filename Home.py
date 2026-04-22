@@ -116,15 +116,18 @@ if not st.session_state.get("authentication_status"):
     st.markdown("<div style='margin-top:60px'></div>", unsafe_allow_html=True)
     _col = st.columns([1, 2, 1])[1]
     with _col:
-        st.markdown("""
-        <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;position:relative;overflow:hidden'>
-            
-            <div style='position:relative;z-index:1'>
-            <div style='font-size:11px;color:#3B9EFF;letter-spacing:2px;font-weight:700;text-transform:uppercase;margin-bottom:8px'>Professional Services</div>
-            <h1 style='color:#fff;margin:0;font-size:28px;font-weight:700'>PS Projects &amp; Tools</h1>
-            <p style='color:rgba(255,255,255,0.45);margin:10px 0 0;font-size:13px'>Sign in to continue.</p>
-            </div>
-        </div>""", unsafe_allow_html=True)
+        _login_header = st.empty()
+        _login_header.markdown(
+            "<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;"
+            "margin-bottom:24px;position:relative;overflow:hidden'>"
+            "<div style='position:relative;z-index:1'>"
+            "<div style='font-size:11px;color:#3B9EFF;letter-spacing:2px;font-weight:700;"
+            "text-transform:uppercase;margin-bottom:8px'>Professional Services</div>"
+            "<h1 style='color:#fff;margin:0;font-size:28px;font-weight:700'>PS Projects &amp; Tools</h1>"
+            "<p style='color:rgba(255,255,255,0.45);margin:10px 0 0;font-size:13px'>Sign in to continue.</p>"
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
 
         _sel = st.selectbox("Select your name", ["— Select —"] + _display_names, key="login_name")
         _pw  = st.text_input("Password", type="password",
