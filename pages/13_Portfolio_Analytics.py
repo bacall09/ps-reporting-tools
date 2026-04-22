@@ -177,6 +177,23 @@ if "start_date" in _active.columns:
 _avg_dur = round(sum(_durations) / len(_durations), 1) if _durations else None
 
 st.markdown('<div class="section-label">Portfolio Snapshot</div>', unsafe_allow_html=True)
+
+# ── Temporary count debug ─────────────────────────────────────────────────────
+with st.expander("🔍 Debug: project counts", expanded=False):
+    st.write(f"team_drs rows: {len(team_drs)}")
+    st.write(f"project_id col present: {'project_id' in team_drs.columns}")
+    if "project_id" in team_drs.columns:
+        st.write(f"team_drs project_id nunique: {team_drs['project_id'].nunique()}")
+        st.write(f"_active project_id nunique: {_active['project_id'].nunique() if not _active.empty else 0}")
+        st.write(f"on_hold project_id nunique: {team_drs[_ioh]['project_id'].nunique() if _ioh.any() else 0}")
+        dupes = team_drs[team_drs.duplicated('project_id', keep=False)][['project_id','project_name','project_manager','_on_hold']].sort_values('project_id')
+        st.write(f"Duplicate project_id rows: {len(dupes)}")
+        if not dupes.empty:
+            st.dataframe(dupes, use_container_width=True)
+    else:
+        st.write(f"Columns available: {list(team_drs.columns)}")
+# ── End debug ─────────────────────────────────────────────────────────────────
+
 ps1, ps2, ps3, ps4, ps5 = st.columns(5)
 with ps1:
     st.markdown(f"""<div class="metric-card">
