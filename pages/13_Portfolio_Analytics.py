@@ -152,11 +152,12 @@ _leaver_drs     = df_drs[_all_pm_col.apply(_is_leaver_pm)].copy()
 _unassigned_drs = df_drs[_all_pm_col.apply(_is_unassigned_pm)].copy()
 _n_leaver       = int(_leaver_drs["project_id"].nunique()) if "project_id" in _leaver_drs.columns and not _leaver_drs.empty else len(_leaver_drs)
 _n_unassigned   = int(_unassigned_drs["project_id"].nunique()) if "project_id" in _unassigned_drs.columns and not _unassigned_drs.empty else len(_unassigned_drs)
-# Derive pending_close from phase col if loader flag not present (cache fallback)
+# Derive pending_close from phase col — use contains for robustness against casing/spacing variants
 if "_pending_close" in df_drs.columns:
     _pc_mask = df_drs["_pending_close"].astype(bool)
 elif "phase" in df_drs.columns:
-    _pc_mask = df_drs["phase"].str.strip().str.lower() == "10. complete/pending final billing"
+    _ph_norm = df_drs["phase"].fillna("").str.strip().str.lower()
+    _pc_mask = _ph_norm.str.contains("complete", na=False) & _ph_norm.str.contains("pending", na=False)
 else:
     _pc_mask = pd.Series(False, index=df_drs.index)
 _pending_close_drs = df_drs[_pc_mask].copy()
@@ -188,7 +189,15 @@ def _pidx(p):
 _n_active   = _n_active_dc
 _n_onhold   = _n_onhold_dc
 _n_total    = _n_active_dc + _n_onhold_dc
-_n_team     = len(_team_consultants)
+# Count consultants who actually have projects in DRS (matches workload table)
+if not team_drs.empty and "project_manager" in team_drs.columns:
+    _active_pms = set(team_drs["project_manager"].dropna().str.strip().str.lower().unique())
+    _n_team = sum(
+        1 for _n in _team_consultants
+        if any(name_matches(pm, _n) for pm in _active_pms)
+    )
+else:
+    _n_team = len(_team_consultants)
 _oh_denom   = _n_active + _n_onhold
 
 _rag_col    = team_drs.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
@@ -248,6 +257,7 @@ with _ps_cols[4]:
     st.markdown(f"""<div class="metric-card">
       <div class="metric-val" style="color:{_pc_col}">{_n_pending_close}</div>
       <div class="metric-lbl">Pending close</div>
+      <div class="metric-sub">Active status · closed phase</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[5]:

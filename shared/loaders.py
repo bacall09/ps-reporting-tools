@@ -220,7 +220,8 @@ def _normalise_drs_df(df: "pd.DataFrame") -> "pd.DataFrame":
     if "phase" in df.columns:
         _PHASE_10 = "10. complete/pending final billing"
         # Tag phase-10 rows before filtering — status not yet Closed, need attention
-        df["_pending_close"] = df["phase"].str.strip().str.lower() == _PHASE_10
+        _ph_lc = df["phase"].str.strip().str.lower()
+        df["_pending_close"] = _ph_lc.str.contains("complete", na=False) & _ph_lc.str.contains("pending", na=False)
         # Keep phase-10 rows in df (surfaced as alert); drop phases 12+
         _drop_phases = {p for p in INACTIVE_PHASES_OUT if p != _PHASE_10}
         df = df[~df["phase"].str.strip().str.lower().isin(_drop_phases)]
