@@ -172,6 +172,11 @@ if df_ns is not None:
 _ioh   = my_drs.get("_on_hold",pd.Series(False,index=my_drs.index)).astype(bool)
 on_hold= my_drs[_ioh].copy()
 active = my_drs[~_ioh].copy()
+# ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
+_id_col_dc    = "project_id" if "project_id" in active.columns else "project_name"
+_n_active_dc  = int(active[_id_col_dc].nunique()) if not active.empty else 0
+_n_onhold_dc  = int(on_hold[_id_col_dc].nunique()) if not on_hold.empty else 0
+
 
 # ── Flags ─────────────────────────────────────────────────────────────────────
 def _flags(row):
@@ -243,7 +248,7 @@ _hero.markdown(
     f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
     f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · My Work</div>"
     f"<h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>My Projects — {_dn}</h1>"
-    f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>{today.strftime('%A, %B %-d %Y')} · {len(active)} active · {len(on_hold)} on hold</p>"
+    f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>{today.strftime('%A, %B %-d %Y')} · {_n_active_dc} active · {_n_onhold_dc} on hold</p>"
     "</div>",
     unsafe_allow_html=True,
 )

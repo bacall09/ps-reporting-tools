@@ -130,6 +130,11 @@ def _pidx(p):
 # Active only (exclude on-hold)
 _ioh    = my_drs.get("_on_hold", pd.Series(False, index=my_drs.index)).astype(bool)
 _active = my_drs[~_ioh].copy()
+# ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
+_id_col_dc    = "project_id" if "project_id" in _active.columns else "project_name"
+_n_active_dc  = int(_active[_id_col_dc].nunique()) if not _active.empty else 0
+_n_onhold_dc  = int(my_drs[_ioh]["project_id"].nunique()) if not my_drs.empty and "project_id" in my_drs.columns else int(_ioh.sum())
+
 _legacy = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
 
 # Normalise dates
@@ -157,7 +162,7 @@ _active[["_sched_status","_sched_days","_sched_col"]] = _active.apply(
 )
 
 # ── Delivery summary metrics ──────────────────────────────────────────────────
-_n_active      = len(_active)
+_n_active      = _n_active_dc
 _n_on_track    = len(_active[_active["_sched_status"].isin(["On track","Going live","Delivered"])])
 _n_delayed     = len(_active[_active["_sched_status"] == "Delayed"])
 _n_at_risk     = len(_active[_active["_sched_status"] == "At risk"])

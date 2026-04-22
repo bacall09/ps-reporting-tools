@@ -337,6 +337,11 @@ _hero.markdown(
 # ── Pre-compute snapshot data so briefing can appear before utilization ───────
 _ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool) if not my_projects.empty else pd.Series(dtype=bool)
 _active  = my_projects[~_ioh].copy() if not my_projects.empty else pd.DataFrame()
+# ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
+_id_col_dc    = "project_id" if "project_id" in _active.columns else "project_name"
+_n_active_dc  = int(_active[_id_col_dc].nunique()) if not _active.empty else 0
+_n_onhold_dc  = int(my_projects[_ioh]["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else int(_ioh.sum())
+
 _snap_today = pd.Timestamp.today().normalize()
 _snap_n7    = _snap_today + pd.Timedelta(days=7)
 _snap_14    = _snap_today - pd.Timedelta(days=14)
@@ -410,7 +415,7 @@ if len(_stale) > 0:
 if len(_mi) > 0:
     _p2.append(f"**{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email** — a quick win to close before end of week.")
 
-_oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+_oh_count = _n_onhold_dc
 if _oh_count > 0:
     _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
 
@@ -457,7 +462,7 @@ if _p1 or _p2 or _p3:
     if len(_rag_yellow) > 0:
         _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation."
 
-    _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+    _oh_count = _n_onhold_dc
     _para_house = ""
     if _oh_count > 0:
         _para_house = f"{_oh_count} project{'s are' if _oh_count>1 else ' is'} on hold. Make sure each has an On Hold Reason and Responsible for Delay recorded — these are flagged in DRS Health Check if missing."
@@ -957,7 +962,7 @@ else:
         _col = "#C0392B" if len(_stale) > 0 else "inherit"
         st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
     with r1e:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card"><div class="metric-val">{_n_active_dc}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
 
     # ── Phase breakdown row ────────────────────────────────────────────────────
     # Build full list: assigned phases + Unassigned if any

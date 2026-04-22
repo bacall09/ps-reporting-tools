@@ -134,6 +134,11 @@ team_drs = df_drs[pm_col.apply(_in_team)].copy() if _team_consultants else df_dr
 # Active projects (not on hold)
 _ioh     = team_drs.get("_on_hold", pd.Series(False, index=team_drs.index)).astype(bool)
 _active  = team_drs[~_ioh].copy()
+# ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
+_id_col_dc    = "project_id" if "project_id" in _active.columns else "project_name"
+_n_active_dc  = int(_active[_id_col_dc].nunique()) if not _active.empty else 0
+_n_onhold_dc  = int(team_drs[_ioh]["project_id"].nunique()) if not team_drs.empty and "project_id" in team_drs.columns else int(_ioh.sum())
+
 
 # Phase order
 PHASE_ORDER = [
@@ -149,9 +154,9 @@ def _pidx(p):
     return -1
 
 # ── Portfolio Snapshot metrics ────────────────────────────────────────────────
-_n_active   = len(_active)
-_n_onhold   = int(_ioh.sum())
-_n_total    = len(team_drs)           # all rows for this team/consultant
+_n_active   = _n_active_dc
+_n_onhold   = _n_onhold_dc
+_n_total    = _n_active_dc + _n_onhold_dc           # all rows for this team/consultant
 _n_team     = len(_team_consultants)
 _oh_denom   = _n_active + _n_onhold   # for on-hold rate: active+onhold (not total which may include completed)
 
