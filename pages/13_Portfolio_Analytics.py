@@ -229,13 +229,14 @@ with _ps_cols[0]:
     st.markdown(f"""<div class="metric-card">
       <div class="metric-val">{_n_active}</div>
       <div class="metric-lbl">Active</div>
-      <div class="metric-sub">{_n_team} consultants · {_oh_pct}% on hold</div>
+      <div class="metric-sub">{_n_team} consultants</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[1]:
     st.markdown(f"""<div class="metric-card">
       <div class="metric-val" style="color:#F39C12">{_n_onhold}</div>
       <div class="metric-lbl">On hold</div>
+      <div class="metric-sub">{_oh_pct}% of total</div>
     </div>""", unsafe_allow_html=True)
 
 with _ps_cols[2]:
