@@ -223,68 +223,74 @@ else:
     _n_9mo = 0
 
 st.markdown('<div class="section-label">Portfolio Snapshot</div>', unsafe_allow_html=True)
-_ps_cols = st.columns(8)
 
-with _ps_cols[0]:
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val">{_n_active}</div>
-      <div class="metric-lbl">Active</div>
-      <div class="metric-sub">{_n_team} consultants</div>
-    </div>""", unsafe_allow_html=True)
+_lv_col = "#F39C12" if _n_leaver > 0 else "inherit"
+_ua_col = "#C0392B" if _n_unassigned > 0 else "inherit"
+_pc_col = "#F39C12" if _n_pending_close > 0 else "inherit"
+_rc     = "#C0392B" if _risk_pct >= 20 else ("#F39C12" if _risk_pct >= 10 else "inherit")
+_dur_txt2 = f"{_avg_dur}mo" if _avg_dur else "—"
+_durc2  = "#F39C12" if (_avg_dur or 0) >= 9 else "inherit"
+_9moc   = "#F39C12" if _n_9mo > 0 else "inherit"
 
-with _ps_cols[1]:
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:#F39C12">{_n_onhold}</div>
-      <div class="metric-lbl">On hold</div>
-      <div class="metric-sub">{_oh_pct}% of total</div>
-    </div>""", unsafe_allow_html=True)
-
-with _ps_cols[2]:
-    _lv_col = "#F39C12" if _n_leaver > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_lv_col}">{_n_leaver}</div>
-      <div class="metric-lbl">Need reassignment</div>
-    </div>""", unsafe_allow_html=True)
-
-with _ps_cols[3]:
-    _ua_col = "#C0392B" if _n_unassigned > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_ua_col}">{_n_unassigned}</div>
-      <div class="metric-lbl">Unassigned</div>
-    </div>""", unsafe_allow_html=True)
-
-with _ps_cols[4]:
-    _pc_col = "#F39C12" if _n_pending_close > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_pc_col}">{_n_pending_close}</div>
-      <div class="metric-lbl">Pending close</div>
-      <div class="metric-sub">Active status · closed phase</div>
-    </div>""", unsafe_allow_html=True)
-
-with _ps_cols[5]:
-    _rc = "#C0392B" if _risk_pct >= 20 else ("#F39C12" if _risk_pct >= 10 else "inherit")
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_rc}">{_risk_pct}%</div>
-      <div class="metric-lbl">Projects at risk</div>
-      <div class="metric-sub">{_n_red} Red · {_n_yellow} Yellow</div>
-    </div>""", unsafe_allow_html=True)
-
-with _ps_cols[6]:
-    _dur_txt2 = f"{_avg_dur}mo" if _avg_dur else "—"
-    _durc2 = "#F39C12" if (_avg_dur or 0) >= 9 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_durc2}">{_dur_txt2}</div>
-      <div class="metric-lbl">Avg duration</div>
-      <div class="metric-sub">active projects</div>
-    </div>""", unsafe_allow_html=True)
-
-with _ps_cols[7]:
-    _9moc = "#F39C12" if _n_9mo > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_9moc}">{_n_9mo}</div>
-      <div class="metric-lbl">9+ months active</div>
-      <div class="metric-sub">excl. phase 08+</div>
-    </div>""", unsafe_allow_html=True)
+st.markdown(f"""
+<style>
+.snap-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}}
+.snap-card {{
+    border: 1px solid rgba(128,128,128,.2);
+    border-radius: 8px;
+    padding: 14px 16px;
+    min-width: 0;
+}}
+.snap-val  {{ font-size: 28px; font-weight: 700; line-height: 1.1; color: inherit; }}
+.snap-lbl  {{ font-size: 13px; opacity: .6; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.snap-sub  {{ font-size: 11px; opacity: .45; margin-top: 2px; }}
+</style>
+<div class="snap-grid">
+  <div class="snap-card">
+    <div class="snap-val">{_n_active}</div>
+    <div class="snap-lbl">Active</div>
+    <div class="snap-sub">{_n_team} consultants</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:#F39C12">{_n_onhold}</div>
+    <div class="snap-lbl">On hold</div>
+    <div class="snap-sub">{_oh_pct}% of total</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_lv_col}">{_n_leaver}</div>
+    <div class="snap-lbl">Need reassignment</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_ua_col}">{_n_unassigned}</div>
+    <div class="snap-lbl">Unassigned</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_pc_col}">{_n_pending_close}</div>
+    <div class="snap-lbl">Pending close</div>
+    <div class="snap-sub">Active status · closed phase</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_rc}">{_risk_pct}%</div>
+    <div class="snap-lbl">Projects at risk</div>
+    <div class="snap-sub">{_n_red} Red · {_n_yellow} Yellow</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_durc2}">{_dur_txt2}</div>
+    <div class="snap-lbl">Avg duration</div>
+    <div class="snap-sub">active projects</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_9moc}">{_n_9mo}</div>
+    <div class="snap-lbl">9+ months active</div>
+    <div class="snap-sub">excl. phase 08+</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Expandable detail for leaver-assigned and unassigned ─────────────────────
 if _n_leaver > 0 or _n_unassigned > 0 or _n_pending_close > 0:

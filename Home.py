@@ -15,7 +15,7 @@ from shared.constants import (
 from shared.loaders import load_drs, load_ns_time, load_sfdc
 
 # Increment this when loaders change — forces session cache to invalidate
-_LOADER_VERSION = "v20260422a"
+_LOADER_VERSION = "v20260422b"
 
 st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wide")
 
@@ -293,12 +293,19 @@ with st.sidebar:
         st.markdown('<a href="https://zoneandco.lightning.force.com/lightning/page/analytics?wave__assetType=report&wave__assetId=00OUh00000PeTZZMA3" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SFDC T&M SOW Report</a>', unsafe_allow_html=True)
         tm_sow_file = st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow", label_visibility="collapsed", help="Required for T&M Revenue Report")
     # Clear stale versioned caches on new deploy
-    for _vk in [f"df_ns_{_LOADER_VERSION}", f"df_drs_{_LOADER_VERSION}"]:
-        if _vk not in st.session_state:
-            for _ok in [k for k in list(st.session_state.keys())
-                        if k.startswith(_vk.split("_v")[0]) and k != _vk.split("_v")[0]
-                        and "_v20" in k]:
-                del st.session_state[_ok]
+    _drs_version_key = f"df_drs_{_LOADER_VERSION}"
+    _ns_version_key  = f"df_ns_{_LOADER_VERSION}"
+    if _drs_version_key not in st.session_state:
+        # New version deployed — clear df_drs so next sync picks up loader changes
+        for _ok in [k for k in list(st.session_state.keys())
+                    if k in ("df_drs",) or (k.startswith("df_drs_v") and k != _drs_version_key)]:
+            del st.session_state[_ok]
+        st.session_state[_drs_version_key] = True
+    if _ns_version_key not in st.session_state:
+        for _ok in [k for k in list(st.session_state.keys())
+                    if k in ("df_ns",) or (k.startswith("df_ns_v") and k != _ns_version_key)]:
+            del st.session_state[_ok]
+        st.session_state[_ns_version_key] = True
 
     for _lbl, _key, _ldr, _f in [
         ("SS DRS","df_drs",load_drs,drs_file),
