@@ -248,48 +248,50 @@ with st.sidebar:
     from shared.smartsheet_api import ss_available, load_sheet_as_df as _ss_load
     _ss_ready = ss_available()
     drs_file = None
-    _drs_link_col, _drs_btn_col = st.columns([1, 1])
-    with _drs_link_col:
-        st.markdown('<a href="https://www.smartsheet.com" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SS DRS Report</a>', unsafe_allow_html=True)
-    with _drs_btn_col:
-        if st.button(
-            "⟳ Load live from Smartsheet",
-            key="hub_drs_api",
-            use_container_width=True,
-            disabled=not _ss_ready,
-            help="Fetch live DRS data directly from Smartsheet API" if _ss_ready else "SMARTSHEET_TOKEN / SMARTSHEET_DRS_ID not found in secrets",
-        ):
-            with st.spinner("Fetching from Smartsheet…"):
-                try:
-                    st.session_state["df_drs"] = _ss_load()
-                    st.session_state["_drs_source"] = "api"
-                    st.success("DRS loaded from Smartsheet.")
-                except Exception as _e:
-                    st.error(f"Smartsheet API error: {_e}")
-    ns_file   = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns", label_visibility="collapsed")
+    st.markdown('<p style="font-size:11px;color:rgba(128,128,128,0.7);text-transform:uppercase;letter-spacing:0.5px;margin:0 0 4px">SS DRS</p>', unsafe_allow_html=True)
+    if st.button(
+        "⟳ Sync SS DRS data",
+        key="hub_drs_api",
+        use_container_width=True,
+        disabled=not _ss_ready,
+        help="Fetch live DRS data directly from Smartsheet API" if _ss_ready else "SMARTSHEET_TOKEN / SMARTSHEET_DRS_ID not found in secrets",
+    ):
+        with st.spinner("Fetching from Smartsheet…"):
+            try:
+                st.session_state["df_drs"] = _ss_load()
+                st.session_state["_drs_source"] = "api"
+                st.success("DRS loaded from Smartsheet.")
+            except Exception as _e:
+                st.error(f"Smartsheet API error: {_e}")
+
+    st.markdown("---")
+
+    st.markdown('<p style="font-size:11px;color:rgba(128,128,128,0.7);text-transform:uppercase;letter-spacing:0.5px;margin:0 0 4px">NS Time Detail</p>', unsafe_allow_html=True)
     st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=66732&amp;saverun=T&amp;whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Time Detail Search</a>', unsafe_allow_html=True)
+    ns_file = st.file_uploader("NS Time Detail", type=["xlsx","csv"], key="hub_ns", label_visibility="collapsed")
 
-    sfdc_file = st.file_uploader("SFDC Contacts",  type=["xlsx","csv"], key="hub_sfdc", label_visibility="collapsed")
+    st.markdown('<p style="font-size:11px;color:rgba(128,128,128,0.7);text-transform:uppercase;letter-spacing:0.5px;margin:4px 0 4px">SFDC Contacts</p>', unsafe_allow_html=True)
     st.markdown('<a href="https://drive.google.com/drive/u/1/folders/1VdI_WjuVclF5xN9fG7dEIz1WDu4QRE0m" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SFDC Contacts (Google Drive)</a>', unsafe_allow_html=True)
+    sfdc_file = st.file_uploader("SFDC Contacts", type=["xlsx","csv"], key="hub_sfdc", label_visibility="collapsed")
 
-    ns_ua_file = (
-        st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned", label_visibility="collapsed",
-                         help="Required for Capacity Outlook")
-        if _upload_role in ("manager","manager_only","reporting_only") else None
-    )
     if _upload_role in ("manager","manager_only","reporting_only"):
-        st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Unassigned Projects</a>', unsafe_allow_html=True)
+        st.markdown("---")
 
-    rev_file = (
-        st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue", label_visibility="collapsed",
-                         help="Required for Revenue Report")
-        if _upload_role in ("manager","manager_only","reporting_only") else None
-    )
-    tm_sow_file = (
-        st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow", label_visibility="collapsed",
-                         help="Required for T&M Revenue Report")
-        if _upload_role in ("manager","manager_only","reporting_only") else None
-    )
+    ns_ua_file = None
+    rev_file   = None
+    tm_sow_file = None
+    if _upload_role in ("manager","manager_only","reporting_only"):
+        st.markdown('<p style="font-size:11px;color:rgba(128,128,128,0.7);text-transform:uppercase;letter-spacing:0.5px;margin:0 0 4px">NS Unassigned Projects</p>', unsafe_allow_html=True)
+        st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=68439&whence=" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS Unassigned Projects</a>', unsafe_allow_html=True)
+        ns_ua_file = st.file_uploader("NS Unassigned Projects", type=["xlsx","csv"], key="hub_ns_unassigned", label_visibility="collapsed", help="Required for Capacity Outlook")
+
+        st.markdown('<p style="font-size:11px;color:rgba(128,128,128,0.7);text-transform:uppercase;letter-spacing:0.5px;margin:4px 0 4px">NS FF Revenue Charges</p>', unsafe_allow_html=True)
+        st.markdown('<a href="https://3838224.app.netsuite.com/app/common/search/searchresults.nl?searchid=75183&whence=&siaT=1776861603244&siaWhc=%2Fapp%2Faccounting%2Fproject%2Fproject.nl&siaNv=ps&siaPs=0&siaPfx=&siaQ=fixed" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open NS FF Revenue Charges</a>', unsafe_allow_html=True)
+        rev_file = st.file_uploader("NS FF Revenue Charges", type=["xlsx","csv"], key="hub_revenue", label_visibility="collapsed", help="Required for Revenue Report")
+
+        st.markdown('<p style="font-size:11px;color:rgba(128,128,128,0.7);text-transform:uppercase;letter-spacing:0.5px;margin:4px 0 4px">SFDC T&M SOW</p>', unsafe_allow_html=True)
+        st.markdown('<a href="https://zoneandco.lightning.force.com/lightning/page/analytics?wave__assetType=report&wave__assetId=00OUh00000PeTZZMA3" target="_blank" style="font-size:11px;opacity:0.6;">↗ Open SFDC T&M SOW Report</a>', unsafe_allow_html=True)
+        tm_sow_file = st.file_uploader("SFDC T&M SOW", type=["xlsx","csv"], key="hub_tm_sow", label_visibility="collapsed", help="Required for T&M Revenue Report")
     # Clear stale versioned caches on new deploy
     for _vk in [f"df_ns_{_LOADER_VERSION}", f"df_drs_{_LOADER_VERSION}"]:
         if _vk not in st.session_state:
