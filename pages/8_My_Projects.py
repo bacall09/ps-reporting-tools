@@ -46,7 +46,7 @@ def _extract_customer_name(project_name):
     return n
 
 from shared.constants import (
-    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
+    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
     MILESTONE_COLS_MAP, get_role, is_manager,
     get_ff_scope, resolve_name, name_matches,
 )
@@ -137,10 +137,11 @@ if _va_region and role == "manager":
         # All team — show every project
         my_drs = df_drs.copy()
     else:
-        # Region view — show all consultants in this region
+        # Region view — show all active employees in this region
         _region_consultants = set()
-        for n in CONSULTANT_DROPDOWN:
+        for n in ACTIVE_EMPLOYEES:
             _nl = EMPLOYEE_LOCATION.get(n, "")
+            if isinstance(_nl, tuple): _nl = _nl[0]
             _nr = PS_REGION_OVERRIDE.get(n, PS_REGION_MAP.get(_nl, "Other"))
             if _nr == _va_region:
                 _region_consultants.add(n.lower())

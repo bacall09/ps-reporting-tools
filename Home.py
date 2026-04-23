@@ -220,15 +220,16 @@ with st.sidebar:
             for p in EMPLOYEE_ROLES.get(n, {}).get("products", []) if p and p != "All"
         })
         # Product filter — shown on Daily Briefing only
-        # Use st.context if available (Streamlit >= 1.36), otherwise check page marker
-        _show_prod_filter = True
-        try:
-            _page_path = str(getattr(st.context, "page_script_hash", "") or "")
-        except Exception:
-            _page_path = ""
+        # Check both session state page marker AND url path to handle Streamlit re-runs
+        _show_prod_filter = False
         _cur_page = st.session_state.get("current_page", "")
-        if _cur_page and _cur_page != "Daily Briefing":
-            _show_prod_filter = False
+        try:
+            _page_script = str(getattr(st.context, "page_script_hash", "") or "")
+        except Exception:
+            _page_script = ""
+        # Show if current_page is Daily Briefing, or if it hasn't been set yet (first load)
+        if _cur_page == "Daily Briefing" or not _cur_page:
+            _show_prod_filter = True
         if _show_prod_filter:
             st.markdown("**Filter by product:**")
             _product_filter_home = st.selectbox("Product", ["All products"] + _all_prods,
