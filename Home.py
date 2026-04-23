@@ -342,6 +342,7 @@ with st.sidebar:
         except Exception as e: st.error(f"T&M SOW: {e}")
     st.markdown("---")
     st.markdown("**Session data**")
+    st.caption(f"roster: `{_roster}` · role: `{_upload_role}`")
     _si = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
     if _upload_role in ("manager","manager_only","reporting_only"):
         _si.append(("NS Unassigned","df_ns_unassigned"))
