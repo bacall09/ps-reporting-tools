@@ -219,24 +219,11 @@ with st.sidebar:
             p for n in _active_c
             for p in EMPLOYEE_ROLES.get(n, {}).get("products", []) if p and p != "All"
         })
-        # Product filter — shown on Daily Briefing only
-        # Check both session state page marker AND url path to handle Streamlit re-runs
-        _show_prod_filter = False
-        _cur_page = st.session_state.get("current_page", "")
-        try:
-            _page_script = str(getattr(st.context, "page_script_hash", "") or "")
-        except Exception:
-            _page_script = ""
-        # Show if current_page is Daily Briefing, or if it hasn't been set yet (first load)
-        if _cur_page == "Daily Briefing" or not _cur_page:
-            _show_prod_filter = True
-        st.caption(f"page: `{_cur_page}` · filter: `{_show_prod_filter}`")
-        if _show_prod_filter:
-            st.markdown("**Filter by product:**")
-            _product_filter_home = st.selectbox("Product", ["All products"] + _all_prods,
-                                                key="home_product_filter", label_visibility="collapsed")
-        else:
-            _product_filter_home = st.session_state.get("_product_filter", "All products")
+        # Product filter — always shown for managers (only Daily Briefing reads it,
+        # but keeping it visible avoids state lag when switching pages/regions)
+        st.markdown("**Filter by product:**")
+        _product_filter_home = st.selectbox("Product", ["All products"] + _all_prods,
+                                            key="home_product_filter", label_visibility="collapsed")
 
         # Store in session state so Daily Briefing can read them
         st.session_state["_view_browse"]   = _browse
@@ -343,7 +330,6 @@ with st.sidebar:
         except Exception as e: st.error(f"T&M SOW: {e}")
     st.markdown("---")
     st.markdown("**Session data**")
-    st.caption(f"roster: `{_roster}` · role: `{_upload_role}`")
     _si = [("SS DRS","df_drs"),("NS Time","df_ns"),("SFDC","df_sfdc")]
     if _upload_role in ("manager","manager_only","reporting_only"):
         _si.append(("NS Unassigned","df_ns_unassigned"))

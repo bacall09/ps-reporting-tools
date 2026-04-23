@@ -170,7 +170,7 @@ elif view_name.startswith("REGION:"):
         if _gr(n) == _region_sel
         and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
     ]
-    # Include name variants but NOT first-name-only (too ambiguous)
+    # Include name variants — also add DRS display name aliases from PS_REGION_OVERRIDE
     _view_name_set = set()
     for n in _region_names:
         parts = [p.strip() for p in n.split(",")]
@@ -178,6 +178,14 @@ elif view_name.startswith("REGION:"):
         _view_name_set.add(parts[0].lower())                       # "longalong" (last name)
         if len(parts) == 2:
             _view_name_set.add(f"{parts[1]} {parts[0]}".lower())  # "santiago longalong"
+            _view_name_set.add(parts[1].strip().lower())           # "santiago" (first name)
+    # Add DRS display name aliases (e.g. "Caroline Tuazon" for Tuazon, Carol)
+    for _alias, _alias_region in PS_REGION_OVERRIDE.items():
+        if _alias_region == _region_sel:
+            _view_name_set.add(_alias.lower())
+            _alias_parts = _alias.strip().split()
+            if len(_alias_parts) >= 2:
+                _view_name_set.add(_alias_parts[-1].lower())
 elif view_name == "ALL_MANAGERS":
     _view_name_set = {n.lower() for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"}
 

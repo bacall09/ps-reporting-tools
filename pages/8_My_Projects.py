@@ -137,8 +137,9 @@ if _va_region and role == "manager":
         # All team — show every project
         my_drs = df_drs.copy()
     else:
-        # Region view — show all active employees in this region
+        # Region view — build name set from ACTIVE_EMPLOYEES + PS_REGION_OVERRIDE aliases
         _region_consultants = set()
+        # Add canonical names from ACTIVE_EMPLOYEES
         for n in ACTIVE_EMPLOYEES:
             _nl = EMPLOYEE_LOCATION.get(n, "")
             if isinstance(_nl, tuple): _nl = _nl[0]
@@ -149,11 +150,20 @@ if _va_region and role == "manager":
                 _region_consultants.add(_vp2[0].lower())
                 if len(_vp2) == 2:
                     _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
-        my_drs = df_drs[pm_col.apply(lambda v: resolve_name(str(v)).lower() in _region_consultants or str(v).strip().lower() in _region_consultants)].copy()
-        with st.expander(f"Debug: region filter ({_va_region})", expanded=False):
-            st.write(f"Region consultants ({len(_region_consultants)}): {sorted(_region_consultants)[:10]}")
-            st.write(f"DRS PM values sample: {list(pm_col.dropna().unique()[:10])}")
-            st.write(f"my_drs rows: {len(my_drs)}")
+                    _region_consultants.add(_vp2[1].strip().lower())
+        # Also add DRS display name aliases from PS_REGION_OVERRIDE (e.g. "Caroline Tuazon")
+        for display_name, region in PS_REGION_OVERRIDE.items():
+            if region == _va_region:
+                _region_consultants.add(display_name.lower())
+                _dparts = display_name.strip().split()
+                if len(_dparts) >= 2:
+                    _region_consultants.add(_dparts[-1].lower())  # last name only
+        my_drs = df_drs[pm_col.apply(lambda v: str(v).strip().lower() in _region_consultants
+                                     or resolve_name(str(v)).lower() in _region_consultants
+                                     or any(str(v).strip().lower().startswith(ns + " ") or
+                                            str(v).strip().lower().endswith(" " + ns)
+                                            for ns in _region_consultants if len(ns) > 3)
+                                     )].copy()
         if my_drs.empty:
             st.info(f"No projects found for the {_va_region} region in DRS.")
             st.stop()
