@@ -230,6 +230,7 @@ with st.sidebar:
         # Show if current_page is Daily Briefing, or if it hasn't been set yet (first load)
         if _cur_page == "Daily Briefing" or not _cur_page:
             _show_prod_filter = True
+        st.caption(f"page: `{_cur_page}` · filter: `{_show_prod_filter}`")
         if _show_prod_filter:
             st.markdown("**Filter by product:**")
             _product_filter_home = st.selectbox("Product", ["All products"] + _all_prods,

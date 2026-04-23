@@ -150,6 +150,10 @@ if _va_region and role == "manager":
                 if len(_vp2) == 2:
                     _region_consultants.add(f"{_vp2[1].strip()} {_vp2[0]}".lower())
         my_drs = df_drs[pm_col.apply(lambda v: resolve_name(str(v)).lower() in _region_consultants or str(v).strip().lower() in _region_consultants)].copy()
+        with st.expander(f"Debug: region filter ({_va_region})", expanded=False):
+            st.write(f"Region consultants ({len(_region_consultants)}): {sorted(_region_consultants)[:10]}")
+            st.write(f"DRS PM values sample: {list(pm_col.dropna().unique()[:10])}")
+            st.write(f"my_drs rows: {len(my_drs)}")
         if my_drs.empty:
             st.info(f"No projects found for the {_va_region} region in DRS.")
             st.stop()
