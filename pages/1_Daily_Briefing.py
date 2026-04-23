@@ -382,12 +382,7 @@ if not _active.empty:
     _stale    = _active[_active["days_inactive"].fillna(0) >= 14].sort_values("days_inactive", ascending=False) if "days_inactive" in _active.columns else pd.DataFrame()
     _rag_red  = pd.DataFrame(); _rag_yellow = pd.DataFrame()
     # Include on-hold projects in RAG — a red on-hold is still a red
-    # Deduplicate on project_id so multi-row projects don't appear twice
     _all_proj = my_projects.copy() if not my_projects.empty else pd.DataFrame()
-    if not _all_proj.empty and "project_id" in _all_proj.columns:
-        _all_proj = _all_proj.drop_duplicates(subset=["project_id"], keep="first")
-    elif not _all_proj.empty and "project_name" in _all_proj.columns:
-        _all_proj = _all_proj.drop_duplicates(subset=["project_name"], keep="first")
     if "rag" in _all_proj.columns:
         _rv = _all_proj["rag"].fillna("").astype(str).str.strip().str.lower()
         _rag_red = _all_proj[_rv == "red"]; _rag_yellow = _all_proj[_rv == "yellow"]
@@ -896,7 +891,22 @@ else:
         _pn   = str(r.get("project_name","") or "")
         _cust = _pn.split(" - ")[0].strip()[:22] if " - " in _pn else _pn[:22]
         _pt   = str(r.get("project_type","") or "")
-        _prod = _pt.split(":")[-1].strip().split()[0] if _pt else ""
+        # Extract product family: "ZonePay: Implementation" → "ZonePayroll"
+        # "ZEP: Implementation" → "ZEP"
+        # Map common short codes to display names
+        _PROD_DISPLAY = {
+            "zonepay":    "ZonePayroll",
+            "zonebill":   "ZoneBilling",
+            "zoneapp":    "ZoneApps",
+            "zonerpt":    "ZoneReporting",
+            "zep":        "ZEP",
+            "zab":        "ZoneBilling",
+        }
+        if _pt:
+            _prefix = _pt.split(":")[0].strip().lower()
+            _prod = _PROD_DISPLAY.get(_prefix, _pt.split(":")[0].strip())
+        else:
+            _prod = ""
         return f"{_cust} : {_prod}" if _prod else _cust
 
     # Phase breakdown — exclude Unassigned, sort by phase order

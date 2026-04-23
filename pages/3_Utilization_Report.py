@@ -549,7 +549,7 @@ def assign_credits(df, scope_map):
     df["htd_start"]     = htd_start_list
 
     # Updated hours to date = htd_start + total hours booked this period (credited + overrun)
-    df["previous_htd"] = df["htd_start"] + df["hours"]
+    df["previous_htd"] = df["htd_start"].astype(float) + df["hours"].astype(float)
 
     # Tag FF tasks
     # ff_task — COL_MAP already renamed case/task/event -> task
@@ -914,7 +914,7 @@ def build_excel(df, scope_map, consumed):
     _ot_proj["scoped_hrs"] = _ot_proj["project_type"].apply(_ot_scope)
     # Only include projects where scope is configured
     _ot_proj = _ot_proj[_ot_proj["scoped_hrs"].notna()].copy()
-    _ot_proj["over_under"] = _ot_proj["hours_total"] - _ot_proj["scoped_hrs"]
+    _ot_proj["over_under"] = _ot_proj["hours_total"].astype(float) - _ot_proj["scoped_hrs"].astype(float)
     _ot_proj["is_over"] = (_ot_proj["over_under"] > 0).astype(int)
 
     _ot_type = _ot_proj.groupby("project_type", as_index=False).agg(
@@ -1485,7 +1485,7 @@ def build_excel(df, scope_map, consumed):
         phase      = proj_phase.get(row["project"], "")
         start_dt   = proj_start.get(row["project"])
         days_active = int((_as_of - start_dt).days) if pd.notna(start_dt) and pd.notna(_as_of) else "—"
-        _htd_wl   = row["previous_htd"] + row["hours_this_period"]
+        _htd_wl   = float(row["previous_htd"]) + float(row["hours_this_period"])
         _tot_ov   = _htd_wl - row["scope_h"] if row["scope_h"] and row["scope_h"] > 0 else "—"
         _ps_reg_wl = proj_ps_region.get(row["project"], "")
         vals = [row["project"], row["project_type"], _ps_reg_wl, pm_name,
@@ -2400,7 +2400,7 @@ def build_tableau_excel(df, scope_map, consumed):
     )
     _fot_proj["scoped_hrs"] = _fot_proj["project_type"].apply(_fot_scope)
     _fot_proj = _fot_proj[_fot_proj["scoped_hrs"].notna()].copy()
-    _fot_proj["over_under"] = _fot_proj["hours_total"] - _fot_proj["scoped_hrs"]
+    _fot_proj["over_under"] = _fot_proj["hours_total"].astype(float) - _fot_proj["scoped_hrs"].astype(float)
     _fot_proj["is_over"]    = (_fot_proj["over_under"] > 0).astype(int)
 
     # Aggregate to project-type grain
