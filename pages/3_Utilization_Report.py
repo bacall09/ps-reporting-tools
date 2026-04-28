@@ -2000,7 +2000,9 @@ def main():
 
                 df, consumed, skipped_df = assign_credits(_df_period, DEFAULT_SCOPE)
             except Exception as e:
-                st.error(f"Processing error: {e}"); return
+                st.error(f"Processing error: {e}")
+                st.exception(e)
+                return
 
                 st.success(" Processing complete!")
 
