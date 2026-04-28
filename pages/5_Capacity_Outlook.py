@@ -1934,8 +1934,8 @@ def main():
                 emp_rows = ss_df[ss_df["consultant"].astype(str).str.strip() == name]
                 # Filter to FF only and non-complete phases — matches page 2 total_project logic
                 if not emp_rows.empty:
-                    _billing  = emp_rows.get("billing_type", pd.Series(dtype=str)).astype(str).str.strip().str.lower()
-                    _phase    = emp_rows.get("phase", pd.Series(dtype=str)).astype(str).str.strip().str.lower()
+                    _billing  = emp_rows.get("billing_type", pd.Series(dtype="object")).astype(str).str.strip().str.lower()
+                    _phase    = emp_rows.get("phase", pd.Series(dtype="object")).astype(str).str.strip().str.lower()
                     _complete = {"10. complete/pending final billing", "12. ps review"}
                     _tm       = {"t&m", "time & material", "time and material"}
                     _ff_mask  = ~_billing.isin(_tm)
@@ -2022,7 +2022,7 @@ def main():
             # Drill-down: show unassigned projects making up the demand for this region
             if _true_unassigned is not None and not _true_unassigned.empty:
                 region_unassigned = _true_unassigned[
-                    _true_unassigned.get("ps_region", pd.Series(dtype=str)) == region
+                    _true_unassigned.get("ps_region", pd.Series(dtype="object")) == region
                 ] if "ps_region" in _true_unassigned.columns else _true_unassigned[
                     _true_unassigned["ps_region"] == region
                 ] if "ps_region" in _true_unassigned.columns else pd.DataFrame()

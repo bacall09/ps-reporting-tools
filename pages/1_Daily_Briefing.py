@@ -151,6 +151,7 @@ view_variants = _name_variants(view_name)
 
 # Build set of names for region/manager views
 _view_name_set = None
+_region_names  = []   # always defined regardless of view_name branch
 if view_name == "ALL":
     # ALL view: scope to active employees only (excludes leavers + unassigned)
     # Build name variants for every active employee
@@ -252,19 +253,19 @@ my_projects = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
     if _is_group_view:
         if _view_name_set is not None:
-            pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
+            pm_col = df_drs.get("project_manager", pd.Series(dtype="object"))
             _drs_by_who = df_drs[pm_col.apply(lambda v: _match_name(str(v)))]
         else:
             _drs_by_who = df_drs
     else:
-        pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
+        pm_mask = df_drs.get("project_manager", pd.Series(dtype="object")).apply(lambda v: _match_name(str(v)))
         _drs_by_who = df_drs[pm_mask]
         if _drs_by_who.empty and not is_manager(view_name):
             _drs_by_who = df_drs
             st.caption("ℹ️ No PM column matched — showing all projects.")
 
     if _product_project_types is not None and not _drs_by_who.empty:
-        pt_col = _drs_by_who.get("project_type", pd.Series(dtype=str))
+        pt_col = _drs_by_who.get("project_type", pd.Series(dtype="object"))
         my_projects = _drs_by_who[pt_col.apply(lambda v: _match_project_type(str(v)))].copy()
     else:
         my_projects = _drs_by_who.copy()
@@ -275,7 +276,7 @@ if df_ns is not None and not df_ns.empty:
     if _is_group_view and _view_name_set is None:
         _ns_by_who = df_ns
     else:
-        emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
+        emp_mask = df_ns.get("employee", pd.Series(dtype="object")).apply(lambda v: _match_name(str(v)))
         _ns_by_who = df_ns[emp_mask]
     # Apply product filter to NS if project_type column exists
     if _product_project_types is not None and "project_type" in _ns_by_who.columns:
@@ -739,141 +740,152 @@ else:
 
 # ── Consultant breakdown table (group views only) ─────────────────────────────
 if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
-    st.markdown('<div class="section-label">Team Breakdown — This Month</div>', unsafe_allow_html=True)
+    try:
+        st.markdown('<div class="section-label">Team Breakdown — This Month</div>', unsafe_allow_html=True)
 
-    my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
-    _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
+        my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
+        _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
 
-    _scope_names  = [n for n in (_region_names if _view_name_set else CONSULTANT_DROPDOWN)
-                     if get_role(n) != "manager_only"
-                     and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0]
-    _region_key   = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
+        _scope_names  = [n for n in (_region_names if _view_name_set else CONSULTANT_DROPDOWN)
+                         if get_role(n) != "manager_only"
+                         and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0]
+        _region_key   = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
 
-    # Find leavers who were active in this month and belong to this region
-    _month_start = pd.to_datetime(f"{month_key}-01")
-    _month_end   = _month_start + pd.offsets.MonthEnd(0)
-    _days_in_month = _month_end.day
+        # Find leavers who were active in this month and belong to this region
+        _month_start = pd.to_datetime(f"{month_key}-01")
+        _month_end   = _month_start + pd.offsets.MonthEnd(0)
+        _days_in_month = _month_end.day
 
-    _leaver_scope = []
-    for _ln, _exit_str in LEAVER_EXIT_DATES.items():
-        if _exit_str is None: continue
-        _exit_dt = pd.to_datetime(_exit_str)
-        if _exit_dt < _month_start: continue          # left before this month
-        if _region_key and _gr(_ln) != _region_key: continue  # wrong region
-        _leaver_scope.append((_ln, _exit_dt))
+        _leaver_scope = []
+        for _ln, _exit_str in LEAVER_EXIT_DATES.items():
+            if _exit_str is None: continue
+            _exit_dt = pd.to_datetime(_exit_str)
+            if _exit_dt < _month_start: continue          # left before this month
+            if _region_key and _gr(_ln) != _region_key: continue  # wrong region
+            _leaver_scope.append((_ln, _exit_dt))
 
-    def _build_row(cn, is_leaver=False, exit_dt=None):
-        _parts = [p.strip() for p in cn.split(",")]
-        _variants = {cn.lower(), _parts[0].lower()}
-        if len(_parts) == 2:
-            _variants.add(f"{_parts[1]} {_parts[0]}".lower())
+        def _build_row(cn, is_leaver=False, exit_dt=None):
+            _parts = [p.strip() for p in cn.split(",")]
+            _variants = {cn.lower(), _parts[0].lower()}
+            if len(_parts) == 2:
+                _variants.add(f"{_parts[1]} {_parts[0]}".lower())
 
-        _emp_mask = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
-            lambda v: v in _variants or any(
-                v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
-        )
-        _emp_rows = _month_ns_all[_emp_mask]
+            _emp_mask = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+                lambda v: v in _variants or any(
+                    v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
+            )
+            _emp_rows = _month_ns_all[_emp_mask]
 
-        if _emp_rows.empty:
-            _total = 0.0; _ff = 0.0; _tm = 0.0; _admin = 0.0
-            _ff_util = 0.0; _ff_over = 0.0
-        else:
-            _bt    = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
-            _total = round(_emp_rows["hours"].sum(), 2)
-            _ff    = round(_emp_rows[_bt == "fixed fee"]["hours"].sum(), 2)
-            _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
-            _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
+            if _emp_rows.empty:
+                _total = 0.0; _ff = 0.0; _tm = 0.0; _admin = 0.0
+                _ff_util = 0.0; _ff_over = 0.0
+            else:
+                _bt    = _emp_rows.get("billing_type", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
+                _total = round(_emp_rows["hours"].sum(), 2)
+                _ff    = round(_emp_rows[_bt == "fixed fee"]["hours"].sum(), 2)
+                _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
+                _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
 
-            # Per-consultant FF credit/overrun — mirrors top-level engine exactly
-            # Use same rule: anything not internal or T&M = Fixed Fee
-            _bt_cn = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
-            _ff_rows_cn = _emp_rows[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
-            _ff_util = 0.0; _ff_over = 0.0
-            if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
-                _con_cn: dict = {}
-                for _, _fr in _ff_rows_cn.iterrows():
-                    _fp    = " ".join(str(_fr.get("project","")).split())
-                    _ftype = str(_fr.get("project_type","")).strip()
-                    _fh    = float(_fr.get("hours", 0) or 0)
-                    if _fh <= 0: continue
-                    _fm = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
-                           if k.strip().lower() in _ftype.lower()]
-                    _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
-                    if _fsc is None:
-                        _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
-                    _fck = (_fp, _ftype)  # composite key: project + product type (matches top-level)
-                    if _fck not in _con_cn:
-                        _con_cn[_fck] = prior_htd.get(_fck, prior_htd.get((_fp,), 0.0))
-                    _fused = _con_cn[_fck]; _frem = _fsc - _fused
-                    if _frem <= 0:
-                        _ff_over += _fh
-                    elif _fh <= _frem:
-                        _ff_util += _fh; _con_cn[_fck] = _fused + _fh
-                    else:
-                        _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fck] = _fsc
-            _ff_util = round(_ff_util, 2)
-            _ff_over = round(_ff_over, 2)
+                # Per-consultant FF credit/overrun — mirrors top-level engine exactly
+                # Use same rule: anything not internal or T&M = Fixed Fee
+                _bt_cn = _emp_rows.get("billing_type", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
+                _ff_rows_cn = _emp_rows[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
+                _ff_util = 0.0; _ff_over = 0.0
+                if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
+                    _con_cn: dict = {}
+                    for _, _fr in _ff_rows_cn.iterrows():
+                        _fp    = " ".join(str(_fr.get("project","")).split())
+                        _ftype = str(_fr.get("project_type","")).strip()
+                        _fh    = float(_fr.get("hours", 0) or 0)
+                        if _fh <= 0: continue
+                        _fm = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                               if k.strip().lower() in _ftype.lower()]
+                        _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
+                        if _fsc is None:
+                            _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
+                        _fck = (_fp, _ftype)  # composite key: project + product type (matches top-level)
+                        if _fck not in _con_cn:
+                            _con_cn[_fck] = prior_htd.get(_fck, prior_htd.get((_fp,), 0.0))
+                        _fused = _con_cn[_fck]; _frem = _fsc - _fused
+                        if _frem <= 0:
+                            _ff_over += _fh
+                        elif _fh <= _frem:
+                            _ff_util += _fh; _con_cn[_fck] = _fused + _fh
+                        else:
+                            _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fck] = _fsc
+                _ff_util = round(_ff_util, 2)
+                _ff_over = round(_ff_over, 2)
 
-        _cl = EMPLOYEE_LOCATION.get(cn, "")
-        _cr = PS_REGION_OVERRIDE.get(cn, PS_REGION_MAP.get(_cl, ""))
-        _avail_full = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
-        if isinstance(_avail_full, tuple): _avail_full = _avail_full[0]
-        _avail_full = float(_avail_full) if _avail_full else None
+            _cl = EMPLOYEE_LOCATION.get(cn, "")
+            _cr = PS_REGION_OVERRIDE.get(cn, PS_REGION_MAP.get(_cl, ""))
+            _avail_full = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
+            if isinstance(_avail_full, tuple): _avail_full = _avail_full[0]
+            _avail_full = float(_avail_full) if _avail_full else None
 
-        # Prorate if leaver
-        if is_leaver and exit_dt is not None and _avail_full:
-            _days_worked = min(exit_dt.day, _days_in_month)
-            _avail_cn = round(_avail_full * _days_worked / _days_in_month, 2)
-        else:
-            _avail_cn = _avail_full
+            # Prorate if leaver
+            if is_leaver and exit_dt is not None and _avail_full:
+                _days_worked = min(exit_dt.day, _days_in_month)
+                _avail_cn = round(_avail_full * _days_worked / _days_in_month, 2)
+            else:
+                _avail_cn = _avail_full
 
-        _util_h_cn   = round(_ff_util + _tm, 2)
-        _util_pct_cn = round(_util_h_cn / _avail_cn * 100, 1) if _avail_cn and _util_h_cn > 0 else None
-        _over_pct_cn = round(_ff_over   / _avail_cn * 100, 1) if _avail_cn and _ff_over > 0 else None
-        _int_pct_cn  = round(_admin     / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
+            _util_h_cn   = round(_ff_util + _tm, 2)
+            _util_pct_cn = round(_util_h_cn / _avail_cn * 100, 1) if _avail_cn and _util_h_cn > 0 else None
+            _over_pct_cn = round(_ff_over   / _avail_cn * 100, 1) if _avail_cn and _ff_over > 0 else None
+            _int_pct_cn  = round(_admin     / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
 
-        _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
-        if is_leaver and exit_dt:
-            _display += " *"
+            _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
+            if is_leaver and exit_dt:
+                _display += " *"
 
-        _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
-        return {
-            "Consultant":    _display,
-            "WHS":           f"{_whs_s} · {_whs_l}" if _whs_s is not None else "—",
-            "Avail h":       _avail_cn or "—",
-            "FF Util h":     _ff_util or "—",
-            "FF Overrun h":  _ff_over or "—",
-            "T&M h":         _tm or "—",
-            "Internal h":    _admin or "—",
-            "Util %":        f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
-            "FF Overrun %":  f"{_over_pct_cn}%" if _over_pct_cn is not None else "—",
-            "Internal %":    f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
-        }
-
-    _rows = [_build_row(cn) for cn in _scope_names]
-    _rows += [_build_row(ln, is_leaver=True, exit_dt=ex) for ln, ex in _leaver_scope]
-
-    if _rows:
-        _tbl = pd.DataFrame(_rows)
-        st.dataframe(
-            _tbl,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
-                "WHS":          st.column_config.TextColumn("WHS",          width="small"),
-                "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
-                "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
-                "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
-                "T&M h":        st.column_config.TextColumn("T&M h",        width="small"),
-                "Internal h":   st.column_config.TextColumn("Internal h",   width="small"),
-                "Util %":       st.column_config.TextColumn("Util %",       width="small"),
-                "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
-                "Internal %":   st.column_config.TextColumn("Internal %",   width="small"),
+            _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
+            return {
+                "Consultant":    _display,
+                "WHS":           f"{_whs_s} · {_whs_l}" if _whs_s is not None else "—",
+                "Avail h":       _avail_cn or "—",
+                "FF Util h":     _ff_util or "—",
+                "FF Overrun h":  _ff_over or "—",
+                "T&M h":         _tm or "—",
+                "Internal h":    _admin or "—",
+                "Util %":        f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
+                "FF Overrun %":  f"{_over_pct_cn}%" if _over_pct_cn is not None else "—",
+                "Internal %":    f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
             }
+
+        _rows = [_build_row(cn) for cn in _scope_names]
+        _rows += [_build_row(ln, is_leaver=True, exit_dt=ex) for ln, ex in _leaver_scope]
+
+        if _rows:
+            _tbl = pd.DataFrame(_rows)
+            st.dataframe(
+                _tbl,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
+                    "WHS":          st.column_config.TextColumn("WHS",          width="small"),
+                    "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
+                    "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
+                    "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
+                    "T&M h":        st.column_config.TextColumn("T&M h",        width="small"),
+                    "Internal h":   st.column_config.TextColumn("Internal h",   width="small"),
+                    "Util %":       st.column_config.TextColumn("Util %",       width="small"),
+                    "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
+                    "Internal %":   st.column_config.TextColumn("Internal %",   width="small"),
+                }
+            )
+            if _leaver_scope:
+                st.caption("* Available hours prorated")
+
+    except Exception as _db_err:
+        st.warning(
+            "\u26a0\ufe0f Team breakdown could not load. This usually means the "
+            "uploaded time data is from an older export format. "
+            "Please upload a current NS Time Detail export and try again.",
+            icon="\u26a0\ufe0f"
         )
-        if _leaver_scope:
-            st.caption("* Available hours prorated")
+        with st.expander("Technical details (for support)", expanded=False):
+            st.code(str(_db_err))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════════════════════

@@ -150,7 +150,7 @@ else:
     _team_consultants = {view_as}
 
 # ── Filter DRS to team ────────────────────────────────────────────────────────
-pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
+pm_col = df_drs.get("project_manager", pd.Series(dtype="object")).fillna("")
 
 def _in_team(v):
     return any(name_matches(v, _n) for _n in _team_consultants)
@@ -167,7 +167,7 @@ def _is_unassigned_pm(v):
     v = str(v).strip()
     return not v or v.lower() in ("", "nan", "none", "unassigned", "tbd")
 
-_all_pm_col     = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
+_all_pm_col     = df_drs.get("project_manager", pd.Series(dtype="object")).fillna("")
 _leaver_drs     = df_drs[_all_pm_col.apply(_is_leaver_pm)].copy()
 _unassigned_drs = df_drs[_all_pm_col.apply(_is_unassigned_pm)].copy()
 _n_leaver       = int(_leaver_drs["project_id"].nunique()) if "project_id" in _leaver_drs.columns and not _leaver_drs.empty else len(_leaver_drs)
@@ -220,7 +220,7 @@ else:
     _n_team = len(_team_consultants)
 _oh_denom   = _n_active + _n_onhold
 
-_rag_col    = team_drs.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+_rag_col    = team_drs.get("rag", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
 _n_red      = int((_rag_col == "red").sum())
 _n_yellow   = int((_rag_col == "yellow").sum())
 _n_at_risk  = _n_red + _n_yellow
@@ -643,7 +643,7 @@ for _cn in sorted(_team_consultants):
     if _n_proj == 0 and _n_oh == 0: continue
 
     # RAG — includes on-hold projects, matching Daily Briefing behaviour
-    _cm_rag = _cm.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+    _cm_rag = _cm.get("rag", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
     _cm_red = int((_cm_rag == "red").sum())
     _cm_yel = int((_cm_rag == "yellow").sum())
 
@@ -666,7 +666,7 @@ for _cn in sorted(_team_consultants):
     # Util % MTD — full scope-capped calculation matching Daily Briefing exactly
     _cm_util = "—"
     if df_ns is not None and not df_ns.empty:
-        _cm_ns = df_ns[df_ns.get("employee", pd.Series(dtype=str)).fillna("").apply(
+        _cm_ns = df_ns[df_ns.get("employee", pd.Series(dtype="object")).fillna("").apply(
             lambda v: name_matches(v, _cn)
         )]
         _cn_loc = EMPLOYEE_LOCATION.get(_cn, "")

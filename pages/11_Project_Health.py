@@ -69,7 +69,7 @@ if role in ("manager", "manager_only", "reporting_only"):
 # ── Filter DRS to this consultant/region ─────────────────────────────────────
 my_drs = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
-    pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
+    pm_col = df_drs.get("project_manager", pd.Series(dtype="object")).fillna("")
     if _va_region and role in ("manager", "manager_only", "reporting_only"):
         if _va_region == "__ALL__":
             _all_names = set()

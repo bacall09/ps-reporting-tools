@@ -1119,7 +1119,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         ws_con.column_dimensions[get_column_letter(i)].width = w
 
     # High risk count per consultant
-    high_risk = scored_df[(scored_df["active"]) & (scored_df.get("risk_level", pd.Series(dtype=str)).str.lower().str.contains("high", na=False))]
+    high_risk = scored_df[(scored_df["active"]) & (scored_df.get("risk_level", pd.Series(dtype="object")).str.lower().str.contains("high", na=False))]
     high_risk_count = high_risk.groupby("project_manager")["project_id"].nunique().to_dict() if "risk_level" in scored_df.columns else {}
 
     # Pre-calculate avg weighted score by PS region
@@ -1165,10 +1165,10 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
 
     at_risk_df = scored_df[
         (scored_df["active"]) & (
-            (scored_df.get("risk_level",       pd.Series(dtype=str)).str.lower().str.contains("high",    na=False)) |
-            (scored_df.get("schedule_health",  pd.Series(dtype=str)).str.lower().str.contains("behind",  na=False)) |
-            (scored_df.get("rag",              pd.Series(dtype=str)).str.lower().str.contains("red",     na=False)) |
-            (scored_df.get("client_sentiment", pd.Series(dtype=str)).str.lower().str.contains("negative",na=False))
+            (scored_df.get("risk_level",       pd.Series(dtype="object")).str.lower().str.contains("high",    na=False)) |
+            (scored_df.get("schedule_health",  pd.Series(dtype="object")).str.lower().str.contains("behind",  na=False)) |
+            (scored_df.get("rag",              pd.Series(dtype="object")).str.lower().str.contains("red",     na=False)) |
+            (scored_df.get("client_sentiment", pd.Series(dtype="object")).str.lower().str.contains("negative",na=False))
         )
     ].copy()
 
@@ -1663,9 +1663,9 @@ A project is flagged if no time has been booked within the NS report window:
     with tab2:
         at_risk = scored_df[
             (scored_df["active"]) & (
-                (scored_df.get("risk_level",      pd.Series(dtype=str)).str.lower().str.contains("high",   na=False)) |
-                (scored_df.get("schedule_health", pd.Series(dtype=str)).str.lower().str.contains("behind", na=False)) |
-                (scored_df.get("rag",             pd.Series(dtype=str)).str.lower().str.contains("red",    na=False))
+                (scored_df.get("risk_level",      pd.Series(dtype="object")).str.lower().str.contains("high",   na=False)) |
+                (scored_df.get("schedule_health", pd.Series(dtype="object")).str.lower().str.contains("behind", na=False)) |
+                (scored_df.get("rag",             pd.Series(dtype="object")).str.lower().str.contains("red",    na=False))
             )
         ]
         if len(at_risk) == 0:

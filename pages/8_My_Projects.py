@@ -130,7 +130,7 @@ if df_drs is None:
     st.stop()
 
 # Filter to consultant or region
-pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
+pm_col = df_drs.get("project_manager", pd.Series(dtype="object"))
 
 if _va_region and role == "manager":
     if _va_region == "__ALL__":
