@@ -199,8 +199,7 @@ elif _ce_anchor == "reengagement":
 def _get_browse():
     """Return effective view-as: passthrough from My Projects takes priority."""
     return (st.session_state.get("_browse_passthrough") or
-            st.session_state.get("home_browse", "— My own view —") or
-            "— My own view —")
+            st.session_state.get("home_browse", "") or "")
 
 def _title_suffix_from_browse():
     b = _get_browse()

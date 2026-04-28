@@ -62,10 +62,28 @@ if not selected:
 view_as    = selected
 _va_region = None
 if role in ("manager", "manager_only", "reporting_only"):
-    _pick = st.session_state.get("home_browse", "— My own view —")
+    _pick = (st.session_state.get("_browse_passthrough") or
+             st.session_state.get("home_browse", "")) or ""
+    if not _pick:
+        # No passthrough — show local selector
+        from shared.constants import CONSULTANT_DROPDOWN as _CDP
+        _bopts_pa = ["👥 All team"]
+        _by_r_pa = {}
+        for _cn_pa in sorted(_CDP):
+            _loc_pa = EMPLOYEE_LOCATION.get(_cn_pa, "")
+            _rg_pa = PS_REGION_OVERRIDE.get(_cn_pa, PS_REGION_MAP.get(_loc_pa, "Other"))
+            _by_r_pa.setdefault(_rg_pa, []).append(_cn_pa)
+        for _rg_pa in sorted(_by_r_pa.keys()):
+            _bopts_pa.append(f"── {_rg_pa} ──")
+            _bopts_pa.extend(_by_r_pa[_rg_pa])
+        with st.sidebar:
+            st.markdown("**View as:**")
+            _pick = st.selectbox("View as", _bopts_pa, key="pa_view_as",
+                                 label_visibility="collapsed")
+    _pick_clean = _pick.replace("👥", "").strip().lower()
     if _pick and _pick.startswith("── ") and _pick.endswith(" ──"):
         _va_region = _pick[3:-3].strip()
-    elif _pick and _pick in ("👥 All team", "All team"):
+    elif _pick_clean in ("all team", "") or _pick in ("👥 All team", "All team"):
         _va_region = None  # show all team — handled by manager_only path
         view_as    = selected
     elif _pick and _pick not in ("— My own view —", "— Select —", ""):
@@ -113,8 +131,10 @@ if _va_region:
 elif role == "manager_only":
     _team_consultants = set(ACTIVE_EMPLOYEES)
 elif role in ("manager", "reporting_only"):
-    _pick_curr = st.session_state.get("home_browse", "— My own view —")
-    if _pick_curr in ("👥 All team", "All team"):
+    _pick_curr = (st.session_state.get("_browse_passthrough") or
+                  st.session_state.get("home_browse", "")) or ""
+    _pick_curr_clean = _pick_curr.replace("👥", "").strip().lower()
+    if _pick_curr_clean in ("all team", "") or _pick_curr in ("👥 All team", "All team"):
         _team_consultants = set(ACTIVE_EMPLOYEES)
     elif view_as != selected:
         _team_consultants = {view_as}

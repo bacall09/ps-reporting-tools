@@ -4,6 +4,32 @@ Logical consistency validator for SS DRS data.
 Flags fields and combinations that don't align with expected project state.
 """
 import streamlit as st
+
+def _get_effective_browse(session_name, role, el, rm, ro, ae, cd, sidebar_key):
+    """Return (browse_str, is_all_team) robust to session wipe and emoji encoding."""
+    _b = (st.session_state.get("_browse_passthrough") or
+          st.session_state.get("home_browse", "")) or ""
+    _is_mgr = role in ("manager", "manager_only", "reporting_only")
+    if _is_mgr and not _b:
+        # No passthrough — show local selector defaulting to All team
+        _active = sorted([n for n in cd if n])
+        _bopts = ["👥 All team"]
+        _by_r = {}
+        for _cn in _active:
+            _loc = el.get(_cn, "")
+            _rg = ro.get(_cn, rm.get(_loc, "Other"))
+            _by_r.setdefault(_rg, []).append(_cn)
+        for _rg in sorted(_by_r.keys()):
+            _bopts.append(f"── {_rg} ──")
+            _bopts.extend(_by_r[_rg])
+        with st.sidebar:
+            st.markdown("**View as:**")
+            _b = st.selectbox("View as", _bopts, key=sidebar_key,
+                              label_visibility="collapsed")
+    _clean = _b.replace("👥", "").strip().lower()
+    _is_all = _clean in ("all team", "") or _b in ("👥 All team", "All team")
+    return _b, _is_all
+
 import pandas as pd
 from datetime import date
 
@@ -67,13 +93,18 @@ from shared.config import EMPLOYEE_LOCATION as _EL3, PS_REGION_MAP as _RM3, PS_R
 from shared.constants import ACTIVE_EMPLOYEES as _AE3, EMPLOYEE_ROLES as _ER3
 _session_name = st.session_state.get("consultant_name", "")
 if _session_name:
-    _home_browse = (st.session_state.pop("_browse_passthrough", None) or
-                    st.session_state.get("home_browse", "— My own view —"))
-    _va_name, _va_region, _is_group = resolve_view_as(
-        _session_name, _home_browse, _ER3, _EL3, _RM3, _RO3, _AE3
+    from shared.constants import CONSULTANT_DROPDOWN as _CD3
+    _home_browse, _drs_all_team = _get_effective_browse(
+        _session_name, _get_role(_session_name), _EL3, _RM3, _RO3, _AE3, _CD3, "drs_view_as"
     )
     _role = _get_role(_session_name)
     _is_manager = _role in ("manager", "manager_only")
+    if _is_manager and _drs_all_team:
+        _va_name, _va_region = None, None
+    else:
+        _va_name, _va_region, _is_group = resolve_view_as(
+            _session_name, _home_browse, _ER3, _EL3, _RM3, _RO3, _AE3
+        )
     if _va_region and "project_manager" in df_drs.columns:
         _rc = get_region_consultants(_va_region, _EL3, _RM3, _RO3, _AE3)
         _filtered = df_drs[df_drs["project_manager"].astype(str).str.strip().str.lower().isin(_rc)]

@@ -4,6 +4,32 @@ Upload a Smartsheets DRS export + NetSuite time detail to generate
 a weighted workload score per consultant across active FF projects.
 """
 import streamlit as st
+
+def _get_effective_browse(session_name, role, el, rm, ro, ae, cd, sidebar_key):
+    """Return (browse_str, is_all_team) robust to session wipe and emoji encoding."""
+    _b = (st.session_state.get("_browse_passthrough") or
+          st.session_state.get("home_browse", "")) or ""
+    _is_mgr = role in ("manager", "manager_only", "reporting_only")
+    if _is_mgr and not _b:
+        # No passthrough — show local selector defaulting to All team
+        _active = sorted([n for n in cd if n])
+        _bopts = ["👥 All team"]
+        _by_r = {}
+        for _cn in _active:
+            _loc = el.get(_cn, "")
+            _rg = ro.get(_cn, rm.get(_loc, "Other"))
+            _by_r.setdefault(_rg, []).append(_cn)
+        for _rg in sorted(_by_r.keys()):
+            _bopts.append(f"── {_rg} ──")
+            _bopts.extend(_by_r[_rg])
+        with st.sidebar:
+            st.markdown("**View as:**")
+            _b = st.selectbox("View as", _bopts, key=sidebar_key,
+                              label_visibility="collapsed")
+    _clean = _b.replace("👥", "").strip().lower()
+    _is_all = _clean in ("all team", "") or _b in ("👥 All team", "All team")
+    return _b, _is_all
+
 from shared.whs import (
 
 
@@ -1515,13 +1541,18 @@ def main():
             from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
             from shared.config import EMPLOYEE_LOCATION as _EL2, PS_REGION_MAP as _RM2, PS_REGION_OVERRIDE as _RO2
             from shared.constants import ACTIVE_EMPLOYEES as _AE2
-            _home_browse = (st.session_state.pop("_browse_passthrough", None) or
-                               st.session_state.get("home_browse", "— My own view —"))
-            _va_name, _va_region, _is_group = resolve_view_as(
-                _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
+            from shared.constants import CONSULTANT_DROPDOWN as _CD2
+            _home_browse, _whs_all_team = _get_effective_browse(
+                _session_name, _get_role(_session_name), _EL2, _RM2, _RO2, _AE2, _CD2, "whs_view_as"
             )
             _role = _get_role(_session_name)
             _is_mgr = _role in ("manager", "manager_only", "reporting_only")
+            if _is_mgr and _whs_all_team:
+                _va_name, _va_region = None, None
+            else:
+                _va_name, _va_region, _is_group = resolve_view_as(
+                    _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
+                )
             _pm_col = next((c for c in ["project_manager", "consultant"] if c in ss_df.columns), None)
             if _va_region:
                 _rc = get_region_consultants(_va_region, _EL2, _RM2, _RO2, _AE2)
