@@ -81,7 +81,12 @@ if _roster and st.session_state.get("consultant_name") != _roster:
     st.session_state["consultant_name"] = _roster
 
 # ── Navigation (page lists defined above, called here with role context) ────────
-if _role in ("manager", "manager_only"):
+_is_authed = bool(st.session_state.get("authentication_status"))
+
+if not _is_authed:
+    # Unauthenticated — hide sidebar pages entirely using position=hidden
+    pg = st.navigation([st.Page("Home.py", title="Sign in", icon="🔐")], position="hidden")
+elif _role in ("manager", "manager_only"):
     pg = st.navigation({"My Tools": _consultant_pages, "Management": _manager_pages, "Info": _help_pages})
 elif _role == "reporting_only":
     pg = st.navigation({"Management": _manager_pages})
@@ -226,7 +231,8 @@ with st.sidebar:
                                             key="home_product_filter", label_visibility="collapsed")
 
         # Store in session state so Daily Briefing can read them
-        st.session_state["_view_browse"]   = _browse
+        st.session_state["_view_browse"]       = _browse
+        st.session_state["_browse_passthrough"] = _browse
         st.session_state["_product_filter"] = _product_filter_home
         st.markdown("---")
 
