@@ -434,10 +434,12 @@ def assign_credits(df, scope_map):
             emp_n = " ".join(str(emp_raw or "").split()).strip()
             emp_l = emp_n.lower()
             if not emp_l: return ""
-            if emp_l in _loc_map_norm: return _loc_map_norm[emp_l]
+            def _extract(v):
+                return v[0] if isinstance(v, tuple) else (v or "")
+            if emp_l in _loc_map_norm: return _extract(_loc_map_norm[emp_l])
             for _kl, _vl in _loc_map_norm.items():
-                if emp_l.startswith(_kl) or _kl.startswith(emp_l): return _vl
-                if emp_l.startswith(_kl.split(",")[0].strip()): return _vl
+                if emp_l.startswith(_kl) or _kl.startswith(emp_l): return _extract(_vl)
+                if emp_l.startswith(_kl.split(",")[0].strip()): return _extract(_vl)
             return ""
 
         _needs_loc = df["region"].fillna("").str.strip() == ""
@@ -608,6 +610,15 @@ def assign_credits(df, scope_map):
 
 
 # ── Excel builder ─────────────────────────────────────────────────────────────
+def _xl_val(val):
+    """Sanitise a value for openpyxl — converts NA/NaT/tuples to safe types."""
+    if val is None: return ""
+    if isinstance(val, tuple): return val[0] if val else ""
+    try:
+        if pd.isna(val): return ""
+    except (TypeError, ValueError): pass
+    return val
+
 def build_excel(df, scope_map, consumed):
     wb  = Workbook()
     wb.remove(wb.active)
@@ -663,7 +674,7 @@ def build_excel(df, scope_map, consumed):
         _row_ext["_scoped_hrs"]    = round(_scoped, 2) if _scoped is not None else ""
         _row_ext["_variance_flag"] = _vflag
         for c_idx, col in enumerate(cols, 1):
-            val  = _row_ext.get(col, "")
+            val  = _xl_val(_row_ext.get(col, ""))
             cell = ws.cell(row=r_idx, column=c_idx, value=val)
             fmt, bold, align = None, False, "left"
             if col == "date" and pd.notna(val):
@@ -800,7 +811,7 @@ def build_excel(df, scope_map, consumed):
         fmts = [None,None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%","0.0%","0.0%","+0.0%;-0.0%;-","0.0%"]
 
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
-            cell = ws2.cell(row=r_idx, column=c_idx, value=val)
+            cell = ws2.cell(row=r_idx, column=c_idx, value=_xl_val(val))
             is_util_col = c_idx in (10, 11, 12)
             # Highlight Gap (pts) col 13 — amber if gap > 0.10, red if > 0.20
             if c_idx == 13 and isinstance(val, float):
@@ -917,7 +928,7 @@ def build_excel(df, scope_map, consumed):
         fmts = [None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%",None]
 
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
-            cell = ws3.cell(row=r_idx, column=c_idx, value=val)
+            cell = ws3.cell(row=r_idx, column=c_idx, value=_xl_val(val))
             style_cell(cell, status_bg if c_idx == 12 else bg,
                        fmt=fmt, bold=(c_idx == 12),
                        align="right" if c_idx in (5,6,7,8,9,10,11) else "center" if c_idx == 12 else "left")
