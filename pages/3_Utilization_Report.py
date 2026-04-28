@@ -1843,13 +1843,44 @@ def main():
     from shared.constants import get_role as _gr, resolve_view_as, get_region_consultants
     from shared.config import EMPLOYEE_LOCATION as _EL_u, PS_REGION_MAP as _RM_u, PS_REGION_OVERRIDE as _RO_u
     from shared.constants import ACTIVE_EMPLOYEES as _AE_u
-    _home_browse_u = (st.session_state.get("_browse_passthrough") or
-                      st.session_state.get("home_browse", "— My own view —"))
-    _va_name_u, _va_region_u, _is_group_u = resolve_view_as(
-        _logged_in, _home_browse_u, EMPLOYEE_ROLES, _EL_u, _RM_u, _RO_u, _AE_u
-    )
     _role_u = _gr(_logged_in)
     _is_mgr_u = _role_u in ("manager", "manager_only", "reporting_only")
+
+    # Build the browse value — prefer sidebar passthrough, fall back to local selector
+    _home_browse_u = (st.session_state.get("_browse_passthrough") or
+                      st.session_state.get("home_browse", ""))
+
+    # If manager and no passthrough value, show a local view-as selector
+    if _is_mgr_u and not _home_browse_u:
+        from shared.constants import CONSULTANT_DROPDOWN as _CD_u
+        _active_c_u = sorted([n for n in _CD_u if _gr(n) in ("consultant", "manager")])
+        _by_rgn_u = {}
+        for _cn_u in _active_c_u:
+            _loc_u = _EL_u.get(_cn_u, "")
+            _rg_u  = _RO_u.get(_cn_u, _RM_u.get(_loc_u, "Other"))
+            _by_rgn_u.setdefault(_rg_u, []).append(_cn_u)
+        _bopts_u = ["👥 All team"]
+        for _rg_u in sorted(_by_rgn_u.keys()):
+            _bopts_u.append(f"── {_rg_u} ──")
+            _bopts_u.extend(_by_rgn_u[_rg_u])
+        with st.sidebar:
+            st.markdown("**View as:**")
+            _home_browse_u = st.selectbox(
+                "View as", _bopts_u, key="util_view_as",
+                label_visibility="collapsed"
+            )
+
+    # Normalise — strip emoji variants that may survive encoding round-trips
+    _browse_clean = _home_browse_u.replace("👥", "").strip() if _home_browse_u else ""
+    _is_all_team  = _browse_clean.lower() in ("all team", "") or _home_browse_u in ("👥 All team", "All team")
+
+    if _is_mgr_u and _is_all_team:
+        # All team — skip filtering, pass full dataset through
+        _va_name_u, _va_region_u = None, None
+    else:
+        _va_name_u, _va_region_u, _ = resolve_view_as(
+            _logged_in, _home_browse_u, EMPLOYEE_ROLES, _EL_u, _RM_u, _RO_u, _AE_u
+        )
 
     if "employee" in df_raw.columns:
         from shared.constants import name_matches
