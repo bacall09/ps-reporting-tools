@@ -409,35 +409,46 @@ def assign_credits(df, scope_map):
     # Backfill location from hardcoded lookup when column is missing or blank
     if "region" not in df.columns:
         df["region"] = ""
-    if "employee" in df.columns:
-        def _resolve_location(row):
-            loc = str(row.get("region","")).strip()
-            if loc: return loc
-            emp = str(row.get("employee","")).strip()
-            # Normalize: strip extra spaces, try exact → prefix → last-name match
-            emp_n = " ".join(emp.split())
-            if emp_n in EMPLOYEE_LOCATION:
-                return _emp_location(emp_n)
-            emp_lower = emp_n.lower()
-            for key, val in EMPLOYEE_LOCATION.items():
-                key_lower = key.lower()
-                if emp_lower == key_lower: return _emp_location(key)
-                if emp_lower.startswith(key_lower) or key_lower.startswith(emp_lower): return _emp_location(key)
-                # last name only match (before the comma)
-                last = key_lower.split(",")[0].strip()
-                if emp_lower.startswith(last): return val
-            return ""
-        df["region"] = df.apply(_resolve_location, axis=1)
 
-    # Map employee location → PS Region, with per-employee overrides
-    def _resolve_ps_region(row):
-        emp = str(row.get("employee","")).strip()
-        # Check override first
-        for key in PS_REGION_OVERRIDE:
-            if emp.lower().startswith(key.lower()) or key.lower() == emp.lower():
-                return PS_REGION_OVERRIDE[key]
-        return PS_REGION_MAP.get(str(row.get("region","")).strip(), "Other")
-    df["ps_region"] = df.apply(_resolve_ps_region, axis=1)
+    # ── Vectorised location lookup ────────────────────────────────────────────
+    if "employee" in df.columns:
+        _loc_map_norm = {}
+        for _k, _v in EMPLOYEE_LOCATION.items():
+            _loc_map_norm[_k.lower().strip()] = _v
+            _loc_map_norm[" ".join(_k.split()).lower()] = _v
+
+        def _fast_loc(emp_raw):
+            emp_n = " ".join(str(emp_raw or "").split()).strip()
+            emp_l = emp_n.lower()
+            if not emp_l: return ""
+            if emp_l in _loc_map_norm: return _loc_map_norm[emp_l]
+            for _kl, _vl in _loc_map_norm.items():
+                if emp_l.startswith(_kl) or _kl.startswith(emp_l): return _vl
+                if emp_l.startswith(_kl.split(",")[0].strip()): return _vl
+            return ""
+
+        _needs_loc = df["region"].fillna("").str.strip() == ""
+        if _needs_loc.any():
+            df.loc[_needs_loc, "region"] = df.loc[_needs_loc, "employee"].map(_fast_loc)
+
+    # ── Vectorised PS region lookup ───────────────────────────────────────────
+    _ps_ovr_l = {_k.lower(): _v for _k, _v in PS_REGION_OVERRIDE.items()}
+    if "employee" in df.columns:
+        def _fast_ps(emp_raw):
+            e = " ".join(str(emp_raw or "").split()).lower()
+            for _kl, _vl in _ps_ovr_l.items():
+                if e == _kl or e.startswith(_kl): return _vl
+            return ""
+        _emp_ps = df["employee"].map(_fast_ps)
+        # Where override didn't fire, fall back to region map
+        df["ps_region"] = _emp_ps
+        _no_ovr = _emp_ps.fillna("") == ""
+        if _no_ovr.any():
+            df.loc[_no_ovr, "ps_region"] = df.loc[_no_ovr, "region"].map(
+                lambda r: PS_REGION_MAP.get(str(r).strip(), "Other")
+            )
+    else:
+        df["ps_region"] = df["region"].map(lambda r: PS_REGION_MAP.get(str(r).strip(), "Other"))
 
     # ── Sort by date so entries are processed chronologically per project ────
     if "date" in df.columns:
@@ -468,12 +479,21 @@ def assign_credits(df, scope_map):
     notes_list         = []
     htd_start_list     = []  # track starting HTD per row for output
 
-    for _, row in df.iterrows():
-        proj      = " ".join(str(row.get("project", "")).split())  # normalize whitespace
-        ptype     = str(row.get("project_type", "")).strip()
-        hrs       = float(row.get("hours", 0))
-        nb        = str(row.get("non_billable", "NO")).strip().upper()
-        bill_type = str(row.get("billing_type", "")).strip().lower()
+    # Use itertuples for 4-5x speedup over iterrows on large datasets
+    _proj_idx      = df.columns.get_loc("project")       if "project"       in df.columns else None
+    _ptype_idx     = df.columns.get_loc("project_type")  if "project_type"  in df.columns else None
+    _hrs_idx       = df.columns.get_loc("hours")         if "hours"         in df.columns else None
+    _nb_idx        = df.columns.get_loc("non_billable")  if "non_billable"  in df.columns else None
+    _bt_idx        = df.columns.get_loc("billing_type")  if "billing_type"  in df.columns else None
+    _sku_idx       = df.columns.get_loc("time_item_sku") if "time_item_sku" in df.columns else None
+    _drs_idx       = df.columns.get_loc("_drs_project_name") if "_drs_project_name" in df.columns else None
+
+    for _tup in df.itertuples(index=False, name=None):
+        proj      = " ".join(str(_tup[_proj_idx]  if _proj_idx  is not None else "").split())
+        ptype     = str(_tup[_ptype_idx] if _ptype_idx is not None else "").strip()
+        hrs       = float(_tup[_hrs_idx]  if _hrs_idx   is not None else 0)
+        nb        = str(_tup[_nb_idx]    if _nb_idx    is not None else "NO").strip().upper()
+        bill_type = str(_tup[_bt_idx]    if _bt_idx    is not None else "").strip().lower()
         is_tm     = bill_type == "t&m"
 
         if hrs <= 0:
@@ -501,13 +521,13 @@ def assign_credits(df, scope_map):
         # Premium projects: extract scope from project name (10 or 20)
         # Premium: extract scope hours from Time Item SKU (IMPL10/IMPL20)
         if "premium" in _ptype_lower:
-            _sku = str(row.get("time_item_sku", "") or "")
+            _sku = str(_tup[_sku_idx] if _sku_idx is not None else "") or ""
             _sku_nums = _re_constants.findall(r"IMPL(\d+)", _sku.upper())
             if _sku_nums:
                 scope_hrs = float(_sku_nums[0])
             else:
                 # Fallback: try DRS-enriched name or NS project name
-                _proj_name_scope = str(row.get("_drs_project_name", "") or "") or str(row.get("project", "") or "")
+                _proj_name_scope = str(_tup[_drs_idx] if _drs_idx is not None else "") or str(_tup[_proj_idx] if _proj_idx is not None else "") or ""
                 _name_nums = _re_constants.findall(r"(?<![\d])(10|20)(?![\d])", _proj_name_scope)
                 scope_hrs = float(_name_nums[0]) if _name_nums else None
         else:
