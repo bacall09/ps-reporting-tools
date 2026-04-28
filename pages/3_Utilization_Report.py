@@ -397,6 +397,11 @@ def assign_credits(df, scope_map):
         st.warning(f"Could not auto-detect columns: {unmatched}. Check your file headers.")
 
     df = df.rename(columns=col_map)
+
+    # pandas 3.x infers string columns as StringDtype — convert to object for compatibility
+    for _c in df.select_dtypes(include="string").columns:
+        df[_c] = df[_c].astype(object)
+
     df["non_billable"] = df["non_billable"].fillna("").astype(str).str.strip().str.upper()
     # Normalize project names — collapse internal whitespace and strip edges
     if "project" in df.columns:
@@ -561,6 +566,12 @@ def assign_credits(df, scope_map):
             credit_hrs_list.append(remaining); variance_hrs_list.append(hrs - remaining)
             credit_tag_list.append("PARTIAL")
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
+
+    # ── Convert StringDtype columns to object before assignment ──────────────
+    # pandas 3.x infers string columns as StringDtype which rejects mixed-type lists.
+    # Convert all string-typed columns to object dtype to allow safe assignment.
+    for _col in df.select_dtypes(include="string").columns:
+        df[_col] = df[_col].astype(object)
 
     df["credit_hrs"]    = credit_hrs_list
     df["variance_hrs"]  = variance_hrs_list
