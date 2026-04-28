@@ -357,6 +357,8 @@ with st.sidebar:
             for k in list(st.session_state.keys()):
                 if k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue","df_tm_sow"] or k.startswith("hub_"):
                     del st.session_state[k]
+            # Clear any @st.cache_data caches so stale processed results don't persist
+            st.cache_data.clear()
             st.rerun()
 
 # ── Run the selected page ─────────────────────────────────────────────────────
