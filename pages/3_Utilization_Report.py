@@ -398,9 +398,17 @@ def assign_credits(df, scope_map):
 
     df = df.rename(columns=col_map)
 
-    # pandas 3.x infers string columns as StringDtype — convert to object for compatibility
-    for _c in df.select_dtypes(include="string").columns:
-        df[_c] = df[_c].astype(object)
+    # pandas 3.x with PyArrow backend infers all string columns as ArrowDtype
+    # which rejects empty strings and mixed assignments via .loc[].
+    # Force ALL columns to object dtype upfront to prevent this throughout.
+    df = df.copy()
+    for _c in list(df.columns):
+        _dt = str(df[_c].dtype).lower()
+        if _dt in ('string', 'str') or 'string' in _dt or 'arrow' in _dt:
+            try:
+                df[_c] = df[_c].astype(object)
+            except Exception:
+                df[_c] = df[_c].to_numpy(dtype=object, na_value=None)
 
     df["non_billable"] = df["non_billable"].fillna("").astype(str).str.strip().str.upper()
     # Normalize project names — collapse internal whitespace and strip edges
@@ -413,7 +421,7 @@ def assign_credits(df, scope_map):
         df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
     # Backfill location from hardcoded lookup when column is missing or blank
     if "region" not in df.columns:
-        df["region"] = ""
+        df["region"] = pd.array([""] * len(df), dtype=object)
 
     # ── Vectorised location lookup ────────────────────────────────────────────
     if "employee" in df.columns:
@@ -434,6 +442,7 @@ def assign_credits(df, scope_map):
 
         _needs_loc = df["region"].fillna("").str.strip() == ""
         if _needs_loc.any():
+            df["region"] = df["region"].astype(object)
             df.loc[_needs_loc, "region"] = df.loc[_needs_loc, "employee"].map(_fast_loc)
 
     # ── Vectorised PS region lookup ───────────────────────────────────────────
@@ -446,9 +455,10 @@ def assign_credits(df, scope_map):
             return ""
         _emp_ps = df["employee"].map(_fast_ps)
         # Where override didn't fire, fall back to region map
-        df["ps_region"] = _emp_ps
+        df["ps_region"] = _emp_ps.astype(object)
         _no_ovr = _emp_ps.fillna("") == ""
         if _no_ovr.any():
+            df["ps_region"] = df["ps_region"].astype(object)
             df.loc[_no_ovr, "ps_region"] = df.loc[_no_ovr, "region"].map(
                 lambda r: PS_REGION_MAP.get(str(r).strip(), "Other")
             )
