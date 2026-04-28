@@ -397,7 +397,7 @@ def assign_credits(df, scope_map):
         st.warning(f"Could not auto-detect columns: {unmatched}. Check your file headers.")
 
     df = df.rename(columns=col_map)
-    df["non_billable"] = df["non_billable"].astype(str).str.strip().str.upper()
+    df["non_billable"] = df["non_billable"].fillna("").astype(str).str.strip().str.upper()
     # Normalize project names — collapse internal whitespace and strip edges
     if "project" in df.columns:
         df["project"] = df["project"].astype(str).str.strip().str.replace(r'\s+', ' ', regex=True)
@@ -918,7 +918,7 @@ def build_excel(df, scope_map, consumed):
     # Build from FF projects with configured scopes only
     _ot_ff = df[
         (df["credit_tag"] != "SKIPPED") &
-        (df.get("billing_type", pd.Series(dtype=str)).str.lower() == "fixed fee")
+        (df.get("billing_type", pd.Series(dtype="object")).str.lower() == "fixed fee")
     ].copy() if "billing_type" in df.columns else df[df["credit_tag"] != "SKIPPED"].copy()
 
     # Compute per-project totals for over-budget detection
@@ -2436,7 +2436,7 @@ def build_tableau_excel(df, scope_map, consumed):
 
     # Build from FF rows with configured scopes only
     _fot_ff = _df[
-        _df.get("billing_type", pd.Series(dtype=str)).str.lower() == "fixed fee"
+        _df.get("billing_type", pd.Series(dtype="object")).str.lower() == "fixed fee"
     ].copy() if "billing_type" in _df.columns else _df.copy()
 
     def _fot_scope(ptype):
