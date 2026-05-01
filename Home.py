@@ -220,26 +220,26 @@ with st.sidebar:
 _is_manager = _role in ("manager", "manager_only", "reporting_only")
 
 _consultant_pages = [
-    st.Page("pages/1_briefing.py",    title="Daily Briefing",       icon="☀️",  default=True),
-    st.Page("pages/2_projects.py",    title="My Projects",          icon="📁"),
-    st.Page("pages/3_engagement.py",  title="Customer Engagement",  icon="✉️"),
-    st.Page("pages/4_profile.py",     title="Customer Profile",     icon="🏢"),
-    st.Page("pages/5_utilization.py", title="Utilization",          icon="📈"),
-    st.Page("pages/6_drs.py",         title="DRS Health Check",     icon="🛡️"),
-    st.Page("pages/8_time.py",        title="Time Entries",         icon="⏱️"),
+    st.Page("views/1_briefing.py",    title="Daily Briefing",       icon="☀️",  default=True),
+    st.Page("views/2_projects.py",    title="My Projects",          icon="📁"),
+    st.Page("views/3_engagement.py",  title="Customer Engagement",  icon="✉️"),
+    st.Page("views/4_profile.py",     title="Customer Profile",     icon="🏢"),
+    st.Page("views/5_utilization.py", title="Utilization",          icon="📈"),
+    st.Page("views/6_drs.py",         title="DRS Health Check",     icon="🛡️"),
+    st.Page("views/8_time.py",        title="Time Entries",         icon="⏱️"),
 ]
 
 _manager_pages = [
-    st.Page("pages/7_reporting.py",  title="Project Health",       icon="📊"),
-    st.Page("pages/9_portfolio.py",  title="Portfolio Analytics",  icon="🗂️"),
-    st.Page("pages/10_whs.py",       title="Workload Health",      icon="⚖️"),
-    st.Page("pages/11_capacity.py",  title="Capacity Outlook",     icon="🔭"),
-    st.Page("pages/12_revenue.py",   title="Revenue Report",       icon="💰"),
+    st.Page("views/7_reporting.py",  title="Project Health",       icon="📊"),
+    st.Page("views/9_portfolio.py",  title="Portfolio Analytics",  icon="🗂️"),
+    st.Page("views/10_whs.py",       title="Workload Health",      icon="⚖️"),
+    st.Page("views/11_capacity.py",  title="Capacity Outlook",     icon="🔭"),
+    st.Page("views/12_revenue.py",   title="Revenue Report",       icon="💰"),
 ]
 
 _other_pages = [
-    st.Page("pages/13_vibe.py", title="Vibe Check", icon="🎯"),
-    st.Page("pages/14_help.py", title="Help",        icon="❓"),
+    st.Page("views/13_vibe.py", title="Vibe Check", icon="🎯"),
+    st.Page("views/14_help.py", title="Help",        icon="❓"),
 ]
 
 pages = _consultant_pages
