@@ -1,3 +1,0 @@
-"""
-PS Tools — Shared Package
-"""

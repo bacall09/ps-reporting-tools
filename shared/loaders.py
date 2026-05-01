@@ -167,12 +167,14 @@ def load_sfdc(file):
     return df
 
 
-def load_drs(file):
-    """Load SS DRS export and identify stale/unresponsive projects."""
-    if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file)
+def _normalise_drs_df(df: "pd.DataFrame") -> "pd.DataFrame":
+    """
+    Normalise a raw DRS DataFrame (from file upload or Smartsheet API).
+    Applies column renaming, date parsing, phase/billing filtering,
+    milestone parsing, inactivity scoring, and legacy flag.
+    Called by both load_drs() and smartsheet_api.load_sheet_as_df().
+    _ss_row_id column (added by API loader) is preserved untouched.
+    """
     df.columns = df.columns.str.strip()
     rename = {col: SS_COL_MAP_OUT[col.lower()] for col in df.columns if col.lower() in SS_COL_MAP_OUT}
     df = df.rename(columns=rename)
@@ -216,7 +218,13 @@ def load_drs(file):
     # Filter to active FF projects only
     today = pd.Timestamp.today().normalize()
     if "phase" in df.columns:
-        df = df[~df["phase"].str.strip().str.lower().isin(INACTIVE_PHASES_OUT)]
+        _PHASE_10 = "10. complete/pending final billing"
+        # Tag phase-10 rows before filtering — status not yet Closed, need attention
+        _ph_lc = df["phase"].str.strip().str.lower()
+        df["_pending_close"] = _ph_lc.str.contains("complete", na=False) & _ph_lc.str.contains("pending", na=False)
+        # Keep phase-10 rows in df (surfaced as alert); drop phases 12+
+        _drop_phases = {p for p in INACTIVE_PHASES_OUT if p != _PHASE_10}
+        df = df[~df["phase"].str.strip().str.lower().isin(_drop_phases)]
     if "billing_type" in df.columns:
         df = df[~df["billing_type"].str.strip().str.lower().isin({"t&m","time & material","time and material"})]
     # Calculate remaining sessions from milestone columns
@@ -234,10 +242,10 @@ def load_drs(file):
 
     # Tag On Hold but keep in df — excluded from dropdown, shown in table
     ON_HOLD_VALS = {"on-hold","on hold","onhold","on_hold"}
-    if "status" in df.columns:
-        df["_on_hold"] = df["status"].str.strip().str.lower().isin(ON_HOLD_VALS)
-    else:
-        df["_on_hold"] = False
+    ON_HOLD_PHASES = {"11. on hold"}
+    _status_oh = df["status"].str.strip().str.lower().isin(ON_HOLD_VALS) if "status" in df.columns else pd.Series(False, index=df.index)
+    _phase_oh  = df["phase"].str.strip().str.lower().isin(ON_HOLD_PHASES) if "phase" in df.columns else pd.Series(False, index=df.index)
+    df["_on_hold"] = _status_oh | _phase_oh
 
     # ── Inactivity signal hierarchy (DRS-only baseline, NS overrides in calc_days_inactive) ──
     # 1. Last Milestone date — days since most recently completed milestone
@@ -291,9 +299,19 @@ def load_drs(file):
         df["burn_pct"] = None
 
     # Store unmapped columns for debug
-    df.attrs["unmapped_cols"] = [c for c in df.columns if c not in SS_COL_MAP_OUT.values()]
+    df.attrs["unmapped_cols"] = [c for c in df.columns if c not in SS_COL_MAP_OUT.values()
+                                  and c != "_ss_row_id"]
 
     return df
+
+
+def load_drs(file):
+    """Load SS DRS export from an uploaded file (CSV or Excel)."""
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+    return _normalise_drs_df(df)
 
 
 def load_ns_time(file):
