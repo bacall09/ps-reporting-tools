@@ -73,8 +73,9 @@ PRODUCT_DATA = {
 
 CORE_PRODUCTS     = ["Capture", "Approvals", "Reconcile", "e-Invoicing",
                      "Reconcile PSP", "Reconcile 2.0"]
-OVERRIDE_PRODUCTS = ["SFTP Connector", "CC Statement Import", "AP Payments", "Procure"]
-ALL_PRODUCTS      = CORE_PRODUCTS + OVERRIDE_PRODUCTS
+OVERRIDE_PRODUCTS = ["Procure"]   # only Procure has placeholder data
+OVERRIDE_EXTRAS   = ["SFTP Connector", "CC Statement Import", "AP Payments"]  # real data, override only
+ALL_PRODUCTS      = CORE_PRODUCTS + OVERRIDE_EXTRAS + OVERRIDE_PRODUCTS
 
 PRODUCT_MAP = {
     "Capture":             "Capture",
@@ -144,6 +145,12 @@ st.markdown(
     f"Capacity Planner</h1>"
     f"<p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px;"
     f"font-family:Manrope,sans-serif'>{_display} · {today.strftime('%B %Y')}</p>"
+    f"<p style='color:rgba(255,255,255,0.3);margin:10px 0 0;font-size:12px;"
+    f"font-family:Manrope,sans-serif;line-height:1.6'>"
+    f"Concurrent = Apps hrs/wk ÷ weighted OH hrs/wk per project &nbsp;·&nbsp; "
+    f"Estimated throughput = (50 working weeks ÷ avg timeline) × concurrent &nbsp;·&nbsp; "
+    f"Source: global blended actuals, rolling 12 months"
+    f"</p>"
     f"</div>",
     unsafe_allow_html=True,
 )
@@ -279,10 +286,19 @@ with right:
         )
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Apps hrs/wk",   f"{round(result['apps_hrswk'], 1)}h")
-    m2.metric("Wtd OH hrs/wk", f"{round(result['wt_oh_hrswk'], 2)}h",
-              help="Weighted avg hrs/wk per project incl. 20% PM overhead.")
-    m3.metric("Avg timeline",  f"{round(result['wt_timeline'], 1)}wk")
+    # Weighted avg h/project from mix
+    wt_avg_hrs = sum(
+        (mix_pct.get(p, 0) / max(sum(v for v in mix_pct.values() if v > 0), 1))
+        * PRODUCT_DATA[p]["avg_hrs"]
+        for p in mix_pct if mix_pct[p] > 0
+    )
+    m1.metric("Avg h/project",  f"{round(wt_avg_hrs, 1)}h",
+              help="Weighted average hours per project based on your product mix.")
+    m2.metric("Avg timeline",   f"{round(result['wt_timeline'], 1)}wk",
+              help="Weighted average project timeline across the product mix.")
+    m3.metric("Wtd OH hrs/wk",  f"{round(result['wt_oh_hrswk'], 2)}h",
+              help="Avg h/project ÷ avg timeline × 1.2 PM overhead = hrs committed per project per week. "
+                   "Divides into Apps hrs/wk to give concurrent projects.")
 
     if other_hrs > 0:
         st.markdown(
@@ -392,16 +408,4 @@ with right:
     else:
         st.caption("No Apps consultants found for this region.")
 
-# ── Methodology note ──────────────────────────────────────────────────────────
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-st.markdown(
-    '<div class="info-box">'
-    '<b>How this is calculated:</b> '
-    'Concurrent = Apps hrs/wk ÷ weighted OH hrs/wk per project '
-    '(blended global avg ÷ product timeline × 1.2 PM overhead). '
-    'Throughput = (50 working weeks ÷ weighted avg timeline) × concurrent. '
-    'Source: global blended actuals 2025 + Q1 2026, 827 projects. '
-    'See <i>Consultant Capacity Model — Methodology &amp; Product Reference</i> for full detail.'
-    '</div>',
-    unsafe_allow_html=True
-)
+# ── end ──────────────────────────────────────────────────────────────────────
