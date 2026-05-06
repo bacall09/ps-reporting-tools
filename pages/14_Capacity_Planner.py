@@ -159,7 +159,7 @@ st.markdown(
 left, right = st.columns([1.1, 0.9], gap="large")
 
 with left:
-    st.markdown('<p class="section-label">Consultant Profile</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-label">Configure</p>', unsafe_allow_html=True)
 
     default_idx = apps_consultants.index(selected) if selected in apps_consultants else 0
     consultant  = st.selectbox("Consultant", options=apps_consultants,
@@ -401,6 +401,16 @@ with right:
 
     team_rows.sort(key=lambda x: x["concurrent"], reverse=True)
 
+    # Short labels for product pills
+    PILL_LABELS = {
+        "Capture":       "Cap",
+        "Approvals":     "App",
+        "Reconcile":     "Rec",
+        "e-Invoicing":   "eInv",
+        "Reconcile PSP": "PSP",
+        "Reconcile 2.0": "Rec2",
+    }
+
     if team_rows:
         max_conc = max(r["concurrent"] for r in team_rows) or 1
         for row in team_rows:
@@ -409,15 +419,28 @@ with right:
             bar_color = "#08A9B7" if is_active else "rgba(128,128,128,0.3)"
             bg_style  = "background:rgba(8,169,183,0.08);border:1px solid rgba(8,169,183,0.2);" \
                         if is_active else ""
+
+            # Build pill HTML for enabled products
+            prods      = get_consultant_products(row["full_name"])
+            pills_html = "".join(
+                f"<span style='font-size:9px;padding:1px 5px;border-radius:3px;"
+                f"background:rgba(8,169,183,0.15);color:#08A9B7;"
+                f"margin-right:3px;white-space:nowrap;'>"
+                f"{PILL_LABELS.get(p, p)}</span>"
+                for p in prods
+            )
+
             st.markdown(
-                f'<div class="context-row" style="{bg_style}">'
-                f'<span class="context-name" style="font-weight:{"700" if is_active else "400"};">'
+                f'<div class="context-row" style="{bg_style}display:flex;align-items:center;gap:8px;">'
+                f'<span style="font-size:12px;min-width:72px;font-weight:{"700" if is_active else "400"};">'
                 f'{row["name"]}</span>'
-                f'<div style="flex:1;height:5px;background:rgba(128,128,128,0.15);'
-                f'border-radius:3px;overflow:hidden;">'
+                f'<span style="flex:1;display:flex;align-items:center;gap:0;">{pills_html}</span>'
+                f'<div style="width:80px;height:5px;background:rgba(128,128,128,0.15);'
+                f'border-radius:3px;overflow:hidden;flex-shrink:0;">'
                 f'<div style="width:{bar_pct}%;height:5px;background:{bar_color};'
                 f'border-radius:3px;"></div></div>'
-                f'<span class="context-conc">{row["conc_lo"]}–{row["conc_hi"]}</span>'
+                f'<span style="font-size:12px;font-weight:700;min-width:40px;text-align:right;">'
+                f'{row["conc_lo"]}–{row["conc_hi"]}</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
