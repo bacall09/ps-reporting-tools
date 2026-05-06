@@ -159,7 +159,7 @@ st.markdown(
 left, right = st.columns([1.1, 0.9], gap="large")
 
 with left:
-    st.markdown('<p class="section-label">Configure</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-label">Consultant Profile</p>', unsafe_allow_html=True)
 
     default_idx = apps_consultants.index(selected) if selected in apps_consultants else 0
     consultant  = st.selectbox("Consultant", options=apps_consultants,
