@@ -147,7 +147,7 @@ st.markdown(
 )
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-# ── Layout: left (configure) | right (results + context) ──────────────────────
+# ── Layout: left (apps delivery profile) | right (results + context) ──────────────────────
 left, right = st.columns([1.1, 0.9], gap="large")
 
 with left:
