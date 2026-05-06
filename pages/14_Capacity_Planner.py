@@ -241,33 +241,6 @@ throughput = round(result["throughput"])
 df_drs = st.session_state.get("df_drs")
 df_ns  = st.session_state.get("df_ns")
 
-def get_active_project_count(name, drs, ns):
-    import pandas as pd
-    first = name.split(",")[0].lower()
-    # Try DRS
-    if drs is not None and not drs.empty:
-        for col in ["employee", "consultant", "resource", "assigned_to"]:
-            if col in drs.columns:
-                mask = drs[col].astype(str).str.lower().str.contains(first, na=False)
-                if mask.any():
-                    id_col = next((c for c in ["project_id", "project_name"] if c in drs.columns), None)
-                    return int(drs[mask][id_col].nunique()) if id_col else int(mask.sum())
-    # Try NS time — this month only, FF+T&M, distinct project IDs
-    if ns is not None and not ns.empty:
-        emp_col  = next((c for c in ["Employee", "employee"] if c in ns.columns), None)
-        date_col = next((c for c in ["Date", "date"] if c in ns.columns), None)
-        proj_col = next((c for c in ["Project ID", "project_id", "Project"] if c in ns.columns), None)
-        bt_col   = next((c for c in ["Billing Type", "billing_type"] if c in ns.columns), None)
-        if emp_col and date_col and proj_col:
-            ns2 = ns.copy()
-            ns2["_month"] = pd.to_datetime(ns2[date_col], errors="coerce").dt.strftime("%Y-%m")
-            mask = ns2[emp_col].astype(str).str.lower().str.contains(first, na=False)
-            this = ns2[mask & (ns2["_month"] == date.today().strftime("%Y-%m"))]
-            if bt_col:
-                this = this[this[bt_col].isin(["Fixed Fee", "T&M"])]
-            return int(this[proj_col].nunique())
-    return None
-
 with right:
     st.markdown('<p class="section-label">Results</p>', unsafe_allow_html=True)
 
@@ -309,40 +282,88 @@ with right:
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    # ── On-track ─────────────────────────────────────────────────────────────
-    st.markdown('<p class="section-label">On track?</p>', unsafe_allow_html=True)
-    active_count = get_active_project_count(consultant, df_drs, df_ns)
+    # ── Workload snapshot — four-metric framework ─────────────────────────────
+    st.markdown('<p class="section-label">Workload snapshot</p>', unsafe_allow_html=True)
 
-    if active_count is None:
-        st.markdown(
-            '<div class="ontrack-card ontrack-gray">'
-            '<div class="ontrack-val-gray">—</div>'
-            '<div class="ontrack-lbl">Load DRS or NS time report from Home to see actuals</div>'
-            '</div>',
-            unsafe_allow_html=True
+    def get_workload_metrics(name, drs, ns):
+        import pandas as pd
+        first    = name.split(",")[0].strip().lower()
+        assigned = active_port = time_booked = None
+
+        if drs is not None and not drs.empty and "project_manager" in drs.columns:
+            mask = drs["project_manager"].astype(str).str.lower().str.contains(first, na=False)
+            cdrs = drs[mask]
+            if not cdrs.empty:
+                id_col = next((c for c in ["project_id","project_name"] if c in cdrs.columns), None)
+                if id_col:
+                    assigned    = int(cdrs[id_col].nunique())
+                    active_port = int(
+                        cdrs[~cdrs["_on_hold"].astype(bool)][id_col].nunique()
+                        if "_on_hold" in cdrs.columns
+                        else cdrs[id_col].nunique()
+                    )
+
+        if ns is not None and not ns.empty and "employee" in ns.columns:
+            emp_mask = ns["employee"].astype(str).str.lower().str.contains(first, na=False)
+            if emp_mask.any():
+                ns2 = ns[emp_mask].copy()
+                if "date" in ns2.columns:
+                    ns2["_month"] = pd.to_datetime(ns2["date"], errors="coerce").dt.strftime("%Y-%m")
+                    ns2 = ns2[ns2["_month"] == date.today().strftime("%Y-%m")]
+                if "billing_type" in ns2.columns:
+                    ns2 = ns2[ns2["billing_type"].isin(["Fixed Fee","T&M"])]
+                if "project_id" in ns2.columns and not ns2.empty:
+                    time_booked = int(ns2["project_id"].nunique())
+
+        return assigned, active_port, time_booked
+
+    assigned, active_port, time_booked = get_workload_metrics(consultant, df_drs, df_ns)
+
+    def _snap_card(val, label, sub, color="inherit"):
+        return (
+            f"<div style='background:rgba(128,128,128,0.05);border:1px solid "
+            f"rgba(128,128,128,0.15);border-radius:8px;padding:12px 14px;'>"
+            f"<div style='font-size:24px;font-weight:700;color:{color}'>"
+            f"{'—' if val is None else val}</div>"
+            f"<div style='font-size:11px;font-weight:600;margin-top:4px;opacity:0.8'>{label}</div>"
+            f"<div style='font-size:10px;opacity:0.45;margin-top:2px'>{sub}</div>"
+            f"</div>"
         )
+
+    s1, s2, s3, s4 = st.columns(4)
+
+    s1.markdown(_snap_card(assigned,    "Assigned",        "all DRS projects"),
+                unsafe_allow_html=True)
+    s2.markdown(_snap_card(active_port, "Active portfolio", "excl. on-hold"),
+                unsafe_allow_html=True)
+
+    # Time-booked colour — compare against active portfolio
+    if time_booked is not None and active_port is not None:
+        gap      = active_port - time_booked
+        tb_color = "#27AE60" if gap == 0 else ("#D68910" if gap <= 3 else "#C0392B")
+        tb_sub   = "all active booked" if gap == 0 else f"{gap} silent this month"
     else:
-        if active_count <= conc_hi:
-            card_cls, val_cls = "ontrack-green", "ontrack-val-green"
-            status = f"On track — {active_count} active vs. {conc_lo}–{conc_hi} model"
-        elif active_count <= conc_hi + 2:
-            card_cls, val_cls = "ontrack-amber", "ontrack-val-amber"
-            status = f"Near capacity — {active_count} active vs. {conc_lo}–{conc_hi} model"
-        else:
-            card_cls, val_cls = "ontrack-amber", "ontrack-val-amber"
-            status = f"Over model capacity — {active_count} active vs. {conc_lo}–{conc_hi} model"
+        tb_color, tb_sub = "inherit", "NS time · this month"
 
+    s3.markdown(_snap_card(time_booked, "Time-booked",    tb_sub, color=tb_color),
+                unsafe_allow_html=True)
+    s4.markdown(_snap_card(f"{conc_lo}–{conc_hi}", "Delivery capacity",
+                            "model · full engagement", color="#08A9B7"),
+                unsafe_allow_html=True)
+
+    if assigned is None and time_booked is None:
         st.markdown(
-            f'<div class="ontrack-card {card_cls}">'
-            f'<div class="{val_cls}">{active_count} active</div>'
-            f'<div class="ontrack-lbl">{status}</div>'
-            f'</div>',
+            '<div class="info-box" style="margin-top:8px;">Load DRS and/or NS time report '
+            'from Home to populate this section.</div>',
             unsafe_allow_html=True
         )
+    elif time_booked is not None and active_port is not None and (active_port - time_booked) > 0:
+        gap = active_port - time_booked
         st.markdown(
-            '<div class="info-box">Active count from current session data. '
-            'Reflects portfolio size — not all may be at full engagement. '
-            'See <i>Portfolio Size</i> for NS active vs. meaningfully engaged context.</div>',
+            f'<div class="warn-banner" style="margin-top:8px;">'
+            f'{gap} project{"s" if gap > 1 else ""} in active portfolio with no time booked '
+            f'this month — potential silent customer{"s" if gap > 1 else ""}. '
+            f'Check Customer Re-engagement for details.</div>',
             unsafe_allow_html=True
         )
 
