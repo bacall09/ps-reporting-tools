@@ -442,16 +442,30 @@ with right:
         label_visibility="collapsed"
     )
 
+    # Display name → PRODUCT_DATA key (must match DISPLAY_MAP in left panel)
+    DISP_TO_KEY = {
+        "Capture":      "Capture",
+        "Approvals":    "Approvals",
+        "Reconcile":    "Reconcile",
+        "e-Invoicing":  "e-Invoicing",
+        "Payments (AR)":"ZonePayments",
+        "Procure":      "Procure",
+    }
+
     team_rows = []
     for name in apps_consultants:
         r = get_region(name)
         if context_region != "Global" and r != context_region:
             continue
-        prods = get_consultant_products(name)
+        prods = get_consultant_products(name)   # returns display names
         if not prods:
             continue
-        eq_mix = {p: 100 / len(prods) for p in prods}
-        res    = calc_capacity(eq_mix, 100)
+        # Translate to PRODUCT_DATA keys before calc
+        eq_mix = {DISP_TO_KEY[p]: 100 / len(prods)
+                  for p in prods if p in DISP_TO_KEY}
+        if not eq_mix:
+            continue
+        res = calc_capacity(eq_mix, 100)
         team_rows.append({
             "name":       name.split(",")[0],
             "full_name":  name,
