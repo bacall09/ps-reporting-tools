@@ -174,10 +174,14 @@ with left:
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    st.markdown("**Apps allocation** — % of billable hours devoted to ZoneApps FF delivery")
-    apps_alloc = st.slider("Apps allocation %", min_value=10, max_value=100,
-                           value=100, step=5, key="cp_apps_alloc",
-                           label_visibility="collapsed")
+    col_alloc, col_info = st.columns([1, 1])
+    with col_alloc:
+        apps_alloc = st.number_input(
+            "Apps allocation % — of billable hours devoted to ZoneApps FF delivery",
+            min_value=10, max_value=100, value=100, step=1,
+            key="cp_apps_alloc",
+            help="Enter the % of this consultant's 28h billable week allocated to ZoneApps FF delivery."
+        )
     apps_hrs  = round(BILLABLE_HRS * apps_alloc / 100, 1)
     other_hrs = round(BILLABLE_HRS - apps_hrs, 1)
 
@@ -227,14 +231,15 @@ with left:
     if not enabled_parents:
         enabled_parents = ["Capture", "Approvals", "Reconcile"]
 
-    n           = len(enabled_parents)
-    default_per = round(100 / n) if n else 0
-    remainder   = 100 - default_per * n
+    n = len(enabled_parents)
+    # Distribute 100% as evenly as possible — first products get 1% extra if needed
+    base_val  = 100 // n if n else 0
+    remainder = 100 - base_val * n
 
     mix_pct = {}   # keyed by PRODUCT_DATA key
     for i, disp in enumerate(enabled_parents):
         key         = DISPLAY_MAP[disp]
-        default_val = default_per + (remainder if i == 0 else 0)
+        default_val = base_val + (1 if i < remainder else 0)
         is_placeholder = disp == "Procure"
 
         # Divider between groups
@@ -253,7 +258,7 @@ with left:
         val = st.slider(
             disp, min_value=0, max_value=100,
             value=st.session_state.get(f"cp_mix_{key}", default_val),
-            step=5, key=f"cp_mix_{key}",
+            step=1, key=f"cp_mix_{key}",
             label_visibility="collapsed"
         )
         mix_pct[key] = val
