@@ -1,5 +1,5 @@
 """
-Capacity Outlook
+Resourcing Planner
 Upload SS DRS + NS Unassigned Projects to project consultant availability
 and surface demand from unassigned (closed) deals.
 """
@@ -1039,7 +1039,7 @@ def build_excel(availability, conflicts, combined_df, months, ss_df):
         ws_dash.row_dimensions[row].height = 18
 
     # Title
-    tc = ws_dash.cell(row=2, column=2, value="Professional Services — Capacity Outlook")
+    tc = ws_dash.cell(row=2, column=2, value="Professional Services — Resourcing Planner")
     tc.font = _mfont(size=16, bold=True, color="FFFFFF")
     tc.fill = _hdr_fill(NAVY)
     ws_dash.merge_cells(start_row=2, start_column=2, end_row=2, end_column=8)
@@ -1249,7 +1249,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
     _hero = st.empty()
-    _hero.markdown("<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'><div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div><h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Capacity Outlook</h1><p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Consultant availability over the next 6 months — active FF projects from Smartsheet combined with unassigned closed deals from NetSuite.</p></div>", unsafe_allow_html=True)
+    _hero.markdown("<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'><div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div><h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Resourcing Planner</h1><p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Consultant availability over the next 6 months — active FF projects from Smartsheet combined with unassigned closed deals from NetSuite.</p></div>", unsafe_allow_html=True)
 
     with st.expander("Exclusions & Limitations", expanded=False):
         st.markdown("""
@@ -1332,7 +1332,7 @@ def main():
         except Exception as e:
             st.error(f"Error loading SS file: {e}")
     elif _ss_from_session is not None:
-        # Use session state DRS — Capacity Outlook expects load_ss output format (df, dropped_df)
+        # Use session state DRS — Resourcing Planner expects load_ss output format (df, dropped_df)
         # so we use the raw df directly and skip the dropped filter display
         ss_df     = _ss_from_session
         ss_raw_df = _ss_from_session
@@ -2060,7 +2060,7 @@ def main():
     excel_buf = build_excel(availability, conflicts, _export_df, months, ss_df)
     fname = f"Capacity_Outlook_{datetime.today().strftime('%Y%m%d')}.xlsx"
     st.download_button(
-        label="⬇ Download Capacity Outlook Report",
+        label="⬇ Download Resourcing Planner Report",
         data=excel_buf,
         file_name=fname,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

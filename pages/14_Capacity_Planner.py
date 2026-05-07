@@ -164,7 +164,7 @@ st.markdown(
 left, right = st.columns([1.1, 0.9], gap="large")
 
 with left:
-    st.markdown('<p class="section-label">Configure</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-label">Consultant Profile</p>', unsafe_allow_html=True)
 
     default_idx = apps_consultants.index(selected) if selected in apps_consultants else 0
     consultant  = st.selectbox("Consultant", options=apps_consultants,
@@ -174,14 +174,13 @@ with left:
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    col_alloc, col_info = st.columns([1, 1])
-    with col_alloc:
-        apps_alloc = st.number_input(
-            "Apps allocation % — of billable hours devoted to ZoneApps FF delivery",
-            min_value=10, max_value=100, value=100, step=1,
-            key="cp_apps_alloc",
-            help="Enter the % of this consultant's 28h billable week allocated to ZoneApps FF delivery."
-        )
+    apps_alloc = st.number_input(
+        "Apps allocation %",
+        min_value=10, max_value=100, value=100, step=1,
+        key="cp_apps_alloc",
+        label_visibility="collapsed",
+        help="Enter the % of this consultant's 28h billable week allocated to ZoneApps FF delivery."
+    )
     apps_hrs  = round(BILLABLE_HRS * apps_alloc / 100, 1)
     other_hrs = round(BILLABLE_HRS - apps_hrs, 1)
 
@@ -189,6 +188,12 @@ with left:
     col_a.metric("Apps hrs/wk", f"{apps_hrs}h")
     col_b.metric("T&M / other hrs/wk", f"{other_hrs}h",
                  help="Hours available for T&M, Payroll, Billing, or other non-FF work.")
+    st.markdown(
+        f'<div style="font-size:12px;opacity:0.5;margin-top:4px;">'
+        f'Apps allocation: <b>{apps_alloc}%</b> of 28h billable week devoted to ZoneApps FF delivery'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown("**Product mix** — % within Apps allocation")
@@ -398,7 +403,7 @@ with right:
 
     s1, s2, s3, s4 = st.columns(4)
 
-    s1.markdown(_snap_card(assigned,    "Assigned",        "all DRS projects"),
+    s1.markdown(_snap_card(assigned,    "Assigned projects", "all DRS projects"),
                 unsafe_allow_html=True)
     s2.markdown(_snap_card(active_port, "Active portfolio", "excl. on-hold"),
                 unsafe_allow_html=True)
@@ -411,7 +416,7 @@ with right:
     else:
         tb_color, tb_sub = "inherit", "NS time · this month"
 
-    s3.markdown(_snap_card(time_booked, "Time-booked",    tb_sub, color=tb_color),
+    s3.markdown(_snap_card(time_booked, "Time-booked projects", tb_sub, color=tb_color),
                 unsafe_allow_html=True)
     s4.markdown(_snap_card(f"{conc_lo}–{conc_hi}", "Delivery capacity",
                             "model · full engagement", color="#08A9B7"),

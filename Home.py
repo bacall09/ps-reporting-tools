@@ -36,7 +36,7 @@ _consultant_pages = [
 _manager_pages = [
     st.Page("pages/13_Portfolio_Analytics.py",   title="Portfolio Analytics",   icon="📈"),
     st.Page("pages/14_Capacity_Planner.py",      title="Capacity Planner",      icon="🧑‍💻"),
-    st.Page("pages/5_Capacity_Outlook.py",       title="Capacity Outlook",      icon="🗓️"),
+    st.Page("pages/5_Capacity_Outlook.py",       title="Resourcing Planner",    icon="🗓️"),
     st.Page("pages/9_Revenue_Report.py",         title="Revenue Report",        icon="💰"),
 ]
 _help_pages = [
