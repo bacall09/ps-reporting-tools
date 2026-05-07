@@ -719,15 +719,18 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     _n_ms_14  = len(_mi) + (len(_gls) if not _gls.empty else 0)
     _n_intro  = len(_mi) if not _mi.empty else 0
     if _n_ms_14 > 0:
-        _ss_parts.append(f"<b>{_n_ms_14} milestone{'s' if _n_ms_14 > 1 else ''} in the next 14 days</b>")
+        _ss_parts.append(f"<b style='color:rgba(255,255,255,0.9);font-weight:600;'>{_n_ms_14} milestone{'s' if _n_ms_14 > 1 else ''} in the next 14 days</b>")
     if _n_intro > 0:
-        _ss_parts.append(f"<b>{_n_intro} intro email{'s' if _n_intro > 1 else ''} pending</b>")
+        _ss_parts.append(f"<b style='color:rgba(255,255,255,0.9);font-weight:600;'>{_n_intro} intro email{'s' if _n_intro > 1 else ''} pending</b>")
     if len(_rag_red) > 0:
-        _ss_parts.append(f"<b>{len(_rag_red)} red RAG project{'s' if len(_rag_red) > 1 else ''}</b>")
+        _ss_parts.append(f"<b style='color:rgba(255,255,255,0.9);font-weight:600;'>{len(_rag_red)} red RAG project{'s' if len(_rag_red) > 1 else ''}</b>")
     _summary_str = (
         "You have " + ", ".join(_ss_parts[:-1]) + (" and " if len(_ss_parts) > 1 else "") + _ss_parts[-1] + "."
         if _ss_parts else "All clear — no urgent items this week."
     )
+    # Bold the key numbers/phrases in summary
+    import re as _re
+    _summary_str = _re.sub(r'<b>(\d+[^<]*?)</b>', r"<b style='color:rgba(255,255,255,0.9);'></b>", _summary_str)
 
     # ── Go-lives in next 14 days ──────────────────────────────────────────────
     _gl14_col = "effective_go_live_date" if "effective_go_live_date" in _active.columns else "go_live_date"
@@ -773,18 +776,18 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         f"<p style='color:rgba(255,255,255,0.55);margin:6px 0 0;font-size:13px;font-family:Manrope,sans-serif;line-height:1.6'>{_summary_str}</p>"
         f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.1);'>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Week utilization</div>"
-        f"<div style='font-size:22px;font-weight:500;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
-        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_wk_total}h / {_wk_avail_h}h · target {int(_UTIL_TARGET_WK)}%</div>"
+        f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_wk_total}h / {_wk_avail_h}h · target {int(_UTIL_TARGET_WK)}%</div>"
         f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Active projects</div>"
-        f"<div style='font-size:22px;font-weight:500;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
-        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_n_onhold_dc} on hold · {int(_n_active_dc + _n_onhold_dc)} open total</div></div>"
+        f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_n_onhold_dc} on hold · {int(_n_active_dc + _n_onhold_dc)} open total</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Go-lives next 14d</div>"
-        f"<div style='font-size:22px;font-weight:500;color:#fff;line-height:1.1;'>{_n_gl14}</div>"
-        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_gl14_sub if _gl14_sub else 'None scheduled'}</div></div>"
+        f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_gl14}</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_gl14_sub if _gl14_sub else 'None scheduled'}</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>FF overrun</div>"
-        f"<div style='font-size:22px;font-weight:500;color:{_overrun_color};line-height:1.1;'>{_overrun_val}</div>"
-        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_overrun_sub}</div>"
+        f"<div style='font-size:26px;font-weight:600;color:{_overrun_color};line-height:1.1;'>{_overrun_val}</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_overrun_sub}</div>"
         f"{_overrun_badge}</div>"
         f"</div></div>",
         unsafe_allow_html=True,
@@ -1090,26 +1093,27 @@ else:
         legend_html = ""
         for dot_color, label, val in legend_rows:
             legend_html += (
-                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;'>"
-                f"<div style='display:flex;align-items:center;gap:5px;font-size:11px;color:var(--color-text-secondary);'>"
-                f"<div style='width:7px;height:7px;border-radius:50%;background:{dot_color};flex-shrink:0;'></div>{label}</div>"
-                f"<span style='font-size:12px;font-weight:500;color:var(--color-text-primary);'>{val}</span></div>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;'>"
+                f"<div style='display:flex;align-items:center;gap:6px;font-size:13px;color:var(--color-text-secondary);'>"
+                f"<div style='width:8px;height:8px;border-radius:50%;background:{dot_color};flex-shrink:0;'></div>{label}</div>"
+                f"<span style='font-size:14px;font-weight:600;color:var(--color-text-primary);'>{val}</span></div>"
             )
         note_html = (
             f"<div style='margin-top:8px;padding-top:8px;border-top:0.5px solid var(--color-border-tertiary);"
             f"font-size:11px;color:var(--color-text-secondary);'>{note}</div>"
         ) if note else ""
         st.markdown(
-            f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);"
-            f"border-radius:10px;padding:12px 14px;margin-bottom:10px;'>"
-            f"<div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;"
-            f"color:var(--color-text-secondary);margin-bottom:10px;'>{title}</div>"
-            f"<div style='display:flex;align-items:center;gap:14px;'>"
-            f"<div style='position:relative;width:64px;height:64px;flex-shrink:0;'>"
-            f"<svg viewBox='0 0 64 64' width='64' height='64'>{svg_inner}</svg>"
+            f"<div style='background:var(--color-background-primary);"
+            f"border:1px solid var(--color-border-secondary);"
+            f"border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
+            f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;"
+            f"color:var(--color-text-secondary);margin-bottom:12px;'>{title}</div>"
+            f"<div style='display:flex;align-items:center;gap:16px;'>"
+            f"<div style='position:relative;width:76px;height:76px;flex-shrink:0;'>"
+            f"<svg viewBox='0 0 64 64' width='76' height='76'>{svg_inner}</svg>"
             f"<div style='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
-            f"<span style='font-size:14px;font-weight:500;color:var(--color-text-primary);line-height:1;'>{center_val}</span>"
-            f"<span style='font-size:9px;color:var(--color-text-secondary);margin-top:1px;'>{center_sub}</span>"
+            f"<span style='font-size:16px;font-weight:600;color:var(--color-text-primary);line-height:1;'>{center_val}</span>"
+            f"<span style='font-size:11px;color:var(--color-text-secondary);margin-top:2px;'>{center_sub}</span>"
             f"</div></div>"
             f"<div style='flex:1;'>{legend_html}</div></div>"
             f"{note_html}</div>",
@@ -1162,7 +1166,7 @@ else:
         # ── WHS above donuts ──────────────────────────────────────────────────
         if _whs_score is not None:
             st.markdown(
-                f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);"
+                f"<div style='background:var(--color-background-primary);border:1px solid var(--color-border-secondary);"
                 f"border-radius:10px;padding:12px 14px;margin-bottom:10px;"
                 f"display:flex;justify-content:space-between;align-items:center;'>"
                 f"<div><div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;"
@@ -1286,25 +1290,23 @@ else:
         if not _is_group_view and df_drs is not None and not my_projects.empty:
             _due_items = []
 
-            for _, _rr in _rag_red.head(5).iterrows():
-                _cust = str(_rr.get("project_name","")).split(" - ")[0][:35]
-                _pid  = str(_rr.get("project_id",""))
-                _due_items.append({"dot": "#E24B4A", "name": f"Red RAG — {_cust}", "sub": _pid, "row_id": _rr.get("_ss_row_id"), "type": "rag"})
-
-            for _, _mr in _mi.head(3).iterrows():
+            # Intro emails pending — concrete action, writes back to SS
+            for _, _mr in _mi.head(5).iterrows():
                 _cust = str(_mr.get("project_name","")).split(" - ")[0][:35]
                 _pid  = str(_mr.get("project_id",""))
                 _due_items.append({"dot": "#EF9F27", "name": f"Intro email pending — {_cust}", "sub": _pid, "row_id": _mr.get("_ss_row_id"), "type": "intro"})
 
+            # Go-lives this week — confirm readiness
             for _, _gr2 in _gls.head(3).iterrows():
                 _cust = str(_gr2.get("project_name","")).split(" - ")[0][:35]
                 _gl_d = pd.Timestamp(_gr2.get(_gld_col)).strftime("%-d %b") if _gld_col in _gr2.index else ""
-                _due_items.append({"dot": "#639922", "name": f"Go-live — {_cust}", "sub": f"Scheduled {_gl_d}", "row_id": None, "type": "golive"})
+                _due_items.append({"dot": "#639922", "name": f"Confirm go-live readiness — {_cust}", "sub": f"Scheduled {_gl_d}", "row_id": None, "type": "golive"})
 
-            for _, _sr in _stale.head(2).iterrows():
+            # Stale projects — send outreach via Customer Engagement
+            for _, _sr in _stale.head(3).iterrows():
                 _cust = str(_sr.get("project_name","")).split(" - ")[0][:35]
                 _days = int(_sr.get("days_inactive", 0))
-                _due_items.append({"dot": "#888780", "name": f"Re-engage — {_cust}", "sub": f"{_days} days inactive", "row_id": None, "type": "stale"})
+                _due_items.append({"dot": "#888780", "name": f"Re-engage — {_cust}", "sub": f"{_days} days inactive · use Customer Engagement", "row_id": None, "type": "stale"})
 
             if _due_items:
                 with st.container(border=True):
@@ -1378,7 +1380,7 @@ else:
 
         if _ms14_items:
             st.markdown(
-                f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);"
+                f"<div style='background:var(--color-background-primary);border:1px solid var(--color-border-secondary);"
                 f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
                 f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
                 f"<span style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>Next 14 days</span>"
