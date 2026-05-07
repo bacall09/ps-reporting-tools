@@ -65,16 +65,18 @@ PRODUCT_DATA = {
     "e-Invoicing":        {"avg_hrs": 10.7, "timeline": 7.0,  "oh_hrswk": 1.84},
     "Reconcile PSP":      {"avg_hrs": 13.0, "timeline": 8.5,  "oh_hrswk": 1.84},
     "Reconcile 2.0":      {"avg_hrs": 14.1, "timeline": 8.5,  "oh_hrswk": 1.99},
+    "ZonePayments":       {"avg_hrs": 20.5, "timeline": 8.5,  "oh_hrswk": 2.89},  # 30h scope, T&M-adjacent
+    # Override-only products (limited actuals)
     "SFTP Connector":     {"avg_hrs": 23.0, "timeline": 7.0,  "oh_hrswk": 3.94},
     "CC Statement Import":{"avg_hrs": 13.5, "timeline": 7.0,  "oh_hrswk": 2.31},
-    "AP Payments":        {"avg_hrs": 20.0, "timeline": 8.5,  "oh_hrswk": 2.82},
-    "Procure":            {"avg_hrs": 20.0, "timeline": 8.5,  "oh_hrswk": 2.82},
+    "AP Payments":        {"avg_hrs":  4.0, "timeline": 7.0,  "oh_hrswk": 0.69},  # add-on SKU, 4h scope
+    "Procure":            {"avg_hrs": 20.0, "timeline": 8.5,  "oh_hrswk": 2.82},  # placeholder
 }
 
 CORE_PRODUCTS     = ["Capture", "Approvals", "Reconcile", "e-Invoicing",
-                     "Reconcile PSP", "Reconcile 2.0"]
-OVERRIDE_PRODUCTS = ["Procure"]   # only Procure has placeholder data
-OVERRIDE_EXTRAS   = ["SFTP Connector", "CC Statement Import", "AP Payments"]  # real data, override only
+                     "Reconcile PSP", "Reconcile 2.0", "ZonePayments"]
+OVERRIDE_PRODUCTS = ["Procure"]
+OVERRIDE_EXTRAS   = ["SFTP Connector", "CC Statement Import", "AP Payments"]
 ALL_PRODUCTS      = CORE_PRODUCTS + OVERRIDE_EXTRAS + OVERRIDE_PRODUCTS
 
 PRODUCT_MAP = {
@@ -85,7 +87,7 @@ PRODUCT_MAP = {
     "PSP":                 "Reconcile PSP",
     "CC Statement Import": "CC Statement Import",
     "SFTP Connector":      "SFTP Connector",
-    "Payments":            "AP Payments",
+    "Payments":            "ZonePayments",   # ZonePayments product (30h scope)
 }
 
 APPS_PRODUCT_FAMILIES = {
@@ -401,14 +403,32 @@ with right:
 
     team_rows.sort(key=lambda x: x["concurrent"], reverse=True)
 
-    # Short labels for product pills
     PILL_LABELS = {
-        "Capture":       "Cap",
-        "Approvals":     "App",
-        "Reconcile":     "Rec",
-        "e-Invoicing":   "eInv",
-        "Reconcile PSP": "PSP",
-        "Reconcile 2.0": "Rec2",
+        "Capture":            "Cap",
+        "Approvals":          "App",
+        "Reconcile":          "Rec",
+        "e-Invoicing":        "eInv",
+        "Reconcile PSP":      "PSP",
+        "Reconcile 2.0":      "Rec2",
+        "ZonePayments":       "Pay",
+        "SFTP Connector":     "SFTP",
+        "CC Statement Import":"CC",
+        "AP Payments":        "APay",
+        "Procure":            "Proc",
+    }
+    PILL_COLORS = {
+        # (bg, text)
+        "Capture":             ("#08A9B7", "#003D42"),   # teal — primary
+        "Approvals":           ("#FF4B40", "#4A0E0A"),   # orange — primary
+        "Reconcile":           ("#3B5998", "#C8D6FF"),   # navy — primary
+        "e-Invoicing":         ("#7C3AED", "#EDE9FE"),   # purple — standalone
+        "Reconcile PSP":       ("#3B5998", "#C8D6FF"),   # reconcile family
+        "Reconcile 2.0":       ("#3B5998", "#C8D6FF"),   # reconcile family
+        "SFTP Connector":      ("#3B5998", "#C8D6FF"),   # reconcile family
+        "CC Statement Import": ("#3B5998", "#C8D6FF"),   # reconcile family
+        "ZonePayments":        ("#0E6655", "#A2D9CE"),   # dark teal/green — standalone
+        "AP Payments":         ("#08A9B7", "#003D42"),   # capture family (add-on)
+        "Procure":             ("#555555", "#CCCCCC"),   # grey — placeholder
     }
 
     if team_rows:
@@ -423,9 +443,10 @@ with right:
             # Build pill HTML for enabled products
             prods      = get_consultant_products(row["full_name"])
             pills_html = "".join(
-                f"<span style='font-size:9px;padding:1px 5px;border-radius:3px;"
-                f"background:rgba(8,169,183,0.15);color:#08A9B7;"
-                f"margin-right:3px;white-space:nowrap;'>"
+                f"<span style='font-size:11px;padding:3px 8px;border-radius:4px;"
+                f"background:{PILL_COLORS.get(p, ('#444', '#ccc'))[0]};"
+                f"color:{PILL_COLORS.get(p, ('#444', '#ccc'))[1]};"
+                f"font-weight:600;margin-right:4px;white-space:nowrap;'>"
                 f"{PILL_LABELS.get(p, p)}</span>"
                 for p in prods
             )

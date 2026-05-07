@@ -86,7 +86,7 @@ EMPLOYEE_ROLES = {
     "Arestarkhov, Yaroslav":  {"role": "Consultant", "products": ["Billing", "Capture"],                                                                              "learning": []},
     "Carpen, Anamaria":       {"role": "Consultant", "products": ["Capture", "Approvals", "e-Invoicing"],                                                             "learning": []},
     "Cooke, Ellen":           {"role": "Consultant", "products": ["Billing", "Payroll"],                                                                              "learning": []},
-    "Cruz, Daniel":           {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "Payments", "e-Invoicing", "SFTP Connector", "CC Statement Import"], "learning": []},
+    "Cruz, Daniel":           {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "Payments", "SFTP Connector", "CC Statement Import"], "learning": []},
     "Dolha, Madalina":        {"role": "Consultant", "products": ["Capture", "Reconcile", "CC Statement Import", "PSP", "e-Invoicing"],                               "learning": []},
     "Gardner, Cheryll L":     {"role": "Consultant", "products": ["Billing"],                                                                                         "learning": []},
     "Hopkins, Chris":         {"role": "Team Lead",   "products": ["Capture", "Approvals"],                                                                            "learning": []},
