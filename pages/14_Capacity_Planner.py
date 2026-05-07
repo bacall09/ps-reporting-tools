@@ -106,13 +106,16 @@ def is_apps_consultant(name):
     return bool(all_prods & APPS_PRODUCT_FAMILIES)
 
 def get_consultant_products(name):
-    info   = EMPLOYEE_ROLES.get(name, {})
-    raw    = info.get("products", []) + info.get("learning", [])
+    """Return enabled parent product display names for a consultant."""
+    info = EMPLOYEE_ROLES.get(name, {})
+    raw  = set(info.get("products", [])) | set(info.get("learning", []))
     mapped = []
-    for p in raw:
-        m = PRODUCT_MAP.get(p)
-        if m and m not in mapped and m in CORE_PRODUCTS:
-            mapped.append(m)
+    if "Capture" in raw:                                        mapped.append("Capture")
+    if "Approvals" in raw:                                      mapped.append("Approvals")
+    if raw & {"Reconcile","PSP","CC Statement Import","SFTP Connector"}:
+                                                                mapped.append("Reconcile")
+    if "e-Invoicing" in raw:                                    mapped.append("e-Invoicing")
+    if "Payments" in raw:                                       mapped.append("Payments (AR)")
     return mapped
 
 def calc_capacity(mix_pct: dict, apps_alloc_pct: float):
@@ -184,46 +187,102 @@ with left:
                  help="Hours available for T&M, Payroll, Billing, or other non-FF work.")
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
     st.markdown("**Product mix** — % within Apps allocation")
+
     show_all = st.toggle(
         "Show all products (override enabled products)",
         value=False, key="cp_show_all",
-        help="Adds SFTP, CC Statement Import, AP Payments, and Procure. "
-             "Placeholder data used for products with limited actuals."
+        help="Shows products the consultant is not yet enabled on — e.g. upcoming enablement. "
+             "Procure uses placeholder data."
     )
 
-    active_products = ALL_PRODUCTS if show_all else (
-        consultant_products if consultant_products else CORE_PRODUCTS
-    )
+    # Determine which parent products to show
+    # Parent products only — add-ons are implied under their parent
+    PARENT_PRODUCTS = ["Capture", "Approvals", "Reconcile", "e-Invoicing",
+                       "Payments (AR)", "Procure"]
 
-    n           = len(active_products)
+    # Map display name → PRODUCT_DATA key
+    DISPLAY_MAP = {
+        "Capture":      "Capture",
+        "Approvals":    "Approvals",
+        "Reconcile":    "Reconcile",
+        "e-Invoicing":  "e-Invoicing",
+        "Payments (AR)":"ZonePayments",
+        "Procure":      "Procure",
+    }
+
+    # Add-on notes shown beneath parent sliders
+    ADDON_NOTES = {
+        "Capture":   ("AP Payments add-on", "#08A9B7", "#003D42",
+                      "included within Capture scope"),
+        "Reconcile": ("Rec 2.0 · CC · PSP · SFTP",  "#3B5998", "#C8D6FF",
+                      "add-ons included"),
+    }
+
+    # Which parents are enabled for this consultant
+    enabled_parents = []
+    for disp, key in DISPLAY_MAP.items():
+        if key in (consultant_products if not show_all else list(PRODUCT_DATA.keys())):
+            enabled_parents.append(disp)
+    if not enabled_parents:
+        enabled_parents = ["Capture", "Approvals", "Reconcile"]
+
+    n           = len(enabled_parents)
     default_per = round(100 / n) if n else 0
     remainder   = 100 - default_per * n
 
-    mix_pct = {}
-    for i, prod in enumerate(active_products):
+    mix_pct = {}   # keyed by PRODUCT_DATA key
+    for i, disp in enumerate(enabled_parents):
+        key         = DISPLAY_MAP[disp]
         default_val = default_per + (remainder if i == 0 else 0)
-        label = f"{prod}  ⚠ placeholder" if prod in OVERRIDE_PRODUCTS else prod
-        mix_pct[prod] = st.slider(
-            label, min_value=0, max_value=100,
-            value=st.session_state.get(f"cp_mix_{prod}", default_val),
-            step=5, key=f"cp_mix_{prod}"
-        )
+        is_placeholder = disp == "Procure"
 
-    total_mix = sum(mix_pct.values())
-    if total_mix == 0:
-        st.markdown('<div class="warn-banner">Set at least one product to > 0%.</div>',
-                    unsafe_allow_html=True)
-    elif total_mix != 100:
+        # Divider between groups
+        if i > 0:
+            st.markdown('<hr class="divider" style="margin:6px 0;">', unsafe_allow_html=True)
+
+        # Label row
+        lbl = f"{disp}  ⚠ placeholder" if is_placeholder else disp
         st.markdown(
-            f'<div class="warn-banner">Product mix totals <b>{total_mix}%</b> — '
-            f'adjust to reach 100% for accurate results.</div>',
+            f'<div style="font-size:11px;font-weight:600;text-transform:uppercase;'
+            f'letter-spacing:0.5px;color:var(--color-text-secondary);'
+            f'margin-bottom:4px;">{lbl}</div>',
             unsafe_allow_html=True
         )
-    else:
-        st.markdown('<div class="ok-banner">Product mix totals 100% ✓</div>',
-                    unsafe_allow_html=True)
+
+        val = st.slider(
+            disp, min_value=0, max_value=100,
+            value=st.session_state.get(f"cp_mix_{key}", default_val),
+            step=5, key=f"cp_mix_{key}",
+            label_visibility="collapsed"
+        )
+        mix_pct[key] = val
+
+        # Add-on pills beneath parent
+        if disp in ADDON_NOTES:
+            pill_label, pill_bg, pill_txt, note = ADDON_NOTES[disp]
+            st.markdown(
+                f'<div style="margin:2px 0 2px 0;display:flex;align-items:center;gap:8px;">'
+                f'<span style="background:{pill_bg};color:{pill_txt};font-size:10px;'
+                f'padding:2px 7px;border-radius:4px;font-weight:600;">{pill_label}</span>'
+                f'<span style="font-size:11px;color:var(--color-text-tertiary);">{note}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    # Total / validation
+    total_mix = sum(mix_pct.values())
+    st.markdown('<hr class="divider" style="margin:10px 0 6px;">', unsafe_allow_html=True)
+    total_color = "#27AE60" if total_mix == 100 else "#D68910"
+    st.markdown(
+        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'font-size:13px;margin-bottom:8px;">'
+        f'<span style="color:var(--color-text-secondary);">Total</span>'
+        f'<span style="font-weight:600;color:{total_color};">{total_mix}%'
+        f'{" ✓" if total_mix == 100 else " — adjust to reach 100%"}</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
     if not show_all and consultant_products:
         st.markdown(
