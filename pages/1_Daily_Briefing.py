@@ -1140,7 +1140,7 @@ else:
             else:
                 _pace_c = "#F09595"; _pace_str = f"{round(_gap2)}pp behind"
             st.markdown(
-                f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px 14px;margin-bottom:10px;'>"
+                f"<div style='background:var(--color-background-primary);border:1px solid var(--color-border-secondary);border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
                 f"<div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);margin-bottom:10px;'>My utilization · {today.strftime('%B %Y')}</div>"
                 f"<div style='display:flex;align-items:center;gap:14px;'>"
                 f"<div style='position:relative;width:64px;height:64px;flex-shrink:0;'>"
