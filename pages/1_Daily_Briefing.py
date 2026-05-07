@@ -342,16 +342,15 @@ _sub_str = " · ".join(_sub_parts)
 
 _hero = st.empty()
 _hero.markdown(
-    f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
-    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Daily Briefing</div>"
-    f"<h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>{_greeting}, {_my_display}</h1>"
-    f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>{_sub_str}</p>"
-    f"{_region_pill}"
+    f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
+    f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;'>{_greeting}, {_my_display}.</h1>"
+    f"<p style='color:rgba(255,255,255,0.4);margin:6px 0 0;font-size:13px;'>Loading...</p>"
     f"</div>",
     unsafe_allow_html=True,
 )
 
-# ── Pre-compute snapshot data so briefing can appear before utilization ───────
+# ── Pre-compute snapshot data so hero metrics can be populated ────────────────
 _ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool) if not my_projects.empty else pd.Series(dtype=bool)
 _active  = my_projects[~_ioh].copy() if not my_projects.empty else pd.DataFrame()
 # ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
@@ -674,6 +673,125 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     # Normalise "Last, First" to match project_manager format
     _whs_score, _whs_label, _whs_col = consultant_whs(_whs_name, df_drs) if (df_drs is not None and not _is_group_view) else (None, "—", "#718096")
 
+    # ── Weekly utilization (Mon–Sun current week) ─────────────────────────────
+    _week_start = today - pd.Timedelta(days=today.weekday())  # Monday
+    _week_end   = _week_start + pd.Timedelta(days=6)           # Sunday
+    _UTIL_TARGET_WK = 70.0
+    _week_avail = avail / (pd.bdate_range(today.replace(day=1),
+                           (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)).size
+                          ) * len(pd.bdate_range(_week_start, min(_week_end, today))) if avail else None
+    if not _is_group_view and df_ns is not None:
+        _wk_ns  = my_ns[
+            (pd.to_datetime(my_ns["date"], errors="coerce") >= pd.Timestamp(_week_start)) &
+            (pd.to_datetime(my_ns["date"], errors="coerce") <= pd.Timestamp(_week_end))
+        ] if "date" in my_ns.columns else pd.DataFrame()
+        _wk_ff_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "fixed fee"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
+        _wk_tm_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "t&m"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
+        _wk_total   = round(_wk_ff_hrs + _wk_tm_hrs, 1)
+        _wk_avail_h = 28.0
+        _wk_util_pct = round(_wk_total / _wk_avail_h * 100) if _wk_avail_h else None
+    else:
+        _wk_total = None; _wk_util_pct = None
+
+    # ── Overrun MTD ───────────────────────────────────────────────────────────
+    _overrun_mtd = overrun_hrs  # already computed above
+
+    # ── Week number and quarter ───────────────────────────────────────────────
+    _week_num = today.isocalendar()[1]
+    _month_n  = today.month
+    _fy_q     = f"Q{(((_month_n - 1) // 3) + 1)} FY{str(today.year)[2:]}"
+    _date_line = f"{today.strftime('%A')} · {today.strftime('%B %-d')} · {_fy_q} — Week {_week_num}"
+
+    # ── Summary sentence ──────────────────────────────────────────────────────
+    _ss_parts = []
+    _n_due_wk = len([p for p in _p1 + _p2 + _p3 if p]) if not _is_group_view else 0
+    _n_ms_14  = len(_mi) + (len(_gls) if not _gls.empty else 0)
+    _n_intro  = len(_mi) if not _mi.empty else 0
+    if _n_ms_14 > 0:
+        _ss_parts.append(f"<b>{_n_ms_14} milestone{'s' if _n_ms_14 > 1 else ''} in the next 14 days</b>")
+    if _n_intro > 0:
+        _ss_parts.append(f"<b>{_n_intro} intro email{'s' if _n_intro > 1 else ''} pending</b>")
+    if len(_rag_red) > 0:
+        _ss_parts.append(f"<b>{len(_rag_red)} red RAG project{'s' if len(_rag_red) > 1 else ''}</b>")
+    _summary_str = (
+        "You have " + ", ".join(_ss_parts[:-1]) + (" and " if len(_ss_parts) > 1 else "") + _ss_parts[-1] + "."
+        if _ss_parts else "All clear — no urgent items this week."
+    )
+
+    # ── Go-lives in next 14 days ──────────────────────────────────────────────
+    _gl14_col = "effective_go_live_date" if "effective_go_live_date" in _active.columns else "go_live_date"
+    _gl14 = (_active[
+        _active[_gl14_col].notna() &
+        (_active[_gl14_col] >= pd.Timestamp(_snap_today)) &
+        (_active[_gl14_col] <= pd.Timestamp(_snap_today + pd.Timedelta(days=14)))
+    ].sort_values(_gl14_col) if _gl14_col in _active.columns and not _active.empty else pd.DataFrame())
+    _n_gl14 = int(_gl14["project_id"].nunique()) if "project_id" in _gl14.columns else len(_gl14)
+    _gl14_sub = ""
+    if _n_gl14 > 0 and not _gl14.empty:
+        _first_gl = _gl14.iloc[0]
+        _gl_cust  = str(_first_gl.get("project_name","")).split(" - ")[0][:22]
+        _gl_date  = pd.Timestamp(_first_gl.get(_gl14_col)).strftime("%-d %b")
+        _gl14_sub = f"Next: {_gl_cust} · {_gl_date}"
+
+    # ── Overrun week amount from weekly NS slice ──────────────────────────────
+    _wk_overrun = 0.0
+    if not _is_group_view and df_ns is not None and not _wk_ns.empty:
+        _wk_ff_rows = _wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "fixed fee"] if "billing_type" in _wk_ns.columns else pd.DataFrame()
+        for _, _wfr in _wk_ff_rows.iterrows():
+            _wfp   = " ".join(str(_wfr.get("project","")).split())
+            _wftype = str(_wfr.get("project_type","")).strip()
+            _wfh   = float(_wfr.get("hours", 0) or 0)
+            if _wfh <= 0: continue
+            _wfm = [(k, float(v)) for k, v in DEFAULT_SCOPE.items() if k.strip().lower() in _wftype.lower()]
+            _wfsc = max(_wfm, key=lambda x: len(x[0]))[1] if _wfm else None
+            if _wfsc is not None:
+                _wfused = prior_htd.get((_wfp, _wftype), 0.0)
+                if _wfused >= _wfsc:
+                    _wk_overrun += _wfh
+        _wk_overrun = round(_wk_overrun, 1)
+
+    # ── Pacing badge ──────────────────────────────────────────────────────────
+    if _wk_util_pct is not None:
+        _wk_gap = _wk_util_pct - _UTIL_TARGET_WK
+        if _wk_gap >= 0:
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(99,153,34,0.2);color:#97C459;font-weight:500;'>+{round(_wk_gap)}pp ahead</span>"
+        else:
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;'>{round(_wk_gap)}pp behind</span>"
+    else:
+        _pace_badge = ""
+
+    # ── Overrun display ───────────────────────────────────────────────────────
+    _overrun_color = "#F09595" if (_wk_overrun > 0 or _overrun_mtd > 0) else "rgba(255,255,255,0.85)"
+    _overrun_val   = f"{_wk_overrun}h" if _wk_overrun else "—"
+    _overrun_sub   = f"this week · {round(_overrun_mtd, 1)}h MTD" if _overrun_mtd else "no overrun this month"
+    _overrun_badge = f"<div style='font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;margin-top:3px;display:inline-block;'>{sum(1 for _ in [True] if _overrun_mtd > 0)} project{'s' if _overrun_mtd > 0 else ''}</div>" if _overrun_mtd > 0 else ""
+
+    # ── Render hero ───────────────────────────────────────────────────────────
+    _hero.markdown(
+        f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+        f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
+        f"<div style='font-size:13px;font-weight:500;color:#08A9B7;margin-bottom:6px;'>{_date_line}</div>"
+        f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;line-height:1.2'>{_greeting}, {_my_display}.</h1>"
+        f"<p style='color:rgba(255,255,255,0.55);margin:6px 0 0;font-size:13px;font-family:Manrope,sans-serif;line-height:1.6'>{_summary_str}</p>"
+        f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.1);'>"
+        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Week utilization</div>"
+        f"<div style='font-size:22px;font-weight:500;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
+        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_wk_total}h / {_wk_avail_h}h · target {int(_UTIL_TARGET_WK)}%</div>"
+        f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
+        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Active projects</div>"
+        f"<div style='font-size:22px;font-weight:500;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
+        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_n_onhold_dc} on hold · {int(_n_active_dc + _n_onhold_dc)} open total</div></div>"
+        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Go-lives next 14d</div>"
+        f"<div style='font-size:22px;font-weight:500;color:#fff;line-height:1.1;'>{_n_gl14}</div>"
+        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_gl14_sub if _gl14_sub else 'None scheduled'}</div></div>"
+        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>FF overrun</div>"
+        f"<div style='font-size:22px;font-weight:500;color:{_overrun_color};line-height:1.1;'>{_overrun_val}</div>"
+        f"<div style='font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;'>{_overrun_sub}</div>"
+        f"{_overrun_badge}</div>"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         _lbl = "Available this month" if avail else "Available hrs (location not mapped)"
@@ -949,87 +1067,316 @@ else:
     _pc_assigned   = [(ph, cnt) for ph, cnt in _pc_sorted if _pidx_db(ph) >= 0]
     _unassigned_ct = sum(cnt for ph, cnt in _pc_sorted if _pidx_db(ph) < 0)
 
-    # ── Section: Utilization already above — now RAG & Risk ───────────────────
+    # ── New donut panel: RAG, Phase breakdown, My projects snapshot, Project age ─
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">My Projects — RAG &amp; Risk</div>', unsafe_allow_html=True)
-    r2a, r2b, r2c, r2d, r2e = st.columns(5)
-    with r2a:
-        _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
-        for _, _rr in _rag_red.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
-    with r2b:
-        _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
-        for _, _ry in _rag_yellow.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
-    with r2c:
-        _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
-        _col = "#F39C12" if _oh_snap > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
-        if _oh_snap > 0:
-            _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
-            for _, _or in _oh_proj.head(3).iterrows():
-                st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
-    with r2d:
-        _col = "#F39C12" if len(_proj_9mo) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9–12 months active <span class="metric-help" data-tip="Active projects 9–12 months from Start Date that have not yet reached Phase 08. Approaching the 12-month mark.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        for _, _p9 in _proj_9mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p9)}</div>', unsafe_allow_html=True)
-    with r2e:
-        _col = "#C0392B" if len(_proj_12mo) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_12mo)}</div><div class="metric-lbl">12+ months active <span class="metric-help" data-tip="Active projects at or beyond 12 months from Start Date that have not yet reached Phase 08. May need escalation review.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        for _, _p12 in _proj_12mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p12)}</div>', unsafe_allow_html=True)
 
-    # ── Section: My Projects — Snapshot ───────────────────────────────────────
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">My Projects — Snapshot</div>', unsafe_allow_html=True)
-    r1a, r1b, r1c, r1d, r1e = st.columns(5)
-    with r1a:
-        _col = "#27AE60" if len(_gls) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
-        for _, r in _gls.iterrows():
-            _cust = str(r.get("project_name","")).split(" - ")[0].strip()
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with r1b:
-        _col = "#F39C12" if len(_ihc) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare</div></div>', unsafe_allow_html=True)
-        for _, r in _ihc.iterrows():
-            _cust = str(r.get("project_name","")).split(" - ")[0].strip()
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with r1c:
-        _col = "#C0392B" if len(_mi) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with r1d:
-        _col = "#C0392B" if len(_stale) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with r1e:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{_n_active_dc}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
+    def _donut_svg(segments, cx=32, cy=32, r=24, sw=7):
+        """Build stacked donut SVG circles from list of (pct, color) tuples."""
+        total = sum(p for p, _ in segments)
+        if total == 0:
+            return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="var(--color-border-tertiary)" stroke-width="{sw}"/>'
+        circumference = 2 * 3.14159 * r
+        out = f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="var(--color-border-tertiary)" stroke-width="{sw}"/>'
+        offset = 38  # start at top
+        for pct, color in segments:
+            dash = round((pct / total) * circumference, 1)
+            gap  = round(circumference - dash, 1)
+            out += (f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" '
+                    f'stroke-width="{sw}" stroke-dasharray="{dash} {gap}" '
+                    f'stroke-dashoffset="{offset}" stroke-linecap="round"/>')
+            offset -= dash
+        return out
 
-    # ── Phase breakdown row ────────────────────────────────────────────────────
-    # Build full list: assigned phases + Unassigned if any
-    _pc_display = list(_pc_assigned)
-    if _unassigned_ct > 0:
-        _pc_display.append(("Unassigned", _unassigned_ct))
-
-    if _pc_display:
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.markdown('<div class="section-label">Project Phase Breakdown</div>', unsafe_allow_html=True)
-        _ph_cols = st.columns(len(_pc_display))
-        for _phi, (ph, cnt) in enumerate(_pc_display):
-            _abbr = (
-                "Unassigned" if ph == "Unassigned"
-                else _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:20])
+    def _donut_card(title, center_val, center_sub, segments, legend_rows, note=None):
+        """Render a donut card via st.markdown."""
+        svg_inner = _donut_svg(segments)
+        legend_html = ""
+        for dot_color, label, val in legend_rows:
+            legend_html += (
+                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;'>"
+                f"<div style='display:flex;align-items:center;gap:5px;font-size:11px;color:var(--color-text-secondary);'>"
+                f"<div style='width:7px;height:7px;border-radius:50%;background:{dot_color};flex-shrink:0;'></div>{label}</div>"
+                f"<span style='font-size:12px;font-weight:500;color:var(--color-text-primary);'>{val}</span></div>"
             )
-            with _ph_cols[_phi]:
-                _card_style = "opacity:0.5" if ph == "Unassigned" else ""
+        note_html = (
+            f"<div style='margin-top:8px;padding-top:8px;border-top:0.5px solid var(--color-border-tertiary);"
+            f"font-size:11px;color:var(--color-text-secondary);'>{note}</div>"
+        ) if note else ""
+        st.markdown(
+            f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);"
+            f"border-radius:10px;padding:12px 14px;margin-bottom:10px;'>"
+            f"<div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;"
+            f"color:var(--color-text-secondary);margin-bottom:10px;'>{title}</div>"
+            f"<div style='display:flex;align-items:center;gap:14px;'>"
+            f"<div style='position:relative;width:64px;height:64px;flex-shrink:0;'>"
+            f"<svg viewBox='0 0 64 64' width='64' height='64'>{svg_inner}</svg>"
+            f"<div style='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
+            f"<span style='font-size:14px;font-weight:500;color:var(--color-text-primary);line-height:1;'>{center_val}</span>"
+            f"<span style='font-size:9px;color:var(--color-text-secondary);margin-top:1px;'>{center_sub}</span>"
+            f"</div></div>"
+            f"<div style='flex:1;'>{legend_html}</div></div>"
+            f"{note_html}</div>",
+            unsafe_allow_html=True
+        )
+
+    # ── Column layout: briefing text left, donuts right ───────────────────────
+    _col_brief, _col_donuts = st.columns([1.4, 1.0], gap="large")
+
+    with _col_donuts:
+        # 1 — RAG & risk
+        _n_rag_total  = int(my_projects["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else 0
+        _n_green      = max(0, _n_rag_total - len(_rag_red) - len(_rag_yellow))
+        _rv_all       = my_projects["rag"].fillna("").astype(str).str.strip().str.lower() if "rag" in my_projects.columns and not my_projects.empty else pd.Series(dtype=str)
+        _n_unrated    = int((_rv_all == "").sum()) if len(_rv_all) > 0 else 0
+        _n_green_conf = max(0, _n_green - _n_unrated)
+        _donut_card(
+            "RAG &amp; risk",
+            str(_n_rag_total), "projects",
+            [(_n_green_conf, "#639922"), (len(_rag_yellow), "#EF9F27"), (len(_rag_red), "#E24B4A"), (_n_unrated, "#888780")],
+            [
+                ("#639922", "Green",   str(_n_green_conf)),
+                ("#EF9F27", "Yellow",  str(len(_rag_yellow))),
+                ("#E24B4A", "Red",     str(len(_rag_red))),
+                ("#888780", "Unrated", str(_n_unrated)),
+            ]
+        )
+
+        # 2 — Phase breakdown
+        _PHASE_GROUPS = [
+            ("Config / WTs",   ["00.", "01.", "02.", "03."], "#534AB7"),
+            ("UAT",            ["04."],                      "#08A9B7"),
+            ("UAT resolution", ["05."],                      "#EF9F27"),
+            ("Hypercare",      ["07.", "06."],                "#E24B4A"),
+            ("Go-live / other",["08.", "09."],                "#639922"),
+        ]
+        _phase_counts = {}
+        if "phase" in _active.columns and not _active.empty:
+            for ph in _active["phase"].fillna(""):
+                pl = str(ph).strip().lower()
+                for grp_name, prefixes, _ in _PHASE_GROUPS:
+                    if any(pl.startswith(p) for p in prefixes):
+                        _phase_counts[grp_name] = _phase_counts.get(grp_name, 0) + 1
+                        break
+        _ph_segs   = [(_phase_counts.get(g, 0), c) for g, _, c in _PHASE_GROUPS]
+        _ph_legend = [(c, g, str(_phase_counts.get(g, 0))) for g, _, c in _PHASE_GROUPS]
+        _donut_card(
+            "Phase breakdown",
+            str(_n_active_dc), "active",
+            _ph_segs, _ph_legend
+        )
+
+        # 3 — My projects snapshot
+        _n_assigned  = int(my_projects["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else 0
+        _n_open      = _n_active_dc  # active = not on hold
+        _n_onhold    = _n_onhold_dc
+        _n_pend_cl   = int(my_projects[my_projects.get("_pending_close", pd.Series(False, index=my_projects.index)).astype(bool)]["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else 0
+        # Active = projects with NS time this month
+        _this_month_key = today.strftime("%Y-%m")
+        _active_proj_ids: set = set()
+        if df_ns is not None and not my_ns.empty and "project_id" in my_ns.columns and "date" in my_ns.columns:
+            _mn2 = my_ns.copy()
+            _mn2["_m"] = pd.to_datetime(_mn2["date"], errors="coerce").dt.strftime("%Y-%m")
+            _active_proj_ids = set(_mn2[_mn2["_m"] == _this_month_key]["project_id"].dropna().unique())
+        _n_time_active = len(_active_proj_ids)
+        _snap_note = "* Active projects have recent time booked"
+        _donut_card(
+            "My projects snapshot",
+            str(_n_assigned), "assigned",
+            [(_n_open, "#08A9B7"), (_n_time_active, "#378ADD"), (_n_onhold, "#888780"), (_n_pend_cl, "#534AB7")],
+            [
+                ("#08A9B7", "Open",          str(_n_open)),
+                ("#378ADD", "Active *",      str(_n_time_active)),
+                ("#888780", "On hold",       str(_n_onhold)),
+                ("#534AB7", "Pending close", str(_n_pend_cl)),
+            ],
+            note=_snap_note
+        )
+
+        # 4 — Project age
+        _age_bands = [("<3 months", 0, 3, "#08A9B7"), ("3–6 months", 3, 6, "#378ADD"),
+                      ("6–9 months", 6, 9, "#EF9F27"), ("9–12 months", 9, 12, "#E24B4A")]
+        _age_counts = {b[0]: 0 for b in _age_bands}
+        _age_12plus = 0
+        _avg_months = None
+        if "start_date" in _active.columns and not _active.empty:
+            _sd2 = pd.to_datetime(_active["start_date"], errors="coerce")
+            _mo  = (_snap_today - _sd2).dt.days / 30.44
+            _avg_months = round(_mo.dropna().mean(), 1) if not _mo.dropna().empty else None
+            for _, m in _mo.dropna().items():
+                for band_name, lo, hi, _ in _age_bands:
+                    if lo <= m < hi:
+                        _age_counts[band_name] += 1
+                        break
+                else:
+                    if m >= 12:
+                        _age_12plus += 1
+        _age_segs   = [(_age_counts[b[0]], b[3]) for b in _age_bands]
+        _age_legend = [(b[3], b[0], str(_age_counts[b[0]])) for b in _age_bands]
+        _age_note   = f"{_age_12plus} project{'s' if _age_12plus != 1 else ''} at 12+ months — escalation review recommended" if _age_12plus > 0 else None
+        _donut_card(
+            "Project age",
+            str(_avg_months) if _avg_months else "—", "avg mo",
+            _age_segs, _age_legend,
+            note=_age_note
+        )
+
+        # WHS standalone card
+        if _whs_score is not None:
+            st.markdown(
+                f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);"
+                f"border-radius:10px;padding:12px 14px;margin-bottom:10px;"
+                f"display:flex;justify-content:space-between;align-items:center;'>"
+                f"<div><div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;"
+                f"color:var(--color-text-secondary);margin-bottom:4px;'>Workload health score</div>"
+                f"<div style='font-size:11px;color:var(--color-text-secondary);'>Composite · projects, phases, overrun, stale</div></div>"
+                f"<div style='text-align:right;'>"
+                f"<div style='font-size:28px;font-weight:500;color:{_whs_col};'>{_whs_score}</div>"
+                f"<div style='font-size:11px;color:{_whs_col};'>{_whs_label}</div></div></div>",
+                unsafe_allow_html=True
+            )
+
+    with _col_brief:
+        # Priority task list — missing milestones from DRS this week
+        if not _is_group_view and df_drs is not None and not my_projects.empty:
+            _due_items = []
+
+            # Red RAG projects
+            for _, _rr in _rag_red.head(5).iterrows():
+                _cust = str(_rr.get("project_name","")).split(" - ")[0][:30]
+                _pid  = str(_rr.get("project_id",""))
+                _due_items.append({"dot": "#E24B4A", "name": f"Red RAG — {_cust}", "sub": _pid, "row_id": _rr.get("_ss_row_id")})
+
+            # Missing intro emails
+            for _, _mr in _mi.head(3).iterrows():
+                _cust = str(_mr.get("project_name","")).split(" - ")[0][:30]
+                _pid  = str(_mr.get("project_id",""))
+                _due_items.append({"dot": "#EF9F27", "name": f"Intro email pending — {_cust}", "sub": _pid, "row_id": _mr.get("_ss_row_id")})
+
+            # Go-lives this week
+            for _, _gr2 in _gls.head(3).iterrows():
+                _cust = str(_gr2.get("project_name","")).split(" - ")[0][:30]
+                _gl_d = pd.Timestamp(_gr2.get(_gld_col)).strftime("%-d %b") if _gld_col in _gr2.index else ""
+                _due_items.append({"dot": "#639922", "name": f"Go-live — {_cust}", "sub": f"Scheduled {_gl_d}", "row_id": None})
+
+            # Stale projects
+            for _, _sr in _stale.head(2).iterrows():
+                _cust = str(_sr.get("project_name","")).split(" - ")[0][:30]
+                _days = int(_sr.get("days_inactive", 0))
+                _due_items.append({"dot": "#888780", "name": f"Re-engage — {_cust}", "sub": f"{_days} days inactive", "row_id": None})
+
+            if _due_items:
+                _n_due = len(_due_items)
                 st.markdown(
-                    f'<div class="metric-card" style="padding:8px 10px;{_card_style}">' +
-                    f'<div class="metric-val" style="font-size:24px">{cnt}</div>' +
-                    f'<div class="metric-lbl" style="font-size:12px">{_abbr}</div></div>',
+                    f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);"
+                    f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
+                    f"<span style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>This week's priorities</span>"
+                    f"<span style='font-size:12px;color:var(--color-text-secondary);'>{_n_due} items</span></div>",
                     unsafe_allow_html=True
                 )
+                for idx, item in enumerate(_due_items):
+                    _row_id = item.get("row_id")
+                    _btn_key = f"done_btn_{idx}_{item['name'][:20]}"
+                    _done_key = f"done_{idx}_{item['name'][:20]}"
+                    _is_done = st.session_state.get(_done_key, False)
+                    _opacity = "0.4" if _is_done else "1"
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:10px;padding:7px 0;"
+                        f"border-bottom:0.5px solid var(--color-border-tertiary);opacity:{_opacity};'>"
+                        f"<div style='width:7px;height:7px;border-radius:50%;background:{item['dot']};flex-shrink:0;'></div>"
+                        f"<div style='flex:1;min-width:0;'>"
+                        f"<div style='font-size:13px;font-weight:500;color:var(--color-text-primary);"
+                        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{item['name']}</div>"
+                        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:1px;'>{item['sub']}</div>"
+                        f"</div></div>",
+                        unsafe_allow_html=True
+                    )
+                    _btn_col, _ = st.columns([1, 4])
+                    with _btn_col:
+                        if not _is_done:
+                            if st.button("✓ Done", key=_btn_key):
+                                st.session_state[_done_key] = True
+                                # SS writeback attempt
+                                if _row_id and "ms_intro_email" in item["name"].lower():
+                                    try:
+                                        from shared.smartsheet_api import write_row_updates
+                                        _ok, _errs = write_row_updates([{
+                                            "_ss_row_id": _row_id,
+                                            "project_name": item["name"],
+                                            "changes": {"ms_intro_email": pd.Timestamp.today().normalize()}
+                                        }])
+                                        if _ok:
+                                            st.toast("✓ Updated in Smartsheet")
+                                        else:
+                                            st.toast("Saved locally — sync pending")
+                                    except Exception:
+                                        st.toast("Saved locally — sync pending")
+                                st.rerun()
+                        else:
+                            st.markdown("<span style='font-size:11px;color:var(--color-text-secondary);'>Done ✓</span>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        # Next 14 days milestone list
+        _ms14_items = []
+        if not _active.empty:
+            _ms_cols = {
+                "ms_intro_email":    ("Intro email", "#378ADD"),
+                "ms_config_start":   ("Config start", "#534AB7"),
+                "ms_uat_signoff":    ("UAT sign-off", "#EF9F27"),
+                "ms_hypercare_start":("Hypercare start", "#534AB7"),
+            }
+            _gl14_items = []
+            if _gl14_col in _active.columns:
+                for _, _gr3 in _gl14.iterrows():
+                    _cust = str(_gr3.get("project_name","")).split(" - ")[0][:28]
+                    _pid2 = str(_gr3.get("project_id",""))
+                    _dt   = pd.Timestamp(_gr3.get(_gl14_col))
+                    _gl14_items.append({"dt": _dt, "name": "Go-live", "cust": _cust, "pid": _pid2, "dot": "#639922", "badge": "Go-live", "badge_bg": "#EAF3DE", "badge_col": "#3B6D11"})
+
+            for ms_col, (ms_label, ms_color) in _ms_cols.items():
+                if ms_col in _active.columns:
+                    for _, _row in _active.iterrows():
+                        _dt2 = pd.to_datetime(_row.get(ms_col), errors="coerce")
+                        if pd.isna(_dt2): continue
+                        if _snap_today <= _dt2 <= _snap_today + pd.Timedelta(days=14):
+                            _cust = str(_row.get("project_name","")).split(" - ")[0][:28]
+                            _pid2 = str(_row.get("project_id",""))
+                            _ms14_items.append({"dt": _dt2, "name": ms_label, "cust": _cust, "pid": _pid2, "dot": ms_color, "badge": None})
+
+            _ms14_items = sorted(_gl14_items + _ms14_items, key=lambda x: x["dt"])
+
+        if _ms14_items:
+            st.markdown(
+                f"<div style='background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);"
+                f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
+                f"<span style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>Next 14 days</span>"
+                f"<span style='font-size:12px;color:var(--color-text-secondary);'>{len(_ms14_items)} scheduled</span></div>",
+                unsafe_allow_html=True
+            )
+            for item in _ms14_items[:8]:
+                _days_away = (item["dt"].normalize() - pd.Timestamp(_snap_today)).days
+                _day_str   = item["dt"].strftime("%b %-d")
+                _rel_str   = f"in {_days_away}d" if _days_away > 0 else "today"
+                _badge_html = ""
+                if item.get("badge"):
+                    _bg  = item.get("badge_bg", "var(--color-background-info)")
+                    _tc  = item.get("badge_col", "var(--color-text-info)")
+                    _badge_html = f"<span style='font-size:10px;padding:2px 7px;border-radius:4px;background:{_bg};color:{_tc};font-weight:500;flex-shrink:0;'>{item['badge']}</span>"
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:0.5px solid var(--color-border-tertiary);'>"
+                    f"<div style='min-width:44px;'>"
+                    f"<div style='font-size:12px;font-weight:500;color:var(--color-text-primary);'>{_day_str}</div>"
+                    f"<div style='font-size:10px;color:var(--color-text-secondary);'>{_rel_str}</div></div>"
+                    f"<div style='width:7px;height:7px;border-radius:50%;background:{item['dot']};flex-shrink:0;'></div>"
+                    f"<div style='flex:1;min-width:0;'>"
+                    f"<div style='font-size:13px;font-weight:500;color:var(--color-text-primary);'>{item['name']}</div>"
+                    f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:1px;'>{item['cust']} · {item['pid']}</div></div>"
+                    f"{_badge_html}</div>",
+                    unsafe_allow_html=True
+                )
+            st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 st.caption("PS Projects & Tools · Internal use only · Data loaded this session only")
