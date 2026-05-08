@@ -1536,26 +1536,60 @@ def main():
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
 
             /* Theme-aware card surfaces */
-            .util-card {
-                background: var(--color-background-primary, #ffffff);
-                color: var(--color-text-primary, #1a1a1a);
+            /* Card surfaces — use prefers-color-scheme directly since Streamlit's
+               CSS vars don't propagate reliably to <style> blocks. */
+            .util-card,
+            .util-control-bar,
+            .util-kpi,
+            .util-legend,
+            .util-callout,
+            .util-table-header,
+            .util-table-wrap {
+                background: #ffffff;
+                color: #1a1a1a;
                 border: 1px solid rgba(128,128,128,0.25);
-                border-radius: 8px;
-                padding: 14px;
             }
-            .util-control-bar {
-                background: var(--color-background-primary, #ffffff);
-                color: var(--color-text-primary, #1a1a1a);
-                border: 1px solid rgba(128,128,128,0.25);
-                border-radius: 10px;
-                padding: 12px 16px;
-                margin-bottom: 10px;
+            .util-card        { border-radius: 8px; padding: 14px; }
+            .util-control-bar { border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+            .util-kpi         { border-radius: 8px; padding: 14px; }
+            .util-legend      { border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
+                                display: flex; flex-wrap: wrap; gap: 8px;
+                                align-items: center; font-size: 12px; }
+            .util-callout     { border-radius: 8px; padding: 12px 14px; }
+            .util-table-header{ border-radius: 8px 8px 0 0; padding: 10px 14px;
+                                display: flex; justify-content: space-between; font-size: 12px; }
+            .util-table-wrap  { border-top: none; border-radius: 0 0 8px 8px; overflow: hidden; }
+
+            @media (prefers-color-scheme: dark) {
+                .util-card,
+                .util-control-bar,
+                .util-kpi,
+                .util-legend,
+                .util-callout,
+                .util-table-header,
+                .util-table-wrap {
+                    background: #0E1117;
+                    color: #fafafa;
+                    border-color: rgba(250,250,250,0.15);
+                }
             }
+            /* Streamlit theme toggle override */
+            .stApp[data-theme="dark"] .util-card,
+            .stApp[data-theme="dark"] .util-control-bar,
+            .stApp[data-theme="dark"] .util-kpi,
+            .stApp[data-theme="dark"] .util-legend,
+            .stApp[data-theme="dark"] .util-callout,
+            .stApp[data-theme="dark"] .util-table-header,
+            .stApp[data-theme="dark"] .util-table-wrap {
+                background: #0E1117;
+                color: #fafafa;
+                border-color: rgba(250,250,250,0.15);
+            }
+
             .util-meta-row {
                 margin-top: 10px; padding-top: 10px;
                 border-top: 1px solid rgba(128,128,128,0.18);
                 display: flex; gap: 14px; font-size: 12px;
-                color: var(--color-text-secondary, #5a6a7c);
                 opacity: 0.85;
                 align-items: center; flex-wrap: wrap;
             }
@@ -1564,13 +1598,6 @@ def main():
                 background: #22c55e; display: inline-block; margin-right: 5px;
             }
 
-            /* KPI cards */
-            .util-kpi {
-                background: var(--color-background-primary, #ffffff);
-                color: var(--color-text-primary, #1a1a1a);
-                border: 1px solid rgba(128,128,128,0.25);
-                border-radius: 8px; padding: 14px;
-            }
             .util-kpi-label { font-size: 11px; opacity: 0.75; margin-bottom: 4px;
                               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .util-kpi-value { font-size: 24px; font-weight: 600; line-height: 1.1;
@@ -1579,7 +1606,7 @@ def main():
             .util-kpi-pill  { display: inline-block; margin-top: 4px;
                               padding: 2px 9px; border-radius: 999px; font-size: 11px; }
 
-            /* Pills (fully theme-aware: translucent bg on both themes, color from var) */
+            /* Pills */
             .util-pill { padding: 3px 9px; border-radius: 999px;
                          font-size: 12px; white-space: nowrap; font-weight: 500; }
             .util-pill-green { background: rgba(34, 197, 94, 0.22); color: #15803d; }
@@ -1594,39 +1621,12 @@ def main():
                 .util-pill-blue  { color: #6fa8dc; }
                 .util-pill-grey  { color: #aac4d0; }
             }
-            /* Streamlit uses [data-theme] on body — handle the manual toggle case too */
-            [data-theme="dark"] .util-pill-green,
             .stApp[data-theme="dark"] .util-pill-green { color: #7ed4a4; }
-            [data-theme="dark"] .util-pill-amber,
             .stApp[data-theme="dark"] .util-pill-amber { color: #f5b958; }
-            [data-theme="dark"] .util-pill-red,
             .stApp[data-theme="dark"] .util-pill-red   { color: #f08585; }
-            [data-theme="dark"] .util-pill-blue,
             .stApp[data-theme="dark"] .util-pill-blue  { color: #6fa8dc; }
-            [data-theme="dark"] .util-pill-grey,
             .stApp[data-theme="dark"] .util-pill-grey  { color: #aac4d0; }
 
-            /* Inline legend strip */
-            .util-legend {
-                background: var(--color-background-primary, #ffffff);
-                color: var(--color-text-primary, #1a1a1a);
-                border: 1px solid rgba(128,128,128,0.25);
-                border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
-                display: flex; flex-wrap: wrap; gap: 8px;
-                align-items: center; font-size: 12px;
-            }
-            .util-legend-label {
-                opacity: 0.6; text-transform: uppercase;
-                letter-spacing: 0.6px; font-size: 11px; margin-right: 4px;
-            }
-
-            /* Action callouts */
-            .util-callout {
-                background: var(--color-background-primary, #ffffff);
-                color: var(--color-text-primary, #1a1a1a);
-                border: 1px solid rgba(128,128,128,0.25);
-                border-radius: 8px; padding: 12px 14px;
-            }
             .util-callout-red    { border-left: 3px solid #ef4444; }
             .util-callout-amber  { border-left: 3px solid #f59e0b; }
             .util-callout-blue   { border-left: 3px solid #3b82f6; }
@@ -1636,13 +1636,23 @@ def main():
                                    font-variant-numeric: tabular-nums; }
             .util-callout-body   { font-size: 12px; opacity: 0.8; line-height: 1.4; }
 
+            .util-legend-label {
+                opacity: 0.6; text-transform: uppercase;
+                letter-spacing: 0.6px; font-size: 11px; margin-right: 4px;
+            }
+
             /* Employee HTML table */
             .util-emp-table {
                 width: 100%; border-collapse: collapse;
                 font-family: 'Manrope', sans-serif; font-size: 13px;
                 font-variant-numeric: tabular-nums;
-                color: var(--color-text-primary, #1a1a1a);
+                color: #1a1a1a;
             }
+            @media (prefers-color-scheme: dark) {
+                .util-emp-table { color: #fafafa; }
+            }
+            .stApp[data-theme="dark"] .util-emp-table { color: #fafafa; }
+
             .util-emp-table thead tr {
                 background: rgba(128,128,128,0.08);
             }
@@ -1665,23 +1675,6 @@ def main():
                 vertical-align: middle; flex-shrink: 0;
             }
             .util-emp-name { display: inline-flex; align-items: center; }
-            .util-table-header {
-                padding: 10px 14px;
-                background: var(--color-background-primary, #ffffff);
-                color: var(--color-text-primary, #1a1a1a);
-                border: 1px solid rgba(128,128,128,0.25);
-                border-radius: 8px 8px 0 0;
-                display: flex; justify-content: space-between;
-                font-size: 12px;
-            }
-            .util-table-wrap {
-                background: var(--color-background-primary, #ffffff);
-                color: var(--color-text-primary, #1a1a1a);
-                border: 1px solid rgba(128,128,128,0.25);
-                border-top: none;
-                border-radius: 0 0 8px 8px;
-                overflow: hidden;
-            }
             .util-table-foot {
                 padding: 8px 14px;
                 border-top: 1px solid rgba(128,128,128,0.15);
@@ -2141,12 +2134,14 @@ def main():
             sub_html = ""
             if sub:
                 if sub_pill_class:
-                    sub_html = f"<div class='util-kpi-pill util-pill {sub_pill_class}'>{sub}</div>"
+                    sub_html = f"<div style='display:inline-block;margin-top:4px;padding:2px 9px;border-radius:999px;font-size:11px' class='util-pill {sub_pill_class}'>{sub}</div>"
                 else:
-                    sub_html = f"<div class='util-kpi-sub'>{sub}</div>"
+                    sub_html = f"<div style='font-size:11px;opacity:0.65;margin-top:4px'>{sub}</div>"
             return (f"<div class='util-kpi'>"
-                    f"<div class='util-kpi-label'>{label}</div>"
-                    f"<div class='util-kpi-value'>{value}</div>"
+                    f"<div style='font-size:11px;opacity:0.75;margin-bottom:4px;"
+                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{label}</div>"
+                    f"<div style='font-size:24px;font-weight:600;line-height:1.1;"
+                    f"font-variant-numeric:tabular-nums'>{value}</div>"
                     f"{sub_html}</div>")
 
         with m1: st.markdown(_kpi_card("Billable projects", f"{billable_proj_count:,}", f"across {consultant_count} consultants"), unsafe_allow_html=True)
@@ -2162,57 +2157,35 @@ def main():
 
         callout_cols = st.columns(3)
 
+        def _callout(border_color, title_color, icon, title, num, body):
+            return (f"<div class='util-card' style='border-left:3px solid {border_color}'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+                    f"<span style='font-size:12px;font-weight:600;color:{title_color}'>{icon} {title}</span>"
+                    f"<span style='font-size:22px;font-weight:600;color:{title_color};font-variant-numeric:tabular-nums'>{num}</span></div>"
+                    f"<div style='font-size:12px;opacity:0.75;line-height:1.4'>{body}</div>"
+                    f"</div>")
+
         # Callout 1 — Below 60%
         if below60_count > 0:
             _names_short = ", ".join(sorted([short_name(n) for n in _below_60["employee"].unique()])[:5])
             _and_more = f" +{below60_count - 5} more" if below60_count > 5 else ""
-            _c1 = (f"<div class='util-callout util-callout-red'>"
-                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
-                   f"<span class='util-callout-title' style='color:#b91c1c'>⚠ Consultants below 60%</span>"
-                   f"<span class='util-callout-num' style='color:#b91c1c'>{below60_count}</span></div>"
-                   f"<div class='util-callout-body'>{_names_short}{_and_more}</div>"
-                   f"</div>")
+            _c1 = _callout("#ef4444", "#b91c1c", "⚠", "Consultants below 60%", below60_count, f"{_names_short}{_and_more}")
         else:
-            _c1 = (f"<div class='util-callout util-callout-green'>"
-                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
-                   f"<span class='util-callout-title' style='color:#15803d'>✓ Consultants below 60%</span>"
-                   f"<span class='util-callout-num' style='color:#15803d'>0</span></div>"
-                   f"<div class='util-callout-body'>All consultants at or above 60% utilization on capacity.</div>"
-                   f"</div>")
+            _c1 = _callout("#22c55e", "#15803d", "✓", "Consultants below 60%", 0, "All consultants at or above 60% utilization on capacity.")
         with callout_cols[0]: st.markdown(_c1, unsafe_allow_html=True)
 
         # Callout 2 — FF in overrun
         if overrun_count > 0:
-            _c2 = (f"<div class='util-callout util-callout-amber'>"
-                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
-                   f"<span class='util-callout-title' style='color:#b45309'>↑ FF projects in overrun</span>"
-                   f"<span class='util-callout-num' style='color:#b45309'>{overrun_count}</span></div>"
-                   f"<div class='util-callout-body'>{overrun_total:.1f} hrs beyond contracted scope. {overrun_top}</div>"
-                   f"</div>")
+            _c2 = _callout("#f59e0b", "#b45309", "↑", "FF projects in overrun", overrun_count, f"{overrun_total:.1f} hrs beyond contracted scope. {overrun_top}")
         else:
-            _c2 = (f"<div class='util-callout util-callout-green'>"
-                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
-                   f"<span class='util-callout-title' style='color:#15803d'>✓ FF projects in overrun</span>"
-                   f"<span class='util-callout-num' style='color:#15803d'>0</span></div>"
-                   f"<div class='util-callout-body'>No Fixed Fee projects exceeded scope this period.</div>"
-                   f"</div>")
+            _c2 = _callout("#22c55e", "#15803d", "✓", "FF projects in overrun", 0, "No Fixed Fee projects exceeded scope this period.")
         with callout_cols[1]: st.markdown(_c2, unsafe_allow_html=True)
 
         # Callout 3 — No scope
         if noscope_proj_count > 0:
-            _c3 = (f"<div class='util-callout util-callout-blue'>"
-                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
-                   f"<span class='util-callout-title' style='color:#1d4ed8'>⊘ FF: no scope defined</span>"
-                   f"<span class='util-callout-num' style='color:#1d4ed8'>{noscope_proj_count}</span></div>"
-                   f"<div class='util-callout-body'>{noscope_hrs:.1f} hrs on FF projects with no scope record. Finance follow-up needed.</div>"
-                   f"</div>")
+            _c3 = _callout("#3b82f6", "#1d4ed8", "⊘", "FF: no scope defined", noscope_proj_count, f"{noscope_hrs:.1f} hrs on FF projects with no scope record. Finance follow-up needed.")
         else:
-            _c3 = (f"<div class='util-callout util-callout-green'>"
-                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
-                   f"<span class='util-callout-title' style='color:#15803d'>✓ FF: no scope defined</span>"
-                   f"<span class='util-callout-num' style='color:#15803d'>0</span></div>"
-                   f"<div class='util-callout-body'>All FF time logged against scoped projects.</div>"
-                   f"</div>")
+            _c3 = _callout("#22c55e", "#15803d", "✓", "FF: no scope defined", 0, "All FF time logged against scoped projects.")
         with callout_cols[2]: st.markdown(_c3, unsafe_allow_html=True)
 
         # Inline legend + popover
@@ -2795,6 +2768,9 @@ def main():
                 _prior_end = (pd.Timestamp(period_start) - pd.Timedelta(days=1)).date()
                 _prior_start = (pd.Timestamp(_prior_end) - pd.Timedelta(weeks=8)).date()
 
+            _curr_weeks  = max(((period_end - period_start).days + 1) / 7, 1/7)
+            _prior_weeks = max(((_prior_end - _prior_start).days + 1) / 7, 1/7)
+
             # Use the wider df (df_raw before period filter) for comparison
             _prior_cache_key = ("prior_task", _ns_signature(_ns_from_session), str(_prior_start), str(_prior_end), _va_name_u, _va_region_u)
             if _prior_cache_key in st.session_state._util_cache:
@@ -2827,8 +2803,6 @@ def main():
                     # Per-week normalization for rolling options
                     _normalize = (compare_mode != "prior_eq")
                     if _normalize:
-                        _curr_weeks = max((period_end - period_start).days / 7, 1/7)  # min ~1 day
-                        _prior_weeks = max((_prior_end - _prior_start).days / 7, 1/7)
                         merged["curr_per_wk"]  = merged["hours"] / _curr_weeks
                         merged["prior_per_wk"] = merged["prior_hours"] / _prior_weeks
                         merged["delta"] = merged["curr_per_wk"] - merged["prior_per_wk"]
@@ -2880,10 +2854,15 @@ def main():
                     f"{''.join(share_rows)}"
                     f"</div>", unsafe_allow_html=True)
             with tr2:
+                if compare_mode != "prior_eq":
+                    _subtitle = (f"Current ÷ {_curr_weeks:.1f}w  vs  prior ÷ {_prior_weeks:.1f}w "
+                                 f"({_prior_start.strftime('%-d %b')} → {_prior_end.strftime('%-d %b')})")
+                else:
+                    _subtitle = f"{_prior_start.strftime('%-d %b')} → {_prior_end.strftime('%-d %b')}"
                 st.markdown(
                     f"<div class='util-card'>"
                     f"<div style='font-size:12px;font-weight:600;margin-bottom:4px'>Movers · vs {compare_label.lower()}</div>"
-                    f"<div style='font-size:11px;opacity:0.65;margin-bottom:8px'>{_prior_start.strftime('%-d %b')} → {_prior_end.strftime('%-d %b')}</div>"
+                    f"<div style='font-size:11px;opacity:0.65;margin-bottom:8px'>{_subtitle}</div>"
                     f"{movers_html}"
                     f"</div>", unsafe_allow_html=True)
 
