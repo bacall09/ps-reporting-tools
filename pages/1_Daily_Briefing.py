@@ -1151,7 +1151,7 @@ else:
                 f"<div style='position:relative;width:92px;height:92px;flex-shrink:0;'>"
                 f"<svg viewBox='0 0 64 64' width='92' height='92'>"
                 f"<circle cx='32' cy='32' r='24' fill='none' stroke='rgba(128,128,128,0.2)' stroke-width='7'/>"
-                f"<circle cx='32' cy='32' r='24' fill='none' stroke='#08A9B7' stroke-width='7' "
+                f"<circle cx='32' cy='32' r='24' fill='none' stroke='#27AE60' stroke-width='7' "
                 f"stroke-dasharray='{round((_wk_util_pct or 0)/100*151,1)} {round((1-(_wk_util_pct or 0)/100)*151,1)}' stroke-dashoffset='38' stroke-linecap='round'/>"
                 f"</svg>"
                 f"<div style='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
@@ -1365,17 +1365,26 @@ else:
                             if not _is_done:
                                 if st.button("✓ Done", key=f"btn_{idx}", use_container_width=True):
                                     st.session_state[_done_key] = True
-                                    if item.get("row_id") and item["type"] == "intro":
+                                    if item["type"] == "intro":
                                         try:
                                             from shared.smartsheet_api import write_row_updates
-                                            _ok, _ = write_row_updates([{
-                                                "_ss_row_id": item["row_id"],
-                                                "project_name": item["name"],
-                                                "changes": {"ms_intro_email": pd.Timestamp.today().normalize()}
-                                            }])
-                                            st.toast("✓ Updated in Smartsheet" if _ok else "Saved locally — sync pending")
-                                        except Exception:
-                                            st.toast("Saved locally — sync pending")
+                                            _row_id = item.get("row_id")
+                                            if _row_id:
+                                                _ok, _errs = write_row_updates([{
+                                                    "_ss_row_id": _row_id,
+                                                    "project_name": item["name"],
+                                                    "changes": {"ms_intro_email": pd.Timestamp.today().normalize()}
+                                                }])
+                                                if _ok:
+                                                    st.toast("✓ Intro email date updated in Smartsheet")
+                                                else:
+                                                    _err_msg = _errs[0] if _errs else "unknown error"
+                                                    st.toast(f"SS write failed: {_err_msg} — marked locally only")
+                                            else:
+                                                # No row ID — DRS loaded from CSV upload, not API
+                                                st.toast("Marked locally — reload DRS via API sync to enable SS writeback")
+                                        except Exception as _e:
+                                            st.toast(f"Saved locally — sync pending ({type(_e).__name__})")
                                     st.rerun()
                             else:
                                 st.markdown("<span style='font-size:11px;color:var(--color-text-secondary);'>Done ✓</span>", unsafe_allow_html=True)
