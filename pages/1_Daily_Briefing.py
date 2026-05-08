@@ -1189,11 +1189,11 @@ else:
         _rv_all       = my_projects["rag"].fillna("").astype(str).str.strip().str.lower() if "rag" in my_projects.columns and not my_projects.empty else pd.Series(dtype=str)
         _n_unrated    = int((_rv_all == "").sum()) if len(_rv_all) > 0 else 0
         _n_green_conf = max(0, _n_green - _n_unrated)
-        _n_rag_rated  = _n_green_conf + len(_rag_yellow) + len(_rag_red)
+        _n_rag_rated  = len(_rag_yellow) + len(_rag_red)  # Red + Yellow only = "at risk"
         _rag_note     = f"* {_n_unrated} unrated project{'s' if _n_unrated != 1 else ''} — RAG not yet set" if _n_unrated > 0 else None
         _donut_card(
             "RAG &amp; risk",
-            str(_n_rag_rated), "rated",
+            str(_n_rag_rated), "at risk",
             [(_n_green_conf, "#639922"), (len(_rag_yellow), "#EF9F27"), (len(_rag_red), "#E24B4A"), (_n_unrated, "#888780")],
             [
                 ("#639922", "Green",   str(_n_green_conf)),
@@ -1206,27 +1206,35 @@ else:
 
         # 2 — Phase breakdown
         _PHASE_GROUPS = [
-            ("Config / WTs",   ["00.", "01.", "02.", "03."], "#534AB7"),
-            ("UAT",            ["04."],                      "#08A9B7"),
-            ("UAT resolution", ["05."],                      "#EF9F27"),
-            ("Hypercare",      ["07.", "06."],                "#E24B4A"),
-            ("Go-live / other",["08.", "09."],                "#639922"),
+            ("Config / WTs",      ["00.", "01.", "02.", "03."], "#534AB7"),
+            ("UAT",               ["04."],                      "#08A9B7"),
+            ("Prep / Go-live",    ["05.", "06."],                "#EF9F27"),
+            ("Hypercare / Data",  ["07."],                      "#E24B4A"),
+            ("Support / Other",   ["08.", "09."],                "#639922"),
         ]
-        _phase_counts = {}
+        _phase_counts    = {}
+        _phase_unmatched = 0
         if "phase" in _active.columns and not _active.empty:
             for ph in _active["phase"].fillna(""):
                 pl = str(ph).strip().lower()
+                matched = False
                 for grp_name, prefixes, _ in _PHASE_GROUPS:
                     if any(pl.startswith(p) for p in prefixes):
                         _phase_counts[grp_name] = _phase_counts.get(grp_name, 0) + 1
+                        matched = True
                         break
+                if not matched and pl:
+                    _phase_unmatched += 1
         _ph_segs   = [(_phase_counts.get(g, 0), c) for g, _, c in _PHASE_GROUPS]
         _ph_legend = [(c, g, str(_phase_counts.get(g, 0))) for g, _, c in _PHASE_GROUPS]
+        _ph_note   = f"{_phase_unmatched} project{'s' if _phase_unmatched != 1 else ''} in unrecognised phase" if _phase_unmatched > 0 else None
         _donut_card(
             "Phase breakdown",
             str(_n_active_dc), "open",
-            _ph_segs, _ph_legend
+            _ph_segs, _ph_legend,
+            note=_ph_note
         )
+
 
         # 3 — My projects snapshot
         _n_assigned  = int(my_projects["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else 0
