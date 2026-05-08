@@ -194,15 +194,19 @@ def assign_credits(df, scope_map):
             htd_start_list.append(0)
             continue
 
+# Key on project_id if available — prevents name collision for same-customer multi-product
+        _pid = str(row.get("project_id", "") or "").strip()
+        _con_key = _pid if _pid and _pid not in ("nan", "None", "") else proj
+
         # Seed starting balance from hours_to_date if first time seeing this project
-        if proj not in consumed:
+        if _con_key not in consumed:
             htd = row.get("hours_to_date", None)
             try:
-                consumed[proj] = float(htd) if htd is not None and str(htd).strip() not in ("", "nan") else 0
+                consumed[_con_key] = float(htd) if htd is not None and str(htd).strip() not in ("", "nan") else 0
             except (ValueError, TypeError):
-                consumed[proj] = 0
+                consumed[_con_key] = 0
 
-        already    = consumed[proj]
+        already    = consumed[_con_key]
         remaining  = scope_hrs - already
         htd_start_list.append(already)
 
@@ -210,11 +214,11 @@ def assign_credits(df, scope_map):
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("OVERRUN"); notes_list.append(f"Scope exhausted (cap: {scope_hrs:.0f}h)")
         elif hrs <= remaining:
-            consumed[proj] = already + hrs
+            consumed[_con_key] = already + hrs
             credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("CREDITED"); notes_list.append(f"NB within scope ({already:.1f}/{scope_hrs:.0f}h used)")
         else:
-            consumed[proj] = already + remaining
+            consumed[_con_key] = already + remaining
             credit_hrs_list.append(remaining); variance_hrs_list.append(hrs - remaining)
             credit_tag_list.append("PARTIAL")
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
@@ -1295,8 +1299,9 @@ def calc_consultant_util(ns_rows, month_key, scope_map, avail_hours):
 
         prior_htd = {}
         if "hours_to_date" in month_ns.columns:
-            for _proj_key, _grp in month_ns.groupby("project"):
-                _proj_n = " ".join(str(_proj_key).strip().split())
+            _pid_col = "project_id" if "project_id" in month_ns.columns else "project"
+            for _proj_key, _grp in month_ns.groupby(_pid_col):
+                _proj_n = " ".join(str(_grp["project"].iloc[0]).strip().split()) if _pid_col == "project_id" else " ".join(str(_proj_key).strip().split())
                 try:
                     _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
                     _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
@@ -1328,15 +1333,17 @@ def calc_consultant_util(ns_rows, month_key, scope_map, avail_hours):
             if _sc is None:
                 continue
 
-            if _proj not in _con:
-                _con[_proj] = prior_htd.get(_proj, 0.0)
-            _used = _con[_proj]; _rem = _sc - _used
+            _proj_id = " ".join(str(_r.get("project_id", "") or _r.get("project", "")).strip().split())
+            _con_key = _proj_id if "project_id" in ff_rows.columns else _proj
+            if _con_key not in _con:
+                _con[_con_key] = prior_htd.get(_proj, 0.0)
+            _used = _con[_con_key]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
             elif _hrs <= _rem:
-                ff_credit += _hrs; _con[_proj] = _used + _hrs
+                ff_credit += _hrs; _con[_con_key] = _used + _hrs
             else:
-                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
+                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_con_key] = _sc
 
     ff_credit  = round(ff_credit, 2)
     ff_overrun = round(ff_overrun, 2)
