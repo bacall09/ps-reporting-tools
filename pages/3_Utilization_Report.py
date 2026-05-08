@@ -430,7 +430,8 @@ def assign_credits(df, scope_map):
     variance_hrs_list = []
     credit_tag_list   = []
     notes_list        = []
-    htd_start_list    = []
+    htd_start_list     = []  # track starting HTD per row for output
+    consumed_after_list = []  # track running consumed position after each row
 
     _proj_idx  = df.columns.get_loc("project")       if "project"           in df.columns else None
     _ptype_idx = df.columns.get_loc("project_type")  if "project_type"      in df.columns else None
@@ -453,18 +454,21 @@ def assign_credits(df, scope_map):
             credit_hrs_list.append(0); variance_hrs_list.append(0)
             credit_tag_list.append("SKIPPED"); notes_list.append("Zero or missing hours")
             htd_start_list.append(0)
+            consumed_after_list.append(0.0)
             continue
 
         if bill_type == "internal":
             credit_hrs_list.append(0); variance_hrs_list.append(0)
             credit_tag_list.append("NON-BILLABLE"); notes_list.append("Internal: excluded from utilization")
             htd_start_list.append(0)
+            consumed_after_list.append(0.0)
             continue
 
         if is_tm:
             credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("CREDITED"); notes_list.append("T&M: full credit")
             htd_start_list.append(0)
+            consumed_after_list.append(0.0)
             continue
 
         _ptype_lower = ptype.strip().lower()
@@ -486,14 +490,14 @@ def assign_credits(df, scope_map):
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("UNCONFIGURED"); notes_list.append(f"Fixed Fee but no scope defined for: {ptype}")
             htd_start_list.append(0)
+            consumed_after_list.append(0.0)
             continue
 
-        # Key on project_id if available — prevents name collision for same-customer multi-product
+        # Key on project_id if available
         _raw_pid = str(_tup[_pid_idx] if _pid_idx is not None else "").strip().replace(".0", "")
         _con_key = _raw_pid if _raw_pid and _raw_pid not in ("nan", "None", "") else proj
 
         if _con_key not in consumed:
-            # prior_htd is keyed by both project_id and project_name, so either lookup works
             consumed[_con_key] = prior_htd.get(_con_key, prior_htd.get(proj, 0.0))
 
         already   = consumed[_con_key]
@@ -503,15 +507,18 @@ def assign_credits(df, scope_map):
         if remaining <= 0:
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("OVERRUN"); notes_list.append(f"Scope exhausted (cap: {scope_hrs:.0f}h)")
+            consumed_after_list.append(float(consumed[_con_key]))
         elif hrs <= remaining:
             consumed[_con_key] = already + hrs
             credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("CREDITED"); notes_list.append(f"NB within scope ({already:.1f}/{scope_hrs:.0f}h used)")
+            consumed_after_list.append(float(consumed[_con_key]))
         else:
             consumed[_con_key] = already + remaining
             credit_hrs_list.append(remaining); variance_hrs_list.append(hrs - remaining)
             credit_tag_list.append("PARTIAL")
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
+            consumed_after_list.append(float(consumed[_con_key]))
 
     for _col in df.select_dtypes(include="string").columns:
         df[_col] = df[_col].astype(object)
@@ -521,7 +528,7 @@ def assign_credits(df, scope_map):
     df["credit_tag"]   = credit_tag_list
     df["notes"]        = notes_list
     df["htd_start"]    = htd_start_list
-    df["previous_htd"] = df["htd_start"].astype(float) + df["hours"].astype(float)
+    df["previous_htd"] = [float(v) for v in consumed_after_list]
 
     if "task" in df.columns:
         df["ff_task"] = df["task"].fillna("").apply(match_ff_task)
