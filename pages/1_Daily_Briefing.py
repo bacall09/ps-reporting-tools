@@ -1323,23 +1323,31 @@ else:
         if not _is_group_view and df_drs is not None and not my_projects.empty:
             _due_items = []
 
-            # Intro emails pending — concrete action, writes back to SS
-            for _, _mr in _mi.head(5).iterrows():
-                _cust = str(_mr.get("project_name","")).split(" - ")[0][:35]
-                _pid  = str(_mr.get("project_id",""))
-                _due_items.append({"dot": "#EF9F27", "name": f"Intro email pending — {_cust}", "sub": _pid, "row_id": _mr.get("_ss_row_id"), "type": "intro"})
+            # Intro emails pending — uncapped, concrete action with SS writeback
+            for _, _mr in _mi.iterrows():
+                _cust  = str(_mr.get("project_name","")).split(" - ")[0][:35]
+                _pid   = str(_mr.get("project_id",""))
+                _ptype = str(_mr.get("project_type","")).strip()
+                _sub   = f"{_ptype} · {_pid}" if _ptype else _pid
+                _due_items.append({"dot": "#EF9F27", "name": f"Intro email pending — {_cust}", "sub": _sub, "row_id": _mr.get("_ss_row_id"), "type": "intro"})
 
-            # Go-lives this week — confirm readiness
-            for _, _gr2 in _gls.head(3).iterrows():
-                _cust = str(_gr2.get("project_name","")).split(" - ")[0][:35]
-                _gl_d = pd.Timestamp(_gr2.get(_gld_col)).strftime("%-d %b") if _gld_col in _gr2.index else ""
-                _due_items.append({"dot": "#639922", "name": f"Confirm go-live readiness — {_cust}", "sub": f"Scheduled {_gl_d}", "row_id": None, "type": "golive"})
+            # Go-lives this week — confirm readiness, uncapped
+            for _, _gr2 in _gls.iterrows():
+                _cust  = str(_gr2.get("project_name","")).split(" - ")[0][:35]
+                _pid   = str(_gr2.get("project_id",""))
+                _ptype = str(_gr2.get("project_type","")).strip()
+                _gl_d  = pd.Timestamp(_gr2.get(_gld_col)).strftime("%-d %b") if _gld_col in _gr2.index else ""
+                _sub   = f"{_ptype} · {_pid} · Scheduled {_gl_d}" if _ptype else f"{_pid} · Scheduled {_gl_d}"
+                _due_items.append({"dot": "#639922", "name": f"Confirm go-live readiness — {_cust}", "sub": _sub, "row_id": None, "type": "golive"})
 
-            # Stale projects — send outreach via Customer Engagement
-            for _, _sr in _stale.head(3).iterrows():
-                _cust = str(_sr.get("project_name","")).split(" - ")[0][:35]
-                _days = int(_sr.get("days_inactive", 0))
-                _due_items.append({"dot": "#888780", "name": f"Re-engage — {_cust}", "sub": f"{_days} days inactive · use Customer Engagement", "row_id": None, "type": "stale"})
+            # Stale projects — send outreach via Customer Engagement, uncapped
+            for _, _sr in _stale.iterrows():
+                _cust  = str(_sr.get("project_name","")).split(" - ")[0][:35]
+                _pid   = str(_sr.get("project_id",""))
+                _ptype = str(_sr.get("project_type","")).strip()
+                _days  = int(_sr.get("days_inactive", 0))
+                _sub   = f"{_ptype} · {_pid} · {_days} days inactive" if _ptype else f"{_pid} · {_days} days inactive"
+                _due_items.append({"dot": "#888780", "name": f"Re-engage — {_cust}", "sub": _sub, "row_id": None, "type": "stale"})
 
             if _due_items:
                 with st.container(border=True):
@@ -1348,8 +1356,8 @@ else:
                     _hc2.markdown(f"<span style='font-size:12px;color:var(--color-text-secondary);float:right;'>{len(_due_items)} items</span>", unsafe_allow_html=True)
 
                     for idx, item in enumerate(_due_items):
-                        # Key on project ID + type so state doesn't bleed across DRS reloads
-                        _pid_key  = str(item.get("sub","")).split()[0].strip()[:20]
+                        # Key on type + project ID (first token of sub) + DRS load ts
+                        _pid_key  = str(item.get("sub","")).split("·")[- 1 if item["type"] == "stale" else 0].strip()[:20].replace(" ","")
                         _drs_ts   = str(st.session_state.get("drs_load_ts", ""))[:10]
                         _done_key = f"done_{item['type']}_{_pid_key}_{_drs_ts}"
                         _is_done  = st.session_state.get(_done_key, False)

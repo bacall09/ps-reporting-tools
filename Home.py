@@ -23,24 +23,24 @@ st.set_page_config(page_title="PS Projects & Tools", page_icon=None, layout="wid
 
 # ── Register navigation (must be called before any other st.* that could fail) ──
 _consultant_pages = [
-    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing",        icon="📋"),
-    st.Page("pages/8_My_Projects.py",            title="My Projects",           icon="📁"),
-    st.Page("pages/11_Project_Health.py",        title="Project Health",        icon="🏥"),
-    st.Page("pages/99_Customer_Profile.py",     title="Customer Profile",      icon="👤"),
-    st.Page("pages/2_Customer_Reengagement.py",  title="Customer Engagement",   icon="💬"),
-    st.Page("pages/3_Utilization_Report.py",     title="Utilization Report",    icon="📊"),
-    st.Page("pages/4_Workload_Health_Score.py",  title="Workload Health Score", icon="⚖️"),
-    st.Page("pages/6_DRS_Health_Check.py",       title="DRS Health Check",      icon="🔍"),
-    st.Page("pages/10_Time_Entries.py",           title="Time Entries",          icon="⏱️"),
+    st.Page("pages/1_Daily_Briefing.py",        title="Daily Briefing",        icon=":material/wb_sunny:"),
+    st.Page("pages/8_My_Projects.py",            title="My Projects",           icon=":material/folder_open:"),
+    st.Page("pages/11_Project_Health.py",        title="Project Health",        icon=":material/show_chart:"),
+    st.Page("pages/99_Customer_Profile.py",     title="Customer Profile",      icon=":material/business:"),
+    st.Page("pages/2_Customer_Reengagement.py",  title="Customer Engagement",   icon=":material/mail:"),
+    st.Page("pages/3_Utilization_Report.py",     title="Utilization Report",    icon=":material/monitor_heart:"),
+    st.Page("pages/4_Workload_Health_Score.py",  title="Workload Health Score", icon=":material/speed:"),
+    st.Page("pages/6_DRS_Health_Check.py",       title="DRS Health Check",      icon=":material/shield_with_heart:"),
+    st.Page("pages/10_Time_Entries.py",           title="Time Entries",          icon=":material/schedule:"),
 ]
 _manager_pages = [
-    st.Page("pages/13_Portfolio_Analytics.py",   title="Portfolio Analytics",   icon="📈"),
-    st.Page("pages/14_Capacity_Planner.py",      title="Capacity Planner",      icon="🧑‍💻"),
-    st.Page("pages/5_Capacity_Outlook.py",       title="Resourcing Planner",    icon="🗓️"),
-    st.Page("pages/9_Revenue_Report.py",         title="Revenue Report",        icon="💰"),
+    st.Page("pages/13_Portfolio_Analytics.py",   title="Portfolio Analytics",   icon=":material/donut_large:"),
+    st.Page("pages/14_Capacity_Planner.py",      title="Capacity Planner",      icon=":material/battery_charging_full:"),
+    st.Page("pages/5_Capacity_Outlook.py",       title="Resourcing Planner",    icon=":material/groups:"),
+    st.Page("pages/9_Revenue_Report.py",         title="Revenue Report",        icon=":material/payments:"),
 ]
 _help_pages = [
-    st.Page("pages/9_Help.py", title="Help",                                    icon="❓"),
+    st.Page("pages/9_Help.py", title="Help",                                    icon=":material/help:"),
 ]
 
 # ── Build credentials ─────────────────────────────────────────────────────────
