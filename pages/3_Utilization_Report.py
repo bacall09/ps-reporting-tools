@@ -1694,8 +1694,8 @@ def main():
     # Sticky control bar — Period preset · Custom range · Refresh · Excel
     # ─────────────────────────────────────────────────────
     today = date.today()
-    _first_this_month = today.replace(day=1)
-    _last_month_end = (_first_this_month - pd.Timedelta(days=1)).date()
+    _first_this_month_ts = pd.Timestamp(today.year, today.month, 1)
+    _last_month_end = (_first_this_month_ts - pd.Timedelta(days=1)).date()
     _last_month_start = _last_month_end.replace(day=1)
     period_options = {
         "This month":     (date(today.year, today.month, 1), today),
