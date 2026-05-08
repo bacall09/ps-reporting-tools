@@ -371,6 +371,7 @@ def auto_detect_columns(df):
         "billing_type":  ["billing type", "billing_type", "bill type", "billtype"],
         "hours_to_date": ["hours to date", "hours_to_date", "htd", "prior hours",
                           "cumulative hours", "hours booked to date"],
+        "project_id":    ["project id", "project_id", "projectid", "project internal id"],
         "region":           ["employee location", "location", "region", "country", "office"],
         "customer_region":  ["customer region", "customer_region", "cust region", "client region"],
         "project_manager":  ["project manager", "project_manager", "pm", "manager"],
@@ -480,10 +481,12 @@ def assign_credits(df, scope_map):
     _htd_col = "hours_to_date"
     prior_htd = {}
     if _htd_col in df.columns:
-        for _proj, _grp in df.groupby("project"):
-            _proj_n = " ".join(str(_proj).split())
+        _pid_col = "project_id" if "project_id" in df.columns else "project"
+        for _proj_key, _grp in df.groupby(_pid_col):
+            _proj_n = " ".join(str(_grp["project"].iloc[0]).strip().split()) \
+                if _pid_col == "project_id" else " ".join(str(_proj_key).strip().split())
             try:
-                _max_htd   = float(_grp[_htd_col].dropna().astype(float).max() or 0)
+                _max_htd    = float(_grp[_htd_col].dropna().astype(float).max() or 0)
                 _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
                 prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
             except Exception:
@@ -504,6 +507,7 @@ def assign_credits(df, scope_map):
     _bt_idx        = df.columns.get_loc("billing_type")  if "billing_type"  in df.columns else None
     _sku_idx       = df.columns.get_loc("time_item_sku") if "time_item_sku" in df.columns else None
     _drs_idx       = df.columns.get_loc("_drs_project_name") if "_drs_project_name" in df.columns else None
+    _pid_idx       = df.columns.get_loc("project_id")    if "project_id"    in df.columns else None
 
     for _tup in df.itertuples(index=False, name=None):
         proj      = " ".join(str(_tup[_proj_idx]  if _proj_idx  is not None else "").split())
@@ -558,11 +562,14 @@ def assign_credits(df, scope_map):
             htd_start_list.append(0)
             continue
 
-        # Seed starting balance from pre-period hours only (not cumulative HTD)
-        if proj not in consumed:
-            consumed[proj] = prior_htd.get(proj, 0.0)
+      # Key on project_id if available — prevents name collision for same-customer multi-product
+        _raw_pid = str(_tup[_pid_idx] if _pid_idx is not None else "").strip()
+        _con_key = _raw_pid if _raw_pid and _raw_pid not in ("nan", "None", "") else proj
 
-        already    = consumed[proj]
+        if _con_key not in consumed:
+            consumed[_con_key] = prior_htd.get(_con_key, prior_htd.get(proj, 0.0))
+
+        already    = consumed[_con_key]
         remaining  = scope_hrs - already
         htd_start_list.append(already)
 
@@ -570,11 +577,11 @@ def assign_credits(df, scope_map):
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("OVERRUN"); notes_list.append(f"Scope exhausted (cap: {scope_hrs:.0f}h)")
         elif hrs <= remaining:
-            consumed[proj] = already + hrs
+            consumed[_con_key] = already + hrs
             credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("CREDITED"); notes_list.append(f"NB within scope ({already:.1f}/{scope_hrs:.0f}h used)")
         else:
-            consumed[proj] = already + remaining
+            consumed[_con_key] = already + remaining
             credit_hrs_list.append(remaining); variance_hrs_list.append(hrs - remaining)
             credit_tag_list.append("PARTIAL")
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
