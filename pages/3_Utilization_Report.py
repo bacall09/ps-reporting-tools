@@ -507,18 +507,18 @@ def assign_credits(df, scope_map):
         if remaining <= 0:
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("OVERRUN"); notes_list.append(f"Scope exhausted (cap: {scope_hrs:.0f}h)")
-            consumed_after_list.append(float(consumed[_con_key]))
+            consumed_after_list.append(float(already))
         elif hrs <= remaining:
             consumed[_con_key] = already + hrs
             credit_hrs_list.append(hrs); variance_hrs_list.append(0)
             credit_tag_list.append("CREDITED"); notes_list.append(f"NB within scope ({already:.1f}/{scope_hrs:.0f}h used)")
-            consumed_after_list.append(float(consumed[_con_key]))
+            consumed_after_list.append(float(already))
         else:
             consumed[_con_key] = already + remaining
             credit_hrs_list.append(remaining); variance_hrs_list.append(hrs - remaining)
             credit_tag_list.append("PARTIAL")
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
-            consumed_after_list.append(float(consumed[_con_key]))
+            consumed_after_list.append(float(already))
 
     for _col in df.select_dtypes(include="string").columns:
         df[_col] = df[_col].astype(object)
