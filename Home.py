@@ -256,6 +256,8 @@ with st.sidebar:
             try:
                 st.session_state["df_drs"] = _ss_load()
                 st.session_state["_drs_source"] = "api"
+                import datetime as _dt
+                st.session_state["drs_load_ts"] = _dt.datetime.now().strftime("%Y%m%d%H%M%S")
                 st.success("DRS loaded from Smartsheet.")
             except Exception as _e:
                 st.error(f"Smartsheet API error: {_e}")

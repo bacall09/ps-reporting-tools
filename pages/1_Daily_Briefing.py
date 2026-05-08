@@ -1348,7 +1348,10 @@ else:
                     _hc2.markdown(f"<span style='font-size:12px;color:var(--color-text-secondary);float:right;'>{len(_due_items)} items</span>", unsafe_allow_html=True)
 
                     for idx, item in enumerate(_due_items):
-                        _done_key = f"done_task_{idx}"
+                        # Key on project ID + type so state doesn't bleed across DRS reloads
+                        _pid_key  = str(item.get("sub","")).split()[0].strip()[:20]
+                        _drs_ts   = str(st.session_state.get("drs_load_ts", ""))[:10]
+                        _done_key = f"done_{item['type']}_{_pid_key}_{_drs_ts}"
                         _is_done  = st.session_state.get(_done_key, False)
                         _ic1, _ic2 = st.columns([6, 1])
                         with _ic1:
@@ -1376,15 +1379,15 @@ else:
                                                     "changes": {"ms_intro_email": pd.Timestamp.today().normalize()}
                                                 }])
                                                 if _ok:
-                                                    st.toast("✓ Intro email date updated in Smartsheet")
+                                                    st.toast("✓ Intro email date updated in Smartsheet", icon="✅")
                                                 else:
                                                     _err_msg = _errs[0] if _errs else "unknown error"
-                                                    st.toast(f"SS write failed: {_err_msg} — marked locally only")
+                                                    st.toast(f"⚠ SS write failed: {_err_msg}", icon="⚠️")
                                             else:
                                                 # No row ID — DRS loaded from CSV upload, not API
-                                                st.toast("Marked locally — reload DRS via API sync to enable SS writeback")
+                                                st.toast("Marked locally — sync DRS via API to write back", icon="ℹ️")
                                         except Exception as _e:
-                                            st.toast(f"Saved locally — sync pending ({type(_e).__name__})")
+                                            st.toast(f"Saved locally — sync pending ({type(_e).__name__})", icon="ℹ️")
                                     st.rerun()
                             else:
                                 st.markdown("<span style='font-size:11px;color:var(--color-text-secondary);'>Done ✓</span>", unsafe_allow_html=True)
