@@ -1206,28 +1206,43 @@ else:
 
         # 2 — Phase breakdown
         _PHASE_GROUPS = [
-            ("Config / WTs",      ["00.", "01.", "02.", "03."], "#534AB7"),
-            ("UAT",               ["04."],                      "#08A9B7"),
-            ("Prep / Go-live",    ["05.", "06."],                "#EF9F27"),
-            ("Hypercare / Data",  ["07."],                      "#E24B4A"),
-            ("Support / Other",   ["08.", "09."],                "#639922"),
+            ("Onboarding / Req",   ["00.", "01."], "#534AB7"),
+            ("Config / Training",  ["02.", "03."], "#378ADD"),
+            ("UAT",                ["04."],        "#08A9B7"),
+            ("Prep / Go-Live",     ["05.", "06."], "#EF9F27"),
+            ("Data Migration",     ["07."],        "#E24B4A"),
+            ("Ready for Support",  ["08.", "10."], "#639922"),
+            ("Phase 2 Scoping",    ["09."],        "#888780"),
         ]
-        _phase_counts    = {}
-        _phase_unmatched = 0
+        _phase_counts      = {}
+        _phase_blank       = 0
+        _phase_unmatched   = 0
+        _phase_pending_bil = 0
         if "phase" in _active.columns and not _active.empty:
             for ph in _active["phase"].fillna(""):
                 pl = str(ph).strip().lower()
+                if not pl:
+                    _phase_blank += 1
+                    continue
                 matched = False
                 for grp_name, prefixes, _ in _PHASE_GROUPS:
                     if any(pl.startswith(p) for p in prefixes):
+                        # Special callout for 10. still in progress
+                        if pl.startswith("10."):
+                            _phase_pending_bil += 1
                         _phase_counts[grp_name] = _phase_counts.get(grp_name, 0) + 1
                         matched = True
                         break
-                if not matched and pl:
+                if not matched:
                     _phase_unmatched += 1
-        _ph_segs   = [(_phase_counts.get(g, 0), c) for g, _, c in _PHASE_GROUPS]
-        _ph_legend = [(c, g, str(_phase_counts.get(g, 0))) for g, _, c in _PHASE_GROUPS]
-        _ph_note   = f"{_phase_unmatched} project{'s' if _phase_unmatched != 1 else ''} in unrecognised phase" if _phase_unmatched > 0 else None
+        _ph_note_parts = []
+        if _phase_blank > 0:
+            _ph_note_parts.append(f"{_phase_blank} project{'s' if _phase_blank != 1 else ''} with no phase set")
+        if _phase_pending_bil > 0:
+            _ph_note_parts.append(f"{_phase_pending_bil} marked Complete/Pending Billing — check status")
+        if _phase_unmatched > 0:
+            _ph_note_parts.append(f"{_phase_unmatched} in unrecognised phase")
+        _ph_note = " · ".join(_ph_note_parts) if _ph_note_parts else None
         _donut_card(
             "Phase breakdown",
             str(_n_active_dc), "open",
