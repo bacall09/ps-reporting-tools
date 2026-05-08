@@ -342,10 +342,11 @@ _sub_str = " · ".join(_sub_parts)
 
 _hero = st.empty()
 _hero.markdown(
-    f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
-    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
-    f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;'>{_greeting}, {_my_display}.</h1>"
-    f"<p style='color:rgba(255,255,255,0.4);margin:6px 0 0;font-size:13px;'>Loading...</p>"
+    f"<div style='background:var(--color-background-primary);border:0.5px solid rgba(128,128,128,0.2);"
+    f"border-radius:10px;padding:24px 32px 20px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+    f"<div style='font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#08A9B7;margin-bottom:6px;'>Professional Services · Daily Briefing</div>"
+    f"<h1 style='color:var(--color-text-primary);margin:0;font-size:26px;font-weight:600;font-family:Manrope,sans-serif;'>{_greeting}, {_my_display}.</h1>"
+    f"<p style='color:var(--color-text-secondary);margin:6px 0 0;font-size:13px;'>Loading...</p>"
     f"</div>",
     unsafe_allow_html=True,
 )
@@ -726,11 +727,11 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     _n_ms_14  = len(_mi) + (len(_gls) if not _gls.empty else 0)
     _n_intro  = len(_mi) if not _mi.empty else 0
     if _n_ms_14 > 0:
-        _ss_parts.append(f"<b style='color:rgba(255,255,255,0.9);font-weight:600;'>{_n_ms_14} milestone{'s' if _n_ms_14 > 1 else ''} in the next 14 days</b>")
+        _ss_parts.append(f"<b style='color:var(--color-text-primary);font-weight:600;'>{_n_ms_14} milestone{'s' if _n_ms_14 > 1 else ''} in the next 14 days</b>")
     if _n_intro > 0:
-        _ss_parts.append(f"<b style='color:rgba(255,255,255,0.9);font-weight:600;'>{_n_intro} intro email{'s' if _n_intro > 1 else ''} pending</b>")
+        _ss_parts.append(f"<b style='color:var(--color-text-primary);font-weight:600;'>{_n_intro} intro email{'s' if _n_intro > 1 else ''} pending</b>")
     if len(_rag_red) > 0:
-        _ss_parts.append(f"<b style='color:rgba(255,255,255,0.9);font-weight:600;'>{len(_rag_red)} red RAG project{'s' if len(_rag_red) > 1 else ''}</b>")
+        _ss_parts.append(f"<b style='color:#E24B4A;font-weight:600;'>{len(_rag_red)} red RAG project{'s' if len(_rag_red) > 1 else ''}</b>")
     _summary_str = (
         "You have " + ", ".join(_ss_parts[:-1]) + (" and " if len(_ss_parts) > 1 else "") + _ss_parts[-1] + "."
         if _ss_parts else "All clear — no urgent items this week."
@@ -761,18 +762,20 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     if _wk_util_pct is not None:
         _wk_gap = _wk_util_pct - _UTIL_TARGET_WK
         if _wk_gap >= 0:
-            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(99,153,34,0.2);color:#97C459;font-weight:500;'>+{round(_wk_gap)}pp ahead</span>"
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:#EAF3DE;color:#3B6D11;font-weight:500;'>+{round(_wk_gap)}% ahead</span>"
         else:
-            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;'>{round(_wk_gap)}pp behind</span>"
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:#FCEBEB;color:#A32D2D;font-weight:500;'>{round(_wk_gap)}% behind</span>"
     else:
         _pace_badge = ""
 
     # ── Overrun display ───────────────────────────────────────────────────────
-    _overrun_color = "#F09595" if _wk_overrun > 0 else "rgba(255,255,255,0.85)"
+    _overrun_color          = "#F09595" if _wk_overrun > 0 else "rgba(255,255,255,0.85)"
+    _overrun_color_adaptive = "#E24B4A" if _wk_overrun > 0 else "var(--color-text-primary)"
     _overrun_val   = f"{_wk_overrun}h" if _wk_overrun else "—"
     _overrun_sub   = "MTD overrun" if _wk_overrun else "no overrun this month"
     _n_overrun_proj = sum(1 for _ in [True] if _wk_overrun > 0)
     _overrun_badge = f"<div style='font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;margin-top:3px;display:inline-block;'>{_n_overrun_proj} project{'s' if _n_overrun_proj != 1 else ''}</div>" if _wk_overrun > 0 else ""
+    _overrun_badge_adaptive = f"<div style='font-size:10px;padding:1px 6px;border-radius:3px;background:#FCEBEB;color:#A32D2D;font-weight:500;margin-top:3px;display:inline-block;'>{_n_overrun_proj} project{'s' if _n_overrun_proj != 1 else ''}</div>" if _wk_overrun > 0 else ""
 
     # ── Render hero ───────────────────────────────────────────────────────────
     _hero.markdown(
@@ -1141,9 +1144,9 @@ else:
             _days_elapsed2= len(pd.bdate_range(_month_start2, today))
             _gap2 = (_wk_util_pct or 0) - _UTIL_TARGET_DISP
             if _gap2 >= 0:
-                _pace_c = "#97C459"; _pace_str = f"+{round(_gap2)}pp ahead"
+                _pace_c = "#97C459"; _pace_str = f"+{round(_gap2)}% ahead"
             else:
-                _pace_c = "#F09595"; _pace_str = f"{round(_gap2)}pp behind"
+                _pace_c = "#F09595"; _pace_str = f"{round(_gap2)}% behind"
             st.markdown(
                 f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
                 f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);margin-bottom:10px;'>My utilization · week of {_week_start.strftime('%b %-d')}</div>"
