@@ -507,6 +507,7 @@ def assign_credits(df, scope_map):
         if remaining <= 0:
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
             credit_tag_list.append("OVERRUN"); notes_list.append(f"Scope exhausted (cap: {scope_hrs:.0f}h)")
+            consumed[_con_key] = already + hrs
             consumed_after_list.append(float(already))
         elif hrs <= remaining:
             consumed[_con_key] = already + hrs
