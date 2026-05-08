@@ -1536,8 +1536,8 @@ def main():
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
 
             /* Theme-aware card surfaces */
-            /* Card surfaces — use prefers-color-scheme directly since Streamlit's
-               CSS vars don't propagate reliably to <style> blocks. */
+            /* Card surfaces — no explicit background; inherit page bg so cards
+               flip with theme automatically (mirrors Portfolio Analytics pattern). */
             .util-card,
             .util-control-bar,
             .util-kpi,
@@ -1545,9 +1545,8 @@ def main():
             .util-callout,
             .util-table-header,
             .util-table-wrap {
-                background: #ffffff;
-                color: #1a1a1a;
                 border: 1px solid rgba(128,128,128,0.25);
+                color: inherit;
             }
             .util-card        { border-radius: 8px; padding: 14px; }
             .util-control-bar { border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
@@ -1559,32 +1558,6 @@ def main():
             .util-table-header{ border-radius: 8px 8px 0 0; padding: 10px 14px;
                                 display: flex; justify-content: space-between; font-size: 12px; }
             .util-table-wrap  { border-top: none; border-radius: 0 0 8px 8px; overflow: hidden; }
-
-            @media (prefers-color-scheme: dark) {
-                .util-card,
-                .util-control-bar,
-                .util-kpi,
-                .util-legend,
-                .util-callout,
-                .util-table-header,
-                .util-table-wrap {
-                    background: #0E1117;
-                    color: #fafafa;
-                    border-color: rgba(250,250,250,0.15);
-                }
-            }
-            /* Streamlit theme toggle override */
-            .stApp[data-theme="dark"] .util-card,
-            .stApp[data-theme="dark"] .util-control-bar,
-            .stApp[data-theme="dark"] .util-kpi,
-            .stApp[data-theme="dark"] .util-legend,
-            .stApp[data-theme="dark"] .util-callout,
-            .stApp[data-theme="dark"] .util-table-header,
-            .stApp[data-theme="dark"] .util-table-wrap {
-                background: #0E1117;
-                color: #fafafa;
-                border-color: rgba(250,250,250,0.15);
-            }
 
             .util-meta-row {
                 margin-top: 10px; padding-top: 10px;
@@ -1606,26 +1579,24 @@ def main():
             .util-kpi-pill  { display: inline-block; margin-top: 4px;
                               padding: 2px 9px; border-radius: 999px; font-size: 11px; }
 
-            /* Pills */
+            /* Pills (translucent so they work on either page bg) */
             .util-pill { padding: 3px 9px; border-radius: 999px;
                          font-size: 12px; white-space: nowrap; font-weight: 500; }
-            .util-pill-green { background: rgba(34, 197, 94, 0.22); color: #15803d; }
-            .util-pill-amber { background: rgba(245, 158, 11, 0.22); color: #b45309; }
-            .util-pill-red   { background: rgba(239, 68, 68, 0.22); color: #b91c1c; }
-            .util-pill-blue  { background: rgba(59, 130, 246, 0.22); color: #1d4ed8; }
-            .util-pill-grey  { background: rgba(128, 128, 128, 0.22); color: #475569; }
+            .util-pill-green { background: rgba(34, 197, 94, 0.18); color: #15803d; }
+            .util-pill-amber { background: rgba(245, 158, 11, 0.18); color: #b45309; }
+            .util-pill-red   { background: rgba(239, 68, 68, 0.18); color: #b91c1c; }
+            .util-pill-blue  { background: rgba(59, 130, 246, 0.18); color: #1d4ed8; }
+            .util-pill-grey  { background: rgba(128, 128, 128, 0.18); color: inherit; opacity: 0.75; }
             @media (prefers-color-scheme: dark) {
                 .util-pill-green { color: #7ed4a4; }
                 .util-pill-amber { color: #f5b958; }
                 .util-pill-red   { color: #f08585; }
                 .util-pill-blue  { color: #6fa8dc; }
-                .util-pill-grey  { color: #aac4d0; }
             }
             .stApp[data-theme="dark"] .util-pill-green { color: #7ed4a4; }
             .stApp[data-theme="dark"] .util-pill-amber { color: #f5b958; }
             .stApp[data-theme="dark"] .util-pill-red   { color: #f08585; }
             .stApp[data-theme="dark"] .util-pill-blue  { color: #6fa8dc; }
-            .stApp[data-theme="dark"] .util-pill-grey  { color: #aac4d0; }
 
             .util-callout-red    { border-left: 3px solid #ef4444; }
             .util-callout-amber  { border-left: 3px solid #f59e0b; }
@@ -1646,12 +1617,8 @@ def main():
                 width: 100%; border-collapse: collapse;
                 font-family: 'Manrope', sans-serif; font-size: 13px;
                 font-variant-numeric: tabular-nums;
-                color: #1a1a1a;
+                color: inherit;
             }
-            @media (prefers-color-scheme: dark) {
-                .util-emp-table { color: #fafafa; }
-            }
-            .stApp[data-theme="dark"] .util-emp-table { color: #fafafa; }
 
             .util-emp-table thead tr {
                 background: rgba(128,128,128,0.08);
