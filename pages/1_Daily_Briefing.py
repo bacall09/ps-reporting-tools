@@ -689,8 +689,14 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         _wk_ff_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "fixed fee"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
         _wk_tm_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "t&m"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
         _wk_total   = round(_wk_ff_hrs + _wk_tm_hrs, 1)
-        _wk_avail_h = 28.0
-        _wk_util_pct = round(_wk_total / _wk_avail_h * 100) if _wk_avail_h else None
+        # Weekly available hours: derive from monthly AVAIL_HOURS / business days in month * business days this week
+        _wk_bdays_month = len(pd.bdate_range(today.replace(day=1),
+                             (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)))
+        _wk_bdays_week  = len(pd.bdate_range(_week_start, min(_week_end, today)))
+        _wk_avail_h = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
+        # Standard full week = avail / bdays_month * 5 working days
+        _wk_full_h  = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
+        _wk_util_pct = round(_wk_total / _wk_full_h * 100) if _wk_full_h else None
     else:
         _wk_total = None; _wk_util_pct = None
 
@@ -777,7 +783,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.1);'>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Week utilization</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
-        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_wk_total}h / {_wk_avail_h}h · target {int(_UTIL_TARGET_WK)}%</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_wk_total}h / {_wk_full_h}h · target {int(_UTIL_TARGET_WK)}%</div>"
         f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Active projects</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
@@ -1068,15 +1074,14 @@ else:
     _unassigned_ct = sum(cnt for ph, cnt in _pc_sorted if _pidx_db(ph) < 0)
 
     # ── New donut panel: RAG, Phase breakdown, My projects snapshot, Project age ─
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
     def _donut_svg(segments, cx=32, cy=32, r=24, sw=7):
         """Build stacked donut SVG circles from list of (pct, color) tuples."""
         total = sum(p for p, _ in segments)
         if total == 0:
-            return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="var(--color-border-tertiary)" stroke-width="{sw}"/>'
+            return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="rgba(128,128,128,0.2)" stroke-width="{sw}"/>'
         circumference = 2 * 3.14159 * r
-        out = f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="var(--color-border-tertiary)" stroke-width="{sw}"/>'
+        out = f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="rgba(128,128,128,0.2)" stroke-width="{sw}"/>'
         offset = 38  # start at top
         for pct, color in segments:
             dash = round((pct / total) * circumference, 1)
@@ -1099,18 +1104,18 @@ else:
                 f"<span style='font-size:14px;font-weight:600;color:var(--color-text-primary);'>{val}</span></div>"
             )
         note_html = (
-            f"<div style='margin-top:8px;padding-top:8px;border-top:0.5px solid var(--color-border-tertiary);"
+            f"<div style='margin-top:8px;padding-top:8px;border-top:1px solid rgba(128,128,128,0.18);"
             f"font-size:11px;color:var(--color-text-secondary);'>{note}</div>"
         ) if note else ""
         st.markdown(
             f"<div style='background:var(--color-background-primary);"
-            f"border:1px solid var(--color-border-secondary);"
+            f"border:1px solid rgba(128,128,128,0.25);"
             f"border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
             f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;"
             f"color:var(--color-text-secondary);margin-bottom:12px;'>{title}</div>"
             f"<div style='display:flex;align-items:center;gap:16px;'>"
-            f"<div style='position:relative;width:76px;height:76px;flex-shrink:0;'>"
-            f"<svg viewBox='0 0 64 64' width='76' height='76'>{svg_inner}</svg>"
+            f"<div style='position:relative;width:92px;height:92px;flex-shrink:0;'>"
+            f"<svg viewBox='0 0 64 64' width='92' height='92'>{svg_inner}</svg>"
             f"<div style='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
             f"<span style='font-size:16px;font-weight:600;color:var(--color-text-primary);line-height:1;'>{center_val}</span>"
             f"<span style='font-size:11px;color:var(--color-text-secondary);margin-top:2px;'>{center_sub}</span>"
@@ -1133,27 +1138,26 @@ else:
             _month_end2   = (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)
             _days_total2  = len(pd.bdate_range(_month_start2, _month_end2))
             _days_elapsed2= len(pd.bdate_range(_month_start2, today))
-            _pacing_pct2  = round(_UTIL_TARGET_DISP * _days_elapsed2 / _days_total2, 1) if _days_total2 else _UTIL_TARGET_DISP
-            _gap2 = util_pct - _pacing_pct2
+            _gap2 = (_wk_util_pct or 0) - _UTIL_TARGET_DISP
             if _gap2 >= 0:
                 _pace_c = "#97C459"; _pace_str = f"+{round(_gap2)}pp ahead"
             else:
                 _pace_c = "#F09595"; _pace_str = f"{round(_gap2)}pp behind"
             st.markdown(
-                f"<div style='background:var(--color-background-primary);border:1px solid var(--color-border-secondary);border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
-                f"<div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);margin-bottom:10px;'>My utilization · {today.strftime('%B %Y')}</div>"
+                f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
+                f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);margin-bottom:10px;'>My utilization · week of {_week_start.strftime('%b %-d')}</div>"
                 f"<div style='display:flex;align-items:center;gap:14px;'>"
-                f"<div style='position:relative;width:64px;height:64px;flex-shrink:0;'>"
-                f"<svg viewBox='0 0 64 64' width='64' height='64'>"
-                f"<circle cx='32' cy='32' r='24' fill='none' stroke='var(--color-border-tertiary)' stroke-width='7'/>"
+                f"<div style='position:relative;width:92px;height:92px;flex-shrink:0;'>"
+                f"<svg viewBox='0 0 64 64' width='92' height='92'>"
+                f"<circle cx='32' cy='32' r='24' fill='none' stroke='rgba(128,128,128,0.2)' stroke-width='7'/>"
                 f"<circle cx='32' cy='32' r='24' fill='none' stroke='#08A9B7' stroke-width='7' "
-                f"stroke-dasharray='{round(util_pct/100*151,1)} {round((1-util_pct/100)*151,1)}' stroke-dashoffset='38' stroke-linecap='round'/>"
+                f"stroke-dasharray='{round((_wk_util_pct or 0)/100*151,1)} {round((1-(_wk_util_pct or 0)/100)*151,1)}' stroke-dashoffset='38' stroke-linecap='round'/>"
                 f"</svg>"
                 f"<div style='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
-                f"<span style='font-size:13px;font-weight:500;color:var(--color-text-primary);line-height:1;'>{round(util_pct)}%</span>"
+                f"<span style='font-size:13px;font-weight:500;color:var(--color-text-primary);line-height:1;'>{_wk_util_pct or '—'}%</span>"
                 f"<span style='font-size:9px;color:var(--color-text-secondary);margin-top:1px;'>util</span></div></div>"
                 f"<div style='flex:1;display:flex;flex-direction:column;gap:5px;'>"
-                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Billable hrs</span><span style='font-size:12px;font-weight:500;'>{_fmt_hrs(util_hrs)} / {_fmt_hrs(avail)}</span></div>"
+                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Billable hrs</span><span style='font-size:12px;font-weight:500;'>{_wk_total or '—'}h / {_wk_full_h}h</span></div>"
                 f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Target</span><span style='font-size:12px;font-weight:500;'>{int(_UTIL_TARGET_DISP)}%</span></div>"
                 f"<div style='display:flex;justify-content:space-between;align-items:center;'><span style='font-size:12px;color:var(--color-text-secondary);'>Pacing</span>"
                 f"<span style='font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(128,128,128,0.1);color:{_pace_c};font-weight:500;'>{_pace_str}</span></div>"
@@ -1166,7 +1170,7 @@ else:
         # ── WHS above donuts ──────────────────────────────────────────────────
         if _whs_score is not None:
             st.markdown(
-                f"<div style='background:var(--color-background-primary);border:1px solid var(--color-border-secondary);"
+                f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);"
                 f"border-radius:10px;padding:12px 14px;margin-bottom:10px;"
                 f"display:flex;justify-content:space-between;align-items:center;'>"
                 f"<div><div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;"
@@ -1380,7 +1384,7 @@ else:
 
         if _ms14_items:
             st.markdown(
-                f"<div style='background:var(--color-background-primary);border:1px solid var(--color-border-secondary);"
+                f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);"
                 f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
                 f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
                 f"<span style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>Next 14 days</span>"
@@ -1397,7 +1401,7 @@ else:
                     _tc  = item.get("badge_col", "var(--color-text-info)")
                     _badge_html = f"<span style='font-size:10px;padding:2px 7px;border-radius:4px;background:{_bg};color:{_tc};font-weight:500;flex-shrink:0;'>{item['badge']}</span>"
                 st.markdown(
-                    f"<div style='display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:0.5px solid var(--color-border-tertiary);'>"
+                    f"<div style='display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(128,128,128,0.18);'>"
                     f"<div style='min-width:44px;'>"
                     f"<div style='font-size:12px;font-weight:500;color:var(--color-text-primary);'>{_day_str}</div>"
                     f"<div style='font-size:10px;color:var(--color-text-secondary);'>{_rel_str}</div></div>"
