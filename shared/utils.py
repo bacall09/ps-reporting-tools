@@ -79,6 +79,7 @@ def auto_detect_columns(df):
         "billing_type":  ["billing type", "billing_type", "bill type", "billtype"],
         "hours_to_date": ["hours to date", "hours_to_date", "htd", "prior hours",
                           "cumulative hours", "hours booked to date"],
+        "project_id":    ["project id", "project_id", "projectid", "project internal id"],
         "region":           ["employee location", "location", "region", "country", "office"],
         "customer_region":  ["customer region", "customer_region", "cust region", "client region"],
         "project_manager":  ["project manager", "project_manager", "pm", "manager"],
@@ -195,6 +196,10 @@ def assign_credits(df, scope_map):
             continue
 
 # Key on project_id if available — prevents name collision for same-customer multi-product
+        _pid = str(row.get("project_id", "") or "").strip()
+        _con_key = _pid if _pid and _pid not in ("nan", "None", "") else proj
+
+        # Key on project_id if available — prevents name collision for same-customer multi-product
         _pid = str(row.get("project_id", "") or "").strip()
         _con_key = _pid if _pid and _pid not in ("nan", "None", "") else proj
 
@@ -1298,10 +1303,11 @@ def calc_consultant_util(ns_rows, month_key, scope_map, avail_hours):
         ff_rows = ff_rows.sort_values(["project", "date"])
 
         prior_htd = {}
-        if "hours_to_date" in month_ns.columns:
+if "hours_to_date" in month_ns.columns:
             _pid_col = "project_id" if "project_id" in month_ns.columns else "project"
             for _proj_key, _grp in month_ns.groupby(_pid_col):
-                _proj_n = " ".join(str(_grp["project"].iloc[0]).strip().split()) if _pid_col == "project_id" else " ".join(str(_proj_key).strip().split())
+                _proj_n = " ".join(str(_grp["project"].iloc[0]).strip().split()) \
+                    if _pid_col == "project_id" else " ".join(str(_proj_key).strip().split())
                 try:
                     _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
                     _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
@@ -1335,8 +1341,8 @@ def calc_consultant_util(ns_rows, month_key, scope_map, avail_hours):
 
             _proj_id = " ".join(str(_r.get("project_id", "") or _r.get("project", "")).strip().split())
             _con_key = _proj_id if "project_id" in ff_rows.columns else _proj
-            if _con_key not in _con:
-                _con[_con_key] = prior_htd.get(_proj, 0.0)
+        if _con_key not in _con:
+                _con[_con_key] = prior_htd.get(_con_key, prior_htd.get(_proj, 0.0))
             _used = _con[_con_key]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
