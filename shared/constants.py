@@ -377,8 +377,10 @@ def resolve_view_as(consultant_name: str, home_browse: str, employee_roles: dict
         return consultant_name, None, False
 
     b = str(home_browse or "").strip()
-    if not b or b in ("— My own view —", "— Select —", "👥 All team", ""):
+    if not b or b in ("— My own view —", "— Select —", ""):
         return consultant_name, None, False
+    if b in ("👥 All team",):
+        return None, None, True
     if b.startswith("── ") and b.endswith(" ──"):
         region = b[3:-3].strip()
         return None, region, True
