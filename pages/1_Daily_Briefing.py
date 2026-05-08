@@ -700,7 +700,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         _wk_billable_h = round(_wk_full_h * 0.70, 1)
         _wk_util_pct   = round(_wk_total / _wk_billable_h * 100) if _wk_billable_h else None
     else:
-        _wk_total = None; _wk_util_pct = None
+        _wk_total = None; _wk_util_pct = None; _wk_full_h = None; _wk_billable_h = None
 
     # ── Overrun MTD ───────────────────────────────────────────────────────────
     _overrun_mtd = overrun_hrs  # already computed above
@@ -787,7 +787,8 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.1);'>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Week utilization</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
-        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_wk_total}h / {_wk_billable_h}h billable · {_wk_full_h}h total</div>"
+        f"<div style='font-size:12px;color:var(--color-text-secondary);margin-top:3px;'>"
+        f"{f'{_wk_total}h / {_wk_billable_h}h billable · {_wk_full_h}h total' if _wk_total is not None else 'No time data this week'}</div>"
         f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
         f"<div><div style='font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.5);margin-bottom:5px;font-weight:500;'>Open projects</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
@@ -1161,7 +1162,7 @@ else:
                 f"<span style='font-size:13px;font-weight:500;color:var(--color-text-primary);line-height:1;'>{_wk_util_pct or '—'}%</span>"
                 f"<span style='font-size:9px;color:var(--color-text-secondary);margin-top:1px;'>util</span></div></div>"
                 f"<div style='flex:1;display:flex;flex-direction:column;gap:5px;'>"
-                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Billable hrs</span><span style='font-size:12px;font-weight:500;'>{_wk_total or '—'}h / {_wk_billable_h}h</span></div>"
+                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Billable hrs</span><span style='font-size:12px;font-weight:500;'>{_wk_total or '—'}h / {_wk_billable_h or '—'}h</span></div>"
                 f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Target</span><span style='font-size:12px;font-weight:500;'>{int(_UTIL_TARGET_DISP)}%</span></div>"
                 f"<div style='display:flex;justify-content:space-between;align-items:center;'><span style='font-size:12px;color:var(--color-text-secondary);'>Pacing</span>"
                 f"<span style='font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(128,128,128,0.1);color:{_pace_c};font-weight:500;'>{_pace_str}</span></div>"
