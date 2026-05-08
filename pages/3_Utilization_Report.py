@@ -1607,6 +1607,11 @@ def main():
                                    font-variant-numeric: tabular-nums; }
             .util-callout-body   { font-size: 12px; opacity: 0.8; line-height: 1.4; }
 
+            .util-section-label {
+                font-size: 13px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px;
+            }
+
             .util-legend-label {
                 opacity: 0.6; text-transform: uppercase;
                 letter-spacing: 0.6px; font-size: 11px; margin-right: 4px;
@@ -2474,6 +2479,7 @@ def main():
     # TAB 4 — Trend (matches the Period filter)
     # ═══════════════════════════════════════════════════════════════════
     with tab_trend:
+        st.markdown('<div class="util-section-label">Trend — This Period vs Prior Equivalent</div>', unsafe_allow_html=True)
         if _trend_result.get("empty") or "date" not in _trend_result.get("df", pd.DataFrame()).columns:
             st.info("Not enough data to render a trend for this period.")
         else:
@@ -2661,6 +2667,7 @@ def main():
     # TAB 5 — Task analysis (Billable / Non-billable toggle)
     # ═══════════════════════════════════════════════════════════════════
     with tab_task:
+        st.markdown('<div class="util-section-label">Task Analysis — This Period vs Prior</div>', unsafe_allow_html=True)
         # Mode selector
         _bill_hrs_total = df_bill["hours"].sum() if not df_bill.empty else 0
         _nonbill_hrs_total = df[df["billing_type"].fillna("").str.lower() == "internal"]["hours"].sum() if "billing_type" in df.columns else 0
