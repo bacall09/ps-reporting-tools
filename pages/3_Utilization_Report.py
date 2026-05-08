@@ -359,7 +359,7 @@ def auto_detect_columns(df):
     cols_lower = {c.lower().strip(): c for c in df.columns}
     checks = {
         "employee":      ["employee", "employee name", "name", "resource"],
-        "project":       ["project", "project name", "job", "customer:project", "customer: project", "name", "project id", "project: name"],
+        "project":       ["project", "project name", "job", "customer:project", "customer: project", "name", "project: name"],
         "project_type":  ["project type", "type", "project_type"],
         "time_item_sku": ["time item sku", "item sku", "sku", "time item"],
         "date":          ["date", "time entry date", "entry date", "work date"],
