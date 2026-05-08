@@ -1537,15 +1537,15 @@ def main():
 
             /* Theme-aware card surfaces */
             .util-card {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px;
                 padding: 14px;
             }
             .util-control-bar {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 10px;
                 padding: 12px 16px;
@@ -1555,7 +1555,7 @@ def main():
                 margin-top: 10px; padding-top: 10px;
                 border-top: 1px solid rgba(128,128,128,0.18);
                 display: flex; gap: 14px; font-size: 12px;
-                color: var(--text-color, var(--color-text-secondary, #5a6a7c));
+                color: var(--color-text-secondary, #5a6a7c);
                 opacity: 0.85;
                 align-items: center; flex-wrap: wrap;
             }
@@ -1566,8 +1566,8 @@ def main():
 
             /* KPI cards */
             .util-kpi {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 14px;
             }
@@ -1608,8 +1608,8 @@ def main():
 
             /* Inline legend strip */
             .util-legend {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
                 display: flex; flex-wrap: wrap; gap: 8px;
@@ -1622,8 +1622,8 @@ def main():
 
             /* Action callouts */
             .util-callout {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 12px 14px;
             }
@@ -1641,7 +1641,7 @@ def main():
                 width: 100%; border-collapse: collapse;
                 font-family: 'Manrope', sans-serif; font-size: 13px;
                 font-variant-numeric: tabular-nums;
-                color: var(--text-color, #1a1a1a);
+                color: var(--color-text-primary, #1a1a1a);
             }
             .util-emp-table thead tr {
                 background: rgba(128,128,128,0.08);
@@ -1667,16 +1667,16 @@ def main():
             .util-emp-name { display: inline-flex; align-items: center; }
             .util-table-header {
                 padding: 10px 14px;
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px 8px 0 0;
                 display: flex; justify-content: space-between;
                 font-size: 12px;
             }
             .util-table-wrap {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-top: none;
                 border-radius: 0 0 8px 8px;
