@@ -342,11 +342,10 @@ _sub_str = " · ".join(_sub_parts)
 
 _hero = st.empty()
 _hero.markdown(
-    f"<div style='background:var(--color-background-primary);border:0.5px solid rgba(128,128,128,0.2);"
-    f"border-radius:10px;padding:24px 32px 20px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
-    f"<div style='font-size:11px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#08A9B7;margin-bottom:6px;'>Professional Services · Daily Briefing</div>"
-    f"<h1 style='color:var(--color-text-primary);margin:0;font-size:26px;font-weight:600;font-family:Manrope,sans-serif;'>{_greeting}, {_my_display}.</h1>"
-    f"<p style='color:var(--color-text-secondary);margin:6px 0 0;font-size:13px;'>Loading...</p>"
+    f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
+    f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;'>{_greeting}, {_my_display}.</h1>"
+    f"<p style='color:rgba(255,255,255,0.4);margin:6px 0 0;font-size:13px;'>Loading...</p>"
     f"</div>",
     unsafe_allow_html=True,
 )
@@ -690,13 +689,27 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         _wk_ff_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "fixed fee"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
         _wk_tm_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "t&m"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
         _wk_total   = round(_wk_ff_hrs + _wk_tm_hrs, 1)
-        # Weekly available hours: derive from monthly AVAIL_HOURS / business days in month * business days this week
         _wk_bdays_month = len(pd.bdate_range(today.replace(day=1),
                              (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)))
-        _wk_bdays_week  = len(pd.bdate_range(_week_start, min(_week_end, today)))
         _wk_avail_h    = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
-        # Standard full week hours (100%) and 70% billable target
         _wk_full_h     = _wk_avail_h
+        _wk_billable_h = round(_wk_full_h * 0.70, 1)
+        _wk_util_pct   = round(_wk_total / _wk_billable_h * 100) if _wk_billable_h else None
+    elif _is_group_view and df_ns is not None and not my_ns.empty:
+        # Group view — aggregate team weekly util
+        _wk_ns_g = my_ns[
+            (pd.to_datetime(my_ns["date"], errors="coerce") >= pd.Timestamp(_week_start)) &
+            (pd.to_datetime(my_ns["date"], errors="coerce") <= pd.Timestamp(_week_end))
+        ] if "date" in my_ns.columns else pd.DataFrame()
+        if not _wk_ns_g.empty and "billing_type" in _wk_ns_g.columns:
+            _wk_total = round(float(
+                _wk_ns_g[_wk_ns_g["billing_type"].str.lower().str.strip().isin(["fixed fee","t&m"])]["hours"].sum()
+            ), 1)
+        else:
+            _wk_total = 0.0
+        _wk_bdays_month = len(pd.bdate_range(today.replace(day=1),
+                             (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)))
+        _wk_full_h     = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
         _wk_billable_h = round(_wk_full_h * 0.70, 1)
         _wk_util_pct   = round(_wk_total / _wk_billable_h * 100) if _wk_billable_h else None
     else:
@@ -774,8 +787,8 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     _overrun_val   = f"{_wk_overrun}h" if _wk_overrun else "—"
     _overrun_sub   = "MTD overrun" if _wk_overrun else "no overrun this month"
     _n_overrun_proj = sum(1 for _ in [True] if _wk_overrun > 0)
-    _overrun_badge = f"<div style='font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;margin-top:3px;display:inline-block;'>{_n_overrun_proj} project{'s' if _n_overrun_proj != 1 else ''}</div>" if _wk_overrun > 0 else ""
-    _overrun_badge_adaptive = f"<div style='font-size:10px;padding:1px 6px;border-radius:3px;background:#FCEBEB;color:#A32D2D;font-weight:500;margin-top:3px;display:inline-block;'>{_n_overrun_proj} project{'s' if _n_overrun_proj != 1 else ''}</div>" if _wk_overrun > 0 else ""
+    _overrun_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;'>{_n_overrun_proj} project{'s' if _n_overrun_proj != 1 else ''}</span>" if _wk_overrun > 0 else ""
+    _overrun_badge_adaptive = _overrun_badge  # same style
 
     # ── Render hero ───────────────────────────────────────────────────────────
     _hero.markdown(
