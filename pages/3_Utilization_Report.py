@@ -1459,13 +1459,10 @@ import pandas as pd
 import io
 
 
-def _run_utilization_engine(df_raw, period_start, period_end, drs_state_key):
+def _run_utilization_engine(df_raw, period_start, period_end):
     """
-    Single cached compute path. Streamlit reruns on input change → cache hit → instant.
-    The Refresh button calls .clear() to bust this manually when source NS data has been
-    re-pulled but inputs haven't changed.
-
-    Returns dict with: df, consumed, summary, partial_period
+    Single cached compute path. Returns dict with df (post-credit-assignment), consumed, empty.
+    DRS enrichment preserved from original.
     """
     import pandas as _pd
     _ts = _pd.Timestamp(period_start)
@@ -1479,9 +1476,8 @@ def _run_utilization_engine(df_raw, period_start, period_end, drs_state_key):
         _df_period = df_raw.copy()
 
     if _df_period.empty:
-        return {"df": _df_period, "consumed": {}, "summary": None, "partial_period": False, "empty": True}
+        return {"df": _df_period, "consumed": {}, "empty": True}
 
-    # DRS enrichment (preserve original behaviour)
     _df_drs_enrich = st.session_state.get("df_drs")
     if _df_drs_enrich is not None and not _df_drs_enrich.empty:
         if "project_id" in _df_drs_enrich.columns and "project_name" in _df_drs_enrich.columns:
@@ -1503,7 +1499,6 @@ def _run_utilization_engine(df_raw, period_start, period_end, drs_state_key):
 
 
 def _ns_signature(df_ns):
-    """Cheap fingerprint for the NS dataset so cache key changes when underlying data does."""
     if df_ns is None or df_ns.empty:
         return ("empty",)
     try:
@@ -1513,9 +1508,26 @@ def _ns_signature(df_ns):
         return (len(df_ns),)
 
 
+def _proj_id_col(df):
+    """Return the column name to use as the project ID for distinct counting."""
+    for c in ("project_id", "project_internal_id", "project"):
+        if c in df.columns:
+            return c
+    return None
+
+
+def _billable_mask(df):
+    """Boolean mask: rows that are billable (non-internal, non-skipped)."""
+    if "billing_type" in df.columns and "credit_tag" in df.columns:
+        return (df["billing_type"].fillna("").str.lower() != "internal") & (df["credit_tag"] != "SKIPPED")
+    if "credit_tag" in df.columns:
+        return df["credit_tag"].isin(["CREDITED", "PARTIAL", "OVERRUN", "UNCONFIGURED"])
+    return pd.Series([True] * len(df), index=df.index)
+
+
 def main():
     # ─────────────────────────────────────────────────────
-    # Page chrome — Manrope + redesigned styles
+    # Theme-aware styles using Streamlit's CSS variables
     # ─────────────────────────────────────────────────────
     st.markdown("""
         <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1523,101 +1535,203 @@ def main():
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
 
-            /* Sticky control bar */
+            /* Theme-aware card surfaces */
+            .util-card {
+                background: var(--background-color, var(--color-background-primary, #ffffff));
+                border: 1px solid rgba(128,128,128,0.25);
+                border-radius: 8px;
+                padding: 14px;
+            }
             .util-control-bar {
-                position: sticky; top: 0; z-index: 50;
-                background: #0B1426; border: 1px solid #1f2a44;
-                border-radius: 10px; padding: 14px 16px; margin-bottom: 12px;
+                background: var(--background-color, var(--color-background-primary, #ffffff));
+                border: 1px solid rgba(128,128,128,0.25);
+                border-radius: 10px;
+                padding: 12px 16px;
+                margin-bottom: 10px;
             }
             .util-meta-row {
                 margin-top: 10px; padding-top: 10px;
-                border-top: 1px solid #1f2a44;
+                border-top: 1px solid rgba(128,128,128,0.18);
                 display: flex; gap: 14px; font-size: 12px;
-                color: #aac4d0; align-items: center; flex-wrap: wrap;
+                color: var(--text-color, var(--color-text-secondary, #5a6a7c));
+                opacity: 0.85;
+                align-items: center; flex-wrap: wrap;
             }
             .util-live-dot {
                 width: 7px; height: 7px; border-radius: 50%;
-                background: #2ecc71; display: inline-block; margin-right: 5px;
+                background: #22c55e; display: inline-block; margin-right: 5px;
             }
 
-            /* Inline pill legend */
+            /* KPI cards */
+            .util-kpi {
+                background: var(--background-color, var(--color-background-primary, #ffffff));
+                border: 1px solid rgba(128,128,128,0.25);
+                border-radius: 8px; padding: 14px;
+            }
+            .util-kpi-label { font-size: 11px; opacity: 0.75; margin-bottom: 4px;
+                              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .util-kpi-value { font-size: 24px; font-weight: 600; line-height: 1.1;
+                              font-variant-numeric: tabular-nums; }
+            .util-kpi-sub   { font-size: 11px; opacity: 0.65; margin-top: 4px; }
+            .util-kpi-pill  { display: inline-block; margin-top: 4px;
+                              padding: 2px 9px; border-radius: 999px; font-size: 11px; }
+
+            /* Pills (theme-aware via translucent overlays) */
+            .util-pill { padding: 3px 9px; border-radius: 999px;
+                         font-size: 12px; white-space: nowrap; font-weight: 500; }
+            .util-pill-green { background: rgba(34, 197, 94, 0.18); color: #15803d; }
+            .util-pill-amber { background: rgba(245, 158, 11, 0.18); color: #b45309; }
+            .util-pill-red   { background: rgba(239, 68, 68, 0.18); color: #b91c1c; }
+            .util-pill-blue  { background: rgba(59, 130, 246, 0.18); color: #1d4ed8; }
+            .util-pill-grey  { background: rgba(128, 128, 128, 0.18); color: #475569; }
+            @media (prefers-color-scheme: dark) {
+                .util-pill-green { color: #7ed4a4; }
+                .util-pill-amber { color: #f5b958; }
+                .util-pill-red   { color: #f08585; }
+                .util-pill-blue  { color: #6fa8dc; }
+                .util-pill-grey  { color: #aac4d0; }
+            }
+
+            /* Inline legend strip */
             .util-legend {
-                background: #0B1426; border: 1px solid #1f2a44;
-                border-radius: 8px; padding: 10px 14px;
-                margin-bottom: 8px;
+                background: var(--background-color, var(--color-background-primary, #ffffff));
+                border: 1px solid rgba(128,128,128,0.25);
+                border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
                 display: flex; flex-wrap: wrap; gap: 8px;
                 align-items: center; font-size: 12px;
             }
             .util-legend-label {
-                color: #6c7a8c; text-transform: uppercase;
-                letter-spacing: 0.6px; font-size: 11px;
-                margin-right: 4px;
+                opacity: 0.6; text-transform: uppercase;
+                letter-spacing: 0.6px; font-size: 11px; margin-right: 4px;
             }
-            .util-pill {
-                padding: 3px 9px; border-radius: 999px;
-                font-family: 'Manrope', sans-serif; font-size: 12px;
-                white-space: nowrap;
-            }
-            .util-pill-credited    { background: #1c3a2c; color: #7ed4a4; }
-            .util-pill-partial     { background: #3d2e15; color: #f5b958; }
-            .util-pill-overrun     { background: #3a1c1c; color: #f08585; }
-            .util-pill-nonbillable { background: #2a2f3a; color: #aac4d0; }
-            .util-pill-noscope     { background: #1c2a3d; color: #6fa8dc; }
-            .util-pill-rag-green   { background: #1c3a2c; color: #7ed4a4; }
-            .util-pill-rag-amber   { background: #3d2e15; color: #f5b958; }
-            .util-pill-rag-red     { background: #3a1c1c; color: #f08585; }
 
-            /* HTML employee table */
-            .util-emp-table { width: 100%; border-collapse: collapse;
-                              font-family: 'Manrope', sans-serif; font-size: 13px;
-                              font-variant-numeric: tabular-nums; }
-            .util-emp-table thead tr { background: #0f1c33; color: #aac4d0; }
-            .util-emp-table th { padding: 10px 12px; font-weight: 600;
-                                 text-align: left; border-bottom: 1px solid #1f2a44; }
-            .util-emp-table th.num { text-align: right; }
+            /* Action callouts */
+            .util-callout {
+                background: var(--background-color, var(--color-background-primary, #ffffff));
+                border: 1px solid rgba(128,128,128,0.25);
+                border-radius: 8px; padding: 12px 14px;
+            }
+            .util-callout-red    { border-left: 3px solid #ef4444; }
+            .util-callout-amber  { border-left: 3px solid #f59e0b; }
+            .util-callout-blue   { border-left: 3px solid #3b82f6; }
+            .util-callout-green  { border-left: 3px solid #22c55e; }
+            .util-callout-title  { font-size: 12px; font-weight: 600; }
+            .util-callout-num    { font-size: 22px; font-weight: 600;
+                                   font-variant-numeric: tabular-nums; }
+            .util-callout-body   { font-size: 12px; opacity: 0.8; line-height: 1.4; }
+
+            /* Employee HTML table */
+            .util-emp-table {
+                width: 100%; border-collapse: collapse;
+                font-family: 'Manrope', sans-serif; font-size: 13px;
+                font-variant-numeric: tabular-nums;
+            }
+            .util-emp-table thead tr {
+                background: rgba(128,128,128,0.08);
+            }
+            .util-emp-table th {
+                padding: 10px 12px; font-weight: 600; text-align: left;
+                opacity: 0.75;
+                border-bottom: 1px solid rgba(128,128,128,0.25);
+            }
+            .util-emp-table th.num    { text-align: right; }
             .util-emp-table th.center { text-align: center; }
-            .util-emp-table tbody tr { border-bottom: 1px solid #1a2438; }
-            .util-emp-table td { padding: 9px 12px; vertical-align: middle; }
-            .util-emp-table td.num { text-align: right; }
+            .util-emp-table tbody tr  { border-bottom: 1px solid rgba(128,128,128,0.15); }
+            .util-emp-table td        { padding: 9px 12px; vertical-align: middle; }
+            .util-emp-table td.num    { text-align: right; }
             .util-emp-table td.center { text-align: center; }
-            .util-emp-table td.muted { color: #8aa0b8; }
+            .util-emp-table td.muted  { opacity: 0.6; }
             .util-emp-avatar {
                 display: inline-flex; align-items: center; justify-content: center;
                 width: 24px; height: 24px; border-radius: 50%;
                 font-size: 10px; font-weight: 600; margin-right: 8px;
                 vertical-align: middle; flex-shrink: 0;
             }
-            .util-emp-name {
-                display: inline-flex; align-items: center;
-            }
+            .util-emp-name { display: inline-flex; align-items: center; }
             .util-table-header {
                 padding: 10px 14px;
-                background: #0B1426;
-                border: 1px solid #1f2a44;
+                background: var(--background-color, var(--color-background-primary, #ffffff));
+                border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px 8px 0 0;
                 display: flex; justify-content: space-between;
-                font-size: 12px; color: #aac4d0;
+                font-size: 12px; opacity: 0.85;
             }
             .util-table-wrap {
-                background: #0B1426;
-                border: 1px solid #1f2a44;
+                background: var(--background-color, var(--color-background-primary, #ffffff));
+                border: 1px solid rgba(128,128,128,0.25);
                 border-top: none;
                 border-radius: 0 0 8px 8px;
                 overflow: hidden;
             }
             .util-table-foot {
                 padding: 8px 14px;
-                border-top: 1px solid #1f2a44;
+                border-top: 1px solid rgba(128,128,128,0.15);
                 display: flex; justify-content: space-between;
-                font-size: 11px; color: #6c7a8c;
+                font-size: 11px; opacity: 0.6;
+            }
+
+            /* Sleek reference card (replaces rainbow tables) */
+            .util-ref-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+            }
+            .util-ref-section h4 {
+                font-size: 11px; font-weight: 600; opacity: 0.65;
+                text-transform: uppercase; letter-spacing: 0.8px;
+                margin: 0 0 10px 0;
+            }
+            .util-ref-row {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                gap: 12px; padding: 8px 0;
+                border-bottom: 1px solid rgba(128,128,128,0.12);
+                align-items: start;
+                font-size: 12px;
+            }
+            .util-ref-row:last-child { border-bottom: none; }
+            .util-ref-tag {
+                padding: 2px 8px; border-radius: 999px;
+                font-size: 11px; font-weight: 500;
+                white-space: nowrap;
+            }
+            .util-ref-desc { opacity: 0.85; line-height: 1.5; }
+
+            /* Movers row */
+            .util-mover-row {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 7px 0; font-size: 12px;
+                border-bottom: 1px solid rgba(128,128,128,0.1);
+            }
+            .util-mover-row:last-child { border-bottom: none; }
+            .util-mover-vals {
+                display: inline-flex; align-items: center; gap: 6px;
+                font-variant-numeric: tabular-nums;
+            }
+            .util-mover-from { opacity: 0.6; }
+
+            /* Share bar */
+            .util-share-row {
+                margin-bottom: 8px;
+            }
+            .util-share-head {
+                display: flex; justify-content: space-between;
+                font-size: 12px; margin-bottom: 3px;
+            }
+            .util-share-bar-bg {
+                background: rgba(128,128,128,0.15);
+                height: 8px; border-radius: 4px; overflow: hidden;
+            }
+            .util-share-bar-fg {
+                height: 100%; background: #3b82f6; border-radius: 4px;
             }
         </style>
     """, unsafe_allow_html=True)
 
-    # Hero
+    # Hero (intentionally dark — brand element, like other pages)
     st.markdown(
         "<div style='background:#050D1F;padding:28px 36px 24px;border-radius:10px;"
-        "margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+        "margin-bottom:14px;font-family:Manrope,sans-serif;'>"
         "<div style='font-size:10px;font-weight:700;letter-spacing:2.5px;"
         "text-transform:uppercase;color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"
         "<h1 style='color:white;margin:0;font-size:26px;'>Utilization Report</h1>"
@@ -1626,7 +1740,7 @@ def main():
         "</div>", unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────
-    # Data sourcing (unchanged: df_ns from session, view-as via sidebar)
+    # Data sourcing (unchanged)
     # ─────────────────────────────────────────────────────
     _ns_from_session = st.session_state.get("df_ns")
     if _ns_from_session is None:
@@ -1683,35 +1797,31 @@ def main():
             _filtered_u = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _logged_in))]
             if not _filtered_u.empty: df_raw = _filtered_u
 
-    # ─────────────────────────────────────────────────────
-    # Date bounds for inputs
-    # ─────────────────────────────────────────────────────
     _raw_dates = pd.to_datetime(df_raw["date"], errors="coerce").dropna() if "date" in df_raw.columns else pd.Series(dtype="datetime64[ns]")
     _min_date  = _raw_dates.min().date() if not _raw_dates.empty else date(date.today().year, 1, 1)
     _max_date  = _raw_dates.max().date() if not _raw_dates.empty else date.today()
 
     # ─────────────────────────────────────────────────────
-    # Sticky control bar — Period preset · Custom range · Refresh · Excel
+    # Sticky control bar
     # ─────────────────────────────────────────────────────
     today = date.today()
     _first_this_month_ts = pd.Timestamp(today.year, today.month, 1)
     _last_month_end = (_first_this_month_ts - pd.Timedelta(days=1)).date()
     _last_month_start = _last_month_end.replace(day=1)
     period_options = {
-        "This month":     (date(today.year, today.month, 1), today),
-        "Last month":     (_last_month_start, _last_month_end),
-        "QTD":            (date(today.year, ((today.month - 1) // 3) * 3 + 1, 1), today),
-        "YTD":            (date(today.year, 1, 1), today),
-        "All available":  (_min_date, _max_date),
-        "Custom":         (None, None),
+        "This month":    (date(today.year, today.month, 1), today),
+        "Last month":    (_last_month_start, _last_month_end),
+        "QTD":           (date(today.year, ((today.month - 1) // 3) * 3 + 1, 1), today),
+        "YTD":           (date(today.year, 1, 1), today),
+        "All available": (_min_date, _max_date),
+        "Custom":        (None, None),
     }
 
     st.markdown('<div class="util-control-bar">', unsafe_allow_html=True)
     c1, c2, c3, c4, c5 = st.columns([1.4, 1.1, 1.1, 0.9, 1.0])
     with c1:
         preset = st.selectbox("Period", list(period_options.keys()),
-                              index=0, key="util_period_preset",
-                              label_visibility="visible")
+                              index=0, key="util_period_preset")
     with c2:
         if preset == "Custom":
             _default_start = st.session_state.get("util_period_start", _min_date)
@@ -1721,8 +1831,8 @@ def main():
         else:
             _ps, _ = period_options[preset]
             period_start = max(_ps, _min_date)
-            st.markdown(f"<div style='font-size:11px;color:#6c7a8c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px'>Start</div>"
-                        f"<div style='border:1px solid #1f2a44;border-radius:6px;padding:6px 10px;font-size:13px;color:#aac4d0;background:#0f1c33'>{period_start.strftime('%Y-%m-%d')}</div>",
+            st.markdown(f"<div style='font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px'>Start</div>"
+                        f"<div style='border:1px solid rgba(128,128,128,0.25);border-radius:6px;padding:6px 10px;font-size:13px;opacity:0.85'>{period_start.strftime('%Y-%m-%d')}</div>",
                         unsafe_allow_html=True)
     with c3:
         if preset == "Custom":
@@ -1733,16 +1843,16 @@ def main():
         else:
             _, _pe = period_options[preset]
             period_end = min(_pe, _max_date)
-            st.markdown(f"<div style='font-size:11px;color:#6c7a8c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px'>End</div>"
-                        f"<div style='border:1px solid #1f2a44;border-radius:6px;padding:6px 10px;font-size:13px;color:#aac4d0;background:#0f1c33'>{period_end.strftime('%Y-%m-%d')}</div>",
+            st.markdown(f"<div style='font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px'>End</div>"
+                        f"<div style='border:1px solid rgba(128,128,128,0.25);border-radius:6px;padding:6px 10px;font-size:13px;opacity:0.85'>{period_end.strftime('%Y-%m-%d')}</div>",
                         unsafe_allow_html=True)
     with c4:
         st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
         refresh_clicked = st.button("↻ Refresh", key="util_refresh",
-                                    help="Re-pull from source. Only needed if NS data has changed but your inputs haven't.")
+                                    help="Re-pull from source. Only needed if NS data has changed but inputs haven't.")
     with c5:
         st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-        _download_slot = st.empty()  # filled after engine runs
+        _download_slot = st.empty()
 
     # ─────────────────────────────────────────────────────
     # Auto-run cached engine
@@ -1755,16 +1865,18 @@ def main():
         str(period_start), str(period_end),
         _va_name_u, _va_region_u, _is_all_team,
     )
-
     if refresh_clicked:
         st.session_state._util_cache.pop(_cache_key, None)
+        # Also clear any wider-window engine results (used by trend/movers)
+        for _k in list(st.session_state._util_cache.keys()):
+            st.session_state._util_cache.pop(_k, None)
 
     if _cache_key in st.session_state._util_cache:
         result = st.session_state._util_cache[_cache_key]
     else:
         with st.spinner("Computing..."):
             try:
-                result = _run_utilization_engine(df_raw, period_start, period_end, "")
+                result = _run_utilization_engine(df_raw, period_start, period_end)
                 st.session_state._util_cache[_cache_key] = result
             except Exception as e:
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -1785,8 +1897,11 @@ def main():
     consumed = result["consumed"]
 
     # ─────────────────────────────────────────────────────
-    # Summary numbers
+    # KPI / summary numbers
     # ─────────────────────────────────────────────────────
+    bmask = _billable_mask(df)
+    df_bill = df[bmask]
+
     hours_this_period   = df[df["credit_tag"] != "SKIPPED"]["hours"].sum() if "hours" in df.columns else 0
     total_credit        = df["credit_hrs"].sum()
     total_admin         = df[df["billing_type"].str.lower() == "internal"]["hours"].sum() if "billing_type" in df.columns else 0
@@ -1795,11 +1910,22 @@ def main():
     credit_pct  = total_credit       / hours_this_period if hours_this_period else 0
     overrun_pct = total_proj_overrun / hours_this_period if hours_this_period else 0
     admin_pct   = total_admin        / hours_this_period if hours_this_period else 0
-    credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#e74c3c"
     credit_label = "On target" if credit_pct >= 0.70 else "Below target" if credit_pct >= 0.60 else "At risk"
 
-    proj_count = df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups if 'project' in df.columns else 0
+    # Billable project count by project ID (the fix)
+    _pid_col = _proj_id_col(df_bill)
+    billable_proj_count = df_bill[_pid_col].astype(str).str.strip().nunique() if _pid_col else 0
     consultant_count = df["employee"].nunique() if "employee" in df.columns else 0
+
+    # Capacity
+    _avail_total = 0
+    if "employee" in df.columns and "region" in df.columns and "period" in df.columns:
+        _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict()
+        _emp_period_ui = df.groupby("employee")["period"].first().to_dict()
+        for _e, _r in _emp_region_ui.items():
+            _av = get_avail_hours(_r, _emp_period_ui.get(_e, ""))
+            if _av: _avail_total += _av
+    capacity_pct = hours_this_period / _avail_total if _avail_total else 0
 
     # Partial period detection
     import calendar as _cal
@@ -1810,16 +1936,6 @@ def main():
     _bdays_total_month = len(pd.bdate_range(_ms, _me))
     is_partial = (period_start.month == period_end.month and period_start.year == period_end.year and _bdays_in < _bdays_total_month)
 
-    # Avail capacity (sum of avail across consultants in df)
-    _avail_total = 0
-    if "employee" in df.columns and "region" in df.columns and "period" in df.columns:
-        _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict()
-        _emp_period_ui = df.groupby("employee")["period"].first().to_dict()
-        for _e, _r in _emp_region_ui.items():
-            _av = get_avail_hours(_r, _emp_period_ui.get(_e, ""))
-            if _av: _avail_total += _av
-
-    # Live status row in control bar
     _last_refresh = st.session_state.get("_util_last_refresh", datetime.now())
     if refresh_clicked or _cache_key not in st.session_state._util_cache:
         st.session_state._util_last_refresh = datetime.now()
@@ -1833,13 +1949,11 @@ def main():
         f"<span><span class='util-live-dot'></span><b>Live</b></span>"
         f"<span>NS data: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}</span>"
         f"<span>·</span>"
-        f"<span>Showing <b>{proj_count} projects</b> · <b>{hours_this_period:,.2f} hrs</b>{_partial_str}</span>"
-        f"<span style='margin-left:auto;color:#6c7a8c'>Updated {_ago_str}</span>"
+        f"<span>Showing <b>{billable_proj_count} billable projects</b> · <b>{hours_this_period:,.2f} hrs</b>{_partial_str}</span>"
+        f"<span style='margin-left:auto;opacity:0.6'>Updated {_ago_str}</span>"
         f"</div></div>", unsafe_allow_html=True)
 
-    # ─────────────────────────────────────────────────────
-    # Wire Excel download into reserved slot
-    # ─────────────────────────────────────────────────────
+    # Excel download in reserved slot
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"utilization_report_{timestamp}.xlsx"
     try:
@@ -1874,122 +1988,287 @@ def main():
         st.info(f"**{len(_alumni)} employee(s) have time entries but are outside their active tenure** — excluded from utilization targets.\n\n" + ", ".join(sorted(_alumni)))
 
     # ─────────────────────────────────────────────────────
-    # KPI strip
+    # Helpers used in tabs
     # ─────────────────────────────────────────────────────
     def fmt_hrs(n):
-        return f"{n:,.2f}".rstrip("0").rstrip(".") if "." in f"{n:,.2f}" else f"{n:,}"
+        s = f"{n:,.2f}"
+        if "." in s: s = s.rstrip("0").rstrip(".")
+        return s
 
-    def metric_card(label, value, sub=None, sub_color=None, sub_bg=None):
-        sub_html = ""
-        if sub:
-            if sub_bg and sub_color:
-                sub_html = f"<div style='display:inline-block;margin-top:6px;padding:2px 9px;border-radius:999px;background:{sub_bg};color:{sub_color};font-size:11px'>{sub}</div>"
-            else:
-                sub_html = f"<div style='font-size:11px;color:#6c7a8c;margin-top:4px'>{sub}</div>"
-        return (f"<div style='background:#0B1426;border:1px solid #1f2a44;border-radius:8px;padding:14px'>"
-                f"<div style='font-size:11px;color:#aac4d0;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{label}</div>"
-                f"<div style='font-size:22px;font-weight:700;line-height:1.1;color:white;font-variant-numeric:tabular-nums'>{value}</div>"
-                f"{sub_html}</div>")
+    def rag_pill_html(v, exempt=False):
+        if exempt: return "<span class='util-pill util-pill-grey' style='opacity:0.7'>exempt</span>"
+        if v is None: return "<span style='opacity:0.5'>—</span>"
+        if v >= 0.70:   cls = "util-pill-green"
+        elif v >= 0.60: cls = "util-pill-amber"
+        else:           cls = "util-pill-red"
+        return f"<span class='util-pill {cls}'>{v*100:.1f}%</span>"
 
-    _credit_bg = "#1c3a2c" if credit_pct >= 0.70 else "#3d2e15" if credit_pct >= 0.60 else "#3a1c1c"
-    _credit_fg = "#7ed4a4" if credit_pct >= 0.70 else "#f5b958" if credit_pct >= 0.60 else "#f08585"
+    def avatar_html(name):
+        parts = [p.strip() for p in str(name).replace(",", " ").split() if p.strip()]
+        initials = (parts[0][0] + parts[1][0]).upper() if len(parts) >= 2 else (parts[0][:2].upper() if parts else "??")
+        palettes = [
+            ("rgba(34,197,94,0.18)", "#15803d"),
+            ("rgba(59,130,246,0.18)", "#1d4ed8"),
+            ("rgba(245,158,11,0.18)", "#b45309"),
+            ("rgba(168,85,247,0.18)", "#7c3aed"),
+            ("rgba(236,72,153,0.18)", "#be185d"),
+            ("rgba(20,184,166,0.18)", "#0f766e"),
+        ]
+        bg, fg = palettes[hash(str(name)) % len(palettes)]
+        return f"<span class='util-emp-avatar' style='background:{bg};color:{fg}'>{initials}</span>"
 
-    m1, m2, m3, m4, m5 = st.columns(5)
-    with m1: st.markdown(metric_card("Projects this period", f"{proj_count:,}", f"across {consultant_count} consultants"), unsafe_allow_html=True)
-    with m2: st.markdown(metric_card("Hours logged", fmt_hrs(hours_this_period), f"of {_avail_total:,.0f} capacity" if _avail_total else None), unsafe_allow_html=True)
-    with m3: st.markdown(metric_card("Utilization credits", fmt_hrs(total_credit), f"↑ {credit_pct:.1%} · {credit_label}", _credit_fg, _credit_bg), unsafe_allow_html=True)
-    with m4: st.markdown(metric_card("FF project overrun", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "#f5b958", "#3d2e15"), unsafe_allow_html=True)
-    with m5: st.markdown(metric_card("Admin hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs"), unsafe_allow_html=True)
-
-    _noscope_hrs = df[df["credit_tag"] == "UNCONFIGURED"]["hours"].sum() if "credit_tag" in df.columns else 0
-    if _noscope_hrs > 0:
-        st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
-        st.warning(f"{fmt_hrs(_noscope_hrs)} hour(s) on FF projects with NO SCOPE DEFINED — see Watch List tab in the downloaded report.")
+    def short_name(n):
+        parts = str(n).split(",", 1)
+        if len(parts) == 2:
+            last = parts[0].strip()
+            first = parts[1].strip().split()[0] if parts[1].strip() else ""
+            return f"{last}, {first[:1]}." if first else last
+        return n
 
     # ─────────────────────────────────────────────────────
-    # Inline pill legend + popover reference
+    # Action callouts (for At a glance tab)
     # ─────────────────────────────────────────────────────
-    st.markdown("<div style='margin-top:14px'></div>", unsafe_allow_html=True)
-    legend_col, ref_col = st.columns([6, 1])
-    with legend_col:
-        st.markdown(
-            "<div class='util-legend'>"
-            "<span class='util-legend-label'>Credit tags</span>"
-            "<span class='util-pill util-pill-credited'>● Credited</span>"
-            "<span class='util-pill util-pill-partial'>● Partial</span>"
-            "<span class='util-pill util-pill-overrun'>● Overrun</span>"
-            "<span class='util-pill util-pill-nonbillable'>● Non-billable</span>"
-            "<span class='util-pill util-pill-noscope'>● FF: no scope</span>"
-            "<span class='util-legend-label' style='margin-left:12px'>RAG</span>"
-            "<span class='util-pill util-pill-rag-green'>● ≥70%</span>"
-            "<span class='util-pill util-pill-rag-amber'>● 60–69%</span>"
-            "<span class='util-pill util-pill-rag-red'>● &lt;60%</span>"
-            "</div>", unsafe_allow_html=True)
-    with ref_col:
-        # Popover with full reference tables (fallback to expander on older Streamlit)
-        _popover_fn = getattr(st, "popover", None)
-        _ref_ctx = _popover_fn("ⓘ How are these calculated?") if _popover_fn else st.expander("ⓘ How are these calculated?", expanded=False)
-        with _ref_ctx:
-            st.markdown("""
-            <style>
-            .ref-table { width: 100%; border-collapse: collapse; font-family: Manrope, sans-serif; font-size: 13px; margin-bottom: 8px; }
-            .ref-table th { background: #4472C4; color: white; padding: 8px 12px; text-align: left; font-weight: 600; }
-            .ref-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-            </style>
-            <table class='ref-table'>
-                <tr><th>Credit Tag</th><th>Billing Type</th><th>Logic</th></tr>
-                <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>T&amp;M</td><td style='color:#1a1a1a'>Full hours credited. No cap.</td></tr>
-                <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to scoped amount.</td></tr>
-                <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>PARTIAL</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to remaining scope.</td></tr>
-                <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>OVERRUN</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours beyond contracted scope. Not credited.</td></tr>
-                <tr style='background:#F2F2F2'><td style='color:#555555;font-weight:700'>NON-BILLABLE</td><td style='color:#1a1a1a'>Internal</td><td style='color:#1a1a1a'>Excluded from utilization. Tracked as Admin Hours.</td></tr>
-                <tr style='background:#F2F2F2'><td style='color:#777777;font-weight:700'>FF: NO SCOPE DEFINED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>No matching scope entry. Flagged for follow-up.</td></tr>
-            </table>
-            <table class='ref-table'>
-                <tr><th>RAG Status</th><th>Threshold</th><th>Description</th></tr>
-                <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>Green</td><td style='color:#1a1a1a'>≥ 70%</td><td style='color:#1a1a1a'>At or above target utilization.</td></tr>
-                <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>Amber</td><td style='color:#1a1a1a'>60% – 69%</td><td style='color:#1a1a1a'>Below target. Monitor and assess project mix.</td></tr>
-                <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>Red</td><td style='color:#1a1a1a'>&lt; 60%</td><td style='color:#1a1a1a'>Significantly below target. Action required.</td></tr>
-            </table>
-            """, unsafe_allow_html=True)
+    # Build employee summary first — needed by callouts and Consultants tab
+    _ep = df[df["credit_tag"] != "SKIPPED"]
+    emp_sum = _ep.groupby(["employee", "period"], as_index=False).agg(
+        hours_this_period=("hours", "sum"),
+        credit_hrs=("credit_hrs", "sum"),
+        ff_overrun_hrs=("variance_hrs", "sum"),
+    ).sort_values(["employee", "period"])
+    _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict() if "region" in df.columns else {}
+    emp_sum["location"]  = emp_sum["employee"].map(_emp_region_ui)
+    emp_sum["avail_hrs"] = emp_sum.apply(
+        lambda r: get_avail_hours(r["location"], r["period"]) if r["location"] else None, axis=1)
+    emp_sum["util_vs_logged"]   = emp_sum.apply(lambda r: r["credit_hrs"] / r["hours_this_period"] if r["hours_this_period"] > 0 else None, axis=1)
+    emp_sum["util_vs_capacity"] = emp_sum.apply(lambda r: r["credit_hrs"] / r["avail_hrs"] if r["avail_hrs"] and r["avail_hrs"] > 0 else None, axis=1)
+    emp_sum["exempt"] = emp_sum["employee"].apply(_emp_util_exempt)
+
+    # Below-60% consultants
+    _below_60 = emp_sum[(~emp_sum["exempt"]) & emp_sum["util_vs_capacity"].notna() & (emp_sum["util_vs_capacity"] < 0.60)]
+    below60_count = len(_below_60)
+    below60_names = ", ".join(sorted([short_name(n) for n in _below_60["employee"].unique()]))
+
+    # Projects in overrun
+    _proj_overrun = pd.DataFrame()
+    if "variance_hrs" in df.columns and _pid_col:
+        _po_grp = df_bill.groupby([_pid_col], as_index=False).agg(
+            project=("project", "first") if "project" in df.columns else (_pid_col, "first"),
+            project_type=("project_type", "first") if "project_type" in df.columns else (_pid_col, "first"),
+            scoped_hrs=("scoped_hrs", "sum") if "scoped_hrs" in df.columns else ("hours", lambda x: 0),
+            hours_logged=("hours", "sum"),
+            credit_hrs=("credit_hrs", "sum"),
+            overrun_hrs=("variance_hrs", "sum"),
+        )
+        # Only count FF overruns (T&M doesn't overrun in this model)
+        if "project_type" in df_bill.columns:
+            _ff_pids = df_bill[df_bill["project_type"].astype(str).str.contains("Fixed", case=False, na=False)][_pid_col].unique()
+            _proj_overrun = _po_grp[_po_grp[_pid_col].isin(_ff_pids) & (_po_grp["overrun_hrs"] > 0)].copy()
+        else:
+            _proj_overrun = _po_grp[_po_grp["overrun_hrs"] > 0].copy()
+    overrun_count = len(_proj_overrun)
+    overrun_total = _proj_overrun["overrun_hrs"].sum() if not _proj_overrun.empty else 0
+    overrun_top = ""
+    if not _proj_overrun.empty:
+        _top = _proj_overrun.sort_values("overrun_hrs", ascending=False).iloc[0]
+        overrun_top = f"Largest: <b>{_top.get('project', '')}</b> (+{_top['overrun_hrs']:.1f}h)"
+
+    # No-scope FF
+    _noscope = df[df["credit_tag"] == "UNCONFIGURED"] if "credit_tag" in df.columns else df.iloc[0:0]
+    noscope_hrs = _noscope["hours"].sum() if not _noscope.empty else 0
+    noscope_proj_count = _noscope[_pid_col].astype(str).str.strip().nunique() if _pid_col and not _noscope.empty else 0
+
+    # ─────────────────────────────────────────────────────
+    # Wider-window data prep (used by Trend + Task tabs)
+    # ─────────────────────────────────────────────────────
+    _trend_df_raw = _ns_from_session.copy()
+    if "employee" in _trend_df_raw.columns:
+        from shared.constants import name_matches as _nm
+        if _va_region_u:
+            _rc = get_region_consultants(_va_region_u, _EL_u, _RM_u, _RO_u, _AE_u)
+            _filt = _trend_df_raw[_trend_df_raw["employee"].astype(str).str.strip().str.lower().isin(_rc)]
+            if not _filt.empty: _trend_df_raw = _filt
+        elif _va_name_u:
+            _filt = _trend_df_raw[_trend_df_raw["employee"].apply(lambda v: _nm(v, _va_name_u))]
+            if not _filt.empty: _trend_df_raw = _filt
+        elif not _is_mgr_u and _logged_in:
+            _filt = _trend_df_raw[_trend_df_raw["employee"].apply(lambda v: _nm(v, _logged_in))]
+            if not _filt.empty: _trend_df_raw = _filt
+
+    _trend_cache_key = ("trend", _ns_signature(_ns_from_session), str(period_start), str(period_end), _va_name_u, _va_region_u)
+    if _trend_cache_key in st.session_state._util_cache:
+        _trend_result = st.session_state._util_cache[_trend_cache_key]
+    else:
+        try:
+            _trend_result = _run_utilization_engine(_trend_df_raw, period_start, period_end)
+            st.session_state._util_cache[_trend_cache_key] = _trend_result
+        except Exception:
+            _trend_result = {"empty": True}
 
     # ─────────────────────────────────────────────────────
     # Tabs
     # ─────────────────────────────────────────────────────
-    _proj_count_tab = df[df["credit_tag"] != "SKIPPED"]["project"].nunique() if "project" in df.columns else 0
-    _nonbill_count = df[df["credit_tag"] == "NON-BILLABLE"]["task"].nunique() if "task" in df.columns else 0
-    _detail_count = len(df)
-
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        f"By Employee · {consultant_count}",
-        f"By Project · {_proj_count_tab}",
-        f"Non-Billable · {_nonbill_count}",
-        "Task Analysis",
-        f"Detail · {_detail_count:,}",
+    overrun_badge = f" · <span style='color:#b91c1c'>{overrun_count}</span>" if overrun_count > 0 else ""
+    tab_at_glance, tab_consult, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
+        "At a glance",
+        f"Consultants · {consultant_count}",
+        f"Projects at risk{' · ' + str(overrun_count + noscope_proj_count) if (overrun_count + noscope_proj_count) > 0 else ''}",
+        "Trend",
+        "Task analysis",
+        f"Detail · {len(df):,}",
     ])
 
-    # ─────────────────────────────────────────────────────
-    # TAB 1 — By Employee (custom HTML table with pills)
-    # ─────────────────────────────────────────────────────
-    with tab1:
-        _ep = df[df["credit_tag"] != "SKIPPED"]
-        emp_sum_ui = _ep.groupby(["employee","period"], as_index=False).agg(
-            hours_this_period=("hours","sum"), credit_hrs=("credit_hrs","sum"),
-            ff_overrun_hrs=("variance_hrs","sum"),
-            admin_hrs=("hours", lambda x: df.loc[
-                (df["employee"].isin(_ep["employee"])) &
-                (df["billing_type"].str.lower()=="internal"), "hours"
-            ].sum() if "billing_type" in df.columns else 0),
-        ).sort_values(["employee","period"])
-        _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict() if "region" in df.columns else {}
-        emp_sum_ui["location"]   = emp_sum_ui["employee"].map(_emp_region_ui)
-        emp_sum_ui["avail_hrs"]  = emp_sum_ui.apply(
-            lambda r: get_avail_hours(r["location"], r["period"]) if r["location"] else None, axis=1)
-        emp_sum_ui["util_vs_logged_n"] = emp_sum_ui.apply(
-            lambda r: r["credit_hrs"] / r["hours_this_period"] if r["hours_this_period"] > 0 else None, axis=1)
-        emp_sum_ui["util_vs_capacity_n"] = emp_sum_ui.apply(
-            lambda r: r["credit_hrs"] / r["avail_hrs"] if r["avail_hrs"] and r["avail_hrs"] > 0 else None, axis=1)
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB 1 — At a glance
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_at_glance:
+        # KPI strip
+        m1, m2, m3, m4, m5 = st.columns(5)
+        def _kpi_card(label, value, sub=None, sub_pill_class=None):
+            sub_html = ""
+            if sub:
+                if sub_pill_class:
+                    sub_html = f"<div class='util-kpi-pill util-pill {sub_pill_class}'>{sub}</div>"
+                else:
+                    sub_html = f"<div class='util-kpi-sub'>{sub}</div>"
+            return (f"<div class='util-kpi'>"
+                    f"<div class='util-kpi-label'>{label}</div>"
+                    f"<div class='util-kpi-value'>{value}</div>"
+                    f"{sub_html}</div>")
 
+        with m1: st.markdown(_kpi_card("Billable projects", f"{billable_proj_count:,}", f"across {consultant_count} consultants"), unsafe_allow_html=True)
+        with m2: st.markdown(_kpi_card("Hours logged", fmt_hrs(hours_this_period), f"of {_avail_total:,.0f} capacity ({capacity_pct:.1%})" if _avail_total else None), unsafe_allow_html=True)
+
+        _credit_cls = "util-pill-green" if credit_pct >= 0.70 else "util-pill-amber" if credit_pct >= 0.60 else "util-pill-red"
+        with m3: st.markdown(_kpi_card("Util credits", fmt_hrs(total_credit), f"{credit_pct:.1%} · {credit_label}", _credit_cls), unsafe_allow_html=True)
+        with m4: st.markdown(_kpi_card("FF overrun", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "util-pill-amber" if total_proj_overrun > 0 else None), unsafe_allow_html=True)
+        with m5: st.markdown(_kpi_card("Admin hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs"), unsafe_allow_html=True)
+
+        # Where to look — three callouts, always shown, green when clean
+        st.markdown("<div style='margin-top:18px;font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px'>Where to look</div>", unsafe_allow_html=True)
+
+        callout_cols = st.columns(3)
+
+        # Callout 1 — Below 60%
+        if below60_count > 0:
+            _names_short = ", ".join(sorted([short_name(n) for n in _below_60["employee"].unique()])[:5])
+            _and_more = f" +{below60_count - 5} more" if below60_count > 5 else ""
+            _c1 = (f"<div class='util-callout util-callout-red'>"
+                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+                   f"<span class='util-callout-title' style='color:#b91c1c'>⚠ Consultants below 60%</span>"
+                   f"<span class='util-callout-num' style='color:#b91c1c'>{below60_count}</span></div>"
+                   f"<div class='util-callout-body'>{_names_short}{_and_more}</div>"
+                   f"</div>")
+        else:
+            _c1 = (f"<div class='util-callout util-callout-green'>"
+                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+                   f"<span class='util-callout-title' style='color:#15803d'>✓ Consultants below 60%</span>"
+                   f"<span class='util-callout-num' style='color:#15803d'>0</span></div>"
+                   f"<div class='util-callout-body'>All consultants at or above 60% utilization on capacity.</div>"
+                   f"</div>")
+        with callout_cols[0]: st.markdown(_c1, unsafe_allow_html=True)
+
+        # Callout 2 — FF in overrun
+        if overrun_count > 0:
+            _c2 = (f"<div class='util-callout util-callout-amber'>"
+                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+                   f"<span class='util-callout-title' style='color:#b45309'>↑ FF projects in overrun</span>"
+                   f"<span class='util-callout-num' style='color:#b45309'>{overrun_count}</span></div>"
+                   f"<div class='util-callout-body'>{overrun_total:.1f} hrs beyond contracted scope. {overrun_top}</div>"
+                   f"</div>")
+        else:
+            _c2 = (f"<div class='util-callout util-callout-green'>"
+                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+                   f"<span class='util-callout-title' style='color:#15803d'>✓ FF projects in overrun</span>"
+                   f"<span class='util-callout-num' style='color:#15803d'>0</span></div>"
+                   f"<div class='util-callout-body'>No Fixed Fee projects exceeded scope this period.</div>"
+                   f"</div>")
+        with callout_cols[1]: st.markdown(_c2, unsafe_allow_html=True)
+
+        # Callout 3 — No scope
+        if noscope_proj_count > 0:
+            _c3 = (f"<div class='util-callout util-callout-blue'>"
+                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+                   f"<span class='util-callout-title' style='color:#1d4ed8'>⊘ FF: no scope defined</span>"
+                   f"<span class='util-callout-num' style='color:#1d4ed8'>{noscope_proj_count}</span></div>"
+                   f"<div class='util-callout-body'>{noscope_hrs:.1f} hrs on FF projects with no scope record. Finance follow-up needed.</div>"
+                   f"</div>")
+        else:
+            _c3 = (f"<div class='util-callout util-callout-green'>"
+                   f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+                   f"<span class='util-callout-title' style='color:#15803d'>✓ FF: no scope defined</span>"
+                   f"<span class='util-callout-num' style='color:#15803d'>0</span></div>"
+                   f"<div class='util-callout-body'>All FF time logged against scoped projects.</div>"
+                   f"</div>")
+        with callout_cols[2]: st.markdown(_c3, unsafe_allow_html=True)
+
+        # Inline legend + popover
+        st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
+        legend_col, ref_col = st.columns([6, 1])
+        with legend_col:
+            st.markdown(
+                "<div class='util-legend'>"
+                "<span class='util-legend-label'>Credit tags</span>"
+                "<span class='util-pill util-pill-green'>● Credited</span>"
+                "<span class='util-pill util-pill-amber'>● Partial</span>"
+                "<span class='util-pill util-pill-red'>● Overrun</span>"
+                "<span class='util-pill util-pill-grey'>● Non-billable</span>"
+                "<span class='util-pill util-pill-blue'>● FF: no scope</span>"
+                "<span class='util-legend-label' style='margin-left:12px'>RAG</span>"
+                "<span class='util-pill util-pill-green'>● ≥70%</span>"
+                "<span class='util-pill util-pill-amber'>● 60–69%</span>"
+                "<span class='util-pill util-pill-red'>● &lt;60%</span>"
+                "</div>", unsafe_allow_html=True)
+        with ref_col:
+            _popover_fn = getattr(st, "popover", None)
+            _ref_ctx = _popover_fn("ⓘ How are these calculated?") if _popover_fn else st.expander("ⓘ How are these calculated?", expanded=False)
+            with _ref_ctx:
+                st.markdown("""
+                <div class='util-ref-grid'>
+                  <div class='util-ref-section'>
+                    <h4>Credit tags</h4>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-green'>Credited</span>
+                      <span class='util-ref-desc'>T&amp;M: full hours credited, no cap. Fixed Fee: hours credited up to scoped amount.</span>
+                    </div>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-amber'>Partial</span>
+                      <span class='util-ref-desc'>Fixed Fee: hours credited up to remaining scope only.</span>
+                    </div>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-red'>Overrun</span>
+                      <span class='util-ref-desc'>Fixed Fee: hours beyond contracted scope. Not credited.</span>
+                    </div>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-grey'>Non-billable</span>
+                      <span class='util-ref-desc'>Internal time. Excluded from utilization, tracked as Admin Hours.</span>
+                    </div>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-blue'>FF: no scope</span>
+                      <span class='util-ref-desc'>No matching scope entry. Flagged for finance follow-up.</span>
+                    </div>
+                  </div>
+                  <div class='util-ref-section'>
+                    <h4>RAG status</h4>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-green'>Green ≥ 70%</span>
+                      <span class='util-ref-desc'>At or above target utilization.</span>
+                    </div>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-amber'>Amber 60–69%</span>
+                      <span class='util-ref-desc'>Below target. Monitor and assess project mix.</span>
+                    </div>
+                    <div class='util-ref-row'>
+                      <span class='util-ref-tag util-pill-red'>Red &lt; 60%</span>
+                      <span class='util-ref-desc'>Significantly below target. Action required.</span>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB 2 — Consultants
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_consult:
         # Projection
         _period_bdays = {}
         if "date" in df.columns:
@@ -1997,10 +2276,10 @@ def main():
                 _dates = _grp["date"].dropna()
                 if len(_dates) == 0: continue
                 _days_in = len(pd.bdate_range(_dates.min(), _dates.max()))
-                _yr2, _mo2 = _dates.min().year, _dates.min().month
-                _ms = pd.Timestamp(_yr2, _mo2, 1)
-                _me = pd.Timestamp(_yr2, _mo2, _cal.monthrange(_yr2, _mo2)[1])
-                _total = len(pd.bdate_range(_ms, _me))
+                _yr3, _mo3 = _dates.min().year, _dates.min().month
+                _ms3 = pd.Timestamp(_yr3, _mo3, 1)
+                _me3 = pd.Timestamp(_yr3, _mo3, _cal.monthrange(_yr3, _mo3)[1])
+                _total = len(pd.bdate_range(_ms3, _me3))
                 _period_bdays[str(_per)] = (_days_in, _total)
 
         def _proj_util(row):
@@ -2012,61 +2291,27 @@ def main():
             if not avail or avail <= 0 or days_in <= 0: return None
             return (row['credit_hrs'] / days_in * total) / avail
 
-        emp_sum_ui["proj_full_month_n"] = emp_sum_ui.apply(_proj_util, axis=1)
-        _is_partial_emp = emp_sum_ui["proj_full_month_n"].notna().any()
-
-        # Sort by util_vs_capacity_n descending (None last)
-        emp_sum_ui = emp_sum_ui.sort_values(
-            "util_vs_capacity_n", ascending=False, na_position="last"
-        ).reset_index(drop=True)
-
-        # Build HTML table
-        def _avatar(name):
-            parts = [p.strip() for p in str(name).replace(",", " ").split() if p.strip()]
-            initials = (parts[0][0] + parts[1][0]).upper() if len(parts) >= 2 else (parts[0][:2].upper() if parts else "??")
-            # Stable color from name hash
-            palettes = [("#1c3a2c","#7ed4a4"), ("#3d2e15","#f5b958"), ("#1c2a3d","#6fa8dc"),
-                        ("#3a1c1c","#f08585"), ("#2a1c3d","#c39bf0"), ("#1c3d3a","#7df0d4")]
-            bg, fg = palettes[hash(str(name)) % len(palettes)]
-            return f"<span class='util-emp-avatar' style='background:{bg};color:{fg}'>{initials}</span>"
-
-        def _rag_pill(v):
-            if v is None: return "<span class='muted'>—</span>"
-            if v >= 0.70:   cls = "util-pill-rag-green"
-            elif v >= 0.60: cls = "util-pill-rag-amber"
-            else:           cls = "util-pill-rag-red"
-            return f"<span class='util-pill {cls}'>{v*100:.1f}%</span>"
-
-        def _short_name(n):
-            parts = str(n).split(",", 1)
-            if len(parts) == 2:
-                last = parts[0].strip()
-                first = parts[1].strip().split()[0] if parts[1].strip() else ""
-                return f"{last}, {first[:1]}." if first else last
-            return n
+        emp_sum["proj_full_month"] = emp_sum.apply(_proj_util, axis=1)
+        _is_partial_emp = emp_sum["proj_full_month"].notna().any()
+        emp_sum_sorted = emp_sum.sort_values("util_vs_capacity", ascending=False, na_position="last").reset_index(drop=True)
 
         rows_html = []
-        for _, r in emp_sum_ui.iterrows():
-            emp = r["employee"]
-            exempt = _emp_util_exempt(emp)
-            ul_n = r["util_vs_logged_n"] if not exempt else None
-            uc_n = r["util_vs_capacity_n"] if not exempt else None
-            pj_n = r["proj_full_month_n"]
-            avail = r["avail_hrs"]
-            avail_str = f"{avail:,.1f}" if avail else "—"
-            pj_str = f"{pj_n*100:.1f}%" if pj_n is not None else "—"
-
+        for _, r in emp_sum_sorted.iterrows():
+            emp = r["employee"]; ex = bool(r["exempt"])
+            avail_str = f"{r['avail_hrs']:,.1f}" if r["avail_hrs"] else "—"
+            pj = r["proj_full_month"]
+            pj_str = f"{pj*100:.1f}%" if pj is not None else "—"
             rows_html.append(
                 f"<tr>"
-                f"<td><span class='util-emp-name'>{_avatar(emp)}{_short_name(emp)}</span></td>"
+                f"<td><span class='util-emp-name'>{avatar_html(emp)}{short_name(emp)}</span></td>"
                 f"<td class='muted'>{r['location'] or '—'}</td>"
                 f"<td class='muted'>{r['period']}</td>"
                 f"<td class='num'>{avail_str}</td>"
                 f"<td class='num'>{r['hours_this_period']:,.2f}</td>"
                 f"<td class='num'>{r['credit_hrs']:,.2f}</td>"
                 f"<td class='num'>{r['ff_overrun_hrs']:,.2f}</td>"
-                f"<td class='center'>{_rag_pill(ul_n) if not exempt else '<span class=muted>exempt</span>'}</td>"
-                f"<td class='center'>{_rag_pill(uc_n) if not exempt else '<span class=muted>exempt</span>'}</td>"
+                f"<td class='center'>{rag_pill_html(r['util_vs_logged'], ex)}</td>"
+                f"<td class='center'>{rag_pill_html(r['util_vs_capacity'], ex)}</td>"
                 + (f"<td class='num muted'>{pj_str}</td>" if _is_partial_emp else "")
                 + "</tr>"
             )
@@ -2074,13 +2319,13 @@ def main():
         proj_th = "<th class='num'>Proj full mo</th>" if _is_partial_emp else ""
         st.markdown(
             f"<div class='util-table-header'>"
-            f"<span style='font-weight:600;color:white'>By employee · projected to full month at current run rate</span>"
-            f"<span>{len(emp_sum_ui)} of {len(emp_sum_ui)} visible · sorted by Util % (vs Capacity)</span>"
+            f"<span style='font-weight:600'>By consultant{' · projected to full month' if _is_partial_emp else ''}</span>"
+            f"<span style='opacity:0.7'>{len(emp_sum_sorted)} of {len(emp_sum_sorted)} · sorted by Util % (vs Capacity)</span>"
             f"</div>"
             f"<div class='util-table-wrap'>"
             f"<table class='util-emp-table'>"
             f"<thead><tr>"
-            f"<th>Employee</th><th>Location</th><th>Period</th>"
+            f"<th>Consultant</th><th>Location</th><th>Period</th>"
             f"<th class='num'>Avail</th><th class='num'>Logged</th>"
             f"<th class='num'>Credits</th><th class='num'>Overrun</th>"
             f"<th class='center'>Util % logged</th><th class='center'>Util % cap</th>"
@@ -2088,91 +2333,477 @@ def main():
             f"</tr></thead>"
             f"<tbody>{''.join(rows_html)}</tbody>"
             f"</table>"
-            + (f"<div class='util-table-foot'>"
-               f"<span>Partial period: {_bdays_in} of {_bdays_total_month} days. Projected columns extrapolate at current daily run rate.</span>"
-               f"<span>Last refresh: {_ago_str} · NetSuite source · {_detail_count:,} entries</span>"
-               f"</div>" if is_partial else
-               f"<div class='util-table-foot'>"
-               f"<span>&nbsp;</span>"
-               f"<span>Last refresh: {_ago_str} · NetSuite source · {_detail_count:,} entries</span>"
-               f"</div>")
-            + "</div>",
+            f"<div class='util-table-foot'>"
+            f"<span>{'Partial period: ' + str(_bdays_in) + ' of ' + str(_bdays_total_month) + ' days. Projected at current daily run rate.' if is_partial else '&nbsp;'}</span>"
+            f"<span>Last refresh: {_ago_str} · NetSuite source · {len(df):,} entries</span>"
+            f"</div></div>",
             unsafe_allow_html=True
         )
 
-    # ─────────────────────────────────────────────────────
-    # TAB 2 — By Project (st.dataframe with column_config)
-    # ─────────────────────────────────────────────────────
-    with tab2:
-        proj_sum_ui = df[df["credit_tag"] != "SKIPPED"].groupby(
-            ["project","project_type"], as_index=False
-        ).agg(hours_this_period=("hours","sum"), credit_hrs=("credit_hrs","sum"),
-              ff_overrun_hrs=("variance_hrs","sum")).sort_values("project")
-        st.dataframe(
-            proj_sum_ui[["project","project_type","hours_this_period","credit_hrs","ff_overrun_hrs"]],
-            use_container_width=True, hide_index=True,
-            column_config={
-                "project":           st.column_config.TextColumn("Project", pinned=True, help="Project name"),
-                "project_type":      st.column_config.TextColumn("Type", help="Fixed Fee, T&M, or Internal"),
-                "hours_this_period": st.column_config.NumberColumn("Hours logged", format="%.2f", help="Total hours logged to this project in the selected period"),
-                "credit_hrs":        st.column_config.NumberColumn("Util credits", format="%.2f", help="Hours that count toward utilization (capped at scope for FF)"),
-                "ff_overrun_hrs":    st.column_config.NumberColumn("FF overrun", format="%.2f", help="Hours beyond contracted scope on Fixed Fee projects"),
-            },
-        )
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB 3 — Projects at risk
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_risk:
+        # Build full project summary
+        if _pid_col and len(df_bill) > 0:
+            agg_kwargs = {
+                "project":      ("project", "first") if "project" in df.columns else (_pid_col, "first"),
+                "project_type": ("project_type", "first") if "project_type" in df.columns else (_pid_col, "first"),
+                "hours_logged": ("hours", "sum"),
+                "credit_hrs":   ("credit_hrs", "sum"),
+                "overrun_hrs":  ("variance_hrs", "sum"),
+            }
+            if "scoped_hrs" in df_bill.columns:
+                agg_kwargs["scoped_hrs"] = ("scoped_hrs", "max")  # scope is per-project, not per-row
+            proj_sum = df_bill.groupby([_pid_col], as_index=False).agg(**agg_kwargs)
 
-    # ─────────────────────────────────────────────────────
-    # TAB 3 — Non-Billable
-    # ─────────────────────────────────────────────────────
-    with tab3:
-        zco_df = df[df["credit_tag"] == "NON-BILLABLE"]
-        if "task" in zco_df.columns and len(zco_df) > 0:
-            zco_sum = zco_df.groupby(["task","employee","period"], as_index=False
-            ).agg(hours=("hours","sum")).sort_values(["task","employee","period"])
-            st.dataframe(
-                zco_sum, use_container_width=True, hide_index=True,
-                column_config={
-                    "task":     st.column_config.TextColumn("Task", help="Internal task name"),
-                    "employee": st.column_config.TextColumn("Employee"),
-                    "period":   st.column_config.TextColumn("Period"),
-                    "hours":    st.column_config.NumberColumn("Hours", format="%.2f"),
-                },
-            )
+            # Tag noscope
+            _noscope_pids = set(_noscope[_pid_col].astype(str).str.strip().unique()) if _pid_col and not _noscope.empty else set()
+            proj_sum["is_noscope"]  = proj_sum[_pid_col].astype(str).str.strip().isin(_noscope_pids)
+
+            # Burn % for FF
+            def _burn(r):
+                if "scoped_hrs" not in proj_sum.columns: return None
+                sc = r.get("scoped_hrs", 0)
+                if not sc or sc <= 0: return None
+                return r["hours_logged"] / sc
+
+            proj_sum["burn_pct"] = proj_sum.apply(_burn, axis=1)
+
+            # Status pill
+            def _status(r):
+                if r["is_noscope"]:                                                         return ("blue",  "No scope")
+                if r["overrun_hrs"] > 0:                                                    return ("red",   "Overrun")
+                if r.get("burn_pct") is not None and r["burn_pct"] >= 0.80:                 return ("amber", f"Burn {r['burn_pct']*100:.0f}%")
+                return None
+
+            proj_sum["_status"] = proj_sum.apply(_status, axis=1)
+            at_risk = proj_sum[proj_sum["_status"].notna()].copy()
+
+            # Sort: overrun desc, then burn desc
+            at_risk["_sort_key"] = at_risk.apply(
+                lambda r: (1 if r["_status"][0] == "red" else 2 if r["_status"][0] == "amber" else 3,
+                           -(r["overrun_hrs"] or 0),
+                           -(r.get("burn_pct") or 0)), axis=1)
+            at_risk = at_risk.sort_values("_sort_key").drop(columns="_sort_key").reset_index(drop=True)
+
+            if len(at_risk) == 0:
+                st.markdown(
+                    "<div class='util-card' style='text-align:center;padding:32px'>"
+                    "<div style='font-size:32px;margin-bottom:8px'>✓</div>"
+                    "<div style='font-weight:600;margin-bottom:4px'>No projects at risk</div>"
+                    "<div style='opacity:0.7;font-size:13px'>No FF overruns, no scope burn over 80%, no missing scope records.</div>"
+                    "</div>", unsafe_allow_html=True)
+            else:
+                rows = []
+                for _, r in at_risk.iterrows():
+                    _scls, _sl = r["_status"]
+                    _sc_str   = f"{r.get('scoped_hrs', 0):,.2f}" if "scoped_hrs" in at_risk.columns and pd.notna(r.get("scoped_hrs")) else "—"
+                    _burn_str = f"{r['burn_pct']*100:.0f}%" if pd.notna(r.get("burn_pct")) else "—"
+                    _burn_bar = ""
+                    if pd.notna(r.get("burn_pct")):
+                        _bp = min(r["burn_pct"], 1.5)
+                        _bcol = "#ef4444" if _bp > 1.0 else "#f59e0b" if _bp >= 0.8 else "#22c55e"
+                        _burn_bar = (f"<div style='display:inline-block;width:60px;height:6px;background:rgba(128,128,128,0.2);"
+                                     f"border-radius:3px;overflow:hidden;vertical-align:middle;margin-right:6px'>"
+                                     f"<div style='width:{min(_bp*100/1.5, 100)}%;height:100%;background:{_bcol}'></div></div>")
+                    rows.append(
+                        f"<tr>"
+                        f"<td>{r.get('project', '')}</td>"
+                        f"<td class='muted'>{r.get('project_type', '')}</td>"
+                        f"<td class='num'>{_sc_str}</td>"
+                        f"<td class='num'>{r['hours_logged']:,.2f}</td>"
+                        f"<td class='num'>{_burn_bar}<span style='vertical-align:middle'>{_burn_str}</span></td>"
+                        f"<td class='num'>{r['overrun_hrs']:,.2f}</td>"
+                        f"<td class='center'><span class='util-pill util-pill-{_scls}'>{_sl}</span></td>"
+                        f"</tr>")
+
+                st.markdown(
+                    f"<div class='util-table-header'>"
+                    f"<span style='font-weight:600'>Projects requiring attention</span>"
+                    f"<span style='opacity:0.7'>{len(at_risk)} of {len(proj_sum)} billable projects · sorted by status, then overrun</span>"
+                    f"</div>"
+                    f"<div class='util-table-wrap'>"
+                    f"<table class='util-emp-table'>"
+                    f"<thead><tr>"
+                    f"<th>Project</th><th>Type</th><th class='num'>Scoped</th>"
+                    f"<th class='num'>Logged</th><th class='num'>Burn</th>"
+                    f"<th class='num'>Overrun</th><th class='center'>Status</th>"
+                    f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+                    f"<div class='util-table-foot'>"
+                    f"<span>Risk = overrun &gt; 0, scope burn ≥ 80%, or no scope record.</span>"
+                    f"<span>Last refresh: {_ago_str}</span>"
+                    f"</div></div>",
+                    unsafe_allow_html=True)
         else:
-            st.info("No Non-Billable (Internal) entries in this dataset.")
+            st.info("No billable project data in this period.")
 
-    # ─────────────────────────────────────────────────────
-    # TAB 4 — Task Analysis
-    # ─────────────────────────────────────────────────────
-    with tab4:
-        ff_df_ui = df[df["ff_task"].notna()] if "ff_task" in df.columns else pd.DataFrame()
-        if len(ff_df_ui) > 0:
-            task_sum_ui = ff_df_ui.groupby(["ff_task","project_type"], as_index=False
-            ).agg(hours=("hours","sum")).sort_values(["ff_task","project_type"])
-            type_totals_ui = ff_df_ui.groupby("project_type")["hours"].sum()
-            task_sum_ui["pct_of_type"] = task_sum_ui.apply(
-                lambda r: r['hours']/type_totals_ui.get(r['project_type'],1), axis=1)
-            st.dataframe(
-                task_sum_ui, use_container_width=True, hide_index=True,
-                column_config={
-                    "ff_task":      st.column_config.TextColumn("FF task", help="Fixed Fee task category"),
-                    "project_type": st.column_config.TextColumn("Project type"),
-                    "hours":        st.column_config.NumberColumn("Hours", format="%.2f"),
-                    "pct_of_type":  st.column_config.ProgressColumn("% of type", format="%.1f%%", min_value=0, max_value=1, help="Share of total hours within this project type"),
-                },
-            )
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB 4 — Trend (matches the Period filter)
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_trend:
+        if _trend_result.get("empty") or "date" not in _trend_result.get("df", pd.DataFrame()).columns:
+            st.info("Not enough data to render a trend for this period.")
         else:
-            st.info("No Fixed Fee task data found.")
+            _td = _trend_result["df"].copy()
+            _td["_date"] = pd.to_datetime(_td["date"], errors="coerce")
+            _td = _td.dropna(subset=["_date"])
+            _td["_week"] = _td["_date"].dt.to_period("W").apply(lambda p: p.start_time.date())
 
-    # ─────────────────────────────────────────────────────
-    # TAB 5 — Detail
-    # ─────────────────────────────────────────────────────
-    with tab5:
+            # Weekly aggregates
+            weekly = _td.groupby("_week", as_index=False).agg(
+                hours=("hours", "sum"),
+                credit_hrs=("credit_hrs", "sum"),
+                overrun_hrs=("variance_hrs", "sum"),
+            )
+            # noscope hrs computed separately and merged in
+            if "credit_tag" in _td.columns:
+                _ns_weekly = _td[_td["credit_tag"] == "UNCONFIGURED"].groupby("_week", as_index=False).agg(noscope_hrs=("hours", "sum"))
+                weekly = weekly.merge(_ns_weekly, on="_week", how="left")
+                weekly["noscope_hrs"] = weekly["noscope_hrs"].fillna(0)
+            else:
+                weekly["noscope_hrs"] = 0
+            weekly["credit_pct"] = weekly.apply(lambda r: r["credit_hrs"] / r["hours"] if r["hours"] > 0 else 0, axis=1)
+            weekly = weekly.sort_values("_week").reset_index(drop=True)
+
+            if len(weekly) < 2:
+                st.info("Need at least 2 weeks of data to show a trend. Widen the period filter.")
+            else:
+                # Three side-by-side trend cards
+                t1, t2, t3 = st.columns(3)
+
+                def _mini_chart(values, target=None, fmt="pct", color="#3b82f6"):
+                    """Render an inline SVG bar chart for trend cards."""
+                    if not values: return ""
+                    n = len(values)
+                    max_v = max([v for v in values if v is not None] + [0.01])
+                    bar_w = max(40 / n, 4)
+                    gap = bar_w * 0.2
+                    chart_w = 100
+                    chart_h = 40
+                    bar_w_actual = (chart_w - gap * (n - 1)) / n
+                    bars = []
+                    for i, v in enumerate(values):
+                        if v is None or max_v == 0:
+                            h = 0
+                        else:
+                            h = (v / max_v) * chart_h
+                        x = i * (bar_w_actual + gap)
+                        y = chart_h - h
+                        bars.append(f"<rect x='{x:.1f}' y='{y:.1f}' width='{bar_w_actual:.1f}' height='{h:.1f}' fill='{color}' opacity='0.8' rx='1' />")
+                    target_line = ""
+                    if target is not None and max_v > 0:
+                        ty = chart_h - (target / max_v) * chart_h
+                        if 0 <= ty <= chart_h:
+                            target_line = f"<line x1='0' y1='{ty:.1f}' x2='{chart_w}' y2='{ty:.1f}' stroke='rgba(128,128,128,0.5)' stroke-dasharray='2 2' />"
+                    return f"<svg viewBox='0 0 {chart_w} {chart_h}' style='width:100%;height:50px;display:block'>{target_line}{''.join(bars)}</svg>"
+
+                _credit_pcts  = weekly["credit_pct"].tolist()
+                _overrun_hrs  = weekly["overrun_hrs"].tolist()
+                _noscope_hrs_l= weekly["noscope_hrs"].tolist()
+
+                _last_credit = _credit_pcts[-1] if _credit_pcts else 0
+                _last_color  = "#22c55e" if _last_credit >= 0.70 else "#f59e0b" if _last_credit >= 0.60 else "#ef4444"
+                _delta_credit = _credit_pcts[-1] - _credit_pcts[-2] if len(_credit_pcts) >= 2 else 0
+                _delta_arrow = "↑" if _delta_credit > 0.005 else "↓" if _delta_credit < -0.005 else "→"
+                _delta_color = "#15803d" if _delta_credit > 0.005 else "#b91c1c" if _delta_credit < -0.005 else "#64748b"
+
+                with t1:
+                    st.markdown(
+                        f"<div class='util-card'>"
+                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>Credit % · weekly</div>"
+                        f"<div style='display:flex;align-items:baseline;gap:8px;margin-bottom:8px'>"
+                        f"<div style='font-size:22px;font-weight:600;color:{_last_color}'>{_last_credit*100:.1f}%</div>"
+                        f"<div style='font-size:12px;color:{_delta_color}'>{_delta_arrow} {abs(_delta_credit)*100:.1f}pp</div>"
+                        f"</div>"
+                        f"{_mini_chart(_credit_pcts, target=0.70, color='#3b82f6')}"
+                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>{len(weekly)} weeks · target ≥ 70%</div>"
+                        f"</div>", unsafe_allow_html=True)
+
+                with t2:
+                    _last_or = _overrun_hrs[-1] if _overrun_hrs else 0
+                    _delta_or = _overrun_hrs[-1] - _overrun_hrs[-2] if len(_overrun_hrs) >= 2 else 0
+                    _arrow_or = "↑" if _delta_or > 0.5 else "↓" if _delta_or < -0.5 else "→"
+                    _color_or = "#b91c1c" if _delta_or > 0.5 else "#15803d" if _delta_or < -0.5 else "#64748b"
+                    st.markdown(
+                        f"<div class='util-card'>"
+                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>FF overrun · weekly</div>"
+                        f"<div style='display:flex;align-items:baseline;gap:8px;margin-bottom:8px'>"
+                        f"<div style='font-size:22px;font-weight:600'>{fmt_hrs(_last_or)} h</div>"
+                        f"<div style='font-size:12px;color:{_color_or}'>{_arrow_or} {abs(_delta_or):.1f}h</div>"
+                        f"</div>"
+                        f"{_mini_chart(_overrun_hrs, color='#f59e0b')}"
+                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>Total {fmt_hrs(sum(_overrun_hrs))} h over {len(weekly)} weeks</div>"
+                        f"</div>", unsafe_allow_html=True)
+
+                with t3:
+                    _last_ns = _noscope_hrs_l[-1] if _noscope_hrs_l else 0
+                    _delta_ns = _noscope_hrs_l[-1] - _noscope_hrs_l[-2] if len(_noscope_hrs_l) >= 2 else 0
+                    _arrow_ns = "↑" if _delta_ns > 0.5 else "↓" if _delta_ns < -0.5 else "→"
+                    _color_ns = "#b91c1c" if _delta_ns > 0.5 else "#15803d" if _delta_ns < -0.5 else "#64748b"
+                    st.markdown(
+                        f"<div class='util-card'>"
+                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>FF: no scope · weekly</div>"
+                        f"<div style='display:flex;align-items:baseline;gap:8px;margin-bottom:8px'>"
+                        f"<div style='font-size:22px;font-weight:600'>{fmt_hrs(_last_ns)} h</div>"
+                        f"<div style='font-size:12px;color:{_color_ns}'>{_arrow_ns} {abs(_delta_ns):.1f}h</div>"
+                        f"</div>"
+                        f"{_mini_chart(_noscope_hrs_l, color='#3b82f6')}"
+                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>Total {fmt_hrs(sum(_noscope_hrs_l))} h over {len(weekly)} weeks</div>"
+                        f"</div>", unsafe_allow_html=True)
+
+                # Weekly detail table
+                st.markdown("<div style='margin-top:14px;font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px'>Weekly breakdown</div>", unsafe_allow_html=True)
+                _weekly_disp = weekly.copy()
+                _weekly_disp["Week"] = _weekly_disp["_week"].apply(lambda d: d.strftime("%Y-W%V") if hasattr(d, "strftime") else str(d))
+                _weekly_disp = _weekly_disp[["Week", "hours", "credit_hrs", "credit_pct", "overrun_hrs", "noscope_hrs"]]
+                st.dataframe(
+                    _weekly_disp, use_container_width=True, hide_index=True,
+                    column_config={
+                        "Week":         st.column_config.TextColumn("Week", pinned=True),
+                        "hours":        st.column_config.NumberColumn("Logged", format="%.2f"),
+                        "credit_hrs":   st.column_config.NumberColumn("Credits", format="%.2f"),
+                        "credit_pct":   st.column_config.ProgressColumn("Credit %", format="%.1f%%", min_value=0, max_value=1, help="Credits ÷ hours logged"),
+                        "overrun_hrs":  st.column_config.NumberColumn("FF overrun", format="%.2f"),
+                        "noscope_hrs":  st.column_config.NumberColumn("No scope", format="%.2f"),
+                    },
+                )
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB 5 — Task analysis (Billable / Non-billable toggle)
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_task:
+        # Mode selector
+        _bill_hrs_total = df_bill["hours"].sum() if not df_bill.empty else 0
+        _nonbill_hrs_total = df[df["billing_type"].fillna("").str.lower() == "internal"]["hours"].sum() if "billing_type" in df.columns else 0
+
+        ts_col1, ts_col2, ts_col3 = st.columns([1.2, 1.2, 2.5])
+        with ts_col1:
+            task_mode = st.radio(
+                "Mode",
+                options=["Billable", "Non-billable"],
+                horizontal=True, label_visibility="collapsed",
+                key="util_task_mode",
+                format_func=lambda x: f"Billable · {fmt_hrs(_bill_hrs_total)}h" if x == "Billable" else f"Non-billable · {fmt_hrs(_nonbill_hrs_total)}h",
+            )
+        with ts_col2:
+            compare_options = {
+                "Prior equivalent period": "prior_eq",
+                "Prior 4 weeks rolling": "prior_4w",
+                "Prior 8 weeks rolling": "prior_8w",
+            }
+            compare_label = st.selectbox("Compare vs", list(compare_options.keys()), key="util_task_compare", label_visibility="collapsed")
+            compare_mode = compare_options[compare_label]
+        with ts_col3:
+            st.markdown(f"<div style='padding:8px 0;font-size:11px;opacity:0.6;text-align:right'>vs <b>{compare_label}</b> · grouped by task</div>", unsafe_allow_html=True)
+
+        # Determine task column
+        if task_mode == "Billable":
+            _task_df = df_bill.copy()
+            _task_col = "ff_task" if "ff_task" in _task_df.columns and _task_df["ff_task"].notna().any() else ("task" if "task" in _task_df.columns else None)
+        else:
+            _task_df = df[df["billing_type"].fillna("").str.lower() == "internal"].copy() if "billing_type" in df.columns else df.iloc[0:0].copy()
+            _task_col = "task" if "task" in _task_df.columns else None
+
+        if not _task_col or len(_task_df) == 0:
+            st.info(f"No {task_mode.lower()} time entries in this period.")
+        else:
+            # ─── Top-left: share by task ───
+            share = _task_df.groupby(_task_col, as_index=False).agg(hours=("hours", "sum"))
+            share = share[share["hours"] > 0].sort_values("hours", ascending=False).reset_index(drop=True)
+            total_share = share["hours"].sum()
+            # Collapse < 5% into "Other"
+            _big = share[share["hours"] / total_share >= 0.05].copy() if total_share > 0 else share.copy()
+            _small = share[share["hours"] / total_share < 0.05].copy() if total_share > 0 else share.iloc[0:0]
+            if len(_small) > 0:
+                _other_row = pd.DataFrame([{_task_col: f"Other ({len(_small)} tasks)", "hours": _small["hours"].sum()}])
+                _big = pd.concat([_big, _other_row], ignore_index=True)
+            _big["pct"] = _big["hours"] / total_share if total_share > 0 else 0
+
+            share_rows = []
+            for i, r in _big.iterrows():
+                _opacity = max(0.4, 1.0 - (i * 0.1))
+                _muted = " style='opacity:0.65'" if str(r[_task_col]).startswith("Other") else ""
+                share_rows.append(
+                    f"<div class='util-share-row'>"
+                    f"<div class='util-share-head'{_muted}>"
+                    f"<span>{r[_task_col]}</span>"
+                    f"<span style='opacity:0.7;font-variant-numeric:tabular-nums'>{r['hours']:,.2f} h · {r['pct']*100:.1f}%</span>"
+                    f"</div>"
+                    f"<div class='util-share-bar-bg'>"
+                    f"<div class='util-share-bar-fg' style='width:{min(r['pct']*100, 100):.1f}%;opacity:{_opacity}'></div>"
+                    f"</div></div>")
+
+            # ─── Top-right: movers vs prior period ───
+            if compare_mode == "prior_eq":
+                _delta = (period_end - period_start).days + 1
+                _prior_end = period_start - pd.Timedelta(days=1).to_pytimedelta() if hasattr(pd.Timedelta(days=1), "to_pytimedelta") else period_start
+                # Cleaner conversion
+                _prior_end = (pd.Timestamp(period_start) - pd.Timedelta(days=1)).date()
+                _prior_start = (pd.Timestamp(_prior_end) - pd.Timedelta(days=_delta - 1)).date()
+            elif compare_mode == "prior_4w":
+                _prior_end = (pd.Timestamp(period_start) - pd.Timedelta(days=1)).date()
+                _prior_start = (pd.Timestamp(_prior_end) - pd.Timedelta(weeks=4)).date()
+            else:  # prior_8w
+                _prior_end = (pd.Timestamp(period_start) - pd.Timedelta(days=1)).date()
+                _prior_start = (pd.Timestamp(_prior_end) - pd.Timedelta(weeks=8)).date()
+
+            # Use the wider df (df_raw before period filter) for comparison
+            _prior_cache_key = ("prior_task", _ns_signature(_ns_from_session), str(_prior_start), str(_prior_end), _va_name_u, _va_region_u)
+            if _prior_cache_key in st.session_state._util_cache:
+                _prior_result = st.session_state._util_cache[_prior_cache_key]
+            else:
+                try:
+                    _prior_result = _run_utilization_engine(_trend_df_raw, _prior_start, _prior_end)
+                    st.session_state._util_cache[_prior_cache_key] = _prior_result
+                except Exception:
+                    _prior_result = {"empty": True}
+
+            movers_html = ""
+            if _prior_result.get("empty") or _prior_result.get("df", pd.DataFrame()).empty:
+                movers_html = "<div style='opacity:0.6;font-size:12px;padding:20px 0;text-align:center'>No data for the comparison window.</div>"
+            else:
+                _pdf = _prior_result["df"]
+                if task_mode == "Billable":
+                    _pdf_filt = _pdf[_billable_mask(_pdf)]
+                    _pcol = "ff_task" if "ff_task" in _pdf_filt.columns and _pdf_filt["ff_task"].notna().any() else ("task" if "task" in _pdf_filt.columns else None)
+                else:
+                    _pdf_filt = _pdf[_pdf["billing_type"].fillna("").str.lower() == "internal"] if "billing_type" in _pdf.columns else _pdf.iloc[0:0]
+                    _pcol = "task" if "task" in _pdf_filt.columns else None
+
+                if _pcol and len(_pdf_filt) > 0:
+                    prior_share = _pdf_filt.groupby(_pcol, as_index=False).agg(prior_hours=("hours", "sum"))
+                    merged = share.merge(prior_share, left_on=_task_col, right_on=_pcol, how="outer").fillna(0)
+                    if _task_col != _pcol and _pcol in merged.columns:
+                        merged[_task_col] = merged[_task_col].where(merged[_task_col] != 0, merged[_pcol])
+                    merged["delta"] = merged["hours"] - merged["prior_hours"]
+                    merged["abs_delta"] = merged["delta"].abs()
+                    movers = merged.sort_values("abs_delta", ascending=False).head(5)
+
+                    _rows = []
+                    for _, r in movers.iterrows():
+                        _d = r["delta"]
+                        _cls = "util-pill-green" if _d > 0 else "util-pill-red" if _d < 0 else "util-pill-grey"
+                        _sign = "+" if _d > 0 else ""
+                        _rows.append(
+                            f"<div class='util-mover-row'>"
+                            f"<span>{r[_task_col]}</span>"
+                            f"<span class='util-mover-vals'>"
+                            f"<span class='util-mover-from'>{r['prior_hours']:.2f} → {r['hours']:.2f}</span>"
+                            f"<span class='util-pill {_cls}'>{_sign}{_d:.2f}</span>"
+                            f"</span></div>"
+                        )
+
+                    # Auto-interpretation
+                    _interp = ""
+                    if not movers.empty:
+                        _top = movers.iloc[0]
+                        if _top["delta"] > 0:
+                            _interp = f"{_top[_task_col]} growing fastest (+{_top['delta']:.1f}h)."
+                        else:
+                            _interp = f"{_top[_task_col]} declining most ({_top['delta']:.1f}h)."
+
+                    movers_html = "".join(_rows) + (f"<div style='font-size:11px;opacity:0.6;margin-top:10px;padding-top:8px;border-top:1px solid rgba(128,128,128,0.15)'>{_interp}</div>" if _interp else "")
+                else:
+                    movers_html = "<div style='opacity:0.6;font-size:12px;padding:20px 0;text-align:center'>No comparable task data.</div>"
+
+            # Render top row
+            tr1, tr2 = st.columns([1.4, 1])
+            with tr1:
+                st.markdown(
+                    f"<div class='util-card'>"
+                    f"<div style='font-size:12px;font-weight:600;margin-bottom:4px'>{task_mode} hours by task · this period</div>"
+                    f"<div style='font-size:11px;opacity:0.65;margin-bottom:12px'>{total_share:,.2f} hrs across {len(share)} task type{'s' if len(share) != 1 else ''}</div>"
+                    f"{''.join(share_rows)}"
+                    f"</div>", unsafe_allow_html=True)
+            with tr2:
+                st.markdown(
+                    f"<div class='util-card'>"
+                    f"<div style='font-size:12px;font-weight:600;margin-bottom:4px'>Movers · vs {compare_label.lower()}</div>"
+                    f"<div style='font-size:11px;opacity:0.65;margin-bottom:8px'>{_prior_start.strftime('%-d %b')} → {_prior_end.strftime('%-d %b')}</div>"
+                    f"{movers_html}"
+                    f"</div>", unsafe_allow_html=True)
+
+            # ─── Bottom: stacked weekly trend ───
+            if not _trend_result.get("empty"):
+                _td2 = _trend_result["df"].copy()
+                if task_mode == "Billable":
+                    _td2 = _td2[_billable_mask(_td2)]
+                else:
+                    _td2 = _td2[_td2["billing_type"].fillna("").str.lower() == "internal"] if "billing_type" in _td2.columns else _td2.iloc[0:0]
+                _td2["_date"] = pd.to_datetime(_td2["date"], errors="coerce")
+                _td2 = _td2.dropna(subset=["_date"])
+                _td2["_week"] = _td2["_date"].dt.to_period("W").apply(lambda p: p.start_time.date())
+
+                _tcol_trend = _task_col if _task_col in _td2.columns else None
+                if _tcol_trend and len(_td2) > 0:
+                    # Top 4 tasks by total hours; rest = Other
+                    _totals = _td2.groupby(_tcol_trend)["hours"].sum().sort_values(ascending=False)
+                    _top4 = _totals.head(4).index.tolist()
+                    _td2["_task_grp"] = _td2[_tcol_trend].apply(lambda v: v if v in _top4 else "Other")
+                    _stack = _td2.groupby(["_week", "_task_grp"], as_index=False).agg(hours=("hours", "sum"))
+                    _pivot = _stack.pivot(index="_week", columns="_task_grp", values="hours").fillna(0).sort_index()
+                    _categories = _top4 + (["Other"] if "Other" in _pivot.columns else [])
+                    _categories = [c for c in _categories if c in _pivot.columns]
+
+                    if not _pivot.empty and len(_categories) > 0:
+                        _palette = ["#1d4ed8", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"]
+                        _max_total = _pivot[_categories].sum(axis=1).max()
+                        _w = 700; _h = 200
+                        _bar_area_w = _w - 50
+                        _n = len(_pivot.index)
+                        _bw = (_bar_area_w / _n) * 0.7
+                        _gap = (_bar_area_w / _n) * 0.3
+
+                        bars_svg = []
+                        labels_svg = []
+                        for i, (wk, row) in enumerate(_pivot.iterrows()):
+                            x = 50 + i * (_bw + _gap)
+                            _y_cursor = _h - 20
+                            for j, cat in enumerate(_categories):
+                                v = row.get(cat, 0)
+                                if v <= 0: continue
+                                bh = (v / _max_total) * (_h - 40) if _max_total > 0 else 0
+                                _y_cursor -= bh
+                                bars_svg.append(f"<rect x='{x:.1f}' y='{_y_cursor:.1f}' width='{_bw:.1f}' height='{bh:.1f}' fill='{_palette[j % len(_palette)]}' />")
+                            wk_label = wk.strftime("%-d %b") if hasattr(wk, "strftime") else str(wk)
+                            labels_svg.append(f"<text x='{x + _bw/2:.1f}' y='{_h - 5}' fill='currentColor' opacity='0.6' font-size='9' text-anchor='middle'>{wk_label}</text>")
+
+                        # y-axis grid
+                        grid = ""
+                        if _max_total > 0:
+                            for frac in [0.25, 0.5, 0.75, 1.0]:
+                                gy = (_h - 20) - frac * (_h - 40)
+                                gv = frac * _max_total
+                                grid += f"<line x1='50' y1='{gy:.1f}' x2='{_w}' y2='{gy:.1f}' stroke='currentColor' opacity='0.1' stroke-dasharray='2 4' />"
+                                grid += f"<text x='45' y='{gy + 3:.1f}' fill='currentColor' opacity='0.5' font-size='9' text-anchor='end'>{gv:.0f}h</text>"
+
+                        legend_html = "".join([
+                            f"<span style='display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:11px'>"
+                            f"<span style='display:inline-block;width:10px;height:10px;background:{_palette[j % len(_palette)]};border-radius:2px'></span>"
+                            f"{cat}</span>"
+                            for j, cat in enumerate(_categories)
+                        ])
+
+                        st.markdown(
+                            f"<div class='util-card' style='margin-top:12px'>"
+                            f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px'>"
+                            f"<span style='font-size:12px;font-weight:600'>{task_mode} hours by task · weekly</span>"
+                            f"<span style='font-size:11px;opacity:0.6'>stacked · top 4 + other</span>"
+                            f"</div>"
+                            f"<svg viewBox='0 0 {_w} {_h}' style='width:100%;height:200px'>{grid}{''.join(bars_svg)}{''.join(labels_svg)}</svg>"
+                            f"<div style='margin-top:8px;color:currentColor'>{legend_html}</div>"
+                            f"</div>", unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB 6 — Detail
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_detail:
         display_cols_t5 = ["employee","region","project","project_type","billing_type",
                             "hours_to_date","date","hours","credit_hrs","variance_hrs",
                             "previous_htd","credit_tag","notes"]
         existing_t5 = [c for c in display_cols_t5 if c in df.columns]
 
-        # Add credit_tag glyph for visual scanning
         _glyph_map = {"CREDITED":"🟢","OVERRUN":"🔴","PARTIAL":"🟡","NON-BILLABLE":"⚫","UNCONFIGURED":"⚪","SKIPPED":"·"}
         _detail_view = df[existing_t5].head(500).copy()
         if "credit_tag" in _detail_view.columns:
@@ -2200,7 +2831,7 @@ def main():
             st.caption(f"Showing first 500 of {len(df):,} rows. Full data in Excel download.")
 
     # ─────────────────────────────────────────────────────
-    # Tableau export — secondary, below the fold
+    # Tableau export — secondary
     # ─────────────────────────────────────────────────────
     st.divider()
     with st.expander("Tableau export (advanced)", expanded=False):
@@ -2214,7 +2845,6 @@ def main():
             key="util_dl_tableau",
         )
         st.caption("3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
-
 def build_tableau_excel(df, scope_map, consumed):
     import io as _io
     from openpyxl import Workbook as _WB
