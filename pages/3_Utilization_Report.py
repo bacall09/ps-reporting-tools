@@ -1459,47 +1459,175 @@ import pandas as pd
 import io
 
 
+def _run_utilization_engine(df_raw, period_start, period_end, drs_state_key):
+    """
+    Single cached compute path. Streamlit reruns on input change → cache hit → instant.
+    The Refresh button calls .clear() to bust this manually when source NS data has been
+    re-pulled but inputs haven't changed.
+
+    Returns dict with: df, consumed, summary, partial_period
+    """
+    import pandas as _pd
+    _ts = _pd.Timestamp(period_start)
+    _te = _pd.Timestamp(period_end) + _pd.Timedelta(days=1) - _pd.Timedelta(seconds=1)
+
+    if "date" in df_raw.columns:
+        _dated = _pd.to_datetime(df_raw["date"], errors="coerce")
+        _mask = (_dated >= _ts) & (_dated <= _te)
+        _df_period = df_raw[_mask].copy()
+    else:
+        _df_period = df_raw.copy()
+
+    if _df_period.empty:
+        return {"df": _df_period, "consumed": {}, "summary": None, "partial_period": False, "empty": True}
+
+    # DRS enrichment (preserve original behaviour)
+    _df_drs_enrich = st.session_state.get("df_drs")
+    if _df_drs_enrich is not None and not _df_drs_enrich.empty:
+        if "project_id" in _df_drs_enrich.columns and "project_name" in _df_drs_enrich.columns:
+            _drs_name_map = dict(zip(
+                _df_drs_enrich["project_id"].astype(str).str.strip(),
+                _df_drs_enrich["project_name"].astype(str).str.strip()
+            ))
+            if "project" in _df_period.columns:
+                _df_period["_drs_project_name"] = _df_period["project"].astype(str).str.strip().map(
+                    lambda pid: _drs_name_map.get(pid, ""))
+                _drs_name_by_name = {v: v for v in _df_drs_enrich["project_name"].astype(str).str.strip()}
+                _empty_mask = _df_period["_drs_project_name"] == ""
+                _df_period.loc[_empty_mask, "_drs_project_name"] = \
+                    _df_period.loc[_empty_mask, "project"].map(
+                        lambda n: next((v for v in _drs_name_by_name if n.lower() in v.lower() or v.lower() in n.lower()), ""))
+
+    df, consumed, _skipped = assign_credits(_df_period, DEFAULT_SCOPE)
+    return {"df": df, "consumed": consumed, "empty": False}
+
+
+def _ns_signature(df_ns):
+    """Cheap fingerprint for the NS dataset so cache key changes when underlying data does."""
+    if df_ns is None or df_ns.empty:
+        return ("empty",)
+    try:
+        _max_d = pd.to_datetime(df_ns["date"], errors="coerce").max()
+        return (len(df_ns), str(_max_d))
+    except Exception:
+        return (len(df_ns),)
+
+
 def main():
+    # ─────────────────────────────────────────────────────
+    # Page chrome — Manrope + redesigned styles
+    # ─────────────────────────────────────────────────────
     st.markdown("""
-        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
             html, body, [class*="css"] { font-family: 'Manrope', sans-serif !important; }
             h1, h2, h3, .stMarkdown, .stDataFrame, label, button { font-family: 'Manrope', sans-serif !important; }
-            .section-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#4472C4;margin-bottom:8px}
+
+            /* Sticky control bar */
+            .util-control-bar {
+                position: sticky; top: 0; z-index: 50;
+                background: #0B1426; border: 1px solid #1f2a44;
+                border-radius: 10px; padding: 14px 16px; margin-bottom: 12px;
+            }
+            .util-meta-row {
+                margin-top: 10px; padding-top: 10px;
+                border-top: 1px solid #1f2a44;
+                display: flex; gap: 14px; font-size: 12px;
+                color: #aac4d0; align-items: center; flex-wrap: wrap;
+            }
+            .util-live-dot {
+                width: 7px; height: 7px; border-radius: 50%;
+                background: #2ecc71; display: inline-block; margin-right: 5px;
+            }
+
+            /* Inline pill legend */
+            .util-legend {
+                background: #0B1426; border: 1px solid #1f2a44;
+                border-radius: 8px; padding: 10px 14px;
+                margin-bottom: 8px;
+                display: flex; flex-wrap: wrap; gap: 8px;
+                align-items: center; font-size: 12px;
+            }
+            .util-legend-label {
+                color: #6c7a8c; text-transform: uppercase;
+                letter-spacing: 0.6px; font-size: 11px;
+                margin-right: 4px;
+            }
+            .util-pill {
+                padding: 3px 9px; border-radius: 999px;
+                font-family: 'Manrope', sans-serif; font-size: 12px;
+                white-space: nowrap;
+            }
+            .util-pill-credited    { background: #1c3a2c; color: #7ed4a4; }
+            .util-pill-partial     { background: #3d2e15; color: #f5b958; }
+            .util-pill-overrun     { background: #3a1c1c; color: #f08585; }
+            .util-pill-nonbillable { background: #2a2f3a; color: #aac4d0; }
+            .util-pill-noscope     { background: #1c2a3d; color: #6fa8dc; }
+            .util-pill-rag-green   { background: #1c3a2c; color: #7ed4a4; }
+            .util-pill-rag-amber   { background: #3d2e15; color: #f5b958; }
+            .util-pill-rag-red     { background: #3a1c1c; color: #f08585; }
+
+            /* HTML employee table */
+            .util-emp-table { width: 100%; border-collapse: collapse;
+                              font-family: 'Manrope', sans-serif; font-size: 13px;
+                              font-variant-numeric: tabular-nums; }
+            .util-emp-table thead tr { background: #0f1c33; color: #aac4d0; }
+            .util-emp-table th { padding: 10px 12px; font-weight: 600;
+                                 text-align: left; border-bottom: 1px solid #1f2a44; }
+            .util-emp-table th.num { text-align: right; }
+            .util-emp-table th.center { text-align: center; }
+            .util-emp-table tbody tr { border-bottom: 1px solid #1a2438; }
+            .util-emp-table td { padding: 9px 12px; vertical-align: middle; }
+            .util-emp-table td.num { text-align: right; }
+            .util-emp-table td.center { text-align: center; }
+            .util-emp-table td.muted { color: #8aa0b8; }
+            .util-emp-avatar {
+                display: inline-flex; align-items: center; justify-content: center;
+                width: 24px; height: 24px; border-radius: 50%;
+                font-size: 10px; font-weight: 600; margin-right: 8px;
+                vertical-align: middle; flex-shrink: 0;
+            }
+            .util-emp-name {
+                display: inline-flex; align-items: center;
+            }
+            .util-table-header {
+                padding: 10px 14px;
+                background: #0B1426;
+                border: 1px solid #1f2a44;
+                border-radius: 8px 8px 0 0;
+                display: flex; justify-content: space-between;
+                font-size: 12px; color: #aac4d0;
+            }
+            .util-table-wrap {
+                background: #0B1426;
+                border: 1px solid #1f2a44;
+                border-top: none;
+                border-radius: 0 0 8px 8px;
+                overflow: hidden;
+            }
+            .util-table-foot {
+                padding: 8px 14px;
+                border-top: 1px solid #1f2a44;
+                display: flex; justify-content: space-between;
+                font-size: 11px; color: #6c7a8c;
+            }
         </style>
     """, unsafe_allow_html=True)
-    _hero = st.empty()
-    _hero.markdown("<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'><div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Professional Services · Tools</div><h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Utilization Report</h1><p style='color:#aac4d0;margin:6px 0 0 0;font-size:14px;font-family:Manrope,sans-serif'>Upload your NetSuite time detail export to generate a utilization credit report.</p></div>", unsafe_allow_html=True)
 
-    with st.expander("Credit Tag Logic", expanded=False):
-        st.markdown("""
-        <style>
-        .ref-table { width: 100%; border-collapse: collapse; font-family: Manrope, sans-serif; font-size: 13px; margin-bottom: 8px; }
-        .ref-table th { background: #4472C4; color: white; padding: 8px 12px; text-align: left; font-weight: 600; }
-        .ref-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-        </style>
-        <table class='ref-table'>
-            <tr><th>Credit Tag</th><th>Billing Type</th><th>Logic</th></tr>
-            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>T&amp;M</td><td style='color:#1a1a1a'>Full hours credited. No cap.</td></tr>
-            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to scoped amount.</td></tr>
-            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>PARTIAL</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to remaining scope.</td></tr>
-            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>OVERRUN</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours beyond contracted scope. Not credited.</td></tr>
-            <tr style='background:#F2F2F2'><td style='color:#555555;font-weight:700'>NON-BILLABLE</td><td style='color:#1a1a1a'>Internal</td><td style='color:#1a1a1a'>Excluded from utilization. Tracked as Admin Hours.</td></tr>
-            <tr style='background:#F2F2F2'><td style='color:#777777;font-weight:700'>FF: NO SCOPE DEFINED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>No matching scope entry. Flagged for follow-up.</td></tr>
-        </table>
-        """, unsafe_allow_html=True)
+    # Hero
+    st.markdown(
+        "<div style='background:#050D1F;padding:28px 36px 24px;border-radius:10px;"
+        "margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+        "<div style='font-size:10px;font-weight:700;letter-spacing:2.5px;"
+        "text-transform:uppercase;color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"
+        "<h1 style='color:white;margin:0;font-size:26px;'>Utilization Report</h1>"
+        "<p style='color:#aac4d0;margin:6px 0 0 0;font-size:13px;'>"
+        "Live utilization credits and capacity from NetSuite. Adjust the period — everything below recomputes automatically.</p>"
+        "</div>", unsafe_allow_html=True)
 
-    with st.expander("Utilization Target & RAG Status", expanded=False):
-        st.markdown("""
-        <table class='ref-table'>
-            <tr><th>Status</th><th>Threshold</th><th>Description</th></tr>
-            <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>Green</td><td style='color:#1a1a1a'>≥ 70%</td><td style='color:#1a1a1a'>At or above target utilization.</td></tr>
-            <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>Amber</td><td style='color:#1a1a1a'>60% – 69%</td><td style='color:#1a1a1a'>Below target. Monitor and assess project mix.</td></tr>
-            <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>Red</td><td style='color:#1a1a1a'>&lt; 60%</td><td style='color:#1a1a1a'>Significantly below target. Action required.</td></tr>
-        </table>
-        """, unsafe_allow_html=True)
-        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-
+    # ─────────────────────────────────────────────────────
+    # Data sourcing (unchanged: df_ns from session, view-as via sidebar)
+    # ─────────────────────────────────────────────────────
     _ns_from_session = st.session_state.get("df_ns")
     if _ns_from_session is None:
         st.info("Upload NS Time Detail on the Home page to generate the Utilization Report.")
@@ -1555,255 +1683,527 @@ def main():
             _filtered_u = df_raw[df_raw["employee"].apply(lambda v: name_matches(v, _logged_in))]
             if not _filtered_u.empty: df_raw = _filtered_u
 
-    st.divider()
-    st.markdown('<div class="section-label">Step 1 — Define Reporting Period</div>', unsafe_allow_html=True)
-
+    # ─────────────────────────────────────────────────────
+    # Date bounds for inputs
+    # ─────────────────────────────────────────────────────
     _raw_dates = pd.to_datetime(df_raw["date"], errors="coerce").dropna() if "date" in df_raw.columns else pd.Series(dtype="datetime64[ns]")
     _min_date  = _raw_dates.min().date() if not _raw_dates.empty else date(date.today().year, 1, 1)
     _max_date  = _raw_dates.max().date() if not _raw_dates.empty else date.today()
 
-    _pc1, _pc2 = st.columns(2)
-    with _pc1:
-        _period_start = st.date_input("Start date", value=_min_date, min_value=date(2020, 1, 1), max_value=_max_date, key="util_period_start")
-    with _pc2:
-        _period_end = st.date_input("End date", value=_max_date, min_value=_period_start, max_value=date(2030, 12, 31), key="util_period_end")
-    st.caption(f"NS data available: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')} · Selected: {_period_start.strftime('%-d %b %Y')} → {_period_end.strftime('%-d %b %Y')}")
+    # ─────────────────────────────────────────────────────
+    # Sticky control bar — Period preset · Custom range · Refresh · Excel
+    # ─────────────────────────────────────────────────────
+    today = date.today()
+    _first_this_month = today.replace(day=1)
+    _last_month_end = (_first_this_month - pd.Timedelta(days=1)).date()
+    _last_month_start = _last_month_end.replace(day=1)
+    period_options = {
+        "This month":     (date(today.year, today.month, 1), today),
+        "Last month":     (_last_month_start, _last_month_end),
+        "QTD":            (date(today.year, ((today.month - 1) // 3) * 3 + 1, 1), today),
+        "YTD":            (date(today.year, 1, 1), today),
+        "All available":  (_min_date, _max_date),
+        "Custom":         (None, None),
+    }
 
-    st.divider()
-    st.markdown('<div class="section-label">Step 2 — Generate Report</div>', unsafe_allow_html=True)
+    st.markdown('<div class="util-control-bar">', unsafe_allow_html=True)
+    c1, c2, c3, c4, c5 = st.columns([1.4, 1.1, 1.1, 0.9, 1.0])
+    with c1:
+        preset = st.selectbox("Period", list(period_options.keys()),
+                              index=0, key="util_period_preset",
+                              label_visibility="visible")
+    with c2:
+        if preset == "Custom":
+            _default_start = st.session_state.get("util_period_start", _min_date)
+            period_start = st.date_input("Start", value=_default_start,
+                                         min_value=date(2020, 1, 1), max_value=_max_date,
+                                         key="util_period_start")
+        else:
+            _ps, _ = period_options[preset]
+            period_start = max(_ps, _min_date)
+            st.markdown(f"<div style='font-size:11px;color:#6c7a8c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px'>Start</div>"
+                        f"<div style='border:1px solid #1f2a44;border-radius:6px;padding:6px 10px;font-size:13px;color:#aac4d0;background:#0f1c33'>{period_start.strftime('%Y-%m-%d')}</div>",
+                        unsafe_allow_html=True)
+    with c3:
+        if preset == "Custom":
+            _default_end = st.session_state.get("util_period_end", _max_date)
+            period_end = st.date_input("End", value=_default_end,
+                                       min_value=period_start, max_value=date(2030, 12, 31),
+                                       key="util_period_end")
+        else:
+            _, _pe = period_options[preset]
+            period_end = min(_pe, _max_date)
+            st.markdown(f"<div style='font-size:11px;color:#6c7a8c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px'>End</div>"
+                        f"<div style='border:1px solid #1f2a44;border-radius:6px;padding:6px 10px;font-size:13px;color:#aac4d0;background:#0f1c33'>{period_end.strftime('%Y-%m-%d')}</div>",
+                        unsafe_allow_html=True)
+    with c4:
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+        refresh_clicked = st.button("↻ Refresh", key="util_refresh",
+                                    help="Re-pull from source. Only needed if NS data has changed but your inputs haven't.")
+    with c5:
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+        _download_slot = st.empty()  # filled after engine runs
 
-    if st.button("Run Utilization Engine", type="primary"):
-        with st.spinner("Processing..."):
+    # ─────────────────────────────────────────────────────
+    # Auto-run cached engine
+    # ─────────────────────────────────────────────────────
+    if "_util_cache" not in st.session_state:
+        st.session_state._util_cache = {}
+
+    _cache_key = (
+        _ns_signature(_ns_from_session),
+        str(period_start), str(period_end),
+        _va_name_u, _va_region_u, _is_all_team,
+    )
+
+    if refresh_clicked:
+        st.session_state._util_cache.pop(_cache_key, None)
+
+    if _cache_key in st.session_state._util_cache:
+        result = st.session_state._util_cache[_cache_key]
+    else:
+        with st.spinner("Computing..."):
             try:
-                _ts  = pd.Timestamp(_period_start)
-                _te  = pd.Timestamp(_period_end) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-                if "date" in df_raw.columns:
-                    _dated = pd.to_datetime(df_raw["date"], errors="coerce")
-                    _mask  = (_dated >= _ts) & (_dated <= _te)
-                    _df_period = df_raw[_mask].copy()
-                    if _df_period.empty:
-                        st.warning(f"No time entries found between {_period_start.strftime('%-d %b %Y')} and {_period_end.strftime('%-d %b %Y')}.")
-                        st.stop()
-                else:
-                    _df_period = df_raw.copy()
-
-                _df_drs_enrich = st.session_state.get("df_drs")
-                if _df_drs_enrich is not None and not _df_drs_enrich.empty:
-                    if "project_id" in _df_drs_enrich.columns and "project_name" in _df_drs_enrich.columns:
-                        _drs_name_map = dict(zip(
-                            _df_drs_enrich["project_id"].astype(str).str.strip(),
-                            _df_drs_enrich["project_name"].astype(str).str.strip()
-                        ))
-                        if "project" in _df_period.columns:
-                            _df_period["_drs_project_name"] = _df_period["project"].astype(str).str.strip().map(
-                                lambda pid: _drs_name_map.get(pid, ""))
-                            _drs_name_by_name = {v: v for v in _df_drs_enrich["project_name"].astype(str).str.strip()}
-                            _empty_mask = _df_period["_drs_project_name"] == ""
-                            _df_period.loc[_empty_mask, "_drs_project_name"] = \
-                                _df_period.loc[_empty_mask, "project"].map(
-                                    lambda n: next((v for v in _drs_name_by_name if n.lower() in v.lower() or v.lower() in n.lower()), ""))
-
-                df, consumed, skipped_df = assign_credits(_df_period, DEFAULT_SCOPE)
+                result = _run_utilization_engine(df_raw, period_start, period_end, "")
+                st.session_state._util_cache[_cache_key] = result
             except Exception as e:
+                st.markdown('</div>', unsafe_allow_html=True)
                 st.error(f"Processing error: {e}")
                 st.exception(e)
                 return
 
-        _unmapped = []; _alumni = []
-        _period_str = str(df["period"].mode().iloc[0]) if "period" in df.columns and len(df) > 0 else None
-        for _emp in df["employee"].dropna().unique():
-            _emp_s = str(_emp).strip()
-            _loc = df[df["employee"]==_emp]["region"].iloc[0] if len(df[df["employee"]==_emp]) > 0 else ""
-            _matched_key = None
-            for k in EMPLOYEE_LOCATION:
-                if _emp_s.lower() == k.lower() or _emp_s.lower().startswith(k.lower()) or k.lower().startswith(_emp_s.lower()):
-                    _matched_key = k; break
-            if not _matched_key and not str(_loc).strip(): _unmapped.append(_emp_s)
-            elif _matched_key and _period_str:
-                if not _emp_active(_matched_key, _period_str): _alumni.append(_emp_s)
-        if _unmapped:
-            st.warning(f"**{len(_unmapped)} employee(s) have no location defined** — avail hours and PS region will show as Unknown.\n\n" + ", ".join(sorted(_unmapped)))
-        if _alumni:
-            st.info(f"**{len(_alumni)} employee(s) have time entries but are outside their active tenure** — excluded from utilization targets.\n\n" + ", ".join(sorted(_alumni)))
+    if result.get("empty"):
+        st.markdown(
+            f"<div class='util-meta-row'>"
+            f"<span><span class='util-live-dot'></span><b>Live</b></span>"
+            f"<span>NS data: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}</span>"
+            f"<span>·</span><span>No entries for {period_start.strftime('%-d %b %Y')} → {period_end.strftime('%-d %b %Y')}</span>"
+            f"</div></div>", unsafe_allow_html=True)
+        return
 
-        hours_this_period = df[df["credit_tag"] != "SKIPPED"]["hours"].sum() if "hours" in df.columns else 0
-        total_credit      = df["credit_hrs"].sum()
-        total_admin       = df[df["billing_type"].str.lower() == "internal"]["hours"].sum() if "billing_type" in df.columns else 0
-        total_proj_overrun = df[df["credit_tag"].isin(["OVERRUN", "PARTIAL"])]["variance_hrs"].sum() if "variance_hrs" in df.columns else 0
+    df = result["df"]
+    consumed = result["consumed"]
 
-        credit_pct  = total_credit        / hours_this_period if hours_this_period else 0
-        overrun_pct = total_proj_overrun  / hours_this_period if hours_this_period else 0
-        admin_pct   = total_admin         / hours_this_period if hours_this_period else 0
-        credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#e74c3c"
-        credit_label = "On target" if credit_pct >= 0.70 else "Below target" if credit_pct >= 0.60 else "At risk"
+    # ─────────────────────────────────────────────────────
+    # Summary numbers
+    # ─────────────────────────────────────────────────────
+    hours_this_period   = df[df["credit_tag"] != "SKIPPED"]["hours"].sum() if "hours" in df.columns else 0
+    total_credit        = df["credit_hrs"].sum()
+    total_admin         = df[df["billing_type"].str.lower() == "internal"]["hours"].sum() if "billing_type" in df.columns else 0
+    total_proj_overrun  = df[df["credit_tag"].isin(["OVERRUN", "PARTIAL"])]["variance_hrs"].sum() if "variance_hrs" in df.columns else 0
 
+    credit_pct  = total_credit       / hours_this_period if hours_this_period else 0
+    overrun_pct = total_proj_overrun / hours_this_period if hours_this_period else 0
+    admin_pct   = total_admin        / hours_this_period if hours_this_period else 0
+    credit_color = "#2ecc71" if credit_pct >= 0.70 else "#f39c12" if credit_pct >= 0.60 else "#e74c3c"
+    credit_label = "On target" if credit_pct >= 0.70 else "Below target" if credit_pct >= 0.60 else "At risk"
+
+    proj_count = df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups if 'project' in df.columns else 0
+    consultant_count = df["employee"].nunique() if "employee" in df.columns else 0
+
+    # Partial period detection
+    import calendar as _cal
+    _bdays_in = len(pd.bdate_range(period_start, period_end))
+    _yr2, _mo2 = period_start.year, period_start.month
+    _ms = pd.Timestamp(_yr2, _mo2, 1)
+    _me = pd.Timestamp(_yr2, _mo2, _cal.monthrange(_yr2, _mo2)[1])
+    _bdays_total_month = len(pd.bdate_range(_ms, _me))
+    is_partial = (period_start.month == period_end.month and period_start.year == period_end.year and _bdays_in < _bdays_total_month)
+
+    # Avail capacity (sum of avail across consultants in df)
+    _avail_total = 0
+    if "employee" in df.columns and "region" in df.columns and "period" in df.columns:
+        _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict()
+        _emp_period_ui = df.groupby("employee")["period"].first().to_dict()
+        for _e, _r in _emp_region_ui.items():
+            _av = get_avail_hours(_r, _emp_period_ui.get(_e, ""))
+            if _av: _avail_total += _av
+
+    # Live status row in control bar
+    _last_refresh = st.session_state.get("_util_last_refresh", datetime.now())
+    if refresh_clicked or _cache_key not in st.session_state._util_cache:
+        st.session_state._util_last_refresh = datetime.now()
+        _last_refresh = st.session_state._util_last_refresh
+    _ago_min = max(0, int((datetime.now() - _last_refresh).total_seconds() // 60))
+    _ago_str = "just now" if _ago_min == 0 else f"{_ago_min} min ago"
+
+    _partial_str = f" · partial period ({_bdays_in} of {_bdays_total_month} days)" if is_partial else ""
+    st.markdown(
+        f"<div class='util-meta-row'>"
+        f"<span><span class='util-live-dot'></span><b>Live</b></span>"
+        f"<span>NS data: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}</span>"
+        f"<span>·</span>"
+        f"<span>Showing <b>{proj_count} projects</b> · <b>{hours_this_period:,.2f} hrs</b>{_partial_str}</span>"
+        f"<span style='margin-left:auto;color:#6c7a8c'>Updated {_ago_str}</span>"
+        f"</div></div>", unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────
+    # Wire Excel download into reserved slot
+    # ─────────────────────────────────────────────────────
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"utilization_report_{timestamp}.xlsx"
+    try:
+        excel_buf = build_excel(df, DEFAULT_SCOPE, consumed)
+        with _download_slot:
+            st.download_button(
+                "⬇ Excel", data=excel_buf, file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary", key="util_dl_excel_top",
+            )
+    except Exception:
+        pass
+
+    # ─────────────────────────────────────────────────────
+    # Unmapped / alumni warnings
+    # ─────────────────────────────────────────────────────
+    _unmapped = []; _alumni = []
+    _period_str = str(df["period"].mode().iloc[0]) if "period" in df.columns and len(df) > 0 else None
+    for _emp in df["employee"].dropna().unique():
+        _emp_s = str(_emp).strip()
+        _loc = df[df["employee"]==_emp]["region"].iloc[0] if len(df[df["employee"]==_emp]) > 0 else ""
+        _matched_key = None
+        for k in EMPLOYEE_LOCATION:
+            if _emp_s.lower() == k.lower() or _emp_s.lower().startswith(k.lower()) or k.lower().startswith(_emp_s.lower()):
+                _matched_key = k; break
+        if not _matched_key and not str(_loc).strip(): _unmapped.append(_emp_s)
+        elif _matched_key and _period_str:
+            if not _emp_active(_matched_key, _period_str): _alumni.append(_emp_s)
+    if _unmapped:
+        st.warning(f"**{len(_unmapped)} employee(s) have no location defined** — avail hours and PS region will show as Unknown.\n\n" + ", ".join(sorted(_unmapped)))
+    if _alumni:
+        st.info(f"**{len(_alumni)} employee(s) have time entries but are outside their active tenure** — excluded from utilization targets.\n\n" + ", ".join(sorted(_alumni)))
+
+    # ─────────────────────────────────────────────────────
+    # KPI strip
+    # ─────────────────────────────────────────────────────
+    def fmt_hrs(n):
+        return f"{n:,.2f}".rstrip("0").rstrip(".") if "." in f"{n:,.2f}" else f"{n:,}"
+
+    def metric_card(label, value, sub=None, sub_color=None, sub_bg=None):
+        sub_html = ""
+        if sub:
+            if sub_bg and sub_color:
+                sub_html = f"<div style='display:inline-block;margin-top:6px;padding:2px 9px;border-radius:999px;background:{sub_bg};color:{sub_color};font-size:11px'>{sub}</div>"
+            else:
+                sub_html = f"<div style='font-size:11px;color:#6c7a8c;margin-top:4px'>{sub}</div>"
+        return (f"<div style='background:#0B1426;border:1px solid #1f2a44;border-radius:8px;padding:14px'>"
+                f"<div style='font-size:11px;color:#aac4d0;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{label}</div>"
+                f"<div style='font-size:22px;font-weight:700;line-height:1.1;color:white;font-variant-numeric:tabular-nums'>{value}</div>"
+                f"{sub_html}</div>")
+
+    _credit_bg = "#1c3a2c" if credit_pct >= 0.70 else "#3d2e15" if credit_pct >= 0.60 else "#3a1c1c"
+    _credit_fg = "#7ed4a4" if credit_pct >= 0.70 else "#f5b958" if credit_pct >= 0.60 else "#f08585"
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1: st.markdown(metric_card("Projects this period", f"{proj_count:,}", f"across {consultant_count} consultants"), unsafe_allow_html=True)
+    with m2: st.markdown(metric_card("Hours logged", fmt_hrs(hours_this_period), f"of {_avail_total:,.0f} capacity" if _avail_total else None), unsafe_allow_html=True)
+    with m3: st.markdown(metric_card("Utilization credits", fmt_hrs(total_credit), f"↑ {credit_pct:.1%} · {credit_label}", _credit_fg, _credit_bg), unsafe_allow_html=True)
+    with m4: st.markdown(metric_card("FF project overrun", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "#f5b958", "#3d2e15"), unsafe_allow_html=True)
+    with m5: st.markdown(metric_card("Admin hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs"), unsafe_allow_html=True)
+
+    _noscope_hrs = df[df["credit_tag"] == "UNCONFIGURED"]["hours"].sum() if "credit_tag" in df.columns else 0
+    if _noscope_hrs > 0:
+        st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
+        st.warning(f"{fmt_hrs(_noscope_hrs)} hour(s) on FF projects with NO SCOPE DEFINED — see Watch List tab in the downloaded report.")
+
+    # ─────────────────────────────────────────────────────
+    # Inline pill legend + popover reference
+    # ─────────────────────────────────────────────────────
+    st.markdown("<div style='margin-top:14px'></div>", unsafe_allow_html=True)
+    legend_col, ref_col = st.columns([6, 1])
+    with legend_col:
+        st.markdown(
+            "<div class='util-legend'>"
+            "<span class='util-legend-label'>Credit tags</span>"
+            "<span class='util-pill util-pill-credited'>● Credited</span>"
+            "<span class='util-pill util-pill-partial'>● Partial</span>"
+            "<span class='util-pill util-pill-overrun'>● Overrun</span>"
+            "<span class='util-pill util-pill-nonbillable'>● Non-billable</span>"
+            "<span class='util-pill util-pill-noscope'>● FF: no scope</span>"
+            "<span class='util-legend-label' style='margin-left:12px'>RAG</span>"
+            "<span class='util-pill util-pill-rag-green'>● ≥70%</span>"
+            "<span class='util-pill util-pill-rag-amber'>● 60–69%</span>"
+            "<span class='util-pill util-pill-rag-red'>● &lt;60%</span>"
+            "</div>", unsafe_allow_html=True)
+    with ref_col:
+        # Popover with full reference tables (fallback to expander on older Streamlit)
+        _popover_fn = getattr(st, "popover", None)
+        _ref_ctx = _popover_fn("ⓘ How are these calculated?") if _popover_fn else st.expander("ⓘ How are these calculated?", expanded=False)
+        with _ref_ctx:
+            st.markdown("""
+            <style>
+            .ref-table { width: 100%; border-collapse: collapse; font-family: Manrope, sans-serif; font-size: 13px; margin-bottom: 8px; }
+            .ref-table th { background: #4472C4; color: white; padding: 8px 12px; text-align: left; font-weight: 600; }
+            .ref-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+            </style>
+            <table class='ref-table'>
+                <tr><th>Credit Tag</th><th>Billing Type</th><th>Logic</th></tr>
+                <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>T&amp;M</td><td style='color:#1a1a1a'>Full hours credited. No cap.</td></tr>
+                <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>CREDITED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to scoped amount.</td></tr>
+                <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>PARTIAL</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours credited up to remaining scope.</td></tr>
+                <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>OVERRUN</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>Hours beyond contracted scope. Not credited.</td></tr>
+                <tr style='background:#F2F2F2'><td style='color:#555555;font-weight:700'>NON-BILLABLE</td><td style='color:#1a1a1a'>Internal</td><td style='color:#1a1a1a'>Excluded from utilization. Tracked as Admin Hours.</td></tr>
+                <tr style='background:#F2F2F2'><td style='color:#777777;font-weight:700'>FF: NO SCOPE DEFINED</td><td style='color:#1a1a1a'>Fixed Fee</td><td style='color:#1a1a1a'>No matching scope entry. Flagged for follow-up.</td></tr>
+            </table>
+            <table class='ref-table'>
+                <tr><th>RAG Status</th><th>Threshold</th><th>Description</th></tr>
+                <tr style='background:#EAF9F1'><td style='color:#1E8449;font-weight:700'>Green</td><td style='color:#1a1a1a'>≥ 70%</td><td style='color:#1a1a1a'>At or above target utilization.</td></tr>
+                <tr style='background:#FEF9E7'><td style='color:#E67E22;font-weight:700'>Amber</td><td style='color:#1a1a1a'>60% – 69%</td><td style='color:#1a1a1a'>Below target. Monitor and assess project mix.</td></tr>
+                <tr style='background:#FDECED'><td style='color:#C0392B;font-weight:700'>Red</td><td style='color:#1a1a1a'>&lt; 60%</td><td style='color:#1a1a1a'>Significantly below target. Action required.</td></tr>
+            </table>
+            """, unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────
+    # Tabs
+    # ─────────────────────────────────────────────────────
+    _proj_count_tab = df[df["credit_tag"] != "SKIPPED"]["project"].nunique() if "project" in df.columns else 0
+    _nonbill_count = df[df["credit_tag"] == "NON-BILLABLE"]["task"].nunique() if "task" in df.columns else 0
+    _detail_count = len(df)
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        f"By Employee · {consultant_count}",
+        f"By Project · {_proj_count_tab}",
+        f"Non-Billable · {_nonbill_count}",
+        "Task Analysis",
+        f"Detail · {_detail_count:,}",
+    ])
+
+    # ─────────────────────────────────────────────────────
+    # TAB 1 — By Employee (custom HTML table with pills)
+    # ─────────────────────────────────────────────────────
+    with tab1:
+        _ep = df[df["credit_tag"] != "SKIPPED"]
+        emp_sum_ui = _ep.groupby(["employee","period"], as_index=False).agg(
+            hours_this_period=("hours","sum"), credit_hrs=("credit_hrs","sum"),
+            ff_overrun_hrs=("variance_hrs","sum"),
+            admin_hrs=("hours", lambda x: df.loc[
+                (df["employee"].isin(_ep["employee"])) &
+                (df["billing_type"].str.lower()=="internal"), "hours"
+            ].sum() if "billing_type" in df.columns else 0),
+        ).sort_values(["employee","period"])
+        _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict() if "region" in df.columns else {}
+        emp_sum_ui["location"]   = emp_sum_ui["employee"].map(_emp_region_ui)
+        emp_sum_ui["avail_hrs"]  = emp_sum_ui.apply(
+            lambda r: get_avail_hours(r["location"], r["period"]) if r["location"] else None, axis=1)
+        emp_sum_ui["util_vs_logged_n"] = emp_sum_ui.apply(
+            lambda r: r["credit_hrs"] / r["hours_this_period"] if r["hours_this_period"] > 0 else None, axis=1)
+        emp_sum_ui["util_vs_capacity_n"] = emp_sum_ui.apply(
+            lambda r: r["credit_hrs"] / r["avail_hrs"] if r["avail_hrs"] and r["avail_hrs"] > 0 else None, axis=1)
+
+        # Projection
+        _period_bdays = {}
         if "date" in df.columns:
-            max_date = pd.to_datetime(df["date"], errors="coerce").max()
-            date_str = max_date.strftime("%-d %B %Y") if pd.notna(max_date) else "—"
-        else:
-            date_str = "—"
+            for _per, _grp in df.groupby("period"):
+                _dates = _grp["date"].dropna()
+                if len(_dates) == 0: continue
+                _days_in = len(pd.bdate_range(_dates.min(), _dates.max()))
+                _yr2, _mo2 = _dates.min().year, _dates.min().month
+                _ms = pd.Timestamp(_yr2, _mo2, 1)
+                _me = pd.Timestamp(_yr2, _mo2, _cal.monthrange(_yr2, _mo2)[1])
+                _total = len(pd.bdate_range(_ms, _me))
+                _period_bdays[str(_per)] = (_days_in, _total)
 
-        def fmt_hrs(n):
-            return f"{n:,.2f}".rstrip("0").rstrip(".") if "." in f"{n:,.2f}" else f"{n:,}"
+        def _proj_util(row):
+            per = str(row["period"])
+            if per not in _period_bdays: return None
+            days_in, total = _period_bdays[per]
+            if days_in >= total: return None
+            avail = row["avail_hrs"]
+            if not avail or avail <= 0 or days_in <= 0: return None
+            return (row['credit_hrs'] / days_in * total) / avail
 
-        def metric_card(label, value, pill_txt=None, pill_fg=None, pill_icon="&#8593;"):
-            pill = ""
-            if pill_txt and pill_fg:
-                pill = f"<div style='display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;background-color:{pill_fg}33;font-size:13px;font-family:Manrope,sans-serif;color:{pill_fg}'>{pill_icon} {pill_txt}</div>"
-            return f"""<div style='font-size:12px;color:#a0a0a0;font-family:Manrope,sans-serif;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{label}</div>
-<div style='font-size:28px;font-weight:700;color:inherit;font-family:Manrope,sans-serif;line-height:1.15;white-space:nowrap'>{value}</div>{pill}"""
+        emp_sum_ui["proj_full_month_n"] = emp_sum_ui.apply(_proj_util, axis=1)
+        _is_partial_emp = emp_sum_ui["proj_full_month_n"].notna().any()
 
-        st.markdown("""<style>[data-testid="stHorizontalBlock"] > div { padding-left: 6px !important; padding-right: 6px !important; }</style>""", unsafe_allow_html=True)
-        m1, m2, m3, _gap, m4, m5 = st.columns([2, 2, 2, 0.3, 2, 2])
-        with m1: st.markdown(metric_card("Projects This Period", f"{df[df['billing_type'].fillna('').str.lower() != 'internal'].groupby(['project','project_type']).ngroups:,}"), unsafe_allow_html=True)
-        with m2: st.markdown(metric_card("Hours This Period", fmt_hrs(hours_this_period)), unsafe_allow_html=True)
-        with m3: st.markdown(metric_card("Utilization Credits", fmt_hrs(total_credit), f"{credit_pct:.1%} of hrs · {credit_label}", credit_color), unsafe_allow_html=True)
-        with m4: st.markdown(metric_card("FF Project Overrun Hrs", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "#ff4b4b", pill_icon=""), unsafe_allow_html=True)
-        with m5: st.markdown(metric_card("Admin Hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs", "#808495", pill_icon="·"), unsafe_allow_html=True)
+        # Sort by util_vs_capacity_n descending (None last)
+        emp_sum_ui = emp_sum_ui.sort_values(
+            "util_vs_capacity_n", ascending=False, na_position="last"
+        ).reset_index(drop=True)
 
-        _noscope_hrs = df[df["credit_tag"] == "UNCONFIGURED"]["hours"].sum() if "credit_tag" in df.columns else 0
-        if _noscope_hrs > 0:
-            st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
-            st.warning(f"{fmt_hrs(_noscope_hrs)} hour(s) on FF projects with NO SCOPE DEFINED — see Watch List tab in the downloaded report.")
+        # Build HTML table
+        def _avatar(name):
+            parts = [p.strip() for p in str(name).replace(",", " ").split() if p.strip()]
+            initials = (parts[0][0] + parts[1][0]).upper() if len(parts) >= 2 else (parts[0][:2].upper() if parts else "??")
+            # Stable color from name hash
+            palettes = [("#1c3a2c","#7ed4a4"), ("#3d2e15","#f5b958"), ("#1c2a3d","#6fa8dc"),
+                        ("#3a1c1c","#f08585"), ("#2a1c3d","#c39bf0"), ("#1c3d3a","#7df0d4")]
+            bg, fg = palettes[hash(str(name)) % len(palettes)]
+            return f"<span class='util-emp-avatar' style='background:{bg};color:{fg}'>{initials}</span>"
 
-        st.markdown("---")
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["By Employee", "By Project", "Non-Billable", "Task Analysis", "Detail"])
+        def _rag_pill(v):
+            if v is None: return "<span class='muted'>—</span>"
+            if v >= 0.70:   cls = "util-pill-rag-green"
+            elif v >= 0.60: cls = "util-pill-rag-amber"
+            else:           cls = "util-pill-rag-red"
+            return f"<span class='util-pill {cls}'>{v*100:.1f}%</span>"
 
-        with tab1:
-            _ep = df[df["credit_tag"] != "SKIPPED"]
-            emp_sum_ui = _ep.groupby(["employee","period"], as_index=False).agg(
-                hours_this_period=("hours","sum"), credit_hrs=("credit_hrs","sum"),
-                ff_overrun_hrs=("variance_hrs","sum"),
-                admin_hrs=("hours", lambda x: df.loc[
-                    (df["employee"].isin(_ep["employee"])) &
-                    (df["billing_type"].str.lower()=="internal"), "hours"
-                ].sum() if "billing_type" in df.columns else 0),
-            ).sort_values(["employee","period"])
-            _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict() if "region" in df.columns else {}
-            emp_sum_ui["location"]   = emp_sum_ui["employee"].map(_emp_region_ui)
-            emp_sum_ui["avail_hrs"]  = emp_sum_ui.apply(
-                lambda r: get_avail_hours(r["location"], r["period"]) if r["location"] else None, axis=1)
-            emp_sum_ui["util_vs_logged_n"] = emp_sum_ui.apply(
-                lambda r: r["credit_hrs"] / r["hours_this_period"] if r["hours_this_period"] > 0 else None, axis=1)
-            emp_sum_ui["util_vs_capacity_n"] = emp_sum_ui.apply(
-                lambda r: r["credit_hrs"] / r["avail_hrs"] if r["avail_hrs"] and r["avail_hrs"] > 0 else None, axis=1)
-            emp_sum_ui["util_vs_logged"]   = emp_sum_ui["util_vs_logged_n"].apply(lambda v: f"{v*100:.1f}%" if v is not None else "—")
-            emp_sum_ui["util_vs_capacity"] = emp_sum_ui["util_vs_capacity_n"].apply(lambda v: f"{v*100:.1f}%" if v is not None else "—")
+        def _short_name(n):
+            parts = str(n).split(",", 1)
+            if len(parts) == 2:
+                last = parts[0].strip()
+                first = parts[1].strip().split()[0] if parts[1].strip() else ""
+                return f"{last}, {first[:1]}." if first else last
+            return n
 
-            import calendar as _cal
-            _period_bdays = {}
-            if "date" in df.columns:
-                for _per, _grp in df.groupby("period"):
-                    _dates = _grp["date"].dropna()
-                    if len(_dates) == 0: continue
-                    _days_in = len(pd.bdate_range(_dates.min(), _dates.max()))
-                    _yr2, _mo2 = _dates.min().year, _dates.min().month
-                    _ms = pd.Timestamp(_yr2, _mo2, 1)
-                    _me = pd.Timestamp(_yr2, _mo2, _cal.monthrange(_yr2, _mo2)[1])
-                    _total = len(pd.bdate_range(_ms, _me))
-                    _period_bdays[str(_per)] = (_days_in, _total)
+        rows_html = []
+        for _, r in emp_sum_ui.iterrows():
+            emp = r["employee"]
+            exempt = _emp_util_exempt(emp)
+            ul_n = r["util_vs_logged_n"] if not exempt else None
+            uc_n = r["util_vs_capacity_n"] if not exempt else None
+            pj_n = r["proj_full_month_n"]
+            avail = r["avail_hrs"]
+            avail_str = f"{avail:,.1f}" if avail else "—"
+            pj_str = f"{pj_n*100:.1f}%" if pj_n is not None else "—"
 
-            def _proj_util(row):
-                per = str(row["period"])
-                if per not in _period_bdays: return "—"
-                days_in, total = _period_bdays[per]
-                if days_in >= total: return "—"
-                avail = row["avail_hrs"]
-                if not avail or avail <= 0 or days_in <= 0: return "—"
-                return f"{(row['credit_hrs'] / days_in * total) / avail * 100:.1f}%"
+            rows_html.append(
+                f"<tr>"
+                f"<td><span class='util-emp-name'>{_avatar(emp)}{_short_name(emp)}</span></td>"
+                f"<td class='muted'>{r['location'] or '—'}</td>"
+                f"<td class='muted'>{r['period']}</td>"
+                f"<td class='num'>{avail_str}</td>"
+                f"<td class='num'>{r['hours_this_period']:,.2f}</td>"
+                f"<td class='num'>{r['credit_hrs']:,.2f}</td>"
+                f"<td class='num'>{r['ff_overrun_hrs']:,.2f}</td>"
+                f"<td class='center'>{_rag_pill(ul_n) if not exempt else '<span class=muted>exempt</span>'}</td>"
+                f"<td class='center'>{_rag_pill(uc_n) if not exempt else '<span class=muted>exempt</span>'}</td>"
+                + (f"<td class='num muted'>{pj_str}</td>" if _is_partial_emp else "")
+                + "</tr>"
+            )
 
-            emp_sum_ui["proj_full_month"] = emp_sum_ui.apply(_proj_util, axis=1)
-            _is_partial = (emp_sum_ui["proj_full_month"] != "—").any()
-
-            display_cols = ["employee", "location", "period", "avail_hrs",
-                            "hours_this_period", "credit_hrs", "ff_overrun_hrs",
-                            "util_vs_logged", "util_vs_capacity"]
-            if _is_partial:
-                display_cols.append("proj_full_month")
-                st.caption("Partial period detected. Projected Full Month Util extrapolates credits at current daily run rate.")
-
-            col_labels = {
-                "employee": "Employee", "location": "Location", "period": "Period",
-                "avail_hrs": "Avail Hrs (Capacity)", "hours_this_period": "Hours Logged",
-                "credit_hrs": "Util Credits", "ff_overrun_hrs": "FF Overrun Hrs",
-                "util_vs_logged": "Util % (vs Logged)", "util_vs_capacity": "Util % (vs Capacity)",
-                "proj_full_month": "Projected Full Month",
-            }
-            show_df = emp_sum_ui[[col for col in display_cols if col in emp_sum_ui.columns]].rename(columns=col_labels)
-
-            _logged_col = "Util % (vs Logged)"; _capacity_col = "Util % (vs Capacity)"
-
-            def _style_util_row(row):
-                styles = [""] * len(row)
-                for col_name, num_col in [(_logged_col, "util_vs_logged_n"), (_capacity_col, "util_vs_capacity_n")]:
-                    if col_name in row.index:
-                        idx_pos = list(row.index).index(col_name)
-                        emp = row.get("Employee", ""); per = row.get("Period", "")
-                        match = emp_sum_ui[(emp_sum_ui["employee"] == emp) & (emp_sum_ui["period"] == per)]
-                        if not match.empty:
-                            n = match.iloc[0].get(num_col)
-                            if n is not None and not _emp_util_exempt(emp):
-                                bg = "#C6EFCE" if n >= 0.70 else "#FFEB9C" if n >= 0.60 else "#FFC7CE"
-                                fg = "#276221" if n >= 0.70 else "#9C6500" if n >= 0.60 else "#9C0006"
-                                styles[idx_pos] = f"background-color:{bg};color:{fg};font-weight:600"
-                return styles
-
-            st.dataframe(show_df.style.apply(_style_util_row, axis=1), use_container_width=True, hide_index=True)
-
-        with tab2:
-            proj_sum_ui = df[df["credit_tag"] != "SKIPPED"].groupby(
-                ["project","project_type"], as_index=False
-            ).agg(hours_this_period=("hours","sum"), credit_hrs=("credit_hrs","sum"),
-                  ff_overrun_hrs=("variance_hrs","sum")).sort_values("project")
-            st.dataframe(proj_sum_ui[["project","project_type","hours_this_period","credit_hrs","ff_overrun_hrs"]],
-                         use_container_width=True, hide_index=True)
-
-        with tab3:
-            zco_df = df[df["credit_tag"] == "NON-BILLABLE"]
-            if "task" in zco_df.columns and len(zco_df) > 0:
-                zco_sum = zco_df.groupby(["task","employee","period"], as_index=False
-                ).agg(hours=("hours","sum")).sort_values(["task","employee","period"])
-                st.dataframe(zco_sum, use_container_width=True, hide_index=True)
-            else:
-                st.info("No Non-Billable (Internal) entries in this dataset.")
-
-        with tab4:
-            ff_df_ui = df[df["ff_task"].notna()] if "ff_task" in df.columns else pd.DataFrame()
-            if len(ff_df_ui) > 0:
-                task_sum_ui = ff_df_ui.groupby(["ff_task","project_type"], as_index=False
-                ).agg(hours=("hours","sum")).sort_values(["ff_task","project_type"])
-                type_totals_ui = ff_df_ui.groupby("project_type")["hours"].sum()
-                task_sum_ui["pct_of_type"] = task_sum_ui.apply(
-                    lambda r: f"{r['hours']/type_totals_ui.get(r['project_type'],1)*100:.1f}%", axis=1)
-                st.dataframe(task_sum_ui, use_container_width=True, hide_index=True)
-            else:
-                st.info("No Fixed Fee task data found.")
-
-        with tab5:
-            display_cols_t5 = ["employee","region","project","project_type","billing_type",
-                                "hours_to_date","date","hours","credit_hrs","variance_hrs",
-                                "previous_htd","credit_tag","notes"]
-            existing_t5 = [c for c in display_cols_t5 if c in df.columns]
-            st.dataframe(df[existing_t5].head(100), use_container_width=True, hide_index=True)
-            if len(df) > 100:
-                st.caption(f"Showing first 100 of {len(df):,} rows. Full data in Excel download.")
-
-        st.divider()
-        st.markdown('<div class="section-label">Download Report</div>', unsafe_allow_html=True)
-        with st.spinner("Building Excel file..."):
-            excel_buf = build_excel(df, DEFAULT_SCOPE, consumed)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        filename  = f"utilization_report_{timestamp}.xlsx"
-        st.download_button(
-            label="⬇ Download Excel Report",
-            data=excel_buf, file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
+        proj_th = "<th class='num'>Proj full mo</th>" if _is_partial_emp else ""
+        st.markdown(
+            f"<div class='util-table-header'>"
+            f"<span style='font-weight:600;color:white'>By employee · projected to full month at current run rate</span>"
+            f"<span>{len(emp_sum_ui)} of {len(emp_sum_ui)} visible · sorted by Util % (vs Capacity)</span>"
+            f"</div>"
+            f"<div class='util-table-wrap'>"
+            f"<table class='util-emp-table'>"
+            f"<thead><tr>"
+            f"<th>Employee</th><th>Location</th><th>Period</th>"
+            f"<th class='num'>Avail</th><th class='num'>Logged</th>"
+            f"<th class='num'>Credits</th><th class='num'>Overrun</th>"
+            f"<th class='center'>Util % logged</th><th class='center'>Util % cap</th>"
+            f"{proj_th}"
+            f"</tr></thead>"
+            f"<tbody>{''.join(rows_html)}</tbody>"
+            f"</table>"
+            + (f"<div class='util-table-foot'>"
+               f"<span>Partial period: {_bdays_in} of {_bdays_total_month} days. Projected columns extrapolate at current daily run rate.</span>"
+               f"<span>Last refresh: {_ago_str} · NetSuite source · {_detail_count:,} entries</span>"
+               f"</div>" if is_partial else
+               f"<div class='util-table-foot'>"
+               f"<span>&nbsp;</span>"
+               f"<span>Last refresh: {_ago_str} · NetSuite source · {_detail_count:,} entries</span>"
+               f"</div>")
+            + "</div>",
+            unsafe_allow_html=True
         )
-        st.caption(f"`{filename}`")
 
-        st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+    # ─────────────────────────────────────────────────────
+    # TAB 2 — By Project (st.dataframe with column_config)
+    # ─────────────────────────────────────────────────────
+    with tab2:
+        proj_sum_ui = df[df["credit_tag"] != "SKIPPED"].groupby(
+            ["project","project_type"], as_index=False
+        ).agg(hours_this_period=("hours","sum"), credit_hrs=("credit_hrs","sum"),
+              ff_overrun_hrs=("variance_hrs","sum")).sort_values("project")
+        st.dataframe(
+            proj_sum_ui[["project","project_type","hours_this_period","credit_hrs","ff_overrun_hrs"]],
+            use_container_width=True, hide_index=True,
+            column_config={
+                "project":           st.column_config.TextColumn("Project", pinned=True, help="Project name"),
+                "project_type":      st.column_config.TextColumn("Type", help="Fixed Fee, T&M, or Internal"),
+                "hours_this_period": st.column_config.NumberColumn("Hours logged", format="%.2f", help="Total hours logged to this project in the selected period"),
+                "credit_hrs":        st.column_config.NumberColumn("Util credits", format="%.2f", help="Hours that count toward utilization (capped at scope for FF)"),
+                "ff_overrun_hrs":    st.column_config.NumberColumn("FF overrun", format="%.2f", help="Hours beyond contracted scope on Fixed Fee projects"),
+            },
+        )
+
+    # ─────────────────────────────────────────────────────
+    # TAB 3 — Non-Billable
+    # ─────────────────────────────────────────────────────
+    with tab3:
+        zco_df = df[df["credit_tag"] == "NON-BILLABLE"]
+        if "task" in zco_df.columns and len(zco_df) > 0:
+            zco_sum = zco_df.groupby(["task","employee","period"], as_index=False
+            ).agg(hours=("hours","sum")).sort_values(["task","employee","period"])
+            st.dataframe(
+                zco_sum, use_container_width=True, hide_index=True,
+                column_config={
+                    "task":     st.column_config.TextColumn("Task", help="Internal task name"),
+                    "employee": st.column_config.TextColumn("Employee"),
+                    "period":   st.column_config.TextColumn("Period"),
+                    "hours":    st.column_config.NumberColumn("Hours", format="%.2f"),
+                },
+            )
+        else:
+            st.info("No Non-Billable (Internal) entries in this dataset.")
+
+    # ─────────────────────────────────────────────────────
+    # TAB 4 — Task Analysis
+    # ─────────────────────────────────────────────────────
+    with tab4:
+        ff_df_ui = df[df["ff_task"].notna()] if "ff_task" in df.columns else pd.DataFrame()
+        if len(ff_df_ui) > 0:
+            task_sum_ui = ff_df_ui.groupby(["ff_task","project_type"], as_index=False
+            ).agg(hours=("hours","sum")).sort_values(["ff_task","project_type"])
+            type_totals_ui = ff_df_ui.groupby("project_type")["hours"].sum()
+            task_sum_ui["pct_of_type"] = task_sum_ui.apply(
+                lambda r: r['hours']/type_totals_ui.get(r['project_type'],1), axis=1)
+            st.dataframe(
+                task_sum_ui, use_container_width=True, hide_index=True,
+                column_config={
+                    "ff_task":      st.column_config.TextColumn("FF task", help="Fixed Fee task category"),
+                    "project_type": st.column_config.TextColumn("Project type"),
+                    "hours":        st.column_config.NumberColumn("Hours", format="%.2f"),
+                    "pct_of_type":  st.column_config.ProgressColumn("% of type", format="%.1f%%", min_value=0, max_value=1, help="Share of total hours within this project type"),
+                },
+            )
+        else:
+            st.info("No Fixed Fee task data found.")
+
+    # ─────────────────────────────────────────────────────
+    # TAB 5 — Detail
+    # ─────────────────────────────────────────────────────
+    with tab5:
+        display_cols_t5 = ["employee","region","project","project_type","billing_type",
+                            "hours_to_date","date","hours","credit_hrs","variance_hrs",
+                            "previous_htd","credit_tag","notes"]
+        existing_t5 = [c for c in display_cols_t5 if c in df.columns]
+
+        # Add credit_tag glyph for visual scanning
+        _glyph_map = {"CREDITED":"🟢","OVERRUN":"🔴","PARTIAL":"🟡","NON-BILLABLE":"⚫","UNCONFIGURED":"⚪","SKIPPED":"·"}
+        _detail_view = df[existing_t5].head(500).copy()
+        if "credit_tag" in _detail_view.columns:
+            _detail_view["credit_tag"] = _detail_view["credit_tag"].map(lambda t: f"{_glyph_map.get(t,'')} {t}" if pd.notna(t) else "")
+
+        st.dataframe(
+            _detail_view, use_container_width=True, hide_index=True,
+            column_config={
+                "employee":     st.column_config.TextColumn("Employee", pinned=True),
+                "region":       st.column_config.TextColumn("Region"),
+                "project":      st.column_config.TextColumn("Project"),
+                "project_type": st.column_config.TextColumn("Type"),
+                "billing_type": st.column_config.TextColumn("Billing"),
+                "hours_to_date":st.column_config.NumberColumn("HTD", format="%.2f"),
+                "date":         st.column_config.DateColumn("Date"),
+                "hours":        st.column_config.NumberColumn("Hours", format="%.2f"),
+                "credit_hrs":   st.column_config.NumberColumn("Credit hrs", format="%.2f"),
+                "variance_hrs": st.column_config.NumberColumn("Variance", format="%.2f"),
+                "previous_htd": st.column_config.NumberColumn("Prev HTD", format="%.2f"),
+                "credit_tag":   st.column_config.TextColumn("Credit tag", help="🟢 Credited · 🟡 Partial · 🔴 Overrun · ⚫ Non-billable · ⚪ FF no scope"),
+                "notes":        st.column_config.TextColumn("Notes"),
+            },
+        )
+        if len(df) > 500:
+            st.caption(f"Showing first 500 of {len(df):,} rows. Full data in Excel download.")
+
+    # ─────────────────────────────────────────────────────
+    # Tableau export — secondary, below the fold
+    # ─────────────────────────────────────────────────────
+    st.divider()
+    with st.expander("Tableau export (advanced)", expanded=False):
         with st.spinner("Building Tableau export..."):
             tableau_buf = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
         tableau_filename = f"utilization_tableau_{timestamp}.xlsx"
@@ -1811,10 +2211,9 @@ def main():
             label="⬇ Download Tableau Export",
             data=tableau_buf, file_name=tableau_filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
+            key="util_dl_tableau",
         )
-        st.caption("`" + tableau_filename + "` — 3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
-
+        st.caption("3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
 
 def build_tableau_excel(df, scope_map, consumed):
     import io as _io
