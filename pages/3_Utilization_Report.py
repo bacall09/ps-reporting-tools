@@ -1538,12 +1538,14 @@ def main():
             /* Theme-aware card surfaces */
             .util-card {
                 background: var(--background-color, var(--color-background-primary, #ffffff));
+                color: var(--text-color, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px;
                 padding: 14px;
             }
             .util-control-bar {
                 background: var(--background-color, var(--color-background-primary, #ffffff));
+                color: var(--text-color, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 10px;
                 padding: 12px 16px;
@@ -1565,6 +1567,7 @@ def main():
             /* KPI cards */
             .util-kpi {
                 background: var(--background-color, var(--color-background-primary, #ffffff));
+                color: var(--text-color, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 14px;
             }
@@ -1576,14 +1579,14 @@ def main():
             .util-kpi-pill  { display: inline-block; margin-top: 4px;
                               padding: 2px 9px; border-radius: 999px; font-size: 11px; }
 
-            /* Pills (theme-aware via translucent overlays) */
+            /* Pills (fully theme-aware: translucent bg on both themes, color from var) */
             .util-pill { padding: 3px 9px; border-radius: 999px;
                          font-size: 12px; white-space: nowrap; font-weight: 500; }
-            .util-pill-green { background: rgba(34, 197, 94, 0.18); color: #15803d; }
-            .util-pill-amber { background: rgba(245, 158, 11, 0.18); color: #b45309; }
-            .util-pill-red   { background: rgba(239, 68, 68, 0.18); color: #b91c1c; }
-            .util-pill-blue  { background: rgba(59, 130, 246, 0.18); color: #1d4ed8; }
-            .util-pill-grey  { background: rgba(128, 128, 128, 0.18); color: #475569; }
+            .util-pill-green { background: rgba(34, 197, 94, 0.22); color: #15803d; }
+            .util-pill-amber { background: rgba(245, 158, 11, 0.22); color: #b45309; }
+            .util-pill-red   { background: rgba(239, 68, 68, 0.22); color: #b91c1c; }
+            .util-pill-blue  { background: rgba(59, 130, 246, 0.22); color: #1d4ed8; }
+            .util-pill-grey  { background: rgba(128, 128, 128, 0.22); color: #475569; }
             @media (prefers-color-scheme: dark) {
                 .util-pill-green { color: #7ed4a4; }
                 .util-pill-amber { color: #f5b958; }
@@ -1591,10 +1594,22 @@ def main():
                 .util-pill-blue  { color: #6fa8dc; }
                 .util-pill-grey  { color: #aac4d0; }
             }
+            /* Streamlit uses [data-theme] on body — handle the manual toggle case too */
+            [data-theme="dark"] .util-pill-green,
+            .stApp[data-theme="dark"] .util-pill-green { color: #7ed4a4; }
+            [data-theme="dark"] .util-pill-amber,
+            .stApp[data-theme="dark"] .util-pill-amber { color: #f5b958; }
+            [data-theme="dark"] .util-pill-red,
+            .stApp[data-theme="dark"] .util-pill-red   { color: #f08585; }
+            [data-theme="dark"] .util-pill-blue,
+            .stApp[data-theme="dark"] .util-pill-blue  { color: #6fa8dc; }
+            [data-theme="dark"] .util-pill-grey,
+            .stApp[data-theme="dark"] .util-pill-grey  { color: #aac4d0; }
 
             /* Inline legend strip */
             .util-legend {
                 background: var(--background-color, var(--color-background-primary, #ffffff));
+                color: var(--text-color, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
                 display: flex; flex-wrap: wrap; gap: 8px;
@@ -1608,6 +1623,7 @@ def main():
             /* Action callouts */
             .util-callout {
                 background: var(--background-color, var(--color-background-primary, #ffffff));
+                color: var(--text-color, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 12px 14px;
             }
@@ -1625,6 +1641,7 @@ def main():
                 width: 100%; border-collapse: collapse;
                 font-family: 'Manrope', sans-serif; font-size: 13px;
                 font-variant-numeric: tabular-nums;
+                color: var(--text-color, #1a1a1a);
             }
             .util-emp-table thead tr {
                 background: rgba(128,128,128,0.08);
@@ -1651,13 +1668,15 @@ def main():
             .util-table-header {
                 padding: 10px 14px;
                 background: var(--background-color, var(--color-background-primary, #ffffff));
+                color: var(--text-color, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px 8px 0 0;
                 display: flex; justify-content: space-between;
-                font-size: 12px; opacity: 0.85;
+                font-size: 12px;
             }
             .util-table-wrap {
                 background: var(--background-color, var(--color-background-primary, #ffffff));
+                color: var(--text-color, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-top: none;
                 border-radius: 0 0 8px 8px;
@@ -1817,8 +1836,7 @@ def main():
         "Custom":        (None, None),
     }
 
-    st.markdown('<div class="util-control-bar">', unsafe_allow_html=True)
-    c1, c2, c3, c4, c5 = st.columns([1.4, 1.1, 1.1, 0.9, 1.0])
+    c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 1.2, 1.0, 1.0])
     with c1:
         preset = st.selectbox("Period", list(period_options.keys()),
                               index=0, key="util_period_preset")
@@ -1879,7 +1897,6 @@ def main():
                 result = _run_utilization_engine(df_raw, period_start, period_end)
                 st.session_state._util_cache[_cache_key] = result
             except Exception as e:
-                st.markdown('</div>', unsafe_allow_html=True)
                 st.error(f"Processing error: {e}")
                 st.exception(e)
                 return
@@ -1890,7 +1907,7 @@ def main():
             f"<span><span class='util-live-dot'></span><b>Live</b></span>"
             f"<span>NS data: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}</span>"
             f"<span>·</span><span>No entries for {period_start.strftime('%-d %b %Y')} → {period_end.strftime('%-d %b %Y')}</span>"
-            f"</div></div>", unsafe_allow_html=True)
+            f"</div>", unsafe_allow_html=True)
         return
 
     df = result["df"]
@@ -1951,7 +1968,7 @@ def main():
         f"<span>·</span>"
         f"<span>Showing <b>{billable_proj_count} billable projects</b> · <b>{hours_this_period:,.2f} hrs</b>{_partial_str}</span>"
         f"<span style='margin-left:auto;opacity:0.6'>Updated {_ago_str}</span>"
-        f"</div></div>", unsafe_allow_html=True)
+        f"</div>", unsafe_allow_html=True)
 
     # Excel download in reserved slot
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
@@ -2049,22 +2066,19 @@ def main():
     below60_names = ", ".join(sorted([short_name(n) for n in _below_60["employee"].unique()]))
 
     # Projects in overrun
+    # credit_tag = OVERRUN is only assigned to FF projects by assign_credits, so this is the
+    # canonical signal for "FF in overrun" — no project_type string parsing needed.
     _proj_overrun = pd.DataFrame()
-    if "variance_hrs" in df.columns and _pid_col:
-        _po_grp = df_bill.groupby([_pid_col], as_index=False).agg(
+    if "variance_hrs" in df.columns and _pid_col and "credit_tag" in df.columns:
+        _overrun_pids = df_bill[df_bill["credit_tag"] == "OVERRUN"][_pid_col].astype(str).str.strip().unique()
+        _po_grp = df_bill[df_bill[_pid_col].astype(str).str.strip().isin(_overrun_pids)].groupby([_pid_col], as_index=False).agg(
             project=("project", "first") if "project" in df.columns else (_pid_col, "first"),
             project_type=("project_type", "first") if "project_type" in df.columns else (_pid_col, "first"),
-            scoped_hrs=("scoped_hrs", "sum") if "scoped_hrs" in df.columns else ("hours", lambda x: 0),
             hours_logged=("hours", "sum"),
             credit_hrs=("credit_hrs", "sum"),
             overrun_hrs=("variance_hrs", "sum"),
         )
-        # Only count FF overruns (T&M doesn't overrun in this model)
-        if "project_type" in df_bill.columns:
-            _ff_pids = df_bill[df_bill["project_type"].astype(str).str.contains("Fixed", case=False, na=False)][_pid_col].unique()
-            _proj_overrun = _po_grp[_po_grp[_pid_col].isin(_ff_pids) & (_po_grp["overrun_hrs"] > 0)].copy()
-        else:
-            _proj_overrun = _po_grp[_po_grp["overrun_hrs"] > 0].copy()
+        _proj_overrun = _po_grp[_po_grp["overrun_hrs"] > 0].copy()
     overrun_count = len(_proj_overrun)
     overrun_total = _proj_overrun["overrun_hrs"].sum() if not _proj_overrun.empty else 0
     overrun_top = ""
@@ -2203,7 +2217,7 @@ def main():
 
         # Inline legend + popover
         st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
-        legend_col, ref_col = st.columns([6, 1])
+        legend_col, ref_col = st.columns([8, 1])
         with legend_col:
             st.markdown(
                 "<div class='util-legend'>"
@@ -2220,7 +2234,7 @@ def main():
                 "</div>", unsafe_allow_html=True)
         with ref_col:
             _popover_fn = getattr(st, "popover", None)
-            _ref_ctx = _popover_fn("ⓘ How are these calculated?") if _popover_fn else st.expander("ⓘ How are these calculated?", expanded=False)
+            _ref_ctx = _popover_fn("ⓘ How?", help="How are these calculated?") if _popover_fn else st.expander("ⓘ How?", expanded=False)
             with _ref_ctx:
                 st.markdown("""
                 <div class='util-ref-grid'>
@@ -2293,7 +2307,22 @@ def main():
 
         emp_sum["proj_full_month"] = emp_sum.apply(_proj_util, axis=1)
         _is_partial_emp = emp_sum["proj_full_month"].notna().any()
-        emp_sum_sorted = emp_sum.sort_values("util_vs_capacity", ascending=False, na_position="last").reset_index(drop=True)
+
+        _consult_sort_opts = {
+            "Util % capacity (low → high)":  ("util_vs_capacity", True),
+            "Util % capacity (high → low)":  ("util_vs_capacity", False),
+            "Util % logged (low → high)":    ("util_vs_logged", True),
+            "Util % logged (high → low)":    ("util_vs_logged", False),
+            "Hours logged (high → low)":     ("hours_this_period", False),
+            "FF overrun (high → low)":       ("ff_overrun_hrs", False),
+            "Consultant (A → Z)":            ("employee", True),
+        }
+        cs_col, _ = st.columns([1.6, 4])
+        with cs_col:
+            consult_sort = st.selectbox("Sort by", list(_consult_sort_opts.keys()),
+                                        index=1, key="util_consult_sort")
+        _csk, _csa = _consult_sort_opts[consult_sort]
+        emp_sum_sorted = emp_sum.sort_values(_csk, ascending=_csa, na_position="last").reset_index(drop=True)
 
         rows_html = []
         for _, r in emp_sum_sorted.iterrows():
@@ -2320,7 +2349,7 @@ def main():
         st.markdown(
             f"<div class='util-table-header'>"
             f"<span style='font-weight:600'>By consultant{' · projected to full month' if _is_partial_emp else ''}</span>"
-            f"<span style='opacity:0.7'>{len(emp_sum_sorted)} of {len(emp_sum_sorted)} · sorted by Util % (vs Capacity)</span>"
+            f"<span style='opacity:0.7'>{len(emp_sum_sorted)} of {len(emp_sum_sorted)} · sorted by {consult_sort.lower()}</span>"
             f"</div>"
             f"<div class='util-table-wrap'>"
             f"<table class='util-emp-table'>"
@@ -2346,28 +2375,40 @@ def main():
     with tab_risk:
         # Build full project summary
         if _pid_col and len(df_bill) > 0:
-            agg_kwargs = {
-                "project":      ("project", "first") if "project" in df.columns else (_pid_col, "first"),
-                "project_type": ("project_type", "first") if "project_type" in df.columns else (_pid_col, "first"),
-                "hours_logged": ("hours", "sum"),
-                "credit_hrs":   ("credit_hrs", "sum"),
-                "overrun_hrs":  ("variance_hrs", "sum"),
-            }
-            if "scoped_hrs" in df_bill.columns:
-                agg_kwargs["scoped_hrs"] = ("scoped_hrs", "max")  # scope is per-project, not per-row
-            proj_sum = df_bill.groupby([_pid_col], as_index=False).agg(**agg_kwargs)
+            proj_sum = df_bill.groupby([_pid_col], as_index=False).agg(
+                project=("project", "first") if "project" in df.columns else (_pid_col, "first"),
+                project_type=("project_type", "first") if "project_type" in df.columns else (_pid_col, "first"),
+                hours_logged=("hours", "sum"),
+                credit_hrs=("credit_hrs", "sum"),
+                overrun_hrs=("variance_hrs", "sum"),
+            )
+
+            # Resolve scope per project type via DEFAULT_SCOPE substring match
+            def _scope_lookup(ptype):
+                _matches = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                            if k.strip().lower() in str(ptype).strip().lower()]
+                return max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
+            proj_sum["scoped_hrs"] = proj_sum["project_type"].apply(_scope_lookup)
+
+            # HTD per project from the consumed dict (keyed by project_id, falling back to project name)
+            def _htd(r):
+                pid = str(r[_pid_col]).strip().replace(".0", "")
+                if pid and pid in consumed:
+                    return consumed[pid]
+                pname = str(r.get("project", "")).strip()
+                return consumed.get(pname, None)
+            proj_sum["htd_hrs"] = proj_sum.apply(_htd, axis=1)
 
             # Tag noscope
             _noscope_pids = set(_noscope[_pid_col].astype(str).str.strip().unique()) if _pid_col and not _noscope.empty else set()
-            proj_sum["is_noscope"]  = proj_sum[_pid_col].astype(str).str.strip().isin(_noscope_pids)
+            proj_sum["is_noscope"] = proj_sum[_pid_col].astype(str).str.strip().isin(_noscope_pids)
 
-            # Burn % for FF
+            # Burn % uses HTD vs scope (shows true project health, not just this period)
             def _burn(r):
-                if "scoped_hrs" not in proj_sum.columns: return None
-                sc = r.get("scoped_hrs", 0)
-                if not sc or sc <= 0: return None
-                return r["hours_logged"] / sc
-
+                sc = r.get("scoped_hrs")
+                htd = r.get("htd_hrs")
+                if sc is None or sc <= 0 or htd is None: return None
+                return htd / sc
             proj_sum["burn_pct"] = proj_sum.apply(_burn, axis=1)
 
             # Status pill
@@ -2380,13 +2421,6 @@ def main():
             proj_sum["_status"] = proj_sum.apply(_status, axis=1)
             at_risk = proj_sum[proj_sum["_status"].notna()].copy()
 
-            # Sort: overrun desc, then burn desc
-            at_risk["_sort_key"] = at_risk.apply(
-                lambda r: (1 if r["_status"][0] == "red" else 2 if r["_status"][0] == "amber" else 3,
-                           -(r["overrun_hrs"] or 0),
-                           -(r.get("burn_pct") or 0)), axis=1)
-            at_risk = at_risk.sort_values("_sort_key").drop(columns="_sort_key").reset_index(drop=True)
-
             if len(at_risk) == 0:
                 st.markdown(
                     "<div class='util-card' style='text-align:center;padding:32px'>"
@@ -2395,10 +2429,36 @@ def main():
                     "<div style='opacity:0.7;font-size:13px'>No FF overruns, no scope burn over 80%, no missing scope records.</div>"
                     "</div>", unsafe_allow_html=True)
             else:
+                # Sort dropdown
+                _sort_options = {
+                    "Status, then overrun":  ("_status_rank", "overrun_hrs", "burn_pct"),
+                    "Overrun (high → low)":  ("overrun_hrs", "burn_pct", None),
+                    "Burn % (high → low)":   ("burn_pct", "overrun_hrs", None),
+                    "HTD (high → low)":      ("htd_hrs", "overrun_hrs", None),
+                    "Logged this period":    ("hours_logged", "overrun_hrs", None),
+                    "Project (A → Z)":       ("project_asc", None, None),
+                }
+                sc1, _ = st.columns([1.6, 4])
+                with sc1:
+                    sort_choice = st.selectbox("Sort by", list(_sort_options.keys()),
+                                               key="util_risk_sort", label_visibility="visible")
+
+                # Apply sort
+                at_risk["_status_rank"] = at_risk["_status"].apply(
+                    lambda s: 1 if s[0] == "red" else 2 if s[0] == "amber" else 3)
+                if sort_choice == "Project (A → Z)":
+                    at_risk = at_risk.sort_values("project", ascending=True, na_position="last")
+                else:
+                    keys = [k for k in _sort_options[sort_choice] if k]
+                    ascending = [True if k == "_status_rank" else False for k in keys]
+                    at_risk = at_risk.sort_values(keys, ascending=ascending, na_position="last")
+                at_risk = at_risk.reset_index(drop=True)
+
                 rows = []
                 for _, r in at_risk.iterrows():
                     _scls, _sl = r["_status"]
-                    _sc_str   = f"{r.get('scoped_hrs', 0):,.2f}" if "scoped_hrs" in at_risk.columns and pd.notna(r.get("scoped_hrs")) else "—"
+                    _sc_str = f"{r['scoped_hrs']:,.2f}" if pd.notna(r.get("scoped_hrs")) else "—"
+                    _htd_str = f"{r['htd_hrs']:,.2f}" if pd.notna(r.get("htd_hrs")) else "—"
                     _burn_str = f"{r['burn_pct']*100:.0f}%" if pd.notna(r.get("burn_pct")) else "—"
                     _burn_bar = ""
                     if pd.notna(r.get("burn_pct")):
@@ -2412,6 +2472,7 @@ def main():
                         f"<td>{r.get('project', '')}</td>"
                         f"<td class='muted'>{r.get('project_type', '')}</td>"
                         f"<td class='num'>{_sc_str}</td>"
+                        f"<td class='num'>{_htd_str}</td>"
                         f"<td class='num'>{r['hours_logged']:,.2f}</td>"
                         f"<td class='num'>{_burn_bar}<span style='vertical-align:middle'>{_burn_str}</span></td>"
                         f"<td class='num'>{r['overrun_hrs']:,.2f}</td>"
@@ -2421,17 +2482,18 @@ def main():
                 st.markdown(
                     f"<div class='util-table-header'>"
                     f"<span style='font-weight:600'>Projects requiring attention</span>"
-                    f"<span style='opacity:0.7'>{len(at_risk)} of {len(proj_sum)} billable projects · sorted by status, then overrun</span>"
+                    f"<span style='opacity:0.7'>{len(at_risk)} of {len(proj_sum)} billable projects · sorted by {sort_choice.lower()}</span>"
                     f"</div>"
                     f"<div class='util-table-wrap'>"
                     f"<table class='util-emp-table'>"
                     f"<thead><tr>"
                     f"<th>Project</th><th>Type</th><th class='num'>Scoped</th>"
-                    f"<th class='num'>Logged</th><th class='num'>Burn</th>"
-                    f"<th class='num'>Overrun</th><th class='center'>Status</th>"
+                    f"<th class='num'>HTD</th><th class='num'>Logged</th>"
+                    f"<th class='num'>Burn</th><th class='num'>Overrun</th>"
+                    f"<th class='center'>Status</th>"
                     f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
                     f"<div class='util-table-foot'>"
-                    f"<span>Risk = overrun &gt; 0, scope burn ≥ 80%, or no scope record.</span>"
+                    f"<span>Risk = overrun &gt; 0, burn ≥ 80% (HTD ÷ scope), or no scope record. HTD = hours-to-date all time.</span>"
                     f"<span>Last refresh: {_ago_str}</span>"
                     f"</div></div>",
                     unsafe_allow_html=True)
@@ -2456,6 +2518,17 @@ def main():
                 credit_hrs=("credit_hrs", "sum"),
                 overrun_hrs=("variance_hrs", "sum"),
             )
+            # Billable project count per week (distinct project IDs, billable rows only)
+            _td_pid = _proj_id_col(_td)
+            if _td_pid:
+                _bmask_td = _billable_mask(_td)
+                _proj_weekly = _td[_bmask_td].groupby("_week", as_index=False).agg(
+                    n_projects=(_td_pid, lambda s: s.astype(str).str.strip().nunique())
+                )
+                weekly = weekly.merge(_proj_weekly, on="_week", how="left")
+                weekly["n_projects"] = weekly["n_projects"].fillna(0).astype(int)
+            else:
+                weekly["n_projects"] = 0
             # noscope hrs computed separately and merged in
             if "credit_tag" in _td.columns:
                 _ns_weekly = _td[_td["credit_tag"] == "UNCONFIGURED"].groupby("_week", as_index=False).agg(noscope_hrs=("hours", "sum"))
@@ -2556,14 +2629,16 @@ def main():
                 st.markdown("<div style='margin-top:14px;font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px'>Weekly breakdown</div>", unsafe_allow_html=True)
                 _weekly_disp = weekly.copy()
                 _weekly_disp["Week"] = _weekly_disp["_week"].apply(lambda d: d.strftime("%Y-W%V") if hasattr(d, "strftime") else str(d))
-                _weekly_disp = _weekly_disp[["Week", "hours", "credit_hrs", "credit_pct", "overrun_hrs", "noscope_hrs"]]
+                _weekly_disp["credit_pct"] = _weekly_disp["credit_pct"] * 100  # Show as percentage points
+                _weekly_disp = _weekly_disp[["Week", "n_projects", "hours", "credit_hrs", "credit_pct", "overrun_hrs", "noscope_hrs"]]
                 st.dataframe(
                     _weekly_disp, use_container_width=True, hide_index=True,
                     column_config={
                         "Week":         st.column_config.TextColumn("Week", pinned=True),
+                        "n_projects":   st.column_config.NumberColumn("Projects", format="%d", help="Distinct billable projects with hours logged this week"),
                         "hours":        st.column_config.NumberColumn("Logged", format="%.2f"),
                         "credit_hrs":   st.column_config.NumberColumn("Credits", format="%.2f"),
-                        "credit_pct":   st.column_config.ProgressColumn("Credit %", format="%.1f%%", min_value=0, max_value=1, help="Credits ÷ hours logged"),
+                        "credit_pct":   st.column_config.ProgressColumn("Credit %", format="%.1f%%", min_value=0, max_value=100, help="Credits ÷ hours logged"),
                         "overrun_hrs":  st.column_config.NumberColumn("FF overrun", format="%.2f"),
                         "noscope_hrs":  st.column_config.NumberColumn("No scope", format="%.2f"),
                     },
@@ -2589,13 +2664,14 @@ def main():
         with ts_col2:
             compare_options = {
                 "Prior equivalent period": "prior_eq",
-                "Prior 4 weeks rolling": "prior_4w",
-                "Prior 8 weeks rolling": "prior_8w",
+                "Prior 4 weeks (per-week avg)": "prior_4w",
+                "Prior 8 weeks (per-week avg)": "prior_8w",
             }
             compare_label = st.selectbox("Compare vs", list(compare_options.keys()), key="util_task_compare", label_visibility="collapsed")
             compare_mode = compare_options[compare_label]
         with ts_col3:
-            st.markdown(f"<div style='padding:8px 0;font-size:11px;opacity:0.6;text-align:right'>vs <b>{compare_label}</b> · grouped by task</div>", unsafe_allow_html=True)
+            _norm_note = " · normalized to /week" if compare_mode != "prior_eq" else ""
+            st.markdown(f"<div style='padding:8px 0;font-size:11px;opacity:0.6;text-align:right'>vs <b>{compare_label}</b>{_norm_note}</div>", unsafe_allow_html=True)
 
         # Determine task column
         if task_mode == "Billable":
@@ -2637,8 +2713,6 @@ def main():
             # ─── Top-right: movers vs prior period ───
             if compare_mode == "prior_eq":
                 _delta = (period_end - period_start).days + 1
-                _prior_end = period_start - pd.Timedelta(days=1).to_pytimedelta() if hasattr(pd.Timedelta(days=1), "to_pytimedelta") else period_start
-                # Cleaner conversion
                 _prior_end = (pd.Timestamp(period_start) - pd.Timedelta(days=1)).date()
                 _prior_start = (pd.Timestamp(_prior_end) - pd.Timedelta(days=_delta - 1)).date()
             elif compare_mode == "prior_4w":
@@ -2676,7 +2750,22 @@ def main():
                     merged = share.merge(prior_share, left_on=_task_col, right_on=_pcol, how="outer").fillna(0)
                     if _task_col != _pcol and _pcol in merged.columns:
                         merged[_task_col] = merged[_task_col].where(merged[_task_col] != 0, merged[_pcol])
-                    merged["delta"] = merged["hours"] - merged["prior_hours"]
+
+                    # Per-week normalization for rolling options
+                    _normalize = (compare_mode != "prior_eq")
+                    if _normalize:
+                        _curr_weeks = max((period_end - period_start).days / 7, 1/7)  # min ~1 day
+                        _prior_weeks = max((_prior_end - _prior_start).days / 7, 1/7)
+                        merged["curr_per_wk"]  = merged["hours"] / _curr_weeks
+                        merged["prior_per_wk"] = merged["prior_hours"] / _prior_weeks
+                        merged["delta"] = merged["curr_per_wk"] - merged["prior_per_wk"]
+                        _curr_disp_col, _prior_disp_col = "curr_per_wk", "prior_per_wk"
+                        _unit = "h/wk"
+                    else:
+                        merged["delta"] = merged["hours"] - merged["prior_hours"]
+                        _curr_disp_col, _prior_disp_col = "hours", "prior_hours"
+                        _unit = "h"
+
                     merged["abs_delta"] = merged["delta"].abs()
                     movers = merged.sort_values("abs_delta", ascending=False).head(5)
 
@@ -2689,7 +2778,7 @@ def main():
                             f"<div class='util-mover-row'>"
                             f"<span>{r[_task_col]}</span>"
                             f"<span class='util-mover-vals'>"
-                            f"<span class='util-mover-from'>{r['prior_hours']:.2f} → {r['hours']:.2f}</span>"
+                            f"<span class='util-mover-from'>{r[_prior_disp_col]:.2f} → {r[_curr_disp_col]:.2f} {_unit}</span>"
                             f"<span class='util-pill {_cls}'>{_sign}{_d:.2f}</span>"
                             f"</span></div>"
                         )
@@ -2698,10 +2787,11 @@ def main():
                     _interp = ""
                     if not movers.empty:
                         _top = movers.iloc[0]
+                        _delta_unit = "h/wk" if _normalize else "h"
                         if _top["delta"] > 0:
-                            _interp = f"{_top[_task_col]} growing fastest (+{_top['delta']:.1f}h)."
+                            _interp = f"{_top[_task_col]} growing fastest (+{_top['delta']:.1f} {_delta_unit})."
                         else:
-                            _interp = f"{_top[_task_col]} declining most ({_top['delta']:.1f}h)."
+                            _interp = f"{_top[_task_col]} declining most ({_top['delta']:.1f} {_delta_unit})."
 
                     movers_html = "".join(_rows) + (f"<div style='font-size:11px;opacity:0.6;margin-top:10px;padding-top:8px;border-top:1px solid rgba(128,128,128,0.15)'>{_interp}</div>" if _interp else "")
                 else:
