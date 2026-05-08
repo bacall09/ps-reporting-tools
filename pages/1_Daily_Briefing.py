@@ -786,9 +786,9 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
         f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_wk_total}h / {_wk_billable_h}h billable · {_wk_full_h}h total</div>"
         f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
-        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Active projects</div>"
+        f"<div><div style='font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.5);margin-bottom:5px;font-weight:500;'>Open projects</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
-        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_n_onhold_dc} on hold · {int(_n_active_dc + _n_onhold_dc)} open total</div></div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_n_onhold_dc} on hold · {int(_n_active_dc + _n_onhold_dc)} assigned total</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Go-lives next 14d</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_gl14}</div>"
         f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_gl14_sub if _gl14_sub else 'None scheduled'}</div></div>"
@@ -1189,16 +1189,19 @@ else:
         _rv_all       = my_projects["rag"].fillna("").astype(str).str.strip().str.lower() if "rag" in my_projects.columns and not my_projects.empty else pd.Series(dtype=str)
         _n_unrated    = int((_rv_all == "").sum()) if len(_rv_all) > 0 else 0
         _n_green_conf = max(0, _n_green - _n_unrated)
+        _n_rag_rated  = _n_green_conf + len(_rag_yellow) + len(_rag_red)
+        _rag_note     = f"* {_n_unrated} unrated project{'s' if _n_unrated != 1 else ''} — RAG not yet set" if _n_unrated > 0 else None
         _donut_card(
             "RAG &amp; risk",
-            str(_n_rag_total), "projects",
+            str(_n_rag_rated), "rated",
             [(_n_green_conf, "#639922"), (len(_rag_yellow), "#EF9F27"), (len(_rag_red), "#E24B4A"), (_n_unrated, "#888780")],
             [
                 ("#639922", "Green",   str(_n_green_conf)),
                 ("#EF9F27", "Yellow",  str(len(_rag_yellow))),
                 ("#E24B4A", "Red",     str(len(_rag_red))),
                 ("#888780", "Unrated", str(_n_unrated)),
-            ]
+            ],
+            note=_rag_note
         )
 
         # 2 — Phase breakdown
@@ -1221,7 +1224,7 @@ else:
         _ph_legend = [(c, g, str(_phase_counts.get(g, 0))) for g, _, c in _PHASE_GROUPS]
         _donut_card(
             "Phase breakdown",
-            str(_n_active_dc), "active",
+            str(_n_active_dc), "open",
             _ph_segs, _ph_legend
         )
 
@@ -1238,7 +1241,7 @@ else:
             _mn2["_m"] = pd.to_datetime(_mn2["date"], errors="coerce").dt.strftime("%Y-%m")
             _active_proj_ids = set(_mn2[_mn2["_m"] == _this_month_key]["project_id"].dropna().unique())
         _n_time_active = len(_active_proj_ids)
-        _snap_note = "* Active projects have recent time booked"
+        _snap_note = "* Active = open projects with recent time booked"
         _donut_card(
             "My projects snapshot",
             str(_n_assigned), "assigned",
