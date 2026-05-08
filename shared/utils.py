@@ -4,6 +4,7 @@ Excel helpers, credit logic, and report builder.
 """
 import pandas as pd
 import io
+import re as _re_constants
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
