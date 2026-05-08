@@ -595,18 +595,26 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values(["project", "date"])
 
-        # Build prior_htd — exactly matching Util Report assign_credits:
-        # group by project only, prior = max(htd) - sum(period hours)
+        # Build prior_htd — keyed by project_id (preferred) then project name
+        # prior = max(hours_to_date) - sum(period hours) per project
         prior_htd: dict = {}
         if "hours_to_date" in month_ns.columns:
-            for _proj_key, _grp in month_ns.groupby("project"):
-                _proj_n = " ".join(str(_proj_key).strip().split())
+            _has_pid = "project_id" in month_ns.columns
+            _grp_col = "project_id" if _has_pid else "project"
+            for _proj_key, _grp in month_ns.groupby(_grp_col):
+                _key = str(_proj_key).strip()
                 try:
-                    _max_htd   = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
                     _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
-                    prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
+                    prior_htd[_key] = max(0.0, _max_htd - _period_hrs)
                 except Exception:
-                    prior_htd[_proj_n] = 0.0
+                    prior_htd[_key] = 0.0
+            # Also index by project name for fallback lookups
+            if _has_pid and "project" in month_ns.columns:
+                for _pid, _grp in month_ns.groupby("project_id"):
+                    _pname = " ".join(str(_grp["project"].iloc[0]).split())
+                    if _pname and _pname not in prior_htd:
+                        prior_htd[_pname] = prior_htd.get(str(_pid).strip(), 0.0)
 
         import re as _re_db
         _con: dict = {}
@@ -636,16 +644,18 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
                 ff_unscoped += _hrs
                 continue
 
-            # Use project name as key — matching Util Report's consumed dict
-            if _proj not in _con:
-                _con[_proj] = prior_htd.get(_proj, 0.0)
-            _used = _con[_proj]; _rem = _sc - _used
+            # Use project_id as key where available, fall back to project name
+            _pid_r = str(_r.get("project_id","")).strip()
+            _pkey  = _pid_r if _pid_r and _pid_r != "nan" else _proj
+            if _pkey not in _con:
+                _con[_pkey] = prior_htd.get(_pkey, prior_htd.get(_proj, 0.0))
+            _used = _con[_pkey]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
             elif _hrs <= _rem:
-                ff_credit += _hrs; _con[_proj] = _used + _hrs
+                ff_credit += _hrs; _con[_pkey] = _used + _hrs
             else:
-                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
+                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_pkey] = _sc
 
     credit_hrs  = round(tm_hrs + ff_credit, 2)
     overrun_hrs  = round(ff_overrun, 2)
@@ -945,16 +955,18 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                         _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
                         if _fsc is None:
                             _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
-                        _fck = (_fp, _ftype)  # composite key: project + product type (matches top-level)
-                        if _fck not in _con_cn:
-                            _con_cn[_fck] = prior_htd.get(_fck, prior_htd.get((_fp,), 0.0))
-                        _fused = _con_cn[_fck]; _frem = _fsc - _fused
+                        # Use project_id as key, fall back to project name
+                        _pid_fr = str(_fr.get("project_id","")).strip()
+                        _fpkey  = _pid_fr if _pid_fr and _pid_fr != "nan" else _fp
+                        if _fpkey not in _con_cn:
+                            _con_cn[_fpkey] = prior_htd.get(_fpkey, prior_htd.get(_fp, 0.0))
+                        _fused = _con_cn[_fpkey]; _frem = _fsc - _fused
                         if _frem <= 0:
                             _ff_over += _fh
                         elif _fh <= _frem:
-                            _ff_util += _fh; _con_cn[_fck] = _fused + _fh
+                            _ff_util += _fh; _con_cn[_fpkey] = _fused + _fh
                         else:
-                            _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fck] = _fsc
+                            _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fpkey] = _fsc
                 _ff_util = round(_ff_util, 2)
                 _ff_over = round(_ff_over, 2)
 
@@ -1008,7 +1020,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                     "WHS":          st.column_config.TextColumn("WHS",          width="small"),
                     "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
                     "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
-                    "FF Overrun h": st.column_config.TextColumn("FF Overrun h *", width="small"),
+                    "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
                     "T&M h":        st.column_config.TextColumn("T&M h",        width="small"),
                     "Internal h":   st.column_config.TextColumn("Internal h",   width="small"),
                     "Util %":       st.column_config.TextColumn("Util %",       width="small"),
