@@ -1243,6 +1243,8 @@ else:
         if _phase_unmatched > 0:
             _ph_note_parts.append(f"{_phase_unmatched} in unrecognised phase")
         _ph_note = " · ".join(_ph_note_parts) if _ph_note_parts else None
+        _ph_segs   = [(_phase_counts.get(g, 0), c) for g, _, c in _PHASE_GROUPS]
+        _ph_legend = [(c, g, str(_phase_counts.get(g, 0))) for g, _, c in _PHASE_GROUPS]
         _donut_card(
             "Phase breakdown",
             str(_n_active_dc), "open",
