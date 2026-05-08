@@ -1537,15 +1537,15 @@ def main():
 
             /* Theme-aware card surfaces */
             .util-card {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px;
                 padding: 14px;
             }
             .util-control-bar {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 10px;
                 padding: 12px 16px;
@@ -1555,7 +1555,7 @@ def main():
                 margin-top: 10px; padding-top: 10px;
                 border-top: 1px solid rgba(128,128,128,0.18);
                 display: flex; gap: 14px; font-size: 12px;
-                color: var(--text-color, var(--color-text-secondary, #5a6a7c));
+                color: var(--color-text-secondary, #5a6a7c);
                 opacity: 0.85;
                 align-items: center; flex-wrap: wrap;
             }
@@ -1566,8 +1566,8 @@ def main():
 
             /* KPI cards */
             .util-kpi {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 14px;
             }
@@ -1608,8 +1608,8 @@ def main():
 
             /* Inline legend strip */
             .util-legend {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
                 display: flex; flex-wrap: wrap; gap: 8px;
@@ -1622,8 +1622,8 @@ def main():
 
             /* Action callouts */
             .util-callout {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px; padding: 12px 14px;
             }
@@ -1641,7 +1641,7 @@ def main():
                 width: 100%; border-collapse: collapse;
                 font-family: 'Manrope', sans-serif; font-size: 13px;
                 font-variant-numeric: tabular-nums;
-                color: var(--text-color, #1a1a1a);
+                color: var(--color-text-primary, #1a1a1a);
             }
             .util-emp-table thead tr {
                 background: rgba(128,128,128,0.08);
@@ -1667,16 +1667,16 @@ def main():
             .util-emp-name { display: inline-flex; align-items: center; }
             .util-table-header {
                 padding: 10px 14px;
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-radius: 8px 8px 0 0;
                 display: flex; justify-content: space-between;
                 font-size: 12px;
             }
             .util-table-wrap {
-                background: var(--background-color, var(--color-background-primary, #ffffff));
-                color: var(--text-color, #1a1a1a);
+                background: var(--color-background-primary, #ffffff);
+                color: var(--color-text-primary, #1a1a1a);
                 border: 1px solid rgba(128,128,128,0.25);
                 border-top: none;
                 border-radius: 0 0 8px 8px;
@@ -2383,6 +2383,15 @@ def main():
                 overrun_hrs=("variance_hrs", "sum"),
             )
 
+            # Consultants per project, ranked by hours logged (this period)
+            if "employee" in df_bill.columns:
+                _emp_by_proj = (df_bill.groupby([_pid_col, "employee"], as_index=False)["hours"].sum()
+                                .sort_values([_pid_col, "hours"], ascending=[True, False]))
+                _proj_consultants = _emp_by_proj.groupby(_pid_col)["employee"].apply(list).to_dict()
+                proj_sum["consultants"] = proj_sum[_pid_col].map(_proj_consultants).apply(lambda v: v if isinstance(v, list) else [])
+            else:
+                proj_sum["consultants"] = [[] for _ in range(len(proj_sum))]
+
             # Resolve scope per project type via DEFAULT_SCOPE substring match
             def _scope_lookup(ptype):
                 _matches = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
@@ -2467,10 +2476,31 @@ def main():
                         _burn_bar = (f"<div style='display:inline-block;width:60px;height:6px;background:rgba(128,128,128,0.2);"
                                      f"border-radius:3px;overflow:hidden;vertical-align:middle;margin-right:6px'>"
                                      f"<div style='width:{min(_bp*100/1.5, 100)}%;height:100%;background:{_bcol}'></div></div>")
+
+                    # Consultants cell: solo = avatar+name, multi = stacked avatars + count
+                    _consultants = r.get("consultants") or []
+                    if len(_consultants) == 0:
+                        _consult_html = "<span style='opacity:0.4'>—</span>"
+                    elif len(_consultants) == 1:
+                        _consult_html = f"<span class='util-emp-name'>{avatar_html(_consultants[0])}{short_name(_consultants[0])}</span>"
+                    else:
+                        # Stack first 3 avatars overlapping, then show count
+                        _shown = _consultants[:3]
+                        _avatars_html = "".join([
+                            f"<span style='display:inline-block;margin-right:-8px' title='{c}'>{avatar_html(c)}</span>"
+                            for c in _shown
+                        ])
+                        _all_names = ", ".join([short_name(c) for c in _consultants])
+                        _consult_html = (f"<span class='util-emp-name' title='{_all_names}' style='gap:0'>"
+                                         f"{_avatars_html}"
+                                         f"<span style='margin-left:14px;font-size:12px;opacity:0.85;white-space:nowrap'>{len(_consultants)} consultants</span>"
+                                         f"</span>")
+
                     rows.append(
                         f"<tr>"
                         f"<td>{r.get('project', '')}</td>"
                         f"<td class='muted'>{r.get('project_type', '')}</td>"
+                        f"<td>{_consult_html}</td>"
                         f"<td class='num'>{_sc_str}</td>"
                         f"<td class='num'>{_htd_str}</td>"
                         f"<td class='num'>{r['hours_logged']:,.2f}</td>"
@@ -2487,7 +2517,7 @@ def main():
                     f"<div class='util-table-wrap'>"
                     f"<table class='util-emp-table'>"
                     f"<thead><tr>"
-                    f"<th>Project</th><th>Type</th><th class='num'>Scoped</th>"
+                    f"<th>Project</th><th>Type</th><th>Consultant</th><th class='num'>Scoped</th>"
                     f"<th class='num'>HTD</th><th class='num'>Logged</th>"
                     f"<th class='num'>Burn</th><th class='num'>Overrun</th>"
                     f"<th class='center'>Status</th>"
@@ -2575,54 +2605,97 @@ def main():
                 _overrun_hrs  = weekly["overrun_hrs"].tolist()
                 _noscope_hrs_l= weekly["noscope_hrs"].tolist()
 
-                _last_credit = _credit_pcts[-1] if _credit_pcts else 0
-                _last_color  = "#22c55e" if _last_credit >= 0.70 else "#f59e0b" if _last_credit >= 0.60 else "#ef4444"
-                _delta_credit = _credit_pcts[-1] - _credit_pcts[-2] if len(_credit_pcts) >= 2 else 0
-                _delta_arrow = "↑" if _delta_credit > 0.005 else "↓" if _delta_credit < -0.005 else "→"
-                _delta_color = "#15803d" if _delta_credit > 0.005 else "#b91c1c" if _delta_credit < -0.005 else "#64748b"
+                # ─── Period totals (this period) ───
+                _curr_total_hrs        = weekly["hours"].sum()
+                _curr_total_credits    = weekly["credit_hrs"].sum()
+                _curr_credit_pct       = _curr_total_credits / _curr_total_hrs if _curr_total_hrs > 0 else 0
+                _curr_total_overrun    = sum(_overrun_hrs)
+                _curr_total_noscope    = sum(_noscope_hrs_l)
+
+                # ─── Prior equivalent period totals ───
+                _period_days = (period_end - period_start).days + 1
+                _prior_p_end = (pd.Timestamp(period_start) - pd.Timedelta(days=1)).date()
+                _prior_p_start = (pd.Timestamp(_prior_p_end) - pd.Timedelta(days=_period_days - 1)).date()
+
+                _prior_p_cache_key = ("trend_prior", _ns_signature(_ns_from_session), str(_prior_p_start), str(_prior_p_end), _va_name_u, _va_region_u)
+                if _prior_p_cache_key in st.session_state._util_cache:
+                    _prior_p_result = st.session_state._util_cache[_prior_p_cache_key]
+                else:
+                    try:
+                        _prior_p_result = _run_utilization_engine(_trend_df_raw, _prior_p_start, _prior_p_end)
+                        st.session_state._util_cache[_prior_p_cache_key] = _prior_p_result
+                    except Exception:
+                        _prior_p_result = {"empty": True}
+
+                _prior_credit_pct = None
+                _prior_total_overrun = None
+                _prior_total_noscope = None
+                if not _prior_p_result.get("empty") and not _prior_p_result.get("df", pd.DataFrame()).empty:
+                    _pdf2 = _prior_p_result["df"]
+                    _p_hrs    = _pdf2["hours"].sum() if "hours" in _pdf2.columns else 0
+                    _p_credit = _pdf2["credit_hrs"].sum() if "credit_hrs" in _pdf2.columns else 0
+                    _prior_credit_pct = _p_credit / _p_hrs if _p_hrs > 0 else 0
+                    _prior_total_overrun = _pdf2[_pdf2["credit_tag"].isin(["OVERRUN", "PARTIAL"])]["variance_hrs"].sum() if "variance_hrs" in _pdf2.columns and "credit_tag" in _pdf2.columns else 0
+                    _prior_total_noscope = _pdf2[_pdf2["credit_tag"] == "UNCONFIGURED"]["hours"].sum() if "credit_tag" in _pdf2.columns else 0
+
+                # ─── Deltas (current − prior) ───
+                _delta_credit  = (_curr_credit_pct - _prior_credit_pct) if _prior_credit_pct is not None else None
+                _delta_overrun = (_curr_total_overrun - _prior_total_overrun) if _prior_total_overrun is not None else None
+                _delta_noscope = (_curr_total_noscope - _prior_total_noscope) if _prior_total_noscope is not None else None
+
+                _prior_label = f"vs {_prior_p_start.strftime('%-d %b')}–{_prior_p_end.strftime('%-d %b')}"
+
+                # Headline color (use period total for credit, since that's what RAG measures)
+                _headline_color = "#22c55e" if _curr_credit_pct >= 0.70 else "#f59e0b" if _curr_credit_pct >= 0.60 else "#ef4444"
+
+                def _delta_html(delta, unit, lower_is_better=False, threshold=0.005):
+                    """Render arrow + magnitude. Higher = better unless lower_is_better."""
+                    if delta is None:
+                        return f"<div style='font-size:12px;opacity:0.6'>no prior data</div>"
+                    if abs(delta) < threshold:
+                        return f"<div style='font-size:12px;opacity:0.6'>→ flat</div>"
+                    is_up = delta > 0
+                    is_good = (is_up and not lower_is_better) or (not is_up and lower_is_better)
+                    color = "#15803d" if is_good else "#b91c1c"
+                    arrow = "↑" if is_up else "↓"
+                    return f"<div style='font-size:12px;color:{color}'>{arrow} {abs(delta):.1f}{unit}</div>"
 
                 with t1:
+                    _curr_credit_pp = _curr_credit_pct * 100
+                    _delta_credit_pp = _delta_credit * 100 if _delta_credit is not None else None
                     st.markdown(
                         f"<div class='util-card'>"
-                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>Credit % · weekly</div>"
+                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>Credit % · period total</div>"
                         f"<div style='display:flex;align-items:baseline;gap:8px;margin-bottom:8px'>"
-                        f"<div style='font-size:22px;font-weight:600;color:{_last_color}'>{_last_credit*100:.1f}%</div>"
-                        f"<div style='font-size:12px;color:{_delta_color}'>{_delta_arrow} {abs(_delta_credit)*100:.1f}pp</div>"
+                        f"<div style='font-size:22px;font-weight:600;color:{_headline_color}'>{_curr_credit_pp:.1f}%</div>"
+                        f"{_delta_html(_delta_credit_pp, 'pp', lower_is_better=False, threshold=0.5)}"
                         f"</div>"
                         f"{_mini_chart(_credit_pcts, target=0.70, color='#3b82f6')}"
-                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>{len(weekly)} weeks · target ≥ 70%</div>"
+                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>{len(weekly)} weeks · target ≥ 70% · {_prior_label}</div>"
                         f"</div>", unsafe_allow_html=True)
 
                 with t2:
-                    _last_or = _overrun_hrs[-1] if _overrun_hrs else 0
-                    _delta_or = _overrun_hrs[-1] - _overrun_hrs[-2] if len(_overrun_hrs) >= 2 else 0
-                    _arrow_or = "↑" if _delta_or > 0.5 else "↓" if _delta_or < -0.5 else "→"
-                    _color_or = "#b91c1c" if _delta_or > 0.5 else "#15803d" if _delta_or < -0.5 else "#64748b"
                     st.markdown(
                         f"<div class='util-card'>"
-                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>FF overrun · weekly</div>"
+                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>FF overrun · period total</div>"
                         f"<div style='display:flex;align-items:baseline;gap:8px;margin-bottom:8px'>"
-                        f"<div style='font-size:22px;font-weight:600'>{fmt_hrs(_last_or)} h</div>"
-                        f"<div style='font-size:12px;color:{_color_or}'>{_arrow_or} {abs(_delta_or):.1f}h</div>"
+                        f"<div style='font-size:22px;font-weight:600'>{fmt_hrs(_curr_total_overrun)} h</div>"
+                        f"{_delta_html(_delta_overrun, 'h', lower_is_better=True, threshold=0.5)}"
                         f"</div>"
                         f"{_mini_chart(_overrun_hrs, color='#f59e0b')}"
-                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>Total {fmt_hrs(sum(_overrun_hrs))} h over {len(weekly)} weeks</div>"
+                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>{len(weekly)} weeks · {_prior_label}</div>"
                         f"</div>", unsafe_allow_html=True)
 
                 with t3:
-                    _last_ns = _noscope_hrs_l[-1] if _noscope_hrs_l else 0
-                    _delta_ns = _noscope_hrs_l[-1] - _noscope_hrs_l[-2] if len(_noscope_hrs_l) >= 2 else 0
-                    _arrow_ns = "↑" if _delta_ns > 0.5 else "↓" if _delta_ns < -0.5 else "→"
-                    _color_ns = "#b91c1c" if _delta_ns > 0.5 else "#15803d" if _delta_ns < -0.5 else "#64748b"
                     st.markdown(
                         f"<div class='util-card'>"
-                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>FF: no scope · weekly</div>"
+                        f"<div style='font-size:11px;opacity:0.65;margin-bottom:4px'>FF: no scope · period total</div>"
                         f"<div style='display:flex;align-items:baseline;gap:8px;margin-bottom:8px'>"
-                        f"<div style='font-size:22px;font-weight:600'>{fmt_hrs(_last_ns)} h</div>"
-                        f"<div style='font-size:12px;color:{_color_ns}'>{_arrow_ns} {abs(_delta_ns):.1f}h</div>"
+                        f"<div style='font-size:22px;font-weight:600'>{fmt_hrs(_curr_total_noscope)} h</div>"
+                        f"{_delta_html(_delta_noscope, 'h', lower_is_better=True, threshold=0.5)}"
                         f"</div>"
                         f"{_mini_chart(_noscope_hrs_l, color='#3b82f6')}"
-                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>Total {fmt_hrs(sum(_noscope_hrs_l))} h over {len(weekly)} weeks</div>"
+                        f"<div style='font-size:11px;opacity:0.6;margin-top:4px'>{len(weekly)} weeks · {_prior_label}</div>"
                         f"</div>", unsafe_allow_html=True)
 
                 # Weekly detail table
