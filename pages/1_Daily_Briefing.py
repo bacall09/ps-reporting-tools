@@ -693,10 +693,11 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         _wk_bdays_month = len(pd.bdate_range(today.replace(day=1),
                              (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)))
         _wk_bdays_week  = len(pd.bdate_range(_week_start, min(_week_end, today)))
-        _wk_avail_h = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
-        # Standard full week = avail / bdays_month * 5 working days
-        _wk_full_h  = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
-        _wk_util_pct = round(_wk_total / _wk_full_h * 100) if _wk_full_h else None
+        _wk_avail_h    = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
+        # Standard full week hours (100%) and 70% billable target
+        _wk_full_h     = _wk_avail_h
+        _wk_billable_h = round(_wk_full_h * 0.70, 1)
+        _wk_util_pct   = round(_wk_total / _wk_billable_h * 100) if _wk_billable_h else None
     else:
         _wk_total = None; _wk_util_pct = None
 
@@ -783,7 +784,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.1);'>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Week utilization</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
-        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_wk_total}h / {_wk_full_h}h · target {int(_UTIL_TARGET_WK)}%</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_wk_total}h / {_wk_billable_h}h billable · {_wk_full_h}h total</div>"
         f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Active projects</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
@@ -1157,7 +1158,7 @@ else:
                 f"<span style='font-size:13px;font-weight:500;color:var(--color-text-primary);line-height:1;'>{_wk_util_pct or '—'}%</span>"
                 f"<span style='font-size:9px;color:var(--color-text-secondary);margin-top:1px;'>util</span></div></div>"
                 f"<div style='flex:1;display:flex;flex-direction:column;gap:5px;'>"
-                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Billable hrs</span><span style='font-size:12px;font-weight:500;'>{_wk_total or '—'}h / {_wk_full_h}h</span></div>"
+                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Billable hrs</span><span style='font-size:12px;font-weight:500;'>{_wk_total or '—'}h / {_wk_billable_h}h</span></div>"
                 f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Target</span><span style='font-size:12px;font-weight:500;'>{int(_UTIL_TARGET_DISP)}%</span></div>"
                 f"<div style='display:flex;justify-content:space-between;align-items:center;'><span style='font-size:12px;color:var(--color-text-secondary);'>Pacing</span>"
                 f"<span style='font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(128,128,128,0.1);color:{_pace_c};font-weight:500;'>{_pace_str}</span></div>"
