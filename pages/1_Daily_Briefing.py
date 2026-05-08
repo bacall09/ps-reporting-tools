@@ -775,9 +775,9 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     if _wk_util_pct is not None:
         _wk_gap = _wk_util_pct - _UTIL_TARGET_WK
         if _wk_gap >= 0:
-            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:#EAF3DE;color:#3B6D11;font-weight:500;'>+{round(_wk_gap)}% ahead</span>"
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(99,153,34,0.25);color:#97C459;font-weight:500;'>+{round(_wk_gap)}% ahead</span>"
         else:
-            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:#FCEBEB;color:#A32D2D;font-weight:500;'>{round(_wk_gap)}% behind</span>"
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(226,75,74,0.25);color:#F09595;font-weight:500;'>{round(_wk_gap)}% behind</span>"
     else:
         _pace_badge = ""
 
@@ -883,7 +883,7 @@ else:
 # ── Consultant breakdown table (group views only) ─────────────────────────────
 if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
     try:
-        st.markdown('<div class="section-label">Team Breakdown — This Month</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Team Breakdown — This Week</div>', unsafe_allow_html=True)
 
         my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
         _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
@@ -986,7 +986,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                 "WHS":           f"{_whs_s} · {_whs_l}" if _whs_s is not None else "—",
                 "Avail h":       _avail_cn or "—",
                 "FF Util h":     _ff_util or "—",
-                "FF Overrun h":  _ff_over or "—",
+                "FF Overrun h":  _ff_over if _ff_over else "—",
                 "T&M h":         _tm or "—",
                 "Internal h":    _admin or "—",
                 "Util %":        f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
@@ -1008,7 +1008,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                     "WHS":          st.column_config.TextColumn("WHS",          width="small"),
                     "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
                     "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
-                    "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
+                    "FF Overrun h": st.column_config.TextColumn("FF Overrun h *", width="small"),
                     "T&M h":        st.column_config.TextColumn("T&M h",        width="small"),
                     "Internal h":   st.column_config.TextColumn("Internal h",   width="small"),
                     "Util %":       st.column_config.TextColumn("Util %",       width="small"),
