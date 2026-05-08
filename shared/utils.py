@@ -17,12 +17,11 @@ from shared.config import (
     AVAIL_HOURS, DEFAULT_SCOPE,
 )
 
+
 def match_ff_task(task_val):
-    """Return raw task value for display — no categorization."""
     t = str(task_val).strip()
     return t if t and t.lower() not in ("", "nan", "none") else None
 
-# ── Excel helpers ─────────────────────────────────────────────────────────────
 def thin_border():
     s = Side(style="thin", color=MID_GRAY)
     return Border(left=s, right=s, top=s, bottom=s)
@@ -30,12 +29,10 @@ def thin_border():
 def hdr_fill(hex_color):  return PatternFill("solid", fgColor=hex_color)
 def row_fill(hex_color):  return PatternFill("solid", fgColor=hex_color)
 
-GROUP_COLORS = ["EEF2FB", "FFFFFF"]  # alternating soft blue/white for grouped rows
+GROUP_COLORS = ["EEF2FB", "FFFFFF"]
 
 def group_bg(value, prev_value, group_idx):
-    """Return bg color and updated group index for grouped first-column display."""
-    if value != prev_value:
-        group_idx = 1 - group_idx  # toggle group
+    if value != prev_value: group_idx = 1 - group_idx
     return GROUP_COLORS[group_idx], group_idx
 
 def style_header(ws, row, headers, fill_color=NAVY):
@@ -52,8 +49,7 @@ def style_cell(cell, bg, fmt=None, bold=False, align="left"):
     cell.font      = Font(name="Manrope", size=10, bold=bold)
     cell.border    = thin_border()
     cell.alignment = Alignment(horizontal=align, vertical="center")
-    if fmt:
-        cell.number_format = fmt
+    if fmt: cell.number_format = fmt
 
 def write_title(ws, title, ncols):
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
@@ -68,24 +64,22 @@ def auto_detect_columns(df):
     cols_lower = {c.lower().strip(): c for c in df.columns}
     checks = {
         "employee":      ["employee", "employee name", "name", "resource"],
-        "project":       ["project", "project name", "job"],
+        "project":       ["project", "project name", "job", "customer:project", "customer: project", "project: name"],
         "project_type":  ["project type", "type", "project_type"],
+        "time_item_sku": ["time item sku", "item sku", "sku", "time item"],
         "date":          ["date", "time entry date", "entry date", "work date"],
         "hours":         ["hours", "duration", "hours logged", "time", "qty"],
         "approval":      ["approval status", "approval", "status"],
         "task":          ["case/task/event", "cask/task/event", "task", "case", "event", "memo"],
-        "non_billable":  ["non-billable", "non billable", "nonbillable",
-                          "non_billable", "is non billable"],
+        "non_billable":  ["non-billable", "non billable", "nonbillable", "non_billable", "is non billable"],
         "billing_type":  ["billing type", "billing_type", "bill type", "billtype"],
-        "hours_to_date": ["hours to date", "hours_to_date", "htd", "prior hours",
-                          "cumulative hours", "hours booked to date"],
+        "hours_to_date": ["hours to date", "hours_to_date", "htd", "prior hours", "cumulative hours", "hours booked to date"],
         "project_id":    ["project id", "project_id", "projectid", "project internal id"],
-        "region":           ["employee location", "location", "region", "country", "office"],
+        "region":        ["employee location", "location", "region", "country", "office"],
         "customer_region":  ["customer region", "customer_region", "cust region", "client region"],
         "project_manager":  ["project manager", "project_manager", "pm", "manager"],
         "project_phase":    ["project phase", "phase", "project_phase", "stage"],
-        "start_date":       ["start date", "project start date", "start_date",
-                             "project start", "commenced"],
+        "start_date":       ["start date", "project start date", "start_date", "project start", "commenced"],
     }
     mapping = {}
     unmatched = []
@@ -106,7 +100,17 @@ def assign_credits(df, scope_map):
         st.warning(f"Could not auto-detect columns: {unmatched}. Check your file headers.")
 
     df = df.rename(columns=col_map)
-    df["non_billable"] = df["non_billable"].astype(str).str.strip().str.upper()
+
+    df = df.copy()
+    for _c in list(df.columns):
+        _dt = str(df[_c].dtype).lower()
+        if _dt in ('string', 'str') or 'string' in _dt or 'arrow' in _dt:
+            try:
+                df[_c] = df[_c].astype(object)
+            except Exception:
+                df[_c] = df[_c].to_numpy(dtype=object, na_value=None)
+
+    df["non_billable"] = df["non_billable"].fillna("").astype(str).str.strip().str.upper()
     if "project" in df.columns:
         df["project"] = df["project"].astype(str).str.strip().str.replace(r'\s+', ' ', regex=True)
     # Normalize project_id — strip float suffix e.g. 709470.0 -> 709470
@@ -118,32 +122,46 @@ def assign_credits(df, scope_map):
     if "start_date" in df.columns:
         df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
     if "region" not in df.columns:
-        df["region"] = ""
-    if "employee" in df.columns:
-        def _resolve_location(row):
-            loc = str(row.get("region","")).strip()
-            if loc: return loc
-            emp = str(row.get("employee","")).strip()
-            emp_n = " ".join(emp.split())
-            if emp_n in EMPLOYEE_LOCATION:
-                return EMPLOYEE_LOCATION[emp_n]
-            emp_lower = emp_n.lower()
-            for key, val in EMPLOYEE_LOCATION.items():
-                key_lower = key.lower()
-                if emp_lower == key_lower: return val
-                if emp_lower.startswith(key_lower) or key_lower.startswith(emp_lower): return val
-                last = key_lower.split(",")[0].strip()
-                if emp_lower.startswith(last): return val
-            return ""
-        df["region"] = df.apply(_resolve_location, axis=1)
+        df["region"] = pd.array([""] * len(df), dtype=object)
 
-    def _resolve_ps_region(row):
-        emp = str(row.get("employee","")).strip()
-        for key in PS_REGION_OVERRIDE:
-            if emp.lower().startswith(key.lower()) or key.lower() == emp.lower():
-                return PS_REGION_OVERRIDE[key]
-        return PS_REGION_MAP.get(str(row.get("region","")).strip(), "Other")
-    df["ps_region"] = df.apply(_resolve_ps_region, axis=1)
+    if "employee" in df.columns:
+        _loc_map_norm = {}
+        for _k, _v in EMPLOYEE_LOCATION.items():
+            _loc_map_norm[_k.lower().strip()] = _v
+            _loc_map_norm[" ".join(_k.split()).lower()] = _v
+
+        def _fast_loc(emp_raw):
+            emp_n = " ".join(str(emp_raw or "").split()).strip()
+            emp_l = emp_n.lower()
+            if not emp_l: return ""
+            def _extract(v): return v[0] if isinstance(v, tuple) else (v or "")
+            if emp_l in _loc_map_norm: return _extract(_loc_map_norm[emp_l])
+            for _kl, _vl in _loc_map_norm.items():
+                if emp_l.startswith(_kl) or _kl.startswith(emp_l): return _extract(_vl)
+                if emp_l.startswith(_kl.split(",")[0].strip()): return _extract(_vl)
+            return ""
+
+        _needs_loc = df["region"].fillna("").str.strip() == ""
+        if _needs_loc.any():
+            df["region"] = df["region"].astype(object)
+            df.loc[_needs_loc, "region"] = df.loc[_needs_loc, "employee"].map(_fast_loc)
+
+    _ps_ovr_l = {_k.lower(): _v for _k, _v in PS_REGION_OVERRIDE.items()}
+    if "employee" in df.columns:
+        def _fast_ps(emp_raw):
+            e = " ".join(str(emp_raw or "").split()).lower()
+            for _kl, _vl in _ps_ovr_l.items():
+                if e == _kl or e.startswith(_kl): return _vl
+            return ""
+        _emp_ps = df["employee"].map(_fast_ps)
+        df["ps_region"] = _emp_ps.astype(object)
+        _no_ovr = _emp_ps.fillna("") == ""
+        if _no_ovr.any():
+            df["ps_region"] = df["ps_region"].astype(object)
+            df.loc[_no_ovr, "ps_region"] = df.loc[_no_ovr, "region"].map(
+                lambda r: PS_REGION_MAP.get(str(r).strip(), "Other"))
+    else:
+        df["ps_region"] = df["region"].map(lambda r: PS_REGION_MAP.get(str(r).strip(), "Other"))
 
     if "date" in df.columns:
         df = df.sort_values(["project", "date"], na_position="first").reset_index(drop=True)
@@ -152,7 +170,7 @@ def assign_credits(df, scope_map):
     # Key prior_htd by BOTH project_id and project_name so downstream lookup
     # works regardless of which key _con_key resolves to.
     _htd_col = "hours_to_date"
-    prior_htd = {}
+    prior_htd = {}  # keyed by project_id AND project_name — both point to same value
     if _htd_col in df.columns:
         _pid_col = "project_id" if "project_id" in df.columns else "project"
         for _proj_key, _grp in df.groupby(_pid_col):
@@ -164,6 +182,7 @@ def assign_credits(df, scope_map):
                 _max_htd    = float(_grp[_htd_col].dropna().astype(float).max() or 0)
                 _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
                 _val = max(0.0, _max_htd - _period_hrs)
+                # Store under both project name AND project_id so lookup always hits
                 prior_htd[_proj_n] = _val
                 if _pid_str and _pid_str not in ("nan", "None", ""):
                     prior_htd[_pid_str] = _val
@@ -173,19 +192,28 @@ def assign_credits(df, scope_map):
                     prior_htd[_pid_str] = 0.0
 
     consumed = {}
-    credit_hrs_list    = []
-    variance_hrs_list  = []
-    credit_tag_list    = []
-    notes_list         = []
-    htd_start_list     = []
+    credit_hrs_list   = []
+    variance_hrs_list = []
+    credit_tag_list   = []
+    notes_list        = []
+    htd_start_list     = []  # track starting HTD per row for output
     consumed_after_list = []  # track running consumed position after each row
 
-    for _, row in df.iterrows():
-        proj      = " ".join(str(row.get("project", "")).split())
-        ptype     = str(row.get("project_type", "")).strip()
-        hrs       = float(row.get("hours", 0))
-        nb        = str(row.get("non_billable", "NO")).strip().upper()
-        bill_type = str(row.get("billing_type", "")).strip().lower()
+    _proj_idx  = df.columns.get_loc("project")       if "project"           in df.columns else None
+    _ptype_idx = df.columns.get_loc("project_type")  if "project_type"      in df.columns else None
+    _hrs_idx   = df.columns.get_loc("hours")         if "hours"             in df.columns else None
+    _nb_idx    = df.columns.get_loc("non_billable")  if "non_billable"      in df.columns else None
+    _bt_idx    = df.columns.get_loc("billing_type")  if "billing_type"      in df.columns else None
+    _sku_idx   = df.columns.get_loc("time_item_sku") if "time_item_sku"     in df.columns else None
+    _drs_idx   = df.columns.get_loc("_drs_project_name") if "_drs_project_name" in df.columns else None
+    _pid_idx   = df.columns.get_loc("project_id")    if "project_id"        in df.columns else None
+
+    for _tup in df.itertuples(index=False, name=None):
+        proj      = " ".join(str(_tup[_proj_idx]  if _proj_idx  is not None else "").split())
+        ptype     = str(_tup[_ptype_idx] if _ptype_idx is not None else "").strip()
+        hrs       = float(_tup[_hrs_idx]  if _hrs_idx  is not None else 0)
+        nb        = str(_tup[_nb_idx]    if _nb_idx   is not None else "NO").strip().upper()
+        bill_type = str(_tup[_bt_idx]    if _bt_idx   is not None else "").strip().lower()
         is_tm     = bill_type == "t&m"
 
         if hrs <= 0:
@@ -210,9 +238,19 @@ def assign_credits(df, scope_map):
             continue
 
         _ptype_lower = ptype.strip().lower()
-        _matches = [(k, float(v)) for k, v in scope_map.items()
-                    if k.strip().lower() in _ptype_lower]
-        scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
+        if "premium" in _ptype_lower:
+            _sku = str(_tup[_sku_idx] if _sku_idx is not None else "") or ""
+            _sku_nums = _re_constants.findall(r"IMPL(\d+)", _sku.upper())
+            if _sku_nums:
+                scope_hrs = float(_sku_nums[0])
+            else:
+                _proj_name_scope = str(_tup[_drs_idx] if _drs_idx is not None else "") or str(_tup[_proj_idx] if _proj_idx is not None else "") or ""
+                _name_nums = _re_constants.findall(r"(?<![\d])(10|20)(?![\d])", _proj_name_scope)
+                scope_hrs = float(_name_nums[0]) if _name_nums else None
+        else:
+            _matches = [(k, float(v)) for k, v in scope_map.items()
+                        if k.strip().lower() in _ptype_lower]
+            scope_hrs = max(_matches, key=lambda x: len(x[0]))[1] if _matches else None
 
         if scope_hrs is None:
             credit_hrs_list.append(0); variance_hrs_list.append(hrs)
@@ -221,9 +259,9 @@ def assign_credits(df, scope_map):
             consumed_after_list.append(0.0)
             continue
 
-        # Key on project_id if available — prevents name collision for same-customer multi-product
-        _pid = str(row.get("project_id", "") or "").strip().replace(".0", "")
-        _con_key = _pid if _pid and _pid not in ("nan", "None", "") else proj
+        # Key on project_id if available
+        _raw_pid = str(_tup[_pid_idx] if _pid_idx is not None else "").strip().replace(".0", "")
+        _con_key = _raw_pid if _raw_pid and _raw_pid not in ("nan", "None", "") else proj
 
         if _con_key not in consumed:
             consumed[_con_key] = prior_htd.get(_con_key, prior_htd.get(proj, 0.0))
@@ -249,12 +287,15 @@ def assign_credits(df, scope_map):
             notes_list.append(f"Split: {remaining:.2f}h credited / {hrs - remaining:.2f}h overrun")
             consumed_after_list.append(float(already))
 
-    df["credit_hrs"]    = credit_hrs_list
-    df["variance_hrs"]  = variance_hrs_list
-    df["credit_tag"]    = credit_tag_list
-    df["notes"]         = notes_list
-    df["htd_start"]     = htd_start_list
-    df["previous_htd"]  = [float(v) for v in consumed_after_list]
+    for _col in df.select_dtypes(include="string").columns:
+        df[_col] = df[_col].astype(object)
+
+    df["credit_hrs"]   = credit_hrs_list
+    df["variance_hrs"] = variance_hrs_list
+    df["credit_tag"]   = credit_tag_list
+    df["notes"]        = notes_list
+    df["htd_start"]    = htd_start_list
+    df["previous_htd"] = [float(v) for v in consumed_after_list]
 
     if "task" in df.columns:
         df["ff_task"] = df["task"].fillna("").apply(match_ff_task)
@@ -269,6 +310,14 @@ def assign_credits(df, scope_map):
 
 
 # ── Excel builder ─────────────────────────────────────────────────────────────
+def _xl_val(val):
+    if val is None: return ""
+    if isinstance(val, tuple): return val[0] if val else ""
+    try:
+        if pd.isna(val): return ""
+    except (TypeError, ValueError): pass
+    return val
+
 def build_excel(df, scope_map, consumed):
     wb  = Workbook()
     wb.remove(wb.active)
@@ -282,34 +331,56 @@ def build_excel(df, scope_map, consumed):
                "Project Type","Billing Type","Hrs to Date","Date","Hours Logged",
                "Approval","Task/Case","Non-Billable","Credit Hrs","Variance Hrs",
                "Previous Hrs to Date","Credit Tag","Period","Notes",
-               "Project Phase","Start Date","Days Active"]
-    widths  = [20,16,18,20,35,20,14,13,14,13,14,25,13,12,12,18,16,12,45,16,14,12]
+               "Project Phase","Start Date","Days Active","Scoped Hrs","Variance Flag"]
+    widths  = [20,16,18,20,35,20,14,13,14,13,14,25,13,12,12,18,16,12,45,16,14,12,12,16]
     cols    = ["employee","region","customer_region","project_manager","project",
                "project_type","billing_type","hours_to_date","date","hours",
                "approval","task","non_billable","credit_hrs","variance_hrs",
                "previous_htd","credit_tag","period","notes",
-               "project_phase","start_date_display","days_active"]
+               "project_phase","start_date_display","days_active","_scoped_hrs","_variance_flag"]
 
     write_title(ws, "PROCESSED DATA — Utilization Credit Detail", len(headers))
     style_header(ws, 2, headers, TEAL)
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
+    def _get_scoped(ptype):
+        _m = [(k, float(v)) for k, v in scope_map.items()
+              if k.strip().lower() in str(ptype).strip().lower()]
+        return max(_m, key=lambda x: len(x[0]))[1] if _m else None
+
+    def _variance_flag(tag, scoped):
+        t = str(tag).strip().upper()
+        if t in ("SKIPPED", "NON-BILLABLE", "CREDITED"): return "N/A"
+        if t == "UNCONFIGURED": return "No Scope Set"
+        if t in ("OVERRUN", "PARTIAL"): return "True Overrun" if scoped and scoped > 0 else "No Scope Set"
+        return "Within Budget"
+
     for r_idx, (_, row) in enumerate(df.iterrows(), 3):
-        tag = str(row.get("credit_tag","")).strip()
-        bg  = TAG_COLORS.get(tag, "F2F2F2")
+        tag     = str(row.get("credit_tag","")).strip()
+        bg      = TAG_COLORS.get(tag, "F2F2F2")
+        _scoped = _get_scoped(row.get("project_type",""))
+        _vflag  = _variance_flag(tag, _scoped)
+        _row_ext = dict(row)
+        _row_ext["_scoped_hrs"]    = round(_scoped, 2) if _scoped is not None else ""
+        _row_ext["_variance_flag"] = _vflag
         for c_idx, col in enumerate(cols, 1):
-            val  = row.get(col, "")
+            val  = _xl_val(_row_ext.get(col, ""))
             cell = ws.cell(row=r_idx, column=c_idx, value=val)
             fmt, bold, align = None, False, "left"
-            if col == "date" and pd.notna(val):
-                fmt = "YYYY-MM-DD"; align = "center"
+            if col == "date" and pd.notna(val): fmt = "YYYY-MM-DD"; align = "center"
             elif col in ("hours","credit_hrs","variance_hrs","hours_to_date","previous_htd"):
                 fmt = "#,##0.00"; align = "right"
-            elif col == "credit_tag":
-                bold = True; align = "center"
-            elif col in ("period","billing_type","region"):
-                align = "center"
+            elif col == "credit_tag": bold = True; align = "center"
+            elif col in ("period","billing_type","region"): align = "center"
+            elif col == "_scoped_hrs": fmt = "#,##0.00"; align = "right"
+            elif col == "_variance_flag":
+                align = "center"; bold = True
+                val_str = str(val)
+                if val_str == "True Overrun": bg = "FFC7CE"
+                elif val_str == "No Scope Set": bg = "FFEB9C"
+                elif val_str == "Within Budget": bg = "C6EFCE"
+                else: bg = TAG_COLORS.get(tag, "F2F2F2")
             style_cell(cell, bg, fmt=fmt, bold=bold, align=align)
 
     ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}2"
@@ -319,11 +390,14 @@ def build_excel(df, scope_map, consumed):
     ws2.freeze_panes = "A3"
 
     eh = ["Employee","Location","PS Region","Period",
-          "Avail Hrs","Hours This Period","Utilization Credits","FF Project Overrun Hrs","Admin Hrs","Util %"]
-    ew = [22,16,14,12,12,15,18,18,14,10]
+          "Avail Hrs (Capacity)","Hours This Period","Utilization Credits",
+          "FF Project Overrun Hrs","Admin Hrs",
+          "Util % (vs Hours Logged)","Util % (vs Capacity)",
+          "Project Util %","Gap (pts)","Projected Full Month Util %"]
+    ew = [22,16,14,12,16,15,18,18,14,20,20,16,12,22]
     write_title(ws2, "SUMMARY — Utilization by Employee", len(eh))
     style_header(ws2, 2, eh, TEAL)
-    ws2.auto_filter.ref = "A2:J2"
+    ws2.auto_filter.ref = "A2:L2"
     for i, w in enumerate(ew, 1):
         ws2.column_dimensions[get_column_letter(i)].width = w
 
@@ -361,6 +435,19 @@ def build_excel(df, scope_map, consumed):
         _pto_df = df[_pto_mask].groupby(["employee","period"])["hours"].sum()
         _pto_lookup = {(emp, per): hrs for (emp, per), hrs in _pto_df.items()}
 
+    _period_days = None
+    _total_period_days = None
+    if "date" in df.columns:
+        _dates = df["date"].dropna()
+        if len(_dates) > 0:
+            import calendar
+            _min_d = _dates.min(); _max_d = _dates.max()
+            _period_days = len(pd.bdate_range(_min_d, _max_d))
+            _yr, _mo = _min_d.year, _min_d.month
+            _month_start = pd.Timestamp(_yr, _mo, 1)
+            _month_end   = pd.Timestamp(_yr, _mo, calendar.monthrange(_yr, _mo)[1])
+            _total_period_days = len(pd.bdate_range(_month_start, _month_end))
+
     _prev_emp = None; _grp_idx = 0
     for r_idx, (_, row) in enumerate(emp_sum.iterrows(), 3):
         emp    = row["employee"]
@@ -372,15 +459,32 @@ def build_excel(df, scope_map, consumed):
         _prev_emp = emp
         util_bg = ("EAF9F1" if util >= 0.8 else "FEF9E7" if util >= 0.6 else "FDECED")
         _ps_reg = df[df["employee"]==emp]["ps_region"].iloc[0] if len(df[df["employee"]==emp]) > 0 else ""
+        cap_util = row["credit_hrs"] / avail if avail and avail > 0 else None
+        proj_util_pct = (row["credit_hrs"] + row["ff_overrun_hrs"]) / avail if avail and avail > 0 else None
+        gap_pts = (proj_util_pct - cap_util) if proj_util_pct is not None and cap_util is not None else None
+        proj_util = None
+        if _period_days is not None and _total_period_days is not None and _period_days < _total_period_days:
+            daily_rate = row["credit_hrs"] / _period_days if _period_days > 0 else 0
+            proj_util = (daily_rate * _total_period_days) / avail if avail and avail > 0 else None
+
         vals = [emp, region, _ps_reg, period, avail or "—",
-                row["hours_this_period"], row["credit_hrs"],
-                row["ff_overrun_hrs"], row.get("admin_hrs", 0),
-                util if avail else "—"]
-        fmts = [None,None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%"]
+                row["hours_this_period"], row["credit_hrs"], row["ff_overrun_hrs"], row.get("admin_hrs", 0),
+                util if row["hours_this_period"] > 0 else "—",
+                cap_util if cap_util is not None else "—",
+                proj_util_pct if proj_util_pct is not None else "—",
+                gap_pts if gap_pts is not None else "—",
+                proj_util if proj_util is not None else "—"]
+        fmts = [None,None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%","0.0%","0.0%","+0.0%;-0.0%;-","0.0%"]
+
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
-            cell = ws2.cell(row=r_idx, column=c_idx, value=val)
-            style_cell(cell, util_bg if c_idx == 10 else bg, fmt=fmt,
-                       align="right" if c_idx > 4 else "center" if c_idx == 4 else "left")
+            cell = ws2.cell(row=r_idx, column=c_idx, value=_xl_val(val))
+            is_util_col = c_idx in (10, 11, 12)
+            if c_idx == 13 and isinstance(val, float):
+                gap_bg = ("FCE4D6" if val >= 0.20 else "FFF2CC" if val >= 0.10 else bg)
+                style_cell(cell, gap_bg, fmt=fmt, bold=(val >= 0.10), align="right")
+            else:
+                style_cell(cell, util_bg if is_util_col else bg, fmt=fmt,
+                           align="right" if c_idx > 4 else "center" if c_idx == 4 else "left")
 
     ws3 = wb.create_sheet("FF By Project Utilization")
     ws3.sheet_properties.tabColor = "E67E22"
@@ -455,9 +559,8 @@ def build_excel(df, scope_map, consumed):
         status_bg = {"OVERRUN":"FDECED","AT LIMIT":"FDECED","REVIEW":"FEF9E7","ON TRACK":"EAF9F1"}.get(status, LTGRAY)
         bg, _grp_idx_p = group_bg(ptype, _prev_ptype, _grp_idx_p)
         _prev_ptype = ptype
-        pm_name  = proj_pm.get(row["project"], "")
+        pm_name = proj_pm.get(row["project"], "")
         start_dt = proj_start.get(row["project"])
-        days_active = int((_as_of - start_dt).days) if pd.notna(start_dt) and pd.notna(_as_of) else "—"
         vals = [row["project"], ptype, pm_name, scope_h or "—", previous_h,
                 row["hours_this_period"], row["credit_hrs"], vari_h,
                 previous_h + row["hours_this_period"],
@@ -465,9 +568,88 @@ def build_excel(df, scope_map, consumed):
                 burn if scope_h > 0 else "—", status]
         fmts = [None,None,None,"#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","#,##0.00","0.0%",None]
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
-            cell = ws3.cell(row=r_idx, column=c_idx, value=val)
+            cell = ws3.cell(row=r_idx, column=c_idx, value=_xl_val(val))
             style_cell(cell, status_bg if c_idx == 12 else bg, fmt=fmt, bold=(c_idx == 12),
                        align="right" if c_idx in (5,6,7,8,9,10,11) else "center" if c_idx == 12 else "left")
+
+    ws_ot = wb.create_sheet("FF Overrun by Project Type")
+    ws_ot.sheet_properties.tabColor = "8E44AD"
+    ws_ot.freeze_panes = "A3"
+    oth = ["Project Type","# Projects","# Over Budget","% Over Budget",
+           "Total Overrun Hrs","Avg Scoped Hrs","Avg Actual Hrs","Avg +/− vs Scope"]
+    otw = [28,11,14,14,17,14,14,17]
+    write_title(ws_ot, "FIXED FEE OVERRUN BY PROJECT TYPE", len(oth))
+    style_header(ws_ot, 2, oth, TEAL)
+    ws_ot.auto_filter.ref = "A2:H2"
+    for i, w in enumerate(otw, 1):
+        ws_ot.column_dimensions[get_column_letter(i)].width = w
+
+    _ot_ff = df[
+        (df["credit_tag"] != "SKIPPED") &
+        (df.get("billing_type", pd.Series(dtype="object")).str.lower() == "fixed fee")
+    ].copy() if "billing_type" in df.columns else df[df["credit_tag"] != "SKIPPED"].copy()
+
+    _ot_proj = _ot_ff.groupby(["project","project_type"], as_index=False).agg(
+        hours_total=("hours","sum"), overrun_hrs=("variance_hrs","sum"))
+    def _ot_scope(ptype):
+        _m = [(k, float(v)) for k, v in scope_map.items()
+              if k.strip().lower() in str(ptype).strip().lower()]
+        return max(_m, key=lambda x: len(x[0]))[1] if _m else None
+    _ot_proj["scoped_hrs"] = _ot_proj["project_type"].apply(_ot_scope)
+    _ot_proj = _ot_proj[_ot_proj["scoped_hrs"].notna()].copy()
+    _ot_proj["over_under"] = _ot_proj["hours_total"].astype(float) - _ot_proj["scoped_hrs"].astype(float)
+    _ot_proj["is_over"] = (_ot_proj["over_under"] > 0).astype(int)
+    _ot_type = _ot_proj.groupby("project_type", as_index=False).agg(
+        total_projects=("project","count"), over_count=("is_over","sum"),
+        total_overrun_hrs=("overrun_hrs","sum"), avg_scoped=("scoped_hrs","mean"),
+        avg_actual=("hours_total","mean"), avg_over_under=("over_under","mean"),
+    ).sort_values("total_overrun_hrs", ascending=False)
+    _ot_type["over_pct"] = _ot_type["over_count"] / _ot_type["total_projects"]
+    _ot_totals_proj  = int(_ot_type["total_projects"].sum())
+    _ot_totals_over  = int(_ot_type["over_count"].sum())
+    _ot_totals_ovhrs = float(_ot_type["total_overrun_hrs"].sum())
+
+    for r_idx_ot, (_, row_ot) in enumerate(_ot_type.iterrows(), 3):
+        bg_ot = GROUP_COLORS[r_idx_ot % 2]
+        avg_ou = float(row_ot["avg_over_under"])
+        over_pct = float(row_ot["over_pct"])
+        vals_ot = [row_ot["project_type"], int(row_ot["total_projects"]), int(row_ot["over_count"]),
+                   over_pct, float(row_ot["total_overrun_hrs"]),
+                   float(row_ot["avg_scoped"]), float(row_ot["avg_actual"]), avg_ou]
+        fmts_ot = [None,"#,##0","#,##0","0.0%","#,##0.0","0.0","0.0","+0.0;-0.0;\"-\""]
+        for c_idx_ot, (val_ot, fmt_ot) in enumerate(zip(vals_ot, fmts_ot), 1):
+            cell_ot = ws_ot.cell(row=r_idx_ot, column=c_idx_ot, value=val_ot)
+            if c_idx_ot == 4:
+                if over_pct >= 0.40:
+                    style_cell(cell_ot, "FCE4D6", fmt=fmt_ot, bold=True, align="right")
+                    cell_ot.font = Font(name="Manrope", size=10, bold=True, color="9C2A00")
+                elif over_pct >= 0.25:
+                    style_cell(cell_ot, "FFF2CC", fmt=fmt_ot, bold=True, align="right")
+                    cell_ot.font = Font(name="Manrope", size=10, bold=True, color="7F4F00")
+                else:
+                    style_cell(cell_ot, bg_ot, fmt=fmt_ot, align="right")
+            elif c_idx_ot == 8:
+                style_cell(cell_ot, bg_ot, fmt=fmt_ot, bold=(avg_ou > 0), align="right")
+                cell_ot.font = Font(name="Manrope", size=10, bold=(avg_ou>0),
+                                    color="9C2A00" if avg_ou > 0 else "595959")
+            elif c_idx_ot == 5 and float(row_ot["total_overrun_hrs"]) >= 500:
+                style_cell(cell_ot, bg_ot, fmt=fmt_ot, bold=True, align="right")
+                cell_ot.font = Font(name="Manrope", size=10, bold=True, color="9C2A00")
+            else:
+                style_cell(cell_ot, bg_ot, fmt=fmt_ot, align="left" if c_idx_ot == 1 else "right")
+        ws_ot.row_dimensions[r_idx_ot].height = 15
+
+    _ot_tr = 3 + len(_ot_type)
+    for c_idx_ot, (val_ot, fmt_ot) in enumerate(zip(
+        ["Total", _ot_totals_proj, _ot_totals_over, None, _ot_totals_ovhrs, None, None, None],
+        [None, "#,##0", "#,##0", None, "#,##0.0", None, None, None]), 1):
+        cell_ot = ws_ot.cell(row=_ot_tr, column=c_idx_ot, value=val_ot)
+        cell_ot.font  = Font(name="Manrope", size=10, bold=True, color="FFFFFF")
+        cell_ot.fill  = PatternFill("solid", fgColor=NAVY)
+        cell_ot.border = thin_border()
+        cell_ot.alignment = Alignment(horizontal="left" if c_idx_ot == 1 else "right", vertical="center")
+        if fmt_ot and val_ot is not None: cell_ot.number_format = fmt_ot
+    ws_ot.row_dimensions[_ot_tr].height = 18
 
     ws5 = wb.create_sheet("Non-Billable")
     ws5.sheet_properties.tabColor = "95A5A6"
@@ -772,11 +954,15 @@ def build_excel(df, scope_map, consumed):
     wl_df["hours_to_date"] = wl_df.apply(
         lambda r: (float(r["htd_start"]) if r["htd_start"] else 0.0), axis=1)
 
-    def get_scope(ptype):
-        _pm = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in str(ptype).strip().lower()]
+    def get_scope_wl(row):
+        ptype = str(row.get("project_type","") or ""); pname = str(row.get("project","") or "")
+        if "premium" in ptype.strip().lower() and pname:
+            _nums = _re_constants.findall(r"(?<![\d])(10|20)(?![\d])", pname)
+            if _nums: return float(_nums[0])
+        _pm = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in ptype.strip().lower()]
         return max(_pm, key=lambda x: len(x[0]))[1] if _pm else 0
 
-    wl_df["scope_h"]  = wl_df["project_type"].apply(get_scope)
+    wl_df["scope_h"] = wl_df.apply(get_scope_wl, axis=1)
     wl_df["burn_pct"] = wl_df.apply(
         lambda r: (float(r["htd_start"]) if r["htd_start"] else 0) / r["scope_h"] if r["scope_h"] > 0 else None, axis=1)
     def _wl_status(r):
@@ -797,8 +983,7 @@ def build_excel(df, scope_map, consumed):
         burn_val = row["burn_pct"] if row["burn_pct"] is not None else "—"
         pm_name = proj_pm.get(row["project"], "")
         start_dt = proj_start.get(row["project"])
-        days_active = int((_as_of - start_dt).days) if pd.notna(start_dt) and pd.notna(_as_of) else "—"
-        _htd_wl = row["previous_htd"] + row["hours_this_period"]
+        _htd_wl = float(row["previous_htd"]) + float(row["hours_this_period"])
         _tot_ov = _htd_wl - row["scope_h"] if row["scope_h"] and row["scope_h"] > 0 else "—"
         _ps_reg_wl = proj_ps_region.get(row["project"], "")
         vals = [row["project"], row["project_type"], _ps_reg_wl, pm_name,
@@ -912,7 +1097,7 @@ def build_excel(df, scope_map, consumed):
     ws_dash.row_dimensions[5].height = 22
     hours_tp_d   = df[df["credit_tag"] != "SKIPPED"]["hours"].sum()
     credit_hrs_d = df[df["credit_tag"].isin(["CREDITED","PARTIAL"])]["credit_hrs"].sum()
-    overrun_hrs_d = df[df["credit_tag"] == "OVERRUN"]["variance_hrs"].sum()
+    overrun_hrs_d = df[df["credit_tag"].isin(["OVERRUN", "PARTIAL"])]["variance_hrs"].sum()
     admin_hrs_d  = df[df["billing_type"].str.lower()=="internal"]["hours"].sum() if "billing_type" in df.columns else 0
     util_pct_d   = credit_hrs_d / hours_tp_d if hours_tp_d > 0 else 0
     util_status_d = "green" if util_pct_d >= 0.70 else "yellow" if util_pct_d >= 0.60 else "red"
@@ -1017,8 +1202,9 @@ def build_excel(df, scope_map, consumed):
 
     sheet_order = [
         "Dashboard", "Project Count", "SUMMARY - By Employee", "FF By Project Utilization",
-        "By Customer Region (WIP)", "By PS Region", "Watch List", "Non-Billable",
-        "Task Analysis", "FF Project Type Analysis", "Skipped Rows", "PROCESSED_DATA",
+        "FF Overrun by Project Type", "By Customer Region (WIP)", "By PS Region",
+        "Watch List", "Non-Billable", "Task Analysis", "FF Project Type Analysis",
+        "Skipped Rows", "PROCESSED_DATA",
     ]
     existing  = [s for s in sheet_order if s in wb.sheetnames]
     remaining = [s for s in wb.sheetnames if s not in existing]
@@ -1028,6 +1214,17 @@ def build_excel(df, scope_map, consumed):
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+# ════════════════════════════════════════════════════════
+# PAGE
+# ════════════════════════════════════════════════════════
+
+import streamlit as st
+import pandas as pd
+import io
+
+
 
 
 def get_avail_hours(region, period):
