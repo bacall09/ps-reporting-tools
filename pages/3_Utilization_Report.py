@@ -562,7 +562,7 @@ def assign_credits(df, scope_map):
             htd_start_list.append(0)
             continue
 
-      # Key on project_id if available — prevents name collision for same-customer multi-product
+        # Key on project_id if available — prevents name collision for same-customer multi-product
         _raw_pid = str(_tup[_pid_idx] if _pid_idx is not None else "").strip()
         _con_key = _raw_pid if _raw_pid and _raw_pid not in ("nan", "None", "") else proj
 
