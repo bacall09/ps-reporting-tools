@@ -660,7 +660,7 @@ def main():
         st.markdown(
             f"<div class='util-meta-row'>"
             f"<span><span class='util-live-dot'></span><b>Live</b></span>"
-            f"<span>NS data: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}</span>"
+            f"<span>NS data Report Period: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}</span>"
             f"<span>·</span><span>No entries for {period_start.strftime('%-d %b %Y')} → {period_end.strftime('%-d %b %Y')}</span>"
             f"</div>", unsafe_allow_html=True)
         return
@@ -719,37 +719,38 @@ def main():
     st.markdown(
         f"<div class='util-meta-row'>"
         f"<span><span class='util-live-dot'></span><b>Live</b></span>"
-        f"<span>NS data: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}</span>"
-        f"<span>·</span>"
-        f"<span>Showing <b>{billable_proj_count} billable projects</b> · <b>{hours_this_period:,.2f} hrs</b>{_partial_str}</span>"
+        f"<span>NS data Report Period: {_min_date.strftime('%-d %b %Y')} → {_max_date.strftime('%-d %b %Y')}{_partial_str}</span>"
         f"<span style='margin-left:auto;opacity:0.6'>Updated {_ago_str}</span>"
         f"</div>", unsafe_allow_html=True)
 
     # Excel download — on-demand. We don't build the buffer until user clicks "Prepare".
-    # Once built, it's cached for this engine result so subsequent re-renders show the
-    # download button instantly.
+    # Excel download — managers + reporting_only only. Cache key is built from the actual
+    # inputs that determine the report (NS signature + period + view) so it survives reruns.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"utilization_report_{timestamp}.xlsx"
-    _excel_cache_key = ("xl", id(result))
-    st.session_state.setdefault("_util_excel_cache", {})
-    _excel_buf = st.session_state._util_excel_cache.get(_excel_cache_key)
+    if _is_mgr_u:
+        _excel_cache_key = ("xl", _ns_signature(_ns_from_session),
+                            str(period_start), str(period_end),
+                            _va_name_u, _va_region_u)
+        st.session_state.setdefault("_util_excel_cache", {})
+        _excel_buf = st.session_state._util_excel_cache.get(_excel_cache_key)
 
-    with _download_slot:
-        if _excel_buf is not None:
-            st.download_button(
-                "⬇ Excel", data=_excel_buf, file_name=filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary", key="util_dl_excel_top",
-            )
-        else:
-            if st.button("⬇ Excel", key="util_prep_excel", type="primary",
-                         help="Click to generate the Excel report"):
-                with st.spinner("Building Excel..."):
-                    try:
-                        st.session_state._util_excel_cache[_excel_cache_key] = build_excel(df, DEFAULT_SCOPE, consumed)
-                        st.rerun()
-                    except Exception as _e:
-                        st.error(f"Excel build failed: {_e}")
+        with _download_slot:
+            if _excel_buf is not None:
+                st.download_button(
+                    "⬇ Excel", data=_excel_buf, file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary", key="util_dl_excel_top",
+                )
+            else:
+                if st.button("⬇ Excel", key="util_prep_excel", type="primary",
+                             help="Click to generate the Excel report"):
+                    with st.spinner("Building Excel..."):
+                        try:
+                            st.session_state._util_excel_cache[_excel_cache_key] = build_excel(df, DEFAULT_SCOPE, consumed)
+                            st.rerun()
+                        except Exception as _e:
+                            st.error(f"Excel build failed: {_e}")
 
     # ─────────────────────────────────────────────────────
     # Unmapped / alumni warnings
@@ -1757,29 +1758,32 @@ def main():
     # Tableau export — secondary, on-demand build
     # ─────────────────────────────────────────────────────
     st.divider()
-    with st.expander("Tableau export (advanced)", expanded=False):
-        _tab_cache_key = ("tab", id(result))
-        st.session_state.setdefault("_util_tableau_cache", {})
-        _tab_buf = st.session_state._util_tableau_cache.get(_tab_cache_key)
-        tableau_filename = f"utilization_tableau_{timestamp}.xlsx"
+    if _is_mgr_u:
+        with st.expander("Tableau export (advanced)", expanded=False):
+            _tab_cache_key = ("tab", _ns_signature(_ns_from_session),
+                              str(period_start), str(period_end),
+                              _va_name_u, _va_region_u)
+            st.session_state.setdefault("_util_tableau_cache", {})
+            _tab_buf = st.session_state._util_tableau_cache.get(_tab_cache_key)
+            tableau_filename = f"utilization_tableau_{timestamp}.xlsx"
 
-        if _tab_buf is not None:
-            st.download_button(
-                label="⬇ Download Tableau Export",
-                data=_tab_buf, file_name=tableau_filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="util_dl_tableau",
-            )
-        else:
-            if st.button("Build Tableau export", key="util_prep_tableau",
-                         help="Generate the 3-sheet Tableau workbook"):
-                with st.spinner("Building Tableau export..."):
-                    try:
-                        st.session_state._util_tableau_cache[_tab_cache_key] = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
-                        st.rerun()
-                    except Exception as _e:
-                        st.error(f"Tableau build failed: {_e}")
-        st.caption("3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
+            if _tab_buf is not None:
+                st.download_button(
+                    label="⬇ Download Tableau Export",
+                    data=_tab_buf, file_name=tableau_filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="util_dl_tableau",
+                )
+            else:
+                if st.button("Build Tableau export", key="util_prep_tableau",
+                             help="Generate the 3-sheet Tableau workbook"):
+                    with st.spinner("Building Tableau export..."):
+                        try:
+                            st.session_state._util_tableau_cache[_tab_cache_key] = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
+                            st.rerun()
+                        except Exception as _e:
+                            st.error(f"Tableau build failed: {_e}")
+            st.caption("3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
 def build_tableau_excel(df, scope_map, consumed):
     import io as _io
     from openpyxl import Workbook as _WB
