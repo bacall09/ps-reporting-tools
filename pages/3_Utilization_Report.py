@@ -724,8 +724,9 @@ def main():
         f"</div>", unsafe_allow_html=True)
 
     # Excel download — on-demand. We don't build the buffer until user clicks "Prepare".
-    # Excel download — managers + reporting_only only. Cache key is built from the actual
-    # inputs that determine the report (NS signature + period + view) so it survives reruns.
+    # Excel download — managers + reporting_only only.
+    # Two-stage flow: button to trigger build, then download_button replaces it.
+    # Cache key built from stable inputs (NS sig + period + view) so it survives reruns.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"utilization_report_{timestamp}.xlsx"
     if _is_mgr_u:
@@ -733,6 +734,17 @@ def main():
                             str(period_start), str(period_end),
                             _va_name_u, _va_region_u)
         st.session_state.setdefault("_util_excel_cache", {})
+
+        # If user clicked "Prepare" on a previous render, this flag is set
+        if st.session_state.get("_util_excel_prep_requested") == _excel_cache_key:
+            st.session_state["_util_excel_prep_requested"] = None
+            try:
+                with st.spinner("Building Excel..."):
+                    st.session_state._util_excel_cache[_excel_cache_key] = build_excel(df, DEFAULT_SCOPE, consumed)
+            except Exception as _xl_err:
+                st.error(f"Excel build failed: {_xl_err}")
+                st.exception(_xl_err)
+
         _excel_buf = st.session_state._util_excel_cache.get(_excel_cache_key)
 
         with _download_slot:
@@ -745,12 +757,8 @@ def main():
             else:
                 if st.button("⬇ Excel", key="util_prep_excel", type="primary",
                              help="Click to generate the Excel report"):
-                    with st.spinner("Building Excel..."):
-                        try:
-                            st.session_state._util_excel_cache[_excel_cache_key] = build_excel(df, DEFAULT_SCOPE, consumed)
-                            st.rerun()
-                        except Exception as _e:
-                            st.error(f"Excel build failed: {_e}")
+                    st.session_state["_util_excel_prep_requested"] = _excel_cache_key
+                    st.rerun()
 
     # ─────────────────────────────────────────────────────
     # Unmapped / alumni warnings
@@ -1764,8 +1772,19 @@ def main():
                               str(period_start), str(period_end),
                               _va_name_u, _va_region_u)
             st.session_state.setdefault("_util_tableau_cache", {})
-            _tab_buf = st.session_state._util_tableau_cache.get(_tab_cache_key)
             tableau_filename = f"utilization_tableau_{timestamp}.xlsx"
+
+            # If user clicked "Build" on a previous render, this flag is set
+            if st.session_state.get("_util_tab_prep_requested") == _tab_cache_key:
+                st.session_state["_util_tab_prep_requested"] = None
+                try:
+                    with st.spinner("Building Tableau export..."):
+                        st.session_state._util_tableau_cache[_tab_cache_key] = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
+                except Exception as _tab_err:
+                    st.error(f"Tableau build failed: {_tab_err}")
+                    st.exception(_tab_err)
+
+            _tab_buf = st.session_state._util_tableau_cache.get(_tab_cache_key)
 
             if _tab_buf is not None:
                 st.download_button(
@@ -1777,12 +1796,8 @@ def main():
             else:
                 if st.button("Build Tableau export", key="util_prep_tableau",
                              help="Generate the 3-sheet Tableau workbook"):
-                    with st.spinner("Building Tableau export..."):
-                        try:
-                            st.session_state._util_tableau_cache[_tab_cache_key] = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
-                            st.rerun()
-                        except Exception as _e:
-                            st.error(f"Tableau build failed: {_e}")
+                    st.session_state["_util_tab_prep_requested"] = _tab_cache_key
+                    st.rerun()
             st.caption("3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
 def build_tableau_excel(df, scope_map, consumed):
     import io as _io
