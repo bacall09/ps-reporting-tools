@@ -898,23 +898,110 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
         my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
         _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
 
-        _scope_names  = [n for n in (_region_names if _view_name_set else CONSULTANT_DROPDOWN)
-                         if get_role(n) != "manager_only"
-                         and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0]
-        _region_key   = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
+        # Weekly NS slice (Mon–Sun current week) — used for hours columns
+        _wk_start_bd = today - pd.Timedelta(days=today.weekday())
+        _wk_end_bd   = _wk_start_bd + pd.Timedelta(days=6)
+        _wk_ns_all   = my_ns[
+            (my_ns["date"] >= pd.Timestamp(_wk_start_bd)) &
+            (my_ns["date"] <= pd.Timestamp(_wk_end_bd))
+        ].copy()
 
-        # Find leavers who were active in this month and belong to this region
+        # Business days in month and this week — for weekly avail proration
+        _bdays_month = len(pd.bdate_range(
+            today.replace(day=1),
+            (today.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
+        ))
+
+        _region_key  = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
         _month_start = pd.to_datetime(f"{month_key}-01")
         _month_end   = _month_start + pd.offsets.MonthEnd(0)
         _days_in_month = _month_end.day
 
+        # ── Build set of DRS project_manager names for manager-inclusion check ──
+        # Managers are included in the table only if they:
+        #   (a) appear as project_manager on any DRS row, OR
+        #   (b) have NS time entries this month against non-internal billing types
+        _drs_pm_names: set = set()
+        if df_drs is not None and not df_drs.empty and "project_manager" in df_drs.columns:
+            for _pm_val in df_drs["project_manager"].dropna().astype(str):
+                _drs_pm_names.add(_pm_val.strip().lower())
+                _pm_parts = [p.strip() for p in _pm_val.split(",")]
+                if len(_pm_parts) == 2:
+                    _drs_pm_names.add(f"{_pm_parts[1]} {_pm_parts[0]}".lower())
+                    _drs_pm_names.add(_pm_parts[0].lower())
+
+        def _is_manager_included(cn: str) -> bool:
+            """Return True if a manager-role consultant should appear in the table."""
+            _p = [p.strip() for p in cn.split(",")]
+            _v = {cn.lower(), _p[0].lower()}
+            if len(_p) == 2:
+                _v.add(f"{_p[1]} {_p[0]}".lower())
+            # (a) PM on a DRS project
+            if any(v in _drs_pm_names for v in _v):
+                return True
+            # (b) has non-internal time this month
+            if not _month_ns_all.empty and "billing_type" in _month_ns_all.columns:
+                _emp_m = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+                    lambda x: x in _v or any(
+                        x == nv or x.startswith(nv+" ") or x.endswith(" "+nv) for nv in _v)
+                )
+                _bt_m = _month_ns_all[_emp_m]["billing_type"].fillna("").str.strip().str.lower()
+                if (_bt_m != "internal").any():
+                    return True
+            return False
+
+        # Base scope: exclude manager_only always; include managers only if they pass the check above
+        _base_pool = _region_names if _view_name_set else CONSULTANT_DROPDOWN
+        _scope_names = []
+        for _cn in _base_pool:
+            _cn_role = get_role(_cn)
+            if _cn_role == "manager_only":
+                continue
+            if _cn_role == "manager" and not _is_manager_included(_cn):
+                continue
+            if len(EMPLOYEE_ROLES.get(_cn, {}).get("products", [])) == 0 and _cn_role != "manager":
+                continue
+            _scope_names.append(_cn)
+
+        # Leavers active this month in this region
         _leaver_scope = []
         for _ln, _exit_str in LEAVER_EXIT_DATES.items():
             if _exit_str is None: continue
             _exit_dt = pd.to_datetime(_exit_str)
-            if _exit_dt < _month_start: continue          # left before this month
-            if _region_key and _gr(_ln) != _region_key: continue  # wrong region
+            if _exit_dt < _month_start: continue
+            if _region_key and _gr(_ln) != _region_key: continue
             _leaver_scope.append((_ln, _exit_dt))
+
+        # ── RAG lookup: per-consultant red/yellow count from DRS ──────────────
+        # Keyed on project_manager name variants → {red: int, yellow: int}
+        _rag_by_pm: dict = {}
+        if df_drs is not None and not df_drs.empty and "rag" in df_drs.columns and "project_manager" in df_drs.columns:
+            for _, _dr in df_drs.iterrows():
+                _pm_raw = str(_dr.get("project_manager", "") or "").strip()
+                _rv     = str(_dr.get("rag", "") or "").strip().lower()
+                if not _pm_raw or _rv not in ("red", "yellow"):
+                    continue
+                # Normalise PM name to "First Last" key for lookup
+                _pm_p = [p.strip() for p in _pm_raw.split(",")]
+                _pm_key = f"{_pm_p[1]} {_pm_p[0]}".lower() if len(_pm_p) == 2 else _pm_raw.lower()
+                if _pm_key not in _rag_by_pm:
+                    _rag_by_pm[_pm_key] = {"red": 0, "yellow": 0}
+                _rag_by_pm[_pm_key][_rv] += 1
+                # Also index by "Last, First" and last-name-only for robust matching
+                _rag_by_pm[_pm_raw.lower()] = _rag_by_pm[_pm_key]
+                if _pm_p:
+                    _rag_by_pm[_pm_p[0].lower()] = _rag_by_pm[_pm_key]
+
+        def _get_rag_counts(cn: str) -> tuple[int, int]:
+            """Return (red_count, yellow_count) for projects managed by cn."""
+            _p = [p.strip() for p in cn.split(",")]
+            _keys = [cn.lower(), _p[0].lower()]
+            if len(_p) == 2:
+                _keys.append(f"{_p[1]} {_p[0]}".lower())
+            for _k in _keys:
+                if _k in _rag_by_pm:
+                    return _rag_by_pm[_k]["red"], _rag_by_pm[_k]["yellow"]
+            return 0, 0
 
         def _build_row(cn, is_leaver=False, exit_dt=None):
             _parts = [p.strip() for p in cn.split(",")]
@@ -922,26 +1009,26 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
             if len(_parts) == 2:
                 _variants.add(f"{_parts[1]} {_parts[0]}".lower())
 
-            _emp_mask = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+            # Month NS rows for this consultant (for overrun calculation)
+            _emp_mask_mo = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
                 lambda v: v in _variants or any(
                     v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
             )
-            _emp_rows = _month_ns_all[_emp_mask]
+            _emp_rows_mo = _month_ns_all[_emp_mask_mo]
 
-            if _emp_rows.empty:
-                _total = 0.0; _ff = 0.0; _tm = 0.0; _admin = 0.0
+            # Week NS rows for this consultant (for hours-this-week columns)
+            _emp_mask_wk = _wk_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+                lambda v: v in _variants or any(
+                    v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
+            ) if not _wk_ns_all.empty else pd.Series(dtype=bool)
+            _emp_rows_wk = _wk_ns_all[_emp_mask_wk] if not _wk_ns_all.empty else pd.DataFrame()
+
+            # FF credit/overrun uses MONTH data (matches top-level engine)
+            if _emp_rows_mo.empty:
                 _ff_util = 0.0; _ff_over = 0.0
             else:
-                _bt    = _emp_rows.get("billing_type", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
-                _total = round(_emp_rows["hours"].sum(), 2)
-                _ff    = round(_emp_rows[_bt == "fixed fee"]["hours"].sum(), 2)
-                _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
-                _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
-
-                # Per-consultant FF credit/overrun — mirrors top-level engine exactly
-                # Use same rule: anything not internal or T&M = Fixed Fee
-                _bt_cn = _emp_rows.get("billing_type", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
-                _ff_rows_cn = _emp_rows[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
+                _bt_cn = _emp_rows_mo.get("billing_type", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
+                _ff_rows_cn = _emp_rows_mo[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date")
                 _ff_util = 0.0; _ff_over = 0.0
                 if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
                     _con_cn: dict = {}
@@ -954,8 +1041,7 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                                if k.strip().lower() in _ftype.lower()]
                         _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
                         if _fsc is None:
-                            _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
-                        # Use project_id as key, fall back to project name
+                            _ff_util += _fh; continue
                         _pid_fr = str(_fr.get("project_id","")).strip()
                         _fpkey  = _pid_fr if _pid_fr and _pid_fr != "nan" else _fp
                         if _fpkey not in _con_cn:
@@ -967,45 +1053,77 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                             _ff_util += _fh; _con_cn[_fpkey] = _fused + _fh
                         else:
                             _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fpkey] = _fsc
-                _ff_util = round(_ff_util, 2)
-                _ff_over = round(_ff_over, 2)
+            _ff_util = round(_ff_util, 2)
+            _ff_over = round(_ff_over, 2)
 
+            # Internal % uses MONTH data (same as before)
+            _admin = 0.0
+            if not _emp_rows_mo.empty and "billing_type" in _emp_rows_mo.columns:
+                _bt_mo = _emp_rows_mo["billing_type"].fillna("").str.strip().str.lower()
+                _admin = round(_emp_rows_mo[_bt_mo == "internal"]["hours"].sum(), 2)
+
+            # Weekly util hours (FF + T&M this week only — for the Util % column)
+            _wk_ff = 0.0; _wk_tm = 0.0
+            if not _emp_rows_wk.empty and "billing_type" in _emp_rows_wk.columns:
+                _bt_wk = _emp_rows_wk["billing_type"].fillna("").str.strip().str.lower()
+                _wk_ff = round(_emp_rows_wk[(_bt_wk != "internal") & (_bt_wk != "t&m")]["hours"].sum(), 2)
+                _wk_tm = round(_emp_rows_wk[_bt_wk == "t&m"]["hours"].sum(), 2)
+
+            # Available hours — monthly total prorated to weekly
             _cl = EMPLOYEE_LOCATION.get(cn, "")
             _cr = PS_REGION_OVERRIDE.get(cn, PS_REGION_MAP.get(_cl, ""))
             _avail_full = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
             if isinstance(_avail_full, tuple): _avail_full = _avail_full[0]
             _avail_full = float(_avail_full) if _avail_full else None
 
-            # Prorate if leaver
             if is_leaver and exit_dt is not None and _avail_full:
                 _days_worked = min(exit_dt.day, _days_in_month)
-                _avail_cn = round(_avail_full * _days_worked / _days_in_month, 2)
+                _avail_mo = round(_avail_full * _days_worked / _days_in_month, 2)
             else:
-                _avail_cn = _avail_full
+                _avail_mo = _avail_full
 
-            _util_h_cn   = round(_ff_util + _tm, 2)
-            _util_pct_cn = round(_util_h_cn / _avail_cn * 100, 1) if _avail_cn and _util_h_cn > 0 else None
-            _over_pct_cn = round(_ff_over   / _avail_cn * 100, 1) if _avail_cn and _ff_over > 0 else None
-            _int_pct_cn  = round(_admin     / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
+            # Weekly avail: monthly ÷ business days in month × 5
+            _avail_wk = round(_avail_mo / _bdays_month * 5, 1) if _avail_mo and _bdays_month else None
 
-            _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
+            # Util %: weekly billable ÷ weekly avail (apples-to-apples)
+            _wk_bill    = round(_wk_ff + _wk_tm, 2)
+            _util_pct   = round(_wk_bill / _avail_wk * 100, 1) if _avail_wk and _wk_bill > 0 else None
+            # FF Overrun %: MTD overrun ÷ monthly avail (shows severity relative to capacity)
+            _over_pct   = round(_ff_over / _avail_mo * 100, 1) if _avail_mo and _ff_over > 0 else None
+            # Internal %: MTD internal ÷ monthly avail
+            _int_pct    = round(_admin   / _avail_mo * 100, 1) if _avail_mo and _admin > 0 else None
+
+            _display = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
             if is_leaver and exit_dt:
                 _display += " *"
 
             _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
-            # Return raw numeric values — formatting applied at render time
+            _rag_r, _rag_y    = _get_rag_counts(cn)
+
+            # Status — utilization signal only (RAG is its own column)
+            # Priority: Overrun > High WHS > OK > No data
+            if _ff_over > 0:
+                _status = "Overrun"
+            elif _whs_s is not None and _whs_s >= 75:
+                _status = "High WHS"
+            elif _wk_bill > 0 or not _emp_rows_mo.empty:
+                _status = "OK"
+            else:
+                _status = "No data"
+
             return {
-                "_consultant":    _display,
-                "_whs_score":     _whs_s,
-                "_whs_label":     _whs_l if _whs_l else "—",
-                "_avail":         _avail_cn,
-                "_ff_util":       _ff_util if _ff_util else None,
-                "_ff_over":       _ff_over if _ff_over else None,
-                "_tm":            _tm if _tm else None,
-                "_admin":         _admin if _admin else None,
-                "_util_pct":      _util_pct_cn,
-                "_over_pct":      _over_pct_cn,
-                "_int_pct":       _int_pct_cn,
+                "_cn":          cn,           # canonical name for sorting
+                "Consultant":   _display,
+                "_whs_score":   _whs_s,
+                "_whs_label":   _whs_l or "—",
+                "_avail_wk":    _avail_wk,
+                "_util_pct":    _util_pct,
+                "_ff_over":     _ff_over,
+                "_over_pct":    _over_pct,
+                "_int_pct":     _int_pct,
+                "_rag_r":       _rag_r,
+                "_rag_y":       _rag_y,
+                "_status":      _status,
             }
 
         _rows = [_build_row(cn) for cn in _scope_names]
@@ -1016,186 +1134,191 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
 
             _raw = pd.DataFrame(_rows)
 
-            # ── Build WHS display string ──────────────────────────────────────
+            # ── Sort: Overrun first → High WHS → OK → No data ─────────────────
+            _STATUS_ORDER = {"Overrun": 0, "High WHS": 1, "OK": 2, "No data": 3}
+            _raw["_sort_status"] = _raw["_status"].map(_STATUS_ORDER).fillna(9)
+            # Within same status, sort by overrun hours desc, then WHS desc
+            _raw = _raw.sort_values(
+                ["_sort_status", "_ff_over", "_whs_score"],
+                ascending=[True, False, False],
+            ).reset_index(drop=True)
+
+            # ── Build display columns ─────────────────────────────────────────
             def _whs_str(score, label):
-                if score is None or (isinstance(score, float) and _np.isnan(score)):
-                    return "NO DATA"
-                return f"{score:.1f} {label}"
+                if score is None or (isinstance(score, float) and _np.isnan(float(score or _np.nan))):
+                    return "No data"
+                return f"{score:.1f} · {label}"
 
-            # ── Totals row ────────────────────────────────────────────────────
-            def _safe_sum(col):
-                s = _raw[col].dropna()
-                return round(s.sum(), 2) if len(s) else None
-
-            _t_avail   = _safe_sum("_avail")
-            _t_ff      = _safe_sum("_ff_util")
-            _t_over    = _safe_sum("_ff_over")
-            _t_tm      = _safe_sum("_tm")
-            _t_admin   = _safe_sum("_admin")
-            _t_util_h  = round((_t_ff or 0) + (_t_tm or 0), 2)
-            _t_util_p  = round(_t_util_h / _t_avail * 100, 1) if _t_avail and _t_util_h else None
-            _t_over_p  = round((_t_over or 0) / _t_avail * 100, 1) if _t_avail and _t_over else None
-            _t_int_p   = round((_t_admin or 0) / _t_avail * 100, 1) if _t_avail and _t_admin else None
-            _whs_scores = _raw["_whs_score"].dropna()
-            _avg_whs    = round(_whs_scores.mean(), 1) if len(_whs_scores) else None
-            _n_consult  = len(_rows)
-
-            # ── Flat display DataFrame (MultiIndex via rename at render) ──────
-            # Streamlit st.dataframe doesn't support pd.MultiIndex columns, so we
-            # simulate the group headers using column_config label overrides with
-            # Unicode thin-space padding and a CSS class on the header.
-            # The visual grouping is done by injecting a styled header row via
-            # st.markdown above the dataframe.
-
-            _OVERRUN_BG = "background-color: rgba(239,68,68,0.13); color: #dc2626; font-weight: 600;"
-
-            def _fmt(v, decimals=1):
-                """Format a float to N decimals, return empty string for None/NaN."""
+            def _fmt(v, decimals=1, suffix=""):
                 if v is None: return ""
                 try:
                     f = float(v)
-                    if _np.isnan(f): return ""
-                    return f"{f:.{decimals}f}"
+                    if _np.isnan(f) or f == 0: return ""
+                    return f"{f:.{decimals}f}{suffix}"
                 except (TypeError, ValueError):
                     return ""
 
-            # Build display rows (strings for text cols, floats for ProgressColumn)
+            def _rag_str(r, y):
+                parts = []
+                if r > 0: parts.append(f"{r}R")
+                if y > 0: parts.append(f"{y}Y")
+                return " · ".join(parts) if parts else ""
+
+            # Totals
+            def _safe_sum(col):
+                s = _raw[col].dropna()
+                return round(float(s.sum()), 2) if len(s) else None
+
+            _t_avail_wk  = _safe_sum("_avail_wk")
+            _t_ff_over   = _safe_sum("_ff_over")
+            _t_rag_r     = int(_raw["_rag_r"].sum())
+            _t_rag_y     = int(_raw["_rag_y"].sum())
+            _whs_scores  = _raw["_whs_score"].dropna()
+            _avg_whs     = round(float(_whs_scores.mean()), 1) if len(_whs_scores) else None
+            _n_consult   = len(_raw)
+
+            # Weighted team util %: sum of (util_h) / sum of (avail_wk)
+            # Recalculate from raw data is not available here — use average of non-null util_pct
+            _t_util_p = round(float(_raw["_util_pct"].dropna().mean()), 1) if _raw["_util_pct"].notna().any() else None
+            _t_over_p = round(_t_ff_over / (_safe_sum("_avail_wk") or 1) * 100, 1) if _t_ff_over else None
+
+            # Build final display DataFrame
             _disp_rows = []
             for _, _r in _raw.iterrows():
                 _disp_rows.append({
-                    "Consultant":    _r["_consultant"],
-                    "WHS":           _whs_str(_r["_whs_score"], _r["_whs_label"]),
-                    "Avail":         _fmt(_r["_avail"], 1),
-                    "FF":            _fmt(_r["_ff_util"], 2),
-                    "Overrun":       _fmt(_r["_ff_over"], 2),
-                    "T&M":           _fmt(_r["_tm"], 2),
-                    "Internal":      _fmt(_r["_admin"], 2),
-                    "Util %":        float(_r["_util_pct"]) if _r["_util_pct"] is not None else 0.0,
-                    "FF Overrun %":  _fmt(_r["_over_pct"], 1),
-                    "Internal %":    _fmt(_r["_int_pct"], 1),
-                    # hidden sentinel for overrun highlight
-                    "_over_raw":     _r["_ff_over"],
-                    "_over_pct_raw": _r["_over_pct"],
+                    "Consultant":   _r["Consultant"],
+                    "Workload":     _whs_str(_r["_whs_score"], _r["_whs_label"]),
+                    "Avail (wk)":   _fmt(_r["_avail_wk"], 1),
+                    "Util %":       float(_r["_util_pct"]) if _r["_util_pct"] is not None else 0.0,
+                    "FF Overrun":   _fmt(_r["_ff_over"], 2, "h") + (f"  {_fmt(_r['_over_pct'], 1, '%')}" if _r["_over_pct"] else ""),
+                    "Internal %":   _fmt(_r["_int_pct"], 1, "%"),
+                    "RAG":          _rag_str(int(_r["_rag_r"]), int(_r["_rag_y"])),
+                    "Status":       _r["_status"],
+                    # sentinels for styling
+                    "_ff_over_raw": _r["_ff_over"],
+                    "_status_raw":  _r["_status"],
+                    "_whs_raw":     _r["_whs_score"],
+                    "_rag_r_raw":   _r["_rag_r"],
                 })
 
             _tbl = pd.DataFrame(_disp_rows)
 
-            # Totals row (separate df — not styled with overrun highlight)
             _totals_disp = pd.DataFrame([{
                 "Consultant":   f"Team total · {_n_consult}",
-                "WHS":          f"AVG {_avg_whs}" if _avg_whs is not None else "—",
-                "Avail":        _fmt(_t_avail, 1),
-                "FF":           _fmt(_t_ff, 2),
-                "Overrun":      _fmt(_t_over, 2),
-                "T&M":          _fmt(_t_tm, 2),
-                "Internal":     _fmt(_t_admin, 2),
+                "Workload":     f"AVG {_avg_whs}" if _avg_whs is not None else "—",
+                "Avail (wk)":   _fmt(_t_avail_wk, 1),
                 "Util %":       float(_t_util_p) if _t_util_p is not None else 0.0,
-                "FF Overrun %": _fmt(_t_over_p, 1),
-                "Internal %":   _fmt(_t_int_p, 1),
+                "FF Overrun":   _fmt(_t_ff_over, 2, "h"),
+                "Internal %":   "",
+                "RAG":          _rag_str(_t_rag_r, _t_rag_y),
+                "Status":       "",
             }])
 
-            # ── Group-header banner (simulates MultiIndex) ────────────────────
-            st.markdown("""
-<style>
-/* Monospace tabular nums across the breakdown table */
-[data-testid="stDataFrame"] table td {
-    font-variant-numeric: tabular-nums;
-    font-size: 13px;
-}
-/* Right-align all td except col 0 (Consultant) */
-[data-testid="stDataFrame"] table td:not(:first-child) {
-    text-align: right !important;
-}
-</style>
-<div style="display:grid;grid-template-columns:180px 90px 70px 60px 70px 55px 72px 130px 100px 85px;
-            column-gap:0;border-bottom:1px solid rgba(128,128,128,0.25);
-            padding:4px 8px 4px 12px;margin-bottom:-6px;">
-  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;"></span>
-  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;">Workload</span>
-  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;">Capacity</span>
-  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;grid-column:span 4;">Hours This Week</span>
-  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;grid-column:span 3;">Utilization</span>
-</div>
-""", unsafe_allow_html=True)
+            # ── Styler: overrun row highlight + WHS high row tint ─────────────
+            _OVER_ROW  = "background-color: rgba(239,68,68,0.06);"
+            _OVER_CELL = "background-color: rgba(239,68,68,0.13); color: #dc2626; font-weight: 500;"
+            _WHS_ROW   = "background-color: rgba(239,159,39,0.06);"
+            _RAG_CELL  = "color: #a32d2d; font-weight: 500;"
 
-            # ── Styler for overrun highlight ──────────────────────────────────
-            # Keep _over_raw in the frame so the styler can read it, then hide
-            # it from display using column_config. The styler must return exactly
-            # len(row) style strings — one per column including hidden ones.
-            def _highlight_overrun(row):
-                styles = [""] * len(row)
+            def _row_style(row):
+                n = len(row)
+                base = [""] * n
+                s = row.get("_status_raw", "")
+                o = float(row.get("_ff_over_raw") or 0)
+                r = float(row.get("_rag_r_raw") or 0)
+                if s == "Overrun":
+                    base = [_OVER_ROW] * n
+                elif s == "High WHS":
+                    base = [_WHS_ROW] * n
                 idx = list(row.index)
-                try:
-                    raw_over = float(row.get("_over_raw") or 0)
-                except (TypeError, ValueError):
-                    raw_over = 0.0
-                if raw_over > 0:
-                    for col in ("Overrun", "FF Overrun %"):
-                        if col in idx and row[col] != "":
-                            styles[idx.index(col)] = _OVERRUN_BG
-                return styles
+                # Overrun cell
+                if "FF Overrun" in idx and o > 0:
+                    base[idx.index("FF Overrun")] = _OVER_CELL
+                # RAG cell red tint when red projects present
+                if "RAG" in idx and r > 0:
+                    base[idx.index("RAG")] = _RAG_CELL
+                return base
 
-            _tbl_display = _tbl  # keep _over_raw column; hidden via column_config below
-            _styler = _tbl_display.style.apply(_highlight_overrun, axis=1)
+            _display_cols = ["Consultant","Workload","Avail (wk)","Util %","FF Overrun","Internal %","RAG","Status"]
+            _styler = _tbl.style.apply(_row_style, axis=1)
 
-            # ── Render consultant rows ────────────────────────────────────────
+            # ── Render ────────────────────────────────────────────────────────
             st.dataframe(
                 _styler,
                 use_container_width=True,
                 hide_index=True,
+                column_order=_display_cols,
                 column_config={
-                    "Consultant":    st.column_config.TextColumn("Consultant", width="medium"),
-                    "WHS":           st.column_config.TextColumn("WHS ↕", width="small"),
-                    "Avail":         st.column_config.TextColumn("Avail", width="small"),
-                    "FF":            st.column_config.TextColumn("FF", width="small"),
-                    "Overrun":       st.column_config.TextColumn("Overrun", width="small"),
-                    "T&M":           st.column_config.TextColumn("T&M", width="small"),
-                    "Internal":      st.column_config.TextColumn("Internal", width="small"),
-                    "Util %":        st.column_config.ProgressColumn(
-                                         "Util %",
-                                         help="Credited hours (FF within scope + T&M) ÷ available hours",
-                                         format="%.1f%%",
-                                         min_value=0,
-                                         max_value=100,
-                                         width="medium",
-                                     ),
-                    "FF Overrun %":  st.column_config.TextColumn("FF Overrun %", width="small"),
-                    "Internal %":    st.column_config.TextColumn("Internal %", width="small"),
-                    "_over_raw":     None,
-                    "_over_pct_raw": None,
-                },
-            )
-
-            # ── Totals row ────────────────────────────────────────────────────
-            st.dataframe(
-                _totals_disp.style.set_properties(**{
-                    "font-weight": "700",
-                    "border-top":  "2px solid rgba(128,128,128,0.35)",
-                }),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Consultant":   st.column_config.TextColumn("Consultant", width="medium"),
-                    "WHS":          st.column_config.TextColumn("WHS ↕", width="small"),
-                    "Avail":        st.column_config.TextColumn("Avail", width="small"),
-                    "FF":           st.column_config.TextColumn("FF", width="small"),
-                    "Overrun":      st.column_config.TextColumn("Overrun", width="small"),
-                    "T&M":          st.column_config.TextColumn("T&M", width="small"),
-                    "Internal":     st.column_config.TextColumn("Internal", width="small"),
+                    "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
+                    "Workload":     st.column_config.TextColumn("Workload",     width="small"),
+                    "Avail (wk)":   st.column_config.TextColumn("Avail (wk)",  width="small"),
                     "Util %":       st.column_config.ProgressColumn(
                                         "Util %",
+                                        help="Weekly billable hours (FF + T&M this week) ÷ weekly available hours",
                                         format="%.1f%%",
                                         min_value=0,
                                         max_value=100,
                                         width="medium",
                                     ),
-                    "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
-                    "Internal %":   st.column_config.TextColumn("Internal %", width="small"),
+                    "FF Overrun":   st.column_config.TextColumn(
+                                        "FF Overrun",
+                                        help="MTD Fixed Fee hours beyond scope · hours and % of monthly available",
+                                        width="small",
+                                    ),
+                    "Internal %":   st.column_config.TextColumn(
+                                        "Internal %",
+                                        help="MTD internal hours as % of monthly available",
+                                        width="small",
+                                    ),
+                    "RAG":          st.column_config.TextColumn(
+                                        "RAG",
+                                        help="Red and Yellow RAG projects managed by this consultant (from DRS)",
+                                        width="small",
+                                    ),
+                    "Status":       st.column_config.TextColumn(
+                                        "Status",
+                                        help="Overrun: FF hours exceeded scope  ·  High WHS: workload score ≥ 75  ·  OK: active, no flags",
+                                        width="small",
+                                    ),
+                    # hide sentinels
+                    "_ff_over_raw": None,
+                    "_status_raw":  None,
+                    "_whs_raw":     None,
+                    "_rag_r_raw":   None,
+                },
+            )
+
+            # Totals row
+            st.dataframe(
+                _totals_disp.style.set_properties(**{
+                    "font-weight": "600",
+                    "border-top":  "2px solid rgba(128,128,128,0.3)",
+                }),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Consultant": st.column_config.TextColumn("Consultant", width="medium"),
+                    "Workload":   st.column_config.TextColumn("Workload",   width="small"),
+                    "Avail (wk)": st.column_config.TextColumn("Avail (wk)", width="small"),
+                    "Util %":     st.column_config.ProgressColumn(
+                                      "Util %", format="%.1f%%",
+                                      min_value=0, max_value=100, width="medium",
+                                  ),
+                    "FF Overrun": st.column_config.TextColumn("FF Overrun", width="small"),
+                    "Internal %": st.column_config.TextColumn("Internal %", width="small"),
+                    "RAG":        st.column_config.TextColumn("RAG",        width="small"),
+                    "Status":     st.column_config.TextColumn("Status",     width="small"),
                 },
             )
 
             if _leaver_scope:
-                st.caption("* Available hours prorated")
+                st.caption("* Available hours prorated to exit date")
+            st.caption(
+                "Avail (wk): monthly available ÷ business days × 5  ·  "
+                "Util %: billable hours this week ÷ weekly avail  ·  "
+                "FF Overrun & Internal %: month-to-date  ·  "
+                "Status: Overrun > High WHS (≥75) > OK"
+            )
 
     except Exception as _db_err:
         st.warning(
