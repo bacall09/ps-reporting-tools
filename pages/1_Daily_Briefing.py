@@ -1119,29 +1119,24 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
 """, unsafe_allow_html=True)
 
             # ── Styler for overrun highlight ──────────────────────────────────
+            # Keep _over_raw in the frame so the styler can read it, then hide
+            # it from display using column_config. The styler must return exactly
+            # len(row) style strings — one per column including hidden ones.
             def _highlight_overrun(row):
                 styles = [""] * len(row)
                 idx = list(row.index)
-                for col in ("Overrun", "FF Overrun %"):
-                    if col in idx:
-                        _ci = idx.index(col)
-                        try:
-                            raw_over = float(row.get("_over_raw") or 0)
-                        except (TypeError, ValueError):
-                            raw_over = 0.0
-                        if raw_over > 0 and row[col] != "":
-                            styles[_ci] = _OVERRUN_BG
+                try:
+                    raw_over = float(row.get("_over_raw") or 0)
+                except (TypeError, ValueError):
+                    raw_over = 0.0
+                if raw_over > 0:
+                    for col in ("Overrun", "FF Overrun %"):
+                        if col in idx and row[col] != "":
+                            styles[idx.index(col)] = _OVERRUN_BG
                 return styles
 
-            _tbl_display = _tbl.drop(columns=["_over_raw","_over_pct_raw"])
-            _styler = _tbl_display.style.apply(
-                lambda row: _highlight_overrun(
-                    row.to_frame().T.assign(
-                        _over_raw=_tbl.loc[row.name, "_over_raw"],
-                    ).iloc[0]
-                ),
-                axis=1,
-            )
+            _tbl_display = _tbl  # keep _over_raw column; hidden via column_config below
+            _styler = _tbl_display.style.apply(_highlight_overrun, axis=1)
 
             # ── Render consultant rows ────────────────────────────────────────
             st.dataframe(
@@ -1149,23 +1144,25 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "Consultant":   st.column_config.TextColumn("Consultant", width="medium"),
-                    "WHS":          st.column_config.TextColumn("WHS ↕", width="small"),
-                    "Avail":        st.column_config.TextColumn("Avail", width="small"),
-                    "FF":           st.column_config.TextColumn("FF", width="small"),
-                    "Overrun":      st.column_config.TextColumn("Overrun", width="small"),
-                    "T&M":          st.column_config.TextColumn("T&M", width="small"),
-                    "Internal":     st.column_config.TextColumn("Internal", width="small"),
-                    "Util %":       st.column_config.ProgressColumn(
-                                        "Util %",
-                                        help="Credited hours (FF within scope + T&M) ÷ available hours",
-                                        format="%.1f%%",
-                                        min_value=0,
-                                        max_value=100,
-                                        width="medium",
-                                    ),
-                    "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
-                    "Internal %":   st.column_config.TextColumn("Internal %", width="small"),
+                    "Consultant":    st.column_config.TextColumn("Consultant", width="medium"),
+                    "WHS":           st.column_config.TextColumn("WHS ↕", width="small"),
+                    "Avail":         st.column_config.TextColumn("Avail", width="small"),
+                    "FF":            st.column_config.TextColumn("FF", width="small"),
+                    "Overrun":       st.column_config.TextColumn("Overrun", width="small"),
+                    "T&M":           st.column_config.TextColumn("T&M", width="small"),
+                    "Internal":      st.column_config.TextColumn("Internal", width="small"),
+                    "Util %":        st.column_config.ProgressColumn(
+                                         "Util %",
+                                         help="Credited hours (FF within scope + T&M) ÷ available hours",
+                                         format="%.1f%%",
+                                         min_value=0,
+                                         max_value=100,
+                                         width="medium",
+                                     ),
+                    "FF Overrun %":  st.column_config.TextColumn("FF Overrun %", width="small"),
+                    "Internal %":    st.column_config.TextColumn("Internal %", width="small"),
+                    "_over_raw":     None,
+                    "_over_pct_raw": None,
                 },
             )
 
