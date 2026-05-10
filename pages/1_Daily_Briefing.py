@@ -993,41 +993,210 @@ if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
                 _display += " *"
 
             _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
+            # Return raw numeric values — formatting applied at render time
             return {
-                "Consultant":    _display,
-                "WHS":           f"{_whs_s} · {_whs_l}" if _whs_s is not None else "—",
-                "Avail h":       _avail_cn or "—",
-                "FF Util h":     _ff_util or "—",
-                "FF Overrun h":  _ff_over if _ff_over else "—",
-                "T&M h":         _tm or "—",
-                "Internal h":    _admin or "—",
-                "Util %":        f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
-                "FF Overrun %":  f"{_over_pct_cn}%" if _over_pct_cn is not None else "—",
-                "Internal %":    f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
+                "_consultant":    _display,
+                "_whs_score":     _whs_s,
+                "_whs_label":     _whs_l if _whs_l else "—",
+                "_avail":         _avail_cn,
+                "_ff_util":       _ff_util if _ff_util else None,
+                "_ff_over":       _ff_over if _ff_over else None,
+                "_tm":            _tm if _tm else None,
+                "_admin":         _admin if _admin else None,
+                "_util_pct":      _util_pct_cn,
+                "_over_pct":      _over_pct_cn,
+                "_int_pct":       _int_pct_cn,
             }
 
         _rows = [_build_row(cn) for cn in _scope_names]
         _rows += [_build_row(ln, is_leaver=True, exit_dt=ex) for ln, ex in _leaver_scope]
 
         if _rows:
-            _tbl = pd.DataFrame(_rows)
+            import numpy as _np
+
+            _raw = pd.DataFrame(_rows)
+
+            # ── Build WHS display string ──────────────────────────────────────
+            def _whs_str(score, label):
+                if score is None or (isinstance(score, float) and _np.isnan(score)):
+                    return "NO DATA"
+                return f"{score:.1f} {label}"
+
+            # ── Totals row ────────────────────────────────────────────────────
+            def _safe_sum(col):
+                s = _raw[col].dropna()
+                return round(s.sum(), 2) if len(s) else None
+
+            _t_avail   = _safe_sum("_avail")
+            _t_ff      = _safe_sum("_ff_util")
+            _t_over    = _safe_sum("_ff_over")
+            _t_tm      = _safe_sum("_tm")
+            _t_admin   = _safe_sum("_admin")
+            _t_util_h  = round((_t_ff or 0) + (_t_tm or 0), 2)
+            _t_util_p  = round(_t_util_h / _t_avail * 100, 1) if _t_avail and _t_util_h else None
+            _t_over_p  = round((_t_over or 0) / _t_avail * 100, 1) if _t_avail and _t_over else None
+            _t_int_p   = round((_t_admin or 0) / _t_avail * 100, 1) if _t_avail and _t_admin else None
+            _whs_scores = _raw["_whs_score"].dropna()
+            _avg_whs    = round(_whs_scores.mean(), 1) if len(_whs_scores) else None
+            _n_consult  = len(_rows)
+
+            # ── Flat display DataFrame (MultiIndex via rename at render) ──────
+            # Streamlit st.dataframe doesn't support pd.MultiIndex columns, so we
+            # simulate the group headers using column_config label overrides with
+            # Unicode thin-space padding and a CSS class on the header.
+            # The visual grouping is done by injecting a styled header row via
+            # st.markdown above the dataframe.
+
+            _OVERRUN_BG = "background-color: rgba(239,68,68,0.13); color: #dc2626; font-weight: 600;"
+
+            def _fmt(v, decimals=1):
+                """Format a float to N decimals, return empty string for None/NaN."""
+                if v is None: return ""
+                try:
+                    f = float(v)
+                    if _np.isnan(f): return ""
+                    return f"{f:.{decimals}f}"
+                except (TypeError, ValueError):
+                    return ""
+
+            # Build display rows (strings for text cols, floats for ProgressColumn)
+            _disp_rows = []
+            for _, _r in _raw.iterrows():
+                _disp_rows.append({
+                    "Consultant":    _r["_consultant"],
+                    "WHS":           _whs_str(_r["_whs_score"], _r["_whs_label"]),
+                    "Avail":         _fmt(_r["_avail"], 1),
+                    "FF":            _fmt(_r["_ff_util"], 2),
+                    "Overrun":       _fmt(_r["_ff_over"], 2),
+                    "T&M":           _fmt(_r["_tm"], 2),
+                    "Internal":      _fmt(_r["_admin"], 2),
+                    "Util %":        float(_r["_util_pct"]) if _r["_util_pct"] is not None else 0.0,
+                    "FF Overrun %":  _fmt(_r["_over_pct"], 1),
+                    "Internal %":    _fmt(_r["_int_pct"], 1),
+                    # hidden sentinel for overrun highlight
+                    "_over_raw":     _r["_ff_over"],
+                    "_over_pct_raw": _r["_over_pct"],
+                })
+
+            _tbl = pd.DataFrame(_disp_rows)
+
+            # Totals row (separate df — not styled with overrun highlight)
+            _totals_disp = pd.DataFrame([{
+                "Consultant":   f"Team total · {_n_consult}",
+                "WHS":          f"AVG {_avg_whs}" if _avg_whs is not None else "—",
+                "Avail":        _fmt(_t_avail, 1),
+                "FF":           _fmt(_t_ff, 2),
+                "Overrun":      _fmt(_t_over, 2),
+                "T&M":          _fmt(_t_tm, 2),
+                "Internal":     _fmt(_t_admin, 2),
+                "Util %":       float(_t_util_p) if _t_util_p is not None else 0.0,
+                "FF Overrun %": _fmt(_t_over_p, 1),
+                "Internal %":   _fmt(_t_int_p, 1),
+            }])
+
+            # ── Group-header banner (simulates MultiIndex) ────────────────────
+            st.markdown("""
+<style>
+/* Monospace tabular nums across the breakdown table */
+[data-testid="stDataFrame"] table td {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+}
+/* Right-align all td except col 0 (Consultant) */
+[data-testid="stDataFrame"] table td:not(:first-child) {
+    text-align: right !important;
+}
+</style>
+<div style="display:grid;grid-template-columns:180px 90px 70px 60px 70px 55px 72px 130px 100px 85px;
+            column-gap:0;border-bottom:1px solid rgba(128,128,128,0.25);
+            padding:4px 8px 4px 12px;margin-bottom:-6px;">
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;"></span>
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;">Workload</span>
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;">Capacity</span>
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;grid-column:span 4;">Hours This Week</span>
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#4472C4;grid-column:span 3;">Utilization</span>
+</div>
+""", unsafe_allow_html=True)
+
+            # ── Styler for overrun highlight ──────────────────────────────────
+            def _highlight_overrun(row):
+                styles = [""] * len(row)
+                idx = list(row.index)
+                for col in ("Overrun", "FF Overrun %"):
+                    if col in idx:
+                        _ci = idx.index(col)
+                        try:
+                            raw_over = float(row.get("_over_raw") or 0)
+                        except (TypeError, ValueError):
+                            raw_over = 0.0
+                        if raw_over > 0 and row[col] != "":
+                            styles[_ci] = _OVERRUN_BG
+                return styles
+
+            _tbl_display = _tbl.drop(columns=["_over_raw","_over_pct_raw"])
+            _styler = _tbl_display.style.apply(
+                lambda row: _highlight_overrun(
+                    row.to_frame().T.assign(
+                        _over_raw=_tbl.loc[row.name, "_over_raw"],
+                    ).iloc[0]
+                ),
+                axis=1,
+            )
+
+            # ── Render consultant rows ────────────────────────────────────────
             st.dataframe(
-                _tbl,
+                _styler,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
-                    "WHS":          st.column_config.TextColumn("WHS",          width="small"),
-                    "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
-                    "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
-                    "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
-                    "T&M h":        st.column_config.TextColumn("T&M h",        width="small"),
-                    "Internal h":   st.column_config.TextColumn("Internal h",   width="small"),
-                    "Util %":       st.column_config.TextColumn("Util %",       width="small"),
+                    "Consultant":   st.column_config.TextColumn("Consultant", width="medium"),
+                    "WHS":          st.column_config.TextColumn("WHS ↕", width="small"),
+                    "Avail":        st.column_config.TextColumn("Avail", width="small"),
+                    "FF":           st.column_config.TextColumn("FF", width="small"),
+                    "Overrun":      st.column_config.TextColumn("Overrun", width="small"),
+                    "T&M":          st.column_config.TextColumn("T&M", width="small"),
+                    "Internal":     st.column_config.TextColumn("Internal", width="small"),
+                    "Util %":       st.column_config.ProgressColumn(
+                                        "Util %",
+                                        help="Credited hours (FF within scope + T&M) ÷ available hours",
+                                        format="%.1f%%",
+                                        min_value=0,
+                                        max_value=100,
+                                        width="medium",
+                                    ),
                     "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
-                    "Internal %":   st.column_config.TextColumn("Internal %",   width="small"),
-                }
+                    "Internal %":   st.column_config.TextColumn("Internal %", width="small"),
+                },
             )
+
+            # ── Totals row ────────────────────────────────────────────────────
+            st.dataframe(
+                _totals_disp.style.set_properties(**{
+                    "font-weight": "700",
+                    "border-top":  "2px solid rgba(128,128,128,0.35)",
+                }),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Consultant":   st.column_config.TextColumn("Consultant", width="medium"),
+                    "WHS":          st.column_config.TextColumn("WHS ↕", width="small"),
+                    "Avail":        st.column_config.TextColumn("Avail", width="small"),
+                    "FF":           st.column_config.TextColumn("FF", width="small"),
+                    "Overrun":      st.column_config.TextColumn("Overrun", width="small"),
+                    "T&M":          st.column_config.TextColumn("T&M", width="small"),
+                    "Internal":     st.column_config.TextColumn("Internal", width="small"),
+                    "Util %":       st.column_config.ProgressColumn(
+                                        "Util %",
+                                        format="%.1f%%",
+                                        min_value=0,
+                                        max_value=100,
+                                        width="medium",
+                                    ),
+                    "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
+                    "Internal %":   st.column_config.TextColumn("Internal %", width="small"),
+                },
+            )
+
             if _leaver_scope:
                 st.caption("* Available hours prorated")
 
