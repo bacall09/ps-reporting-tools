@@ -1767,25 +1767,28 @@ def main():
     # ─────────────────────────────────────────────────────
     st.divider()
     if _is_mgr_u:
-        with st.expander("Tableau export (advanced)", expanded=False):
-            _tab_cache_key = ("tab", _ns_signature(_ns_from_session),
-                              str(period_start), str(period_end),
-                              _va_name_u, _va_region_u)
-            st.session_state.setdefault("_util_tableau_cache", {})
-            tableau_filename = f"utilization_tableau_{timestamp}.xlsx"
+        _tab_cache_key = ("tab", _ns_signature(_ns_from_session),
+                          str(period_start), str(period_end),
+                          _va_name_u, _va_region_u)
+        st.session_state.setdefault("_util_tableau_cache", {})
+        tableau_filename = f"utilization_tableau_{timestamp}.xlsx"
 
-            # If user clicked "Build" on a previous render, this flag is set
-            if st.session_state.get("_util_tab_prep_requested") == _tab_cache_key:
-                st.session_state["_util_tab_prep_requested"] = None
-                try:
-                    with st.spinner("Building Tableau export..."):
-                        st.session_state._util_tableau_cache[_tab_cache_key] = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
-                except Exception as _tab_err:
-                    st.error(f"Tableau build failed: {_tab_err}")
-                    st.exception(_tab_err)
+        # Build runs OUTSIDE the expander so any error/exception renders at page level
+        # where the user can see it (rather than buried in a collapsed expander body).
+        if st.session_state.get("_util_tab_prep_requested") == _tab_cache_key:
+            st.session_state["_util_tab_prep_requested"] = None
+            try:
+                with st.spinner("Building Tableau export..."):
+                    st.session_state._util_tableau_cache[_tab_cache_key] = build_tableau_excel(df, DEFAULT_SCOPE, consumed)
+            except Exception as _tab_err:
+                st.error(f"Tableau build failed: {_tab_err}")
+                st.exception(_tab_err)
 
-            _tab_buf = st.session_state._util_tableau_cache.get(_tab_cache_key)
+        _tab_buf = st.session_state._util_tableau_cache.get(_tab_cache_key)
 
+        # Auto-open the expander after a click so the user sees what happened
+        _expand_now = st.session_state.pop("_util_tab_expand", False)
+        with st.expander("Tableau export (advanced)", expanded=_expand_now or _tab_buf is not None):
             if _tab_buf is not None:
                 st.download_button(
                     label="⬇ Download Tableau Export",
@@ -1797,6 +1800,7 @@ def main():
                 if st.button("Build Tableau export", key="util_prep_tableau",
                              help="Generate the 3-sheet Tableau workbook"):
                     st.session_state["_util_tab_prep_requested"] = _tab_cache_key
+                    st.session_state["_util_tab_expand"] = True
                     st.rerun()
             st.caption("3 flat sheets: fact_utilization · fact_processed_time_entries · fact_ff_overrun_by_type")
 def build_tableau_excel(df, scope_map, consumed):
