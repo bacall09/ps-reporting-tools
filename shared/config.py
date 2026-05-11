@@ -29,8 +29,163 @@ TAG_BADGE = {
 # ── PTO / Vacation keywords (matched against task/case column) ───────────────
 PTO_KEYWORDS = ["vacation", "pto", "sick", "vacation/pto"]
 
+# ── Product Catalog ──────────────────────────────────────────────────────────
+# Canonical product names with their NetSuite project_type variations and
+# shorthand. Single source of truth — used by:
+#   - Capacity Planner (product enablement)
+#   - Customer Reengagement (product filters)
+#   - Workload Health Score (product breakdown)
+#   - Utilization Report (project_type → scope lookup)
+#
+# To add a new product: add it here. To rename: update the canonical name
+# and add the old name to LEGACY_PRODUCT_NAMES below so existing data
+# continues to resolve.
+PRODUCT_CATALOG = {
+    "All": {
+        "shorthand": "All",
+        "ns_project_types": [],  # special — matches everything
+    },
+    "ZoneApprovals": {
+        "shorthand": "Approvals",
+        "ns_project_types": ["ZoneApp: Approvals"],
+    },
+    "AP Payments": {
+        "shorthand": "AP Payments",
+        "ns_project_types": ["ZoneApp: AP Payment"],
+    },
+    "ZoneBilling": {
+        "shorthand": "Billing",
+        "ns_project_types": [
+            "ZoneBill: ZB_Standard",
+            "ZoneBill: ZB_Premium",
+            "ZoneBill: Subscription Services",
+            "ZoneBill: Optimization Audit",
+            "ZoneBill: Optimization",
+            "ZoneBill: ERP/ZAB Impl.",
+            "ZoneBill: Support",
+        ],
+    },
+    "ZoneCapture": {
+        "shorthand": "Capture",
+        "ns_project_types": ["ZoneApp: Capture", "ZoneApp: Capture & e-Invoicing"],
+    },
+    "CC Statement Import": {
+        "shorthand": "CC",
+        "ns_project_types": ["ZoneApp: CC Statement Import"],
+    },
+    "ZoneInvoicing": {
+        "shorthand": "e-Invoicing",
+        "ns_project_types": [
+            "ZoneApp: e-Invoicing only",
+            "ZoneApp: e-Invoicing Additional Subsidiary",
+        ],
+    },
+    "ZonePayments": {
+        "shorthand": "Payments (AR)",
+        "ns_project_types": ["ZoneApp: Payments"],
+    },
+    "ZonePayroll": {
+        "shorthand": "Payroll",
+        "ns_project_types": [
+            "ZonePay: Implementation",
+            "ZonePay: Optimization",
+            "ZonePay: Support",
+        ],
+    },
+    "Zone Employee Payroll": {
+        "shorthand": "Employee Portal",
+        "ns_project_types": ["ZEP: Implementation", "ZEP: Optimization"],
+    },
+    "PSP": {
+        "shorthand": "PSP",
+        "ns_project_types": ["ZoneApp: Reconcile PSP"],
+    },
+    "ZoneReconcile": {
+        "shorthand": "Reconcile",
+        "ns_project_types": ["ZoneApp: Reconcile", "ZoneApp: Reconcile 2.0"],
+    },
+    "ZoneReporting": {
+        "shorthand": "Reporting",
+        "ns_project_types": [
+            "ZoneRpt: Install, Template",
+            "ZoneRpt: Consulting MSA",
+            "ZoneRpt: Optimization",
+            "ZoneRpt: Install, DWH",
+        ],
+    },
+    "SFTP": {
+        "shorthand": "SFTP",
+        "ns_project_types": ["ZoneApp: SFTP Connector"],
+    },
+}
+
+# ── Add-on → parent product (enforced inheritance) ───────────────────────────
+# A consultant cannot be enabled on an add-on without the parent product.
+# Used by validate_employee_products() in shared/constants.py.
+PRODUCT_ADDONS = {
+    "PSP": "ZoneReconcile",
+    "CC Statement Import": "ZoneReconcile",
+    "SFTP": "ZoneReconcile",
+    "AP Payments": "ZoneCapture",
+}
+
+# ── Legacy product name aliases ──────────────────────────────────────────────
+# Maps old/alternate names to their canonical equivalent so historical data
+# (and any non-updated NetSuite exports) continue to resolve correctly.
+LEGACY_PRODUCT_NAMES = {
+    # Pre-canonicalization names → canonical
+    "Capture":             "ZoneCapture",
+    "Approvals":           "ZoneApprovals",
+    "Reconcile":           "ZoneReconcile",
+    "Reconcile PSP":       "PSP",
+    "Payments":            "ZonePayments",
+    "Billing":             "ZoneBilling",
+    "Payroll":             "ZonePayroll",
+    "e-Invoicing":         "ZoneInvoicing",
+    "Reporting":           "ZoneReporting",
+    "SFTP Connector":      "SFTP",
+    # Identity mappings (no-op for safety — explicit is better than implicit)
+    "All":                 "All",
+    "PSP":                 "PSP",
+    "CC Statement Import": "CC Statement Import",
+    "AP Payments":         "AP Payments",
+    "Zone Employee Payroll": "Zone Employee Payroll",
+}
+
+
+def canonical_product_name(name: str) -> str:
+    """Map any product name (legacy or current) to the canonical form.
+    Unknown names are returned unchanged with a warning printed."""
+    if name in PRODUCT_CATALOG:
+        return name
+    if name in LEGACY_PRODUCT_NAMES:
+        return LEGACY_PRODUCT_NAMES[name]
+    # Unknown — return as-is, caller can decide how to handle
+    return name
+
+
+def ns_project_type_to_product(project_type: str) -> str | None:
+    """Given a NetSuite project_type string, return the canonical product name
+    or None if no match. Used to filter time entries by product."""
+    pt = (project_type or "").strip()
+    for canon, meta in PRODUCT_CATALOG.items():
+        if pt in meta["ns_project_types"]:
+            return canon
+    return None
+
+
+def product_shorthand(canonical_name: str) -> str:
+    """Return the display shorthand for a canonical product name."""
+    return PRODUCT_CATALOG.get(canonical_name, {}).get("shorthand", canonical_name)
+
+
 # ── Employees excluded from utilization targets ──────────────────────────────
-UTIL_EXEMPT_EMPLOYEES = ["swanson"]  # case-insensitive match
+# Kept for backwards-compat. The canonical source is now per-employee
+# `util_exempt: True` flag in EMPLOYEE_ROLES (shared/constants.py).
+# Code should prefer is_util_exempt(name) from shared/constants instead of
+# checking this list directly.
+UTIL_EXEMPT_EMPLOYEES = ["swanson"]  # case-insensitive match — legacy
+
 
 # ── Employee → Location lookup (drives avail hours + PS region) ──────────────
 EMPLOYEE_LOCATION = {
