@@ -540,7 +540,9 @@ def _email_html(subject,body,to_email,cc_email,auto_values:set):
 df_all=_df_drs.copy()
 cm={c.lower().strip():c for c in df_all.columns}
 name_col  =cm.get("project_name")    or cm.get("project name")
-cust_col  =cm.get("customer")        or cm.get("account")
+cust_col  =(cm.get("customer") or cm.get("account")
+            or cm.get("account name") or cm.get("customer name")
+            or cm.get("client") or cm.get("client name"))
 prod_col  =cm.get("project_type")    or cm.get("project type") or cm.get("product")
 id_col    =cm.get("project_id")      or cm.get("project id")
 status_col=cm.get("status")
@@ -625,6 +627,8 @@ def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
 st.markdown('<p class="ce-label">Select Customer</p>',unsafe_allow_html=True)
 
 # Build customer list — all unique customers sorted, preserving original casing
+# ── Customer list — always from FULL DRS (not view-filtered) ─────────────────
+# Use _df_drs directly so all customers appear, then filter projects by view-as below
 if cust_col:
     _all_customers=sorted(
         {str(v).strip() for v in _df_drs[cust_col].dropna()
@@ -638,6 +642,15 @@ if not _all_customers:
     st.warning("No customer data found in DRS. Check the 'Account Name' / 'Customer' column.")
     st.stop()
 
+# Clear customer + project state when view-as consultant changes
+_cur_browse = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
+if st.session_state.get("_ce_last_browse") != _cur_browse:
+    st.session_state["_ce_last_browse"] = _cur_browse
+    for k in ["_ce_customer","ce_customer","_ce_proj_sid","ce_proj_select",
+              "_last_proj_sid","_last_proj_sid_for_comm","ce_to","ce_cn","ce_cc",
+              "_sfdc_match_"+str(st.session_state.get("_ce_proj_sid",""))]:
+        st.session_state.pop(k, None)
+
 _prev_cust=st.session_state.get("_ce_customer")
 _def_cust=_prev_cust if _prev_cust in _all_customers else _all_customers[0]
 selected_customer=st.selectbox(
@@ -645,6 +658,9 @@ selected_customer=st.selectbox(
     index=_all_customers.index(_def_cust),
     label_visibility="collapsed",key="ce_customer",
 )
+# Temp debug — shows if wrong column is being used (remove once confirmed)
+if cust_col and any(len(c)>60 for c in _all_customers[:5]):
+    st.caption(f"⚠️ Customer column resolving to: `{cust_col}` — values look like project names. Check DRS 'Account Name' column.")
 # Clear project selection when customer changes
 if st.session_state.get("_ce_customer")!=selected_customer:
     st.session_state["_ce_customer"]=selected_customer
