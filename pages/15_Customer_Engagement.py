@@ -492,11 +492,6 @@ with info_col:
 st.markdown(_build_journey(sel),unsafe_allow_html=True)
 st.markdown('<div style="margin-bottom:12px"></div>',unsafe_allow_html=True)
 
-# SFDC debug — remove once matching is confirmed working
-if _sfdc_debug and not sfdc_label:
-    with st.expander("🔍 SFDC match debug (remove once working)", expanded=False):
-        st.json(_sfdc_debug)
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # ROW 3: Compose (left) | Preview (right)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -526,6 +521,11 @@ if df_sfdc is not None and not df_sfdc.empty:
         sfdc_cname=str(br.get(nc,"")).strip() if nc else ""
         if sfdc_email in ("nan","None",""): sfdc_email=""
         if sfdc_cname in ("nan","None",""): sfdc_cname=""
+
+# SFDC debug expander — shows when SFDC loaded but no match found
+if _sfdc_debug and not sfdc_label:
+    with st.expander("🔍 SFDC match debug (remove once confirmed working)", expanded=True):
+        st.json(_sfdc_debug)
 
 # Auto-context (shared)
 _disp=_flip_name(_logged_in)
