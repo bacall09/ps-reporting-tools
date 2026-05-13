@@ -459,7 +459,8 @@ with col_left:
         # Build contact_name from first+last if present
         if "first_name" in df_sfdc_n.columns and "last_name" in df_sfdc_n.columns:
             df_sfdc_n["contact_name"] = (
-                df_sfdc_n["first_name"].fillna("") + " " + df_sfdc_n["last_name"].fillna("")
+                df_sfdc_n["first_name"].fillna("").astype(str) + " " +
+                df_sfdc_n["last_name"].fillna("").astype(str)
             ).str.strip()
         proj_nm = str(sel.get(name_col,"")) if name_col else ""
         sfdc_match, match_label = _fuzzy_sfdc(df_sfdc_n, proj_nm, str(customer))
