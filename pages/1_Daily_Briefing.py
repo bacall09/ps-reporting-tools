@@ -576,6 +576,9 @@ admin_hrs = 0.0; credit_hrs = 0.0; overrun_hrs = 0.0; util_hrs = 0.0
 util_pct = None; overrun_pct = None; admin_pct = None; total_booked = 0.0
 _whs_score = None; _whs_label = "—"; _whs_col = "#718096"
 _wk_util_pct = None; _wk_total = None; _wk_billable_h = None
+_gl14_col = None; _gl14 = pd.DataFrame()
+_month_n = 0
+_week_start = pd.Timestamp.today().normalize() - pd.Timedelta(days=pd.Timestamp.today().weekday())
 
 if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
