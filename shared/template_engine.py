@@ -38,9 +38,9 @@ from typing import Optional
 # ── Path constants ────────────────────────────────────────────────────────────
 
 _BASE = Path(__file__).parent / "templates"
-_WELCOME_PATH     = _BASE / "welcome"      / "welcome_templates.yaml"
-_POST_SESSION_PATH = _BASE / "post_session" / "post_session_templates.yaml"
-_LIFECYCLE_PATH   = _BASE / "lifecycle"    / "lifecycle_templates.yaml"
+_WELCOME_PATH      = _BASE / "welcome_templates.yaml"
+_POST_SESSION_PATH = _BASE / "post_session_templates.yaml"
+_LIFECYCLE_PATH    = _BASE / "lifecycle_templates.yaml"
 
 # ── Session log key ───────────────────────────────────────────────────────────
 
