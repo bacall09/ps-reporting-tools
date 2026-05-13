@@ -574,6 +574,8 @@ else:
 tm_hrs = 0.0; ff_credit = 0.0; ff_overrun = 0.0; ff_unscoped = 0.0
 admin_hrs = 0.0; credit_hrs = 0.0; overrun_hrs = 0.0; util_hrs = 0.0
 util_pct = None; overrun_pct = None; admin_pct = None; total_booked = 0.0
+_whs_score = None; _whs_label = "—"; _whs_col = "#718096"
+_wk_util_pct = None; _wk_total = None; _wk_billable_h = None
 
 if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
