@@ -944,7 +944,7 @@ with compose_col:
         st.session_state["ce_prev_auto"]=auto_vals_w
 
         if _send_footer("w",ssf_w,subj_w,body_w,recip):
-            st.session_state["_req_w"]={"subj":subj_w,"body":body_w,"ssf":ssf_w}
+            st.session_state["_req_w"]={"subj":st.session_state.get("ce_send_subj",subj_w),"body":st.session_state.get("ce_send_body",body_w),"ssf":ssf_w}
             st.rerun()
         if st.session_state.get("_req_w"):
             r=st.session_state.pop("_req_w")
@@ -1000,7 +1000,7 @@ with compose_col:
             st.session_state["ce_prev_body"]=body_s
             st.session_state["ce_prev_auto"]=auto_vals_s
             if _send_footer("s",ssf_s,subj_s,body_s,recip):
-                st.session_state["_req_s"]={"subj":subj_s,"body":body_s,"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
+                st.session_state["_req_s"]={"subj":st.session_state.get("ce_send_subj",subj_s),"body":st.session_state.get("ce_send_body",body_s),"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
                 st.rerun()
             if st.session_state.get("_req_s"):
                 r=st.session_state.pop("_req_s")
@@ -1064,7 +1064,7 @@ with compose_col:
         st.session_state["ce_prev_body"]=body_l
         st.session_state["ce_prev_auto"]=auto_vals_l
         if _send_footer("l",ssf_l if isinstance(ssf_l,str) else (ssf_l[0] if ssf_l else None),subj_l,body_l,recip):
-            st.session_state["_req_l"]={"subj":subj_l,"body":body_l,"ssf":ssf_l,"gls":gls}
+            st.session_state["_req_l"]={"subj":st.session_state.get("ce_send_subj",subj_l),"body":st.session_state.get("ce_send_body",body_l),"ssf":ssf_l,"gls":gls}
             st.rerun()
         if st.session_state.get("_req_l"):
             r=st.session_state.pop("_req_l")
@@ -1086,11 +1086,22 @@ with compose_col:
 # ── Preview column ─────────────────────────────────────────────────────────────
 with preview_col:
     st.markdown('<p class="ce-label">Live Preview</p>',unsafe_allow_html=True)
+    # Base values from template render
     _ps=st.session_state.get("ce_prev_subj","")
     _pb=st.session_state.get("ce_prev_body","")
     _pa=st.session_state.get("ce_prev_auto",set())
     _recip_display=st.session_state.get("ce_to","")
     _cc_display=st.session_state.get("ce_cc","")
+
+    # Override with manually edited values if they exist and differ from template
+    # (only apply if the edit keys exist AND the template hasn't just changed)
+    _ps_edit=st.session_state.get("prev_subj_edit","")
+    _pb_edit=st.session_state.get("prev_body_edit","")
+    _using_edit = False
+    if _ps_edit and _ps_edit != _ps:
+        _ps = _ps_edit; _using_edit = True
+    if _pb_edit and _pb_edit != _pb:
+        _pb = _pb_edit; _using_edit = True
 
     if _pb:
         st.markdown(_email_html(_ps,_pb,_recip_display,_cc_display,_pa),unsafe_allow_html=True)
@@ -1099,9 +1110,24 @@ with preview_col:
         if sfdc_cc_emails: _cc_parts.append(f"{len(sfdc_cc_emails)} other SFDC contact(s)")
         if _sales_rep_email: _cc_parts.append("Sales Rep")
         if len(_cc_parts)>1: st.caption(f"CC includes: {', '.join(_cc_parts)}")
+        if _using_edit:
+            st.caption("✎ Preview showing your edits")
         with st.expander("Edit before sending"):
-            st.text_area("Subject",value=_ps,key="prev_subj_edit",height=40)
-            st.text_area("Body",value=_pb,key="prev_body_edit",height=300)
+            st.caption("Edits here update the preview and will be sent instead of the template version.")
+            # Reset button — clears edits and restores template version
+            if _using_edit:
+                if st.button("↺ Reset to template", key="reset_edits"):
+                    st.session_state.pop("prev_subj_edit", None)
+                    st.session_state.pop("prev_body_edit", None)
+                    st.rerun()
+            # Use value= from the current _ps/_pb so edits persist across rerenders
+            # but reset when template changes (because ce_prev_subj changed)
+            st.text_area("Subject", value=_ps, key="prev_subj_edit", height=50)
+            st.text_area("Body", value=_pb, key="prev_body_edit", height=320)
+
+        # Expose edited subject/body for send buttons to use
+        st.session_state["ce_send_subj"] = _ps
+        st.session_state["ce_send_body"] = _pb
     else:
         st.markdown(
             '<div class="ce-card" style="text-align:center;padding:32px 20px">'
