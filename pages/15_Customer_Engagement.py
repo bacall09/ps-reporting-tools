@@ -362,7 +362,7 @@ def _email_html(subject, body, to_email, cc_email, auto_values: set):
 df_all=_df_drs.copy()
 cm={c.lower().strip():c for c in df_all.columns}
 name_col  =cm.get("project_name")    or cm.get("project name")
-cust_col  =cm.get("customer")
+cust_col  =cm.get("customer")        or cm.get("account")  # DRS loader maps "account name" → "account"
 prod_col  =cm.get("project_type")    or cm.get("project type") or cm.get("product")
 id_col    =cm.get("project_id")      or cm.get("project id")
 status_col=cm.get("status")
@@ -530,13 +530,16 @@ if _sfdc_debug and not sfdc_label:
 # Auto-context (shared)
 _disp=_flip_name(_logged_in)
 
-# Shared preview state
+# Preview state — initialise on first load
 if "ce_prev_subj" not in st.session_state: st.session_state["ce_prev_subj"]=""
 if "ce_prev_body" not in st.session_state: st.session_state["ce_prev_body"]=""
 if "ce_prev_auto" not in st.session_state: st.session_state["ce_prev_auto"]=set()
 if "ce_prev_ssf"  not in st.session_state: st.session_state["ce_prev_ssf"]=None
-if "ce_prev_miss" not in st.session_state: st.session_state["ce_prev_miss"]=[]
 if "ce_ss_stamp"  not in st.session_state: st.session_state["ce_ss_stamp"]=True
+# Track which tab is active so only that tab writes to preview
+# Streamlit executes ALL tab bodies on every render; without this guard
+# the last tab always overwrites the preview regardless of which is visible.
+_active_tab_for_preview = st.session_state.get("_ce_tab","Welcome")
 
 # ── Send footer helper (rendered inside compose col after tabs) ───────────────
 def _send_footer(tab_key, ss_field_label, subj, body, recip_val, cc_val):
@@ -655,12 +658,12 @@ with compose_col:
             icon="✓" if ok else "✗"
             st.markdown(f'<div class="{cls}">{icon}&nbsp; {msg}</div>',unsafe_allow_html=True)
 
-        # Update preview state
-        st.session_state["ce_prev_subj"]=subj_w
-        st.session_state["ce_prev_body"]=body_w
-        st.session_state["ce_prev_auto"]=auto_vals_w
-        st.session_state["ce_prev_ssf"]=ssf_w
-        st.session_state["ce_prev_miss"]=_missing_phs(body_w+subj_w)
+        # Update preview state — only when this tab is active
+        if _active_tab_for_preview == "Welcome":
+            st.session_state["ce_prev_subj"]=subj_w
+            st.session_state["ce_prev_body"]=body_w
+            st.session_state["ce_prev_auto"]=auto_vals_w
+            st.session_state["ce_prev_ssf"]=ssf_w
 
         # Send footer
         if _send_footer("w",ssf_w,subj_w,body_w,recip,cc_in):
@@ -735,8 +738,9 @@ with compose_col:
             auto_vals_s={v for v in {**auto_ctx_s,**mctx}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
             ssf_s=tmpl_s.get("ss_milestone_on_send")
 
-            st.session_state["ce_prev_subj"]=subj_s; st.session_state["ce_prev_body"]=body_s
-            st.session_state["ce_prev_auto"]=auto_vals_s; st.session_state["ce_prev_ssf"]=ssf_s
+            if _active_tab_for_preview == "Post-Session":
+                st.session_state["ce_prev_subj"]=subj_s; st.session_state["ce_prev_body"]=body_s
+                st.session_state["ce_prev_auto"]=auto_vals_s; st.session_state["ce_prev_ssf"]=ssf_s
 
             if _send_footer("s",ssf_s,subj_s,body_s,recip,cc_in_s):
                 st.session_state["_req_s"]={"subj":subj_s,"body":body_s,"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
@@ -815,8 +819,9 @@ with compose_col:
         auto_vals_l={v for v in {**auto_ctx_l,**mctx_l}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
         ssf_l=tmpl_l.get("ss_milestone_on_send"); gls=mctx_l.get("GO_LIVE_DATE","")
 
-        st.session_state["ce_prev_subj"]=subj_l; st.session_state["ce_prev_body"]=body_l
-        st.session_state["ce_prev_auto"]=auto_vals_l; st.session_state["ce_prev_ssf"]=ssf_l
+        if _active_tab_for_preview == "Lifecycle":
+            st.session_state["ce_prev_subj"]=subj_l; st.session_state["ce_prev_body"]=body_l
+            st.session_state["ce_prev_auto"]=auto_vals_l; st.session_state["ce_prev_ssf"]=ssf_l
 
         if _send_footer("l",ssf_l if isinstance(ssf_l,str) else (ssf_l[0] if ssf_l else None),subj_l,body_l,recip_l,cc_in_l):
             st.session_state["_req_l"]={"subj":subj_l,"body":body_l,"ssf":ssf_l,"gls":gls}
