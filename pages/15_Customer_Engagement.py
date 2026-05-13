@@ -334,15 +334,43 @@ intro_col  = (cm.get("intro. email sent") or cm.get("intro email sent")
 
 # FIX 3: store SS row ID column if present
 ss_row_id_col = cm.get("ss_row_id") or cm.get("row_id") or cm.get("id")
+legacy_col    = cm.get("legacy")
 
-# Role filter
+# Role filter — consultant sees own projects only
 if not _is_mgr and pm_col:
     df_all = df_all[df_all[pm_col].apply(lambda x: name_matches(str(x), _logged_in))]
+
+# FIX 3: View as — apply manager's selected view from home_browse
+if _is_mgr and pm_col:
+    _browse = (st.session_state.get("_browse_passthrough") or
+               st.session_state.get("home_browse",""))
+    if _browse and _browse not in ("— My own view —","— Select —","👥 All team",""):
+        # Region header e.g. "── EMEA ──"
+        if _browse.startswith("── ") and _browse.endswith(" ──"):
+            try:
+                from shared.constants import get_region_consultants
+                from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES
+                _region = _browse[3:-3].strip()
+                _rc = get_region_consultants(_region, EMPLOYEE_LOCATION, PS_REGION_MAP,
+                                             PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES)
+                _f = df_all[df_all[pm_col].astype(str).str.strip().str.lower().isin(
+                    [n.lower() for n in _rc])]
+                if not _f.empty: df_all = _f
+            except Exception:
+                pass
+        else:
+            # Specific consultant
+            _f = df_all[df_all[pm_col].apply(lambda x: name_matches(str(x), _browse))]
+            if not _f.empty: df_all = _f
 
 # Active only
 if status_col:
     df_all = df_all[~df_all[status_col].astype(str).str.lower().isin(
         ["closed","cancelled","complete","completed"])]
+
+# Exclude legacy projects (Legacy column = "Yes")
+if legacy_col:
+    df_all = df_all[~df_all[legacy_col].astype(str).str.strip().str.lower().isin(["yes","y","true","1"])]
 
 df_all = df_all.reset_index(drop=True)
 if df_all.empty:
@@ -388,22 +416,40 @@ with col_left:
         p = str(row.get(prod_col,""))  if prod_col else ""
         return f"{c}  —  {n}" + (f"  · {p}" if p and p not in ("nan","None") else "")
 
-    sel_idx = st.selectbox(
-        "Project", options=list(df.index),
-        format_func=lambda i: _plabel(df.loc[i]),
+    # Build stable ID list — use project_id if available, else position
+    def _stable_id(row):
+        if id_col and row.get(id_col):
+            return str(row[id_col])
+        if name_col and row.get(name_col):
+            return str(row[name_col])
+        return str(row.name)
+
+    df["_sid"] = df.apply(_stable_id, axis=1)
+    sid_options = df["_sid"].tolist()
+    sid_to_idx  = {sid: i for i, sid in enumerate(sid_options)}
+
+    # Preserve selection across rerenders using stable ID
+    _prev_sid = st.session_state.get("_ce_proj_sid")
+    _default_sid = _prev_sid if _prev_sid in sid_options else sid_options[0]
+
+    selected_sid = st.selectbox(
+        "Project", options=sid_options,
+        format_func=lambda sid: _plabel(df.iloc[sid_to_idx[sid]]),
+        index=sid_options.index(_default_sid),
         label_visibility="collapsed", key="ce_proj",
     )
+    st.session_state["_ce_proj_sid"] = selected_sid
+    sel_idx = sid_to_idx[selected_sid]
 
-    # FIX 1+2: detect project change — clear stale widget state
-    _proj_key = f"{sel_idx}_{df.loc[sel_idx, id_col] if id_col else sel_idx}"
+    # Detect project change — clear stale widget state
+    _proj_key = selected_sid
     if st.session_state.get("_last_proj_key") != _proj_key:
         st.session_state["_last_proj_key"] = _proj_key
-        # Clear all per-project widget states so new project renders fresh
         for k in list(st.session_state.keys()):
             if any(k.startswith(pfx) for pfx in ["ce_to","ce_cn","ce_cc","welcome_","session_","lifecycle_","w_","s_","l_","sess_","lc_"]):
                 del st.session_state[k]
 
-    sel         = _row_dict(df.loc[sel_idx])
+    sel         = _row_dict(df.iloc[sel_idx])
     customer    = sel.get(cust_col,"") if cust_col else ""
     product_raw = sel.get(prod_col,"") if prod_col else ""
     project_id  = str(sel.get(id_col, str(sel_idx))) if id_col else str(sel_idx)
@@ -602,7 +648,8 @@ with col_right:
                 prods = [r.get(prod_col,"") for r in all_rows if r.get(prod_col)]
                 if prods: tmpl_w = get_welcome_template(_sku(prods[0]))
         else:
-            tmpl_w = get_welcome_template(_sku(str(product_raw)))
+            _sku_key = _sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
+            tmpl_w = get_welcome_template(_sku_key) if _sku_key else None
 
         if not tmpl_w:
             st.caption(f"No automatic match for '{product_raw}'. Select manually:")
