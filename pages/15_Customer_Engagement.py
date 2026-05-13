@@ -44,16 +44,18 @@ st.markdown("""<style>
 
 /* Journey rail — theme-aware (no hardcoded backgrounds) */
 .journey-rail{display:flex;border:0.5px solid rgba(128,128,128,.25);border-radius:8px;overflow:hidden;margin:12px 0 16px}
-.sj{flex:1;padding:9px 10px 7px;border-right:0.5px solid rgba(128,128,128,.18);min-width:0;color:inherit}
+.sj{flex:1;padding:12px 12px 10px;border-right:0.5px solid rgba(128,128,128,.18);min-width:0;color:inherit}
 .sj:last-child{border-right:none}
-.sj-num{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;color:var(--color-text-tertiary,#94a3b8)}
-.sj-lbl{font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text-secondary,#64748b)}
-.sj-date{font-size:10px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text-tertiary,#94a3b8)}
-.sj.done .sj-num,.sj.done .sj-lbl{color:var(--color-text-success,#16a34a)}
-.sj.done .sj-date{color:var(--color-text-success,#16a34a);opacity:.8}
+.sj-num{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;color:rgba(128,128,128,.6)}
+.sj-lbl{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sj-date{font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.6}
+.sj.done .sj-num{color:var(--color-text-success,#16a34a)}
+.sj.done .sj-lbl{color:var(--color-text-success,#16a34a);font-weight:600}
+.sj.done .sj-date{color:var(--color-text-success,#16a34a)}
 .sj.active{border-bottom:2px solid #4472C4}
-.sj.active .sj-num,.sj.active .sj-lbl{color:#4472C4}
-.sj.locked{opacity:.35}
+.sj.active .sj-num{color:#4472C4}
+.sj.active .sj-lbl{color:#4472C4;font-weight:600}
+.sj.locked{opacity:.32}
 
 /* Pills — runbook pattern: rgba backgrounds + dark mode text */
 .pill-ok{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;background:rgba(34,197,94,.14);color:#15803d}
@@ -252,6 +254,72 @@ def _ps_key(p):
     if "approv" in p: return "approvals"
     if "reconcile" in p: return "reconcile"
     return None
+
+def _combined_welcome_template(rows, prod_col):
+    """
+    For consolidated welcome: try combined SKU first, then merge individual bodies.
+    Returns (tmpl_obj, is_merged:bool)
+    """
+    skus = [_sku(str(r.get(prod_col,""))) for r in rows if r.get(prod_col)]
+    skus = [s for s in skus if s]
+    if not skus: return None, False
+    # Try exact combined key (e.g. ZoneCapture_ZoneApprovals)
+    for sep in ["_", ""]:
+        combined_key = sep.join(skus)
+        t = get_welcome_template(combined_key)
+        if t: return t, False
+    # Try reversed order
+    combined_key_rev = "_".join(reversed(skus))
+    t = get_welcome_template(combined_key_rev)
+    if t: return t, False
+    # Fallback: merge individual templates — take variant_a body from each,
+    # concatenate prep sections, use first template's subject/boilerplate
+    base = get_welcome_template(skus[0])
+    if not base: return None, False
+    merged_bodies = {}
+    for vk in ["variant_a", "variant_b"]:
+        sections = []
+        for sku in skus:
+            t = get_welcome_template(sku)
+            if t and vk in t:
+                body = t[vk].get("body", "")
+                # Extract just the product-specific prep section
+                # (lines between "BEFORE WE BEGIN" / product header and "KEY RESOURCES")
+                lines = body.split("\n")
+                in_section = False
+                section_lines = [f"\n--- {t.get('display_name',sku)} ---"]
+                for line in lines:
+                    upper = line.strip().upper()
+                    if any(kw in upper for kw in ["BEFORE WE BEGIN","GETTING STARTED","PREPARATION","WHAT YOU'LL NEED"]):
+                        in_section = True
+                    if in_section and any(kw in upper for kw in ["KEY RESOURCES","NEXT STEPS","WHAT HAPPENS NEXT","IMPORTANT NOTE","PLEASE NOTE"]):
+                        break
+                    if in_section:
+                        section_lines.append(line)
+                sections.extend(section_lines)
+        # Build merged body: base intro + all prep sections + base closing
+        base_body = base[vk].get("body","") if vk in base else ""
+        base_lines = base_body.split("\n")
+        # Find split point — after greeting paragraph, before product prep
+        split_idx = 0
+        for i, line in enumerate(base_lines):
+            upper = line.strip().upper()
+            if any(kw in upper for kw in ["BEFORE WE BEGIN","GETTING STARTED","PREPARATION"]):
+                split_idx = i; break
+        closing_start = len(base_lines)
+        for i, line in enumerate(base_lines):
+            upper = line.strip().upper()
+            if any(kw in upper for kw in ["KEY RESOURCES","NEXT STEPS","WHAT HAPPENS NEXT"]):
+                closing_start = i; break
+        intro = "\n".join(base_lines[:split_idx])
+        closing = "\n".join(base_lines[closing_start:])
+        merged_bodies[vk] = {"body": intro + "\n" + "\n".join(sections) + "\n" + closing}
+    merged = dict(base)
+    merged["variant_a"] = merged_bodies.get("variant_a", base.get("variant_a", {}))
+    merged["variant_b"] = merged_bodies.get("variant_b", base.get("variant_b", {}))
+    prod_names = ", ".join(t.get("display_name","") for sku in skus for t in [get_welcome_template(sku)] if t)
+    merged["display_name"] = f"Consolidated — {prod_names}"
+    return merged, True
 
 # ── Journey ───────────────────────────────────────────────────────────────────
 _JOURNEY=[
@@ -537,20 +605,22 @@ if not _mine_sids:
 def _card_label(row,mine=True):
     prod=str(row.get(prod_col,"")) if prod_col else ""
     name=str(row.get(name_col,"")) if name_col else ""
-    # Strip customer prefix from project name for cleaner display
+    # Strip customer prefix for cleaner display
     short=name
-    if selected_customer and name.startswith(selected_customer):
-        short=name[len(selected_customer):].lstrip(" -·—").strip()
+    for prefix in [selected_customer, selected_customer.split(" - ")[0] if " - " in selected_customer else ""]:
+        if prefix and short.startswith(prefix):
+            short=short[len(prefix):].lstrip(" -·—").strip()
+            break
     status=str(row.get(status_col,"")) if status_col else ""
     start_raw=row.get(start_col) if start_col else None
     start_str=""
     if start_raw:
-        try: start_str=f" · started {pd.to_datetime(start_raw).strftime('%-d %b')}"
+        try: start_str=f" · {pd.to_datetime(start_raw).strftime('%-d %b')}"
         except: pass
     iv=row.get(intro_col,"") if intro_col else ""
     intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
-    welcome_flag=f"  ✓ Welcome sent {iv}" if intro_done else "  · Welcome pending"
-    return f"{short or name}  [{prod}]  {status}{start_str}{welcome_flag}"
+    welcome_str=" · ✓ sent" if intro_done else " · pending"
+    return f"{short or name}  ·  {prod}  ·  {status}{start_str}{welcome_str}"
 
 # Use selectbox for project selection (clean Streamlit widget, no hacks)
 _mine_labels={_mine_sids[i]:_card_label(_row_dict(_mine_proj.iloc[i]),mine=True)
@@ -687,6 +757,20 @@ with compose_col:
     # ── Communication type + template selector ────────────────────────────────
     st.markdown('<div style="margin-top:14px"></div>',unsafe_allow_html=True)
     _COMM_TYPES=["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
+    _STAGE_TO_COMM={
+        "welcome":"Welcome","post_session_1":"Post-Session","post_session_2":"Post-Session",
+        "uat_signoff":"Lifecycle (UAT → Closure)","go_live":"Lifecycle (UAT → Closure)",
+        "hypercare_closure":"Lifecycle (UAT → Closure)",
+    }
+    # Smart default: derive from first pending journey stage
+    # Only auto-set on project change (not on every render — respect user's manual choice)
+    _proj_changed = st.session_state.get("_last_proj_sid_for_comm") != selected_sid
+    if _proj_changed:
+        _statuses_d = ["done" if _ms_date(s,sel) else "pending" for s in _JOURNEY]
+        _first_pend = next((i for i,st2 in enumerate(_statuses_d) if st2=="pending"), 0)
+        _smart_default = _STAGE_TO_COMM.get(_JOURNEY[_first_pend]["id"],"Welcome")
+        st.session_state["_ce_tmpl_type"] = _smart_default
+        st.session_state["_last_proj_sid_for_comm"] = selected_sid
     comm_col,tmpl_col=st.columns([1,2])
     with comm_col:
         _tmpl_type=st.selectbox(
@@ -706,19 +790,12 @@ with compose_col:
     # ── Welcome ───────────────────────────────────────────────────────────────
     if _tmpl_type=="Welcome":
         with tmpl_col:
-            # Consolidated mode — show all mine projects
             _all_rows=[sel]
             if _consolidated and n_mine>1:
                 _all_rows=[_row_dict(_mine_proj.iloc[i]) for i in range(n_mine)]
-                prods=[str(r.get(prod_col,"")) for r in _all_rows if r.get(prod_col) and str(r.get(prod_col)) not in ("nan","None")]
+            _is_merged=False
             if _consolidated and n_mine>1:
-                tmpl_w=None
-                for r in _all_rows:
-                    k=_sku(str(r.get(prod_col,"")))
-                    if k and "_" in k: tmpl_w=get_welcome_template(k); break
-                if not tmpl_w:
-                    prods_=[r.get(prod_col,"") for r in _all_rows if r.get(prod_col)]
-                    tmpl_w=get_welcome_template(_sku(prods_[0])) if prods_ else None
+                tmpl_w,_is_merged=_combined_welcome_template(_all_rows,prod_col)
             else:
                 _sk=_sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
                 tmpl_w=get_welcome_template(_sk) if _sk else None
@@ -727,7 +804,10 @@ with compose_col:
                 ch=st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual",label_visibility="collapsed")
                 tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
             else:
-                st.selectbox("Template",[tmpl_w.get("display_name","")],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
+                disp=tmpl_w.get("display_name","")
+                st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
+            if _is_merged:
+                st.markdown('<div class="ce-tip">Consolidated: one email covering all products. Prep sections merged.</div>',unsafe_allow_html=True)
 
         var=st.radio("Sender variant",["Variant A — PM or automated","Variant B — Consultant sends"],horizontal=True,key="w_var")
         vk="variant_a" if "A" in var else "variant_b"
