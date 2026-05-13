@@ -1,12 +1,12 @@
 """
-pages/15_Customer_Engagement.py  v4
-Redesigned: journey rail + compose/preview two-panel layout.
-Theme rules (from RUNBOOK):
-  - Hero: hardcoded #050D1F (brand element, never switches)
-  - Cards/containers: NO background property — inherit from page
-  - Pills: rgba() backgrounds + prefers-color-scheme dark selectors for text
-  - CSS vars in <style> blocks unreliable — use inline styles or hex+media pairs
-  - Email preview ONLY: hardcoded white (#ffffff) — represents a real email
+pages/15_Customer_Engagement.py  v5
+Layout: project picker row → journey rail row → compose(left) | preview(right)
+- Recipient inside compose pane
+- Persistent send footer with SS checkbox
+- Journey dates from DRS milestones
+- Green highlights for auto-filled values in preview
+- Bullet rendering fixed
+- Multi-product consolidated welcome
 """
 import streamlit as st
 import pandas as pd
@@ -16,7 +16,6 @@ from rapidfuzz import fuzz
 
 st.session_state["current_page"] = "Customer Engagement"
 
-# ── Hero banner — always dark navy per runbook ────────────────────────────────
 st.markdown("""
 <div style='background:#050D1F;padding:20px 28px 16px;border-radius:0 0 8px 8px;margin-bottom:20px'>
   <span style='color:#4472C4;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase'>Customer Engagement</span>
@@ -24,71 +23,60 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── CSS — runbook rules applied throughout ─────────────────────────────────────
-# Cards: border + padding only, NO background
-# Pills: rgba backgrounds, dark-mode text via prefers-color-scheme + [data-theme]
-# Preview pane: hardcoded white (exception — represents real email)
 st.markdown("""<style>
-.ce-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:#4472C4;margin:0 0 6px}
-
-/* Cards — no background, inherits page theme */
-.ce-card{border:1px solid rgba(128,128,128,.22);border-radius:8px;padding:14px 18px;margin-bottom:12px;color:inherit}
-.ce-well{border:1px solid rgba(128,128,128,.18);border-radius:6px;padding:10px 14px;margin-bottom:8px;color:inherit}
-
-/* Journey rail — no background on items, just borders */
-.journey-rail{display:flex;gap:0;border:1px solid rgba(128,128,128,.2);border-radius:8px;overflow:hidden;margin-bottom:16px}
-.stage-item{flex:1;padding:10px 10px 8px;border-right:1px solid rgba(128,128,128,.15);cursor:pointer;color:inherit;min-width:0}
-.stage-item:last-child{border-right:none}
-.stage-num{font-size:10px;font-weight:700;letter-spacing:.4px;margin-bottom:2px;color:#4472C4}
-.stage-lbl{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stage-sub{font-size:10px;margin-top:2px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stage-item.done .stage-num{color:#16a34a}
-.stage-item.done .stage-lbl{color:#16a34a}
-.stage-item.active{border-bottom:3px solid #4472C4}
-.stage-item.active .stage-num{color:#4472C4}
-.stage-item.active .stage-lbl{color:#4472C4}
-.stage-item.locked{opacity:.4}
-
-/* Pills — rgba so they work on any bg; text flips for dark mode */
+.ce-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:#4472C4;margin:0 0 5px}
+.ce-card{border:1px solid rgba(128,128,128,.22);border-radius:8px;padding:14px 18px;margin-bottom:10px;color:inherit}
+.ce-tip{border-left:3px solid #4472C4;border-radius:0;padding:7px 12px;font-size:12px;margin-bottom:8px;color:inherit}
+.journey-rail{display:flex;border:1px solid rgba(128,128,128,.2);border-radius:8px;overflow:hidden;margin-bottom:0}
+.sj{flex:1;padding:9px 10px 7px;border-right:1px solid rgba(128,128,128,.15);min-width:0;color:inherit}
+.sj:last-child{border-right:none}
+.sj-num{font-size:10px;font-weight:700;letter-spacing:.3px;margin-bottom:1px}
+.sj-lbl{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sj-date{font-size:10px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.7}
+.sj.done .sj-num,.sj.done .sj-lbl{color:#16a34a}
+.sj.active{border-bottom:2px solid #4472C4}
+.sj.active .sj-num,.sj.active .sj-lbl{color:#4472C4}
+.sj.locked{opacity:.38}
+@media(prefers-color-scheme:dark){.sj.done .sj-num,.sj.done .sj-lbl{color:#7ed4a4}}
+.stApp[data-theme="dark"] .sj.done .sj-num,.stApp[data-theme="dark"] .sj.done .sj-lbl{color:#7ed4a4}
 .pill-ok{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:rgba(34,197,94,.14);color:#15803d}
 .pill-warn{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:rgba(239,68,68,.14);color:#dc2626}
 .pill-info{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:rgba(68,114,196,.14);color:#4472C4}
-.pill-due{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(234,179,8,.14);color:#854d0e}
+.pill-amber{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:rgba(234,179,8,.14);color:#854d0e}
 @media(prefers-color-scheme:dark){
-  .pill-ok{color:#7ed4a4} .pill-warn{color:#fca5a5}
-  .pill-info{color:#93b4e8} .pill-due{color:#fcd34d}
+  .pill-ok{color:#7ed4a4}.pill-warn{color:#fca5a5}.pill-info{color:#93b4e8}.pill-amber{color:#fcd34d}
 }
 .stApp[data-theme="dark"] .pill-ok{color:#7ed4a4}
 .stApp[data-theme="dark"] .pill-warn{color:#fca5a5}
 .stApp[data-theme="dark"] .pill-info{color:#93b4e8}
-.stApp[data-theme="dark"] .pill-due{color:#fcd34d}
-
-/* Pre-send checks */
-.check-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0}
-.check-ok{color:#16a34a}.check-bad{color:#dc2626}
-@media(prefers-color-scheme:dark){.check-ok{color:#7ed4a4}.check-bad{color:#fca5a5}}
-.stApp[data-theme="dark"] .check-ok{color:#7ed4a4}
-.stApp[data-theme="dark"] .check-bad{color:#fca5a5}
-
-/* Tip bar — no background */
-.ce-tip{border-left:3px solid #4472C4;border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;margin-bottom:10px;color:inherit}
-
-/* Send log */
-.log-row{border-bottom:1px solid rgba(128,128,128,.15);padding:6px 0;font-size:12px}
-
-/* Email preview — EXCEPTION: hardcoded white (represents a real email) */
+.stApp[data-theme="dark"] .pill-amber{color:#fcd34d}
+.chk-ok{font-size:12px;color:#16a34a;display:flex;align-items:center;gap:6px;padding:2px 0}
+.chk-bad{font-size:12px;color:#dc2626;display:flex;align-items:center;gap:6px;padding:2px 0}
+@media(prefers-color-scheme:dark){.chk-ok{color:#7ed4a4}.chk-bad{color:#fca5a5}}
+.stApp[data-theme="dark"] .chk-ok{color:#7ed4a4}
+.stApp[data-theme="dark"] .chk-bad{color:#fca5a5}
+.send-footer{border-top:1px solid rgba(128,128,128,.18);padding:12px 16px;margin-top:12px}
+.footer-ready{font-size:12px;font-weight:600;color:#16a34a;margin-bottom:3px}
+.footer-blocked{font-size:12px;font-weight:600;color:#dc2626;margin-bottom:3px}
+.footer-missing{font-size:11px;color:#dc2626;margin-bottom:6px}
+.footer-chk{display:flex;align-items:center;gap:5px;font-size:11px;color:inherit;margin-bottom:3px}
+@media(prefers-color-scheme:dark){.footer-ready{color:#7ed4a4}.footer-blocked{color:#fca5a5}.footer-missing{color:#fca5a5}}
+.stApp[data-theme="dark"] .footer-ready{color:#7ed4a4}
+.stApp[data-theme="dark"] .footer-blocked{color:#fca5a5}
+.stApp[data-theme="dark"] .footer-missing{color:#fca5a5}
+.log-row{border-bottom:1px solid rgba(128,128,128,.13);padding:5px 0;font-size:12px}
 .email-preview-wrap{background:#ffffff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden}
-.email-preview-chrome{background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:8px 12px;display:flex;align-items:center;gap:6px}
-.chrome-dot{width:8px;height:8px;border-radius:50%;background:#e2e8f0;display:inline-block}
-.email-preview-header{padding:10px 16px;border-bottom:1px solid #e2e8f0}
-.email-meta-row{display:flex;gap:8px;font-size:11px;padding:2px 0;color:#64748b}
-.email-meta-lbl{width:36px;color:#94a3b8;flex-shrink:0}
-.email-preview-body{padding:16px;font-size:13px;color:#0f172a;line-height:1.65;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-.email-section-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4472C4;margin:12px 0 4px}
-.email-ph{display:inline-block;background:rgba(220,38,38,.1);color:#dc2626;border:1px dashed rgba(220,38,38,.4);border-radius:3px;padding:0 4px;font-size:11px;font-family:monospace}
-.email-link{display:inline-block;background:rgba(68,114,196,.12);color:#1e40af;border-radius:3px;padding:0 5px;font-size:11px}
-.email-footer{font-size:11px;color:#64748b;margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0}
-.ph-bar{padding:8px 14px;background:rgba(220,38,38,.06);border-top:1px solid rgba(220,38,38,.15);font-size:11px;color:#dc2626;display:flex;align-items:center;gap:6px}
+.ep-chrome{background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:7px 12px;display:flex;align-items:center;gap:5px}
+.ep-dot{width:8px;height:8px;border-radius:50%;background:#e2e8f0;display:inline-block}
+.ep-hdr{padding:9px 14px;border-bottom:1px solid #e2e8f0}
+.ep-row{display:flex;gap:8px;font-size:11px;padding:2px 0;color:#64748b}
+.ep-lbl{width:36px;color:#94a3b8;flex-shrink:0}
+.ep-body{padding:14px 16px;font-size:12.5px;color:#0f172a;line-height:1.65;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.ep-hdr-txt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4472C4;margin:10px 0 3px}
+.ep-ph{display:inline;background:rgba(220,38,38,.1);color:#dc2626;border:1px dashed rgba(220,38,38,.4);border-radius:3px;padding:1px 4px;font-size:11px;font-family:monospace}
+.ep-filled{display:inline;background:rgba(22,163,74,.1);color:#15803d;border-radius:3px;padding:1px 4px;font-size:11px}
+.ep-bullet{margin:2px 0 2px 14px}
+.ep-bar{padding:7px 14px;background:rgba(220,38,38,.06);border-top:1px solid rgba(220,38,38,.15);font-size:11px;color:#dc2626}
 </style>""", unsafe_allow_html=True)
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -112,7 +100,7 @@ try:
         get_post_session_templates, get_lifecycle_template,
         list_lifecycle_templates, build_auto_context, render_template,
         execute_send, build_ss_writeback, mark_ss_writeback_done,
-        get_session_send_log, project_needs_welcome_email, _welcome_library,
+        get_session_send_log, _welcome_library,
         SS_GO_LIVE_DATE, SS_PROD_CUTOVER,
     )
 except ImportError as e:
@@ -125,7 +113,7 @@ try:
 except ImportError:
     _ss_ok = False
 
-# ── SFDC helpers (ported from reengagement page) ──────────────────────────────
+# ── SFDC helpers ──────────────────────────────────────────────────────────────
 _SFDC_COL_MAP = {
     "18 digit opportunity id":"opportunity_id","first name":"first_name",
     "last name":"last_name","primary title":"title","title":"title",
@@ -155,36 +143,35 @@ def _prod_hints(text):
 def _fuzzy_sfdc(df_sfdc, proj_name, acct_name):
     if df_sfdc is None or df_sfdc.empty: return pd.DataFrame(), None
     df = df_sfdc.copy()
-    cm = {c.lower().strip():c for c in df.columns}
-    opp = cm.get("opportunity"); acc = cm.get("account"); oid = cm.get("opportunity_id")
+    cm2 = {c.lower().strip():c for c in df.columns}
+    opp = cm2.get("opportunity"); acc = cm2.get("account"); oid = cm2.get("opportunity_id")
     if opp:
         exact = df[df[opp].astype(str).str.lower().str.strip()==str(proj_name).lower().strip()]
-        if not exact.empty: return exact, "Exact match"
+        if not exact.empty: return exact,"Exact match"
     dw = set(_clean_acct(acct_name)); dp = _prod_hints(proj_name)
-    best = 0; best_id = None; best_nm = None
+    best=0; best_id=None; best_nm=None
     for _,row in df.iterrows():
-        sa = str(row.get(acc or "account","")); so = str(row.get(opp or "opportunity",""))
-        sw = set(_clean_acct(sa))
-        ws = len(dw&sw)/max(len(dw),1)*100
-        fs = fuzz.token_set_ratio(" ".join(dw)," ".join(sw))
-        score = max(ws,fs*0.7) + (30 if bool(dp&_prod_hints(so)) else 0)
-        if score > best:
-            best=score; best_id=row.get(oid or "opportunity_id") if oid else None
+        sa=str(row.get(acc or "account","")); so=str(row.get(opp or "opportunity",""))
+        sw=set(_clean_acct(sa))
+        score=max(len(dw&sw)/max(len(dw),1)*100, fuzz.token_set_ratio(" ".join(dw)," ".join(sw))*0.7)+(30 if bool(dp&_prod_hints(so)) else 0)
+        if score>best:
+            best=score
+            best_id=row.get(oid or "opportunity_id") if oid else None
             best_nm=row.get(opp or "opportunity") if opp else None
-    lbl = f"Fuzzy match ({int(best)}%)"
-    if best >= 60:
+    lbl=f"Fuzzy match ({int(best)}%)"
+    if best>=60:
         if best_id is not None and oid:
-            r = df[df[oid]==best_id]
-            if not r.empty: return r, lbl
+            r=df[df[oid]==best_id]
+            if not r.empty: return r,lbl
         if best_nm is not None and opp:
-            r = df[df[opp]==best_nm]
-            if not r.empty: return r, lbl
+            r=df[df[opp]==best_nm]
+            if not r.empty: return r,lbl
     if acc:
-        df["_sc"] = df[acc].apply(lambda x: fuzz.token_set_ratio(str(acct_name).lower(),str(x).lower()))
-        top = df[df["_sc"]>=75].sort_values("_sc",ascending=False)
+        df["_sc"]=df[acc].apply(lambda x:fuzz.token_set_ratio(str(acct_name).lower(),str(x).lower()))
+        top=df[df["_sc"]>=75].sort_values("_sc",ascending=False)
         df.drop(columns=["_sc"],inplace=True)
         if not top.empty: return top,"Account match"
-    return pd.DataFrame(), None
+    return pd.DataFrame(),None
 
 # ── General helpers ───────────────────────────────────────────────────────────
 def _row_dict(row):
@@ -199,14 +186,13 @@ def _flip_name(n):
 def _consultant_email(name):
     try:
         from shared.constants import EMPLOYEE_ROLES
-        em = EMPLOYEE_ROLES.get(name,{}).get("email","")
+        em=EMPLOYEE_ROLES.get(name,{}).get("email","")
         if em: return em
     except Exception: pass
-    slug = re.sub(r"[^a-z0-9.]","",_flip_name(name).lower().replace(" ","."))
-    return f"{slug}@zoneandco.com"
+    return f"{re.sub(r'[^a-z0-9.]','',_flip_name(name).lower().replace(' ','.'))}@zoneandco.com"
 
 def _missing_phs(text):
-    return list(set(re.findall(r"\{[A-Z_]+\}", text)))
+    return list(set(re.findall(r"\{[A-Z_]+\}",text)))
 
 _PMAP = {
     "zoneapp: capture":"ZoneCapture","zoneapp: approvals":"ZoneApprovals",
@@ -237,55 +223,45 @@ def _ps_key(p):
     if "reconcile" in p: return "reconcile"
     return None
 
-# ── Journey stage definitions ─────────────────────────────────────────────────
-# Maps lifecycle template IDs to their journey position + milestone field
-_JOURNEY_STAGES = [
-    {"id":"welcome",           "label":"Welcome",           "ss_field":"Intro. Email Sent",     "tab":"Welcome"},
-    {"id":"post_session_1",    "label":"Post-Session #1",   "ss_field":"Enablement Session",     "tab":"Post-Session"},
-    {"id":"post_session_2",    "label":"Post-Session #2",   "ss_field":"Session #1",             "tab":"Post-Session"},
-    {"id":"uat_signoff",       "label":"UAT Sign-Off",      "ss_field":"UAT Signoff",            "tab":"Lifecycle"},
-    {"id":"go_live_hypercare_kickoff","label":"Go-Live",    "ss_field":"Prod Cutover",           "tab":"Lifecycle"},
-    {"id":"hypercare_closure", "label":"Hypercare close",   "ss_field":"Transition to Support",  "tab":"Lifecycle"},
+# ── Journey ───────────────────────────────────────────────────────────────────
+_JOURNEY = [
+    {"id":"welcome",            "label":"Welcome",         "ms_col":"ms_intro_email",   "ms_alt":"Intro. Email Sent"},
+    {"id":"post_session_1",     "label":"Post-Session #1", "ms_col":"ms_enablement",    "ms_alt":"Enablement Session"},
+    {"id":"post_session_2",     "label":"Post-Session #2", "ms_col":"ms_session1",      "ms_alt":"Session #1"},
+    {"id":"uat_signoff",        "label":"UAT Sign-Off",    "ms_col":"ms_uat_signoff",   "ms_alt":"UAT Signoff"},
+    {"id":"go_live_hypercare_kickoff","label":"Go-Live",   "ms_col":"ms_prod_cutover",  "ms_alt":"Prod Cutover"},
+    {"id":"hypercare_closure",  "label":"Hypercare close", "ms_col":"ms_transition",    "ms_alt":"Transition to Support"},
 ]
 
-def _stage_status(stage_id, drs_row):
-    """Return 'done'|'active'|'pending'|'locked' for a journey stage."""
-    ms_map = {
-        "welcome":                  ("ms_intro_email","Intro. Email Sent"),
-        "post_session_1":           ("ms_enablement","Enablement Session"),
-        "post_session_2":           ("ms_session1","Session #1"),
-        "uat_signoff":              ("ms_uat_signoff","UAT Signoff"),
-        "go_live_hypercare_kickoff":("ms_prod_cutover","Prod Cutover"),
-        "hypercare_closure":        ("ms_transition","Transition to Support"),
-    }
-    col, _ = ms_map.get(stage_id, (None, None))
-    if not col or not drs_row: return "pending"
-    v = drs_row.get(col) or drs_row.get(_)
-    return "done" if v and str(v).strip() not in ("","None","nan","NaT") else "pending"
+def _ms_date(stage, drs_row):
+    """Return formatted date string for a milestone, or ''."""
+    if not drs_row: return ""
+    v = drs_row.get(stage["ms_col"]) or drs_row.get(stage["ms_alt"])
+    if not v or str(v).strip() in ("","None","nan","NaT"): return ""
+    try:
+        return pd.to_datetime(v).strftime("%-d %b")
+    except Exception:
+        return str(v)[:10]
 
-def _build_journey_html(drs_row, active_tab):
-    """Render journey rail as theme-aware HTML (no background on items)."""
+def _build_journey(drs_row):
+    statuses = []
+    for s in _JOURNEY:
+        d = _ms_date(s, drs_row)
+        statuses.append("done" if d else "pending")
+    first_p = next((i for i,st in enumerate(statuses) if st=="pending"), len(_JOURNEY)-1)
     parts = ['<div class="journey-rail">']
-    statuses = [_stage_status(s["id"], drs_row) for s in _JOURNEY_STAGES]
-    # Find first pending = active
-    first_pending = next((i for i,st in enumerate(statuses) if st=="pending"), len(statuses)-1)
-    for i, stage in enumerate(_JOURNEY_STAGES):
-        st_class = statuses[i]
-        if i == first_pending and st_class == "pending":
-            st_class = "active"
-        elif i > first_pending and statuses[i] == "pending":
-            st_class = "locked"
-        num = f"0{i+1}" if i < 9 else str(i+1)
-        if st_class == "done":
-            icon = "✓"
-        elif st_class == "active":
-            icon = "▼"
-        else:
-            icon = ""
+    for i,stage in enumerate(_JOURNEY):
+        cls = statuses[i]
+        if i==first_p and cls=="pending": cls="active"
+        elif i>first_p and cls=="pending": cls="locked"
+        num_icon = f"✓ 0{i+1}" if statuses[i]=="done" else (f"▼ 0{i+1}" if cls=="active" else f"0{i+1}")
+        date_str = _ms_date(stage,drs_row)
+        sub = f"Sent {date_str}" if date_str else ("composing" if cls=="active" else "")
         parts.append(
-            f'<div class="stage-item {st_class}">'
-            f'<div class="stage-num">{icon} {num}</div>'
-            f'<div class="stage-lbl">{stage["label"]}</div>'
+            f'<div class="sj {cls}">'
+            f'<div class="sj-num">{num_icon}</div>'
+            f'<div class="sj-lbl">{stage["label"]}</div>'
+            f'<div class="sj-date">{sub}</div>'
             f'</div>'
         )
     parts.append("</div>")
@@ -298,360 +274,446 @@ def _do_write(project_id, ss_field, date_val, drs_row) -> bool:
     if not ss_row_id:
         st.warning("⚠️ Writeback requires DRS loaded via **Sync SS DRS data** on Home page.")
         return False
-    fields = [ss_field] if isinstance(ss_field, str) else ss_field
-    wrote = False
-    proj_name = str(drs_row.get("project_name", project_id)) if drs_row else project_id
+    fields=[ss_field] if isinstance(ss_field,str) else ss_field
+    wrote=False
+    pn=str(drs_row.get("project_name",project_id)) if drs_row else project_id
     for f in fields:
         try:
-            p = build_ss_writeback(project_id, f, date_val, current_drs_row=drs_row)
-            if p["skipped"]:
-                st.info(f"ℹ️ **{f}** already set — not overwritten.")
-                continue
+            p=build_ss_writeback(project_id,f,date_val,current_drs_row=drs_row)
+            if p["skipped"]: st.info(f"ℹ️ **{f}** already set — not overwritten."); continue
             if not p["fields"]: continue
-            ok, errs = write_row_updates([{"_ss_row_id":ss_row_id,"project_name":proj_name,"changes":{f:date_val.isoformat()}}])
-            if ok:
-                st.success(f"✓ Smartsheet: **{f}** → {date_val.strftime('%d %b %Y')}")
-                wrote = True
+            ok,errs=write_row_updates([{"_ss_row_id":ss_row_id,"project_name":pn,"changes":{f:date_val.isoformat()}}])
+            if ok: st.success(f"✓ Smartsheet: **{f}** → {date_val.strftime('%d %b %Y')}"); wrote=True
             for e in (errs or []): st.warning(f"Writeback error: {e}")
-        except Exception as ex:
-            st.warning(f"Writeback failed for **{f}**: {ex}")
+        except Exception as ex: st.warning(f"Writeback failed for **{f}**: {ex}")
     return wrote
 
-# ── Email preview HTML renderer ───────────────────────────────────────────────
-# EXCEPTION: hardcoded white per runbook — this represents a real email
-def _email_preview_html(subject, body, to_email, cc_email):
-    """Render email as a white Gmail-style preview. Highlights unfilled placeholders."""
+# ── Email preview renderer ────────────────────────────────────────────────────
+def _email_html(subject, body, to_email, cc_email, auto_values: set):
+    """
+    Render white Gmail-style preview.
+    auto_values: set of strings that were auto-filled — highlighted green.
+    Unfilled {PLACEHOLDERS} highlighted red.
+    Bullets preserved. Runbook exception: hardcoded white background.
+    """
     def _htmlify(text):
-        out = []
+        out=[]
         for line in text.split("\n"):
-            s = line.strip()
+            s=line.strip()
             if not s:
-                out.append('<div style="margin:5px 0"></div>')
-            elif s == s.upper() and len(s) > 3 and not s.startswith("•"):
-                out.append(f'<div class="email-section-hdr">{s}</div>')
-            elif s.startswith("•") or (s.startswith("-") and len(s)>2):
-                out.append(f'<div style="margin:2px 0 2px 14px">{s}</div>')
+                out.append('<div style="margin:4px 0"></div>')
+            elif s==s.upper() and len(s)>3 and not s.startswith("•") and not s.startswith("-"):
+                out.append(f'<div class="ep-hdr-txt">{s}</div>')
+            elif s.startswith("•") or (s.startswith("- ") and len(s)>3):
+                out.append(f'<div class="ep-bullet">{s}</div>')
             elif s.endswith(":") and len(s)<60 and s[0].isupper():
-                out.append(f'<div style="font-weight:600;margin-top:8px">{s}</div>')
+                out.append(f'<div style="font-weight:600;margin-top:8px;color:#0f172a">{s}</div>')
             else:
                 out.append(f'<div>{s}</div>')
         return "\n".join(out)
 
-    def _highlight(html):
-        # Highlight {PLACEHOLDER} tags in red
-        return re.sub(r'\{([A-Z_]+)\}',
-                      r'<span class="email-ph">{\1}</span>', html)
+    def _highlight(html, auto_vals):
+        # Red for unfilled placeholders
+        html = re.sub(r'\{([A-Z_]+)\}', r'<span class="ep-ph">{\1}</span>', html)
+        # Green for auto-filled values (escape for regex, only highlight standalone occurrences)
+        for val in sorted(auto_vals, key=len, reverse=True):
+            if val and len(val) > 2 and val not in ("{}", "—"):
+                escaped = re.escape(val)
+                html = re.sub(
+                    f'(?<![>\\w]){escaped}(?![<\\w])',
+                    f'<span class="ep-filled">{val}</span>',
+                    html, count=1
+                )
+        return html
 
-    body_html = _highlight(_htmlify(body))
-    missing = _missing_phs(body + subject)
-    ph_bar = ""
-    if missing:
-        ph_bar = f'<div class="ph-bar">⚠ {len(missing)} placeholder(s) empty · {", ".join(missing)} — fill in the form to enable Send.</div>'
+    body_html = _highlight(_htmlify(body), auto_values)
+    missing = _missing_phs(body+subject)
+    ph_bar = f'<div class="ep-bar">⚠ {len(missing)} placeholder(s) empty: {", ".join(missing)}</div>' if missing else ""
 
-    return f"""
-<div class="email-preview-wrap">
-  <div class="email-preview-chrome">
-    <span class="chrome-dot"></span><span class="chrome-dot"></span><span class="chrome-dot"></span>
-    <span style="font-size:10px;color:#94a3b8;margin-left:6px">Gmail preview</span>
-  </div>
-  <div class="email-preview-header">
-    <div class="email-meta-row"><span class="email-meta-lbl">TO</span>{to_email or '—'}</div>
-    <div class="email-meta-row"><span class="email-meta-lbl">CC</span>{cc_email or '—'}</div>
-    <div class="email-meta-row"><span class="email-meta-lbl">SUBJ</span><strong style="color:#0f172a">{subject}</strong></div>
-  </div>
-  <div class="email-preview-body">{body_html}</div>
-  {ph_bar}
+    return f"""<div class="email-preview-wrap">
+<div class="ep-chrome"><span class="ep-dot"></span><span class="ep-dot"></span><span class="ep-dot"></span>
+<span style="font-size:10px;color:#94a3b8;margin-left:6px">Gmail preview</span></div>
+<div class="ep-hdr">
+<div class="ep-row"><span class="ep-lbl">TO</span>{to_email or '—'}</div>
+<div class="ep-row"><span class="ep-lbl">CC</span>{cc_email or '—'}</div>
+<div class="ep-row"><span class="ep-lbl">SUBJ</span><strong style="color:#0f172a">{subject}</strong></div>
 </div>
-"""
+<div class="ep-body">{body_html}</div>
+{ph_bar}
+</div>"""
 
 # ── Build DRS dataframe ───────────────────────────────────────────────────────
-df_all = _df_drs.copy()
-cm = {c.lower().strip():c for c in df_all.columns}
+df_all=_df_drs.copy()
+cm={c.lower().strip():c for c in df_all.columns}
+name_col  =cm.get("project_name")    or cm.get("project name")
+cust_col  =cm.get("customer")
+prod_col  =cm.get("project_type")    or cm.get("project type") or cm.get("product")
+id_col    =cm.get("project_id")      or cm.get("project id")
+status_col=cm.get("status")
+pm_col    =cm.get("project_manager") or cm.get("project manager")
+intro_col =(cm.get("intro. email sent") or cm.get("intro email sent")
+            or cm.get("ms_intro_email") or cm.get("intro_email_sent"))
+legacy_col=cm.get("legacy")
+ss_rid_col=cm.get("_ss_row_id") or cm.get("ss_row_id") or cm.get("row_id")
 
-name_col   = cm.get("project_name")    or cm.get("project name")
-cust_col   = cm.get("customer")
-prod_col   = cm.get("project_type")    or cm.get("project type") or cm.get("product")
-id_col     = cm.get("project_id")      or cm.get("project id")
-status_col = cm.get("status")
-pm_col     = cm.get("project_manager") or cm.get("project manager")
-intro_col  = (cm.get("intro. email sent") or cm.get("intro email sent")
-              or cm.get("ms_intro_email") or cm.get("intro_email_sent"))
-legacy_col = cm.get("legacy")
-ss_rid_col = cm.get("_ss_row_id") or cm.get("ss_row_id") or cm.get("row_id")
-
-# Build row ID lookup
-_ss_row_id_map: dict = {}
+_ss_row_id_map: dict={}
 if ss_rid_col and id_col:
     for _,r in _df_drs.iterrows():
-        pid = str(r.get(id_col,"")).strip()
-        rid = r.get(ss_rid_col)
-        if pid and rid: _ss_row_id_map[pid] = rid
+        pid=str(r.get(id_col,"")).strip(); rid=r.get(ss_rid_col)
+        if pid and rid: _ss_row_id_map[pid]=rid
 
-# Role filter
 if not _is_mgr and pm_col:
-    df_all = df_all[df_all[pm_col].apply(lambda x: name_matches(str(x),_logged_in))]
+    df_all=df_all[df_all[pm_col].apply(lambda x: name_matches(str(x),_logged_in))]
 
-# View as (managers)
 if _is_mgr and pm_col:
-    _browse = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
+    _browse=st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
     if _browse and _browse not in ("— My own view —","— Select —","👥 All team",""):
         if _browse.startswith("── ") and _browse.endswith(" ──"):
             try:
                 from shared.constants import get_region_consultants
-                from shared.config import EMPLOYEE_LOCATION, PS_REGION_MAP, PS_REGION_OVERRIDE, ACTIVE_EMPLOYEES
-                _rc = get_region_consultants(_browse[3:-3].strip(),EMPLOYEE_LOCATION,PS_REGION_MAP,PS_REGION_OVERRIDE,ACTIVE_EMPLOYEES)
-                _f = df_all[df_all[pm_col].astype(str).str.strip().str.lower().isin([n.lower() for n in _rc])]
-                if not _f.empty: df_all = _f
+                from shared.config import EMPLOYEE_LOCATION,PS_REGION_MAP,PS_REGION_OVERRIDE,ACTIVE_EMPLOYEES
+                _rc=get_region_consultants(_browse[3:-3].strip(),EMPLOYEE_LOCATION,PS_REGION_MAP,PS_REGION_OVERRIDE,ACTIVE_EMPLOYEES)
+                _f=df_all[df_all[pm_col].astype(str).str.strip().str.lower().isin([n.lower() for n in _rc])]
+                if not _f.empty: df_all=_f
             except Exception: pass
         else:
-            _f = df_all[df_all[pm_col].apply(lambda x: name_matches(str(x),_browse))]
-            if not _f.empty: df_all = _f
+            _f=df_all[df_all[pm_col].apply(lambda x: name_matches(str(x),_browse))]
+            if not _f.empty: df_all=_f
 
-# Active only + exclude legacy
 if status_col:
-    df_all = df_all[~df_all[status_col].astype(str).str.lower().isin(["closed","cancelled","complete","completed"])]
+    df_all=df_all[~df_all[status_col].astype(str).str.lower().isin(["closed","cancelled","complete","completed"])]
 if legacy_col:
-    df_all = df_all[~df_all[legacy_col].astype(str).str.strip().str.lower().isin(["yes","y","true","1"])]
+    df_all=df_all[~df_all[legacy_col].astype(str).str.strip().str.lower().isin(["yes","y","true","1"])]
 
-df_all = df_all.reset_index(drop=True)
+df_all=df_all.reset_index(drop=True)
 if df_all.empty:
     st.info("No active projects found.")
     st.stop()
 
-# Welcome flag column
 def _needs_intro(row):
     if not intro_col: return False
-    v = row.get(intro_col,"")
+    v=row.get(intro_col,"")
     return v is None or str(v).strip() in ("","None","nan","NaT")
-df_all["_needs_welcome"] = df_all.apply(_needs_intro,axis=1)
+df_all["_needs_welcome"]=df_all.apply(_needs_intro,axis=1)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TOP ROW: project picker + recipient (full width, compact)
+# ROW 1: Project picker (full width)
 # ═══════════════════════════════════════════════════════════════════════════════
-top_left, top_right = st.columns([2,1], gap="medium")
+st.markdown('<p class="ce-label" style="margin-bottom:4px">Select Project</p>', unsafe_allow_html=True)
 
-with top_left:
-    # Filter
-    df = df_all.copy()
-    _active_tab = st.session_state.get("_ce_tab","Welcome")
-    if intro_col and _active_tab == "Welcome":
-        if st.checkbox("Only projects needing Welcome email", value=True, key="ce_wf"):
-            _fil = df[df["_needs_welcome"]]
-            if not _fil.empty: df = _fil.reset_index(drop=True)
-            else: st.success("All projects have a Welcome email on record.")
+df=df_all.copy()
+_active_tab=st.session_state.get("_ce_tab","Welcome")
+if intro_col and _active_tab=="Welcome":
+    if st.checkbox("Only projects needing Welcome email", value=True, key="ce_wf"):
+        _fil=df[df["_needs_welcome"]]
+        if not _fil.empty: df=_fil.reset_index(drop=True)
+        else: st.success("All projects have a Welcome email on record.")
 
-    if df.empty:
-        st.info("No projects match this filter.")
-        st.stop()
+if df.empty:
+    st.info("No projects match this filter.")
+    st.stop()
 
-    def _plabel(row):
-        c = str(row.get(cust_col,"")) if cust_col else ""
-        n = str(row.get(name_col,"")) if name_col else ""
-        p = str(row.get(prod_col,"")) if prod_col else ""
-        return f"{c}  —  {n}" + (f"  · {p}" if p and p not in ("nan","None") else "")
+def _plabel(row):
+    c=str(row.get(cust_col,"")) if cust_col else ""
+    n=str(row.get(name_col,"")) if name_col else ""
+    p=str(row.get(prod_col,"")) if prod_col else ""
+    base=f"{c}  —  {n}" if c and n else (n or c)
+    return base+(f"  ·  {p}" if p and p not in ("nan","None") else "")
 
-    df["_sid"] = df.apply(lambda r: str(r.get(id_col,r.name)) if id_col else str(r.name), axis=1)
-    sids = df["_sid"].tolist()
-    sid_map = {s:i for i,s in enumerate(sids)}
-    _prev = st.session_state.get("_ce_proj_sid")
-    _def  = _prev if _prev in sids else sids[0]
+df["_sid"]=df.apply(lambda r:str(r.get(id_col,r.name)) if id_col else str(r.name),axis=1)
+sids=df["_sid"].tolist()
+sid_map={s:i for i,s in enumerate(sids)}
+_prev=st.session_state.get("_ce_proj_sid")
+_def=_prev if _prev in sids else sids[0]
 
-    selected_sid = st.selectbox(
-        "Project", options=sids,
-        format_func=lambda s: _plabel(df.iloc[sid_map[s]]),
+# Multi-project detection for same customer
+_cust_groups: dict={}
+if cust_col:
+    for sid in sids:
+        c=str(df.iloc[sid_map[sid]].get(cust_col,""))
+        if c and c not in ("nan","None"): _cust_groups.setdefault(c,[]).append(sid)
+
+sel_col, info_col = st.columns([3,1])
+with sel_col:
+    selected_sid=st.selectbox(
+        "Project",options=sids,
+        format_func=lambda s:_plabel(df.iloc[sid_map[s]]),
         index=sids.index(_def),
-        label_visibility="collapsed", key="ce_proj",
+        label_visibility="collapsed",key="ce_proj",
     )
-    st.session_state["_ce_proj_sid"] = selected_sid
+    st.session_state["_ce_proj_sid"]=selected_sid
 
-    if st.session_state.get("_last_proj") != selected_sid:
-        st.session_state["_last_proj"] = selected_sid
-        for k in list(st.session_state.keys()):
-            if any(k.startswith(p) for p in ["ce_to","ce_cn","ce_cc","w_","s_","l_","sess_","lc_","welcome_"]):
-                del st.session_state[k]
+if st.session_state.get("_last_proj")!=selected_sid:
+    st.session_state["_last_proj"]=selected_sid
+    for k in list(st.session_state.keys()):
+        if any(k.startswith(p) for p in ["ce_to","ce_cn","ce_cc","w_","s_","l_","sess_","lc_"]):
+            del st.session_state[k]
 
-    sel_idx     = sid_map[selected_sid]
-    sel         = _row_dict(df.iloc[sel_idx])
-    customer    = sel.get(cust_col,"") if cust_col else ""
-    product_raw = sel.get(prod_col,"") if prod_col else ""
-    project_id  = str(sel.get(id_col,str(sel_idx))) if id_col else str(sel_idx)
-    if "_ss_row_id" not in sel and project_id in _ss_row_id_map:
-        sel["_ss_row_id"] = _ss_row_id_map[project_id]
+sel_idx=sid_map[selected_sid]
+sel=_row_dict(df.iloc[sel_idx])
+customer=sel.get(cust_col,"") if cust_col else ""
+product_raw=sel.get(prod_col,"") if prod_col else ""
+project_id=str(sel.get(id_col,str(sel_idx))) if id_col else str(sel_idx)
+if "_ss_row_id" not in sel and project_id in _ss_row_id_map:
+    sel["_ss_row_id"]=_ss_row_id_map[project_id]
 
-    # Project summary inline
-    iv = sel.get(intro_col,"") if intro_col else ""
-    _intro_done = iv and str(iv).strip() not in ("","None","nan","NaT")
-    st.markdown(
-        f'<div style="font-size:12px;margin-top:4px">'
-        f'<b>{sel.get(name_col,"")}</b>&nbsp;&nbsp;'
-        f'<span style="opacity:.6">{customer}</span>&nbsp;&nbsp;'
-        f'<span style="opacity:.6">{product_raw}</span>&nbsp;&nbsp;'
-        + (f'<span class="pill-ok">Welcome sent {iv}</span>' if _intro_done else '<span class="pill-warn">Welcome pending</span>')
-        + '</div>', unsafe_allow_html=True,
-    )
+# Multi-product: siblings for same customer
+siblings=[s for s in _cust_groups.get(str(customer),[]) if s!=selected_sid] if customer else []
 
-with top_right:
-    # SFDC lookup
-    df_sfdc = st.session_state.get("df_sfdc")
-    sfdc_email = ""; sfdc_cname = ""; sfdc_label = None
-    if df_sfdc is not None and not df_sfdc.empty:
-        _rn = {c:_SFDC_COL_MAP[c.lower().strip()] for c in df_sfdc.columns if c.lower().strip() in _SFDC_COL_MAP}
-        df_sn = df_sfdc.rename(columns=_rn)
-        if "first_name" in df_sn.columns and "last_name" in df_sn.columns:
-            df_sn["contact_name"] = (df_sn["first_name"].fillna("").astype(str)+" "+df_sn["last_name"].fillna("").astype(str)).str.strip()
-        pnm = str(sel.get(name_col,"")) if name_col else ""
-        sfdc_match, sfdc_label = _fuzzy_sfdc(df_sn, pnm, str(customer))
-        if not sfdc_match.empty:
-            ec = "email" if "email" in sfdc_match.columns else None
-            nc = "contact_name" if "contact_name" in sfdc_match.columns else None
-            fc = "impl_contact_flag" if "impl_contact_flag" in sfdc_match.columns else None
-            br = sfdc_match.iloc[0]
-            if fc:
-                fl = sfdc_match[sfdc_match[fc].astype(str).str.lower().isin(["true","1","yes","x"])]
-                if not fl.empty: br = fl.iloc[0]
-            sfdc_email = str(br.get(ec,"")).strip() if ec else ""
-            sfdc_cname = str(br.get(nc,"")).strip() if nc else ""
-            if sfdc_email in ("nan","None",""): sfdc_email = ""
-            if sfdc_cname in ("nan","None",""): sfdc_cname = ""
-
-    st.markdown('<p class="ce-label">Recipient</p>', unsafe_allow_html=True)
-    if sfdc_label:
-        st.caption(f"✅ {sfdc_label}")
-    elif df_sfdc is not None:
-        st.caption(f"No SFDC match for '{customer}'")
+with info_col:
+    iv=sel.get(intro_col,"") if intro_col else ""
+    _intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
+    if _intro_done:
+        st.markdown(f'<div style="margin-top:6px"><span class="pill-ok">Welcome sent {iv}</span></div>',unsafe_allow_html=True)
     else:
-        st.caption("SFDC not loaded")
-
-    recip = st.text_input("To", value=sfdc_email, placeholder="customer@example.com", key="ce_to")
-    cname = st.text_input("Contact name", value=sfdc_cname, placeholder="First name", key="ce_cn")
-    cc_in = st.text_input("CC", value=_consultant_email(_logged_in), key="ce_cc")
-    cc_emails = [e.strip() for e in cc_in.split(",") if e.strip()]
-
-# ── Journey rail ──────────────────────────────────────────────────────────────
-st.markdown(_build_journey_html(sel, _active_tab), unsafe_allow_html=True)
+        st.markdown('<div style="margin-top:6px"><span class="pill-warn">Welcome pending</span></div>',unsafe_allow_html=True)
+    if siblings:
+        st.markdown(f'<div style="margin-top:4px"><span class="pill-amber">{len(siblings)+1} products for this customer</span></div>',unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MAIN: compose left | preview right
+# ROW 2: Journey rail (full width, with dates)
 # ═══════════════════════════════════════════════════════════════════════════════
-compose_col, preview_col = st.columns([1,1], gap="medium")
+st.markdown(_build_journey(sel),unsafe_allow_html=True)
+st.markdown('<div style="margin-bottom:16px"></div>',unsafe_allow_html=True)
 
-# Auto-context (name flipped, contact injected before render)
-_disp = _flip_name(_logged_in)
-auto_ctx = build_auto_context(sel, _disp, {"contact_name":cname} if cname else None)
-if cname: auto_ctx["CUSTOMER_CONTACT_NAME"] = cname
-auto_ctx["SENDER"] = _disp; auto_ctx["CONSULTANT_NAME"] = _disp
+# ═══════════════════════════════════════════════════════════════════════════════
+# ROW 3: Compose (left) | Preview (right)
+# ═══════════════════════════════════════════════════════════════════════════════
+compose_col, preview_col = st.columns([1,1],gap="medium")
 
-# Shared state for preview
-if "ce_preview_subject" not in st.session_state:
-    st.session_state["ce_preview_subject"] = ""
-if "ce_preview_body" not in st.session_state:
-    st.session_state["ce_preview_body"] = ""
+# SFDC lookup (shared across all tabs)
+df_sfdc=st.session_state.get("df_sfdc")
+sfdc_email=""; sfdc_cname=""; sfdc_label=None
+if df_sfdc is not None and not df_sfdc.empty:
+    _rn={c:_SFDC_COL_MAP[c.lower().strip()] for c in df_sfdc.columns if c.lower().strip() in _SFDC_COL_MAP}
+    df_sn=df_sfdc.rename(columns=_rn)
+    if "first_name" in df_sn.columns and "last_name" in df_sn.columns:
+        df_sn["contact_name"]=(df_sn["first_name"].fillna("").astype(str)+" "+df_sn["last_name"].fillna("").astype(str)).str.strip()
+    pnm=str(sel.get(name_col,"")) if name_col else ""
+    sfdc_match,sfdc_label=_fuzzy_sfdc(df_sn,pnm,str(customer))
+    if not sfdc_match.empty:
+        ec="email" if "email" in sfdc_match.columns else None
+        nc="contact_name" if "contact_name" in sfdc_match.columns else None
+        fc="impl_contact_flag" if "impl_contact_flag" in sfdc_match.columns else None
+        br=sfdc_match.iloc[0]
+        if fc:
+            fl=sfdc_match[sfdc_match[fc].astype(str).str.lower().isin(["true","1","yes","x"])]
+            if not fl.empty: br=fl.iloc[0]
+        sfdc_email=str(br.get(ec,"")).strip() if ec else ""
+        sfdc_cname=str(br.get(nc,"")).strip() if nc else ""
+        if sfdc_email in ("nan","None",""): sfdc_email=""
+        if sfdc_cname in ("nan","None",""): sfdc_cname=""
 
+# Auto-context (shared)
+_disp=_flip_name(_logged_in)
+
+# Shared preview state
+if "ce_prev_subj" not in st.session_state: st.session_state["ce_prev_subj"]=""
+if "ce_prev_body" not in st.session_state: st.session_state["ce_prev_body"]=""
+if "ce_prev_auto" not in st.session_state: st.session_state["ce_prev_auto"]=set()
+if "ce_prev_ssf"  not in st.session_state: st.session_state["ce_prev_ssf"]=None
+if "ce_prev_miss" not in st.session_state: st.session_state["ce_prev_miss"]=[]
+if "ce_ss_stamp"  not in st.session_state: st.session_state["ce_ss_stamp"]=True
+
+# ── Send footer helper (rendered inside compose col after tabs) ───────────────
+def _send_footer(tab_key, ss_field_label, subj, body, recip_val, cc_val):
+    missing=_missing_phs(body+subj)
+    can_send=bool(recip_val and "@" in recip_val) and not missing
+    st.markdown('<div class="send-footer">',unsafe_allow_html=True)
+    if can_send:
+        st.markdown('<div class="footer-ready">Ready to send</div>',unsafe_allow_html=True)
+    else:
+        reasons=[]
+        if not recip_val or "@" not in recip_val: reasons.append("recipient email")
+        if missing: reasons.extend(missing)
+        st.markdown('<div class="footer-blocked">Complete before sending:</div>',unsafe_allow_html=True)
+        st.markdown(f'<div class="footer-missing">{" · ".join(reasons)}</div>',unsafe_allow_html=True)
+
+    c1,c2=st.columns([3,2])
+    with c1:
+        if ss_field_label:
+            st.markdown(f'<div class="footer-chk">',unsafe_allow_html=True)
+            st.session_state["ce_ss_stamp"]=st.checkbox(
+                f"Date-stamp **{ss_field_label}** in Smartsheet",
+                value=st.session_state.get("ce_ss_stamp",True),
+                key=f"ss_chk_{tab_key}",
+            )
+            st.markdown('</div>',unsafe_allow_html=True)
+    with c2:
+        c2a,c2b=st.columns([1,1])
+        with c2a:
+            st.button("Copy text",key=f"copy_{tab_key}",use_container_width=True)
+        with c2b:
+            lbl="Send & log" if st.session_state.get("_gmail_approved") else "📋 Log Send"
+            clicked=st.button(lbl,key=f"send_{tab_key}",type="primary",
+                              use_container_width=True,disabled=not recip_val)
+    st.markdown('</div>',unsafe_allow_html=True)
+    return clicked
+
+# ══════════════════════════════════════════════════════
 with compose_col:
     tab_w, tab_s, tab_l = st.tabs(["Welcome","Post-Session","Lifecycle (UAT → Closure)"])
 
     # ── TAB: Welcome ──────────────────────────────────────────────────────────
     with tab_w:
-        st.session_state["_ce_tab"] = "Welcome"
-        _sku_key = _sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
-        tmpl_w = get_welcome_template(_sku_key) if _sku_key else None
+        st.session_state["_ce_tab"]="Welcome"
+
+        # Recipient card
+        st.markdown('<p class="ce-label">Recipient</p>',unsafe_allow_html=True)
+        st.markdown('<div class="ce-card">',unsafe_allow_html=True)
+        if sfdc_label:
+            st.markdown(f'<div style="font-size:11px;margin-bottom:6px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
+        else:
+            df_s_loaded=st.session_state.get("df_sfdc")
+            msg="No SFDC match for this project — enter manually" if df_s_loaded is not None else "SFDC contacts not loaded"
+            st.markdown(f'<div style="font-size:11px;margin-bottom:6px"><span class="pill-warn">{msg}</span></div>',unsafe_allow_html=True)
+        recip=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to",label_visibility="collapsed")
+        st.caption("To (recipient email)")
+        cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
+        cc_in=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc")
+        cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
+        st.markdown('</div>',unsafe_allow_html=True)
+
+        # Multi-product consolidated toggle
+        consolidated=False; all_rows=[sel]
+        if siblings:
+            consolidated=st.checkbox(f"Consolidated — one email for all {len(siblings)+1} products",key="ce_con")
+            if consolidated:
+                all_rows=[sel]+[_row_dict(df.iloc[sid_map[s]]) for s in siblings]
+                prods=[str(r.get(prod_col,"")) for r in all_rows if r.get(prod_col) and str(r.get(prod_col)) not in ("nan","None")]
+                st.markdown(f'<div class="ce-tip">Consolidated: {", ".join(prods)}</div>',unsafe_allow_html=True)
+
+        # Template selection
+        if consolidated and len(all_rows)>1:
+            tmpl_w=None
+            for r in all_rows:
+                k=_sku(str(r.get(prod_col,"")))
+                if k and "_" in k: tmpl_w=get_welcome_template(k); break
+            if not tmpl_w:
+                prods=[r.get(prod_col,"") for r in all_rows if r.get(prod_col)]
+                tmpl_w=get_welcome_template(_sku(prods[0])) if prods else None
+        else:
+            _sk=_sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
+            tmpl_w=get_welcome_template(_sk) if _sk else None
+
         if not tmpl_w:
-            st.caption(f"No automatic match for '{product_raw}'. Select manually:")
-            opts = list_welcome_templates()
-            ch = st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual")
-            tmpl_w = get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
+            st.caption(f"No auto-match for '{product_raw}'. Select manually:")
+            opts=list_welcome_templates()
+            ch=st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual")
+            tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
 
-        var = st.radio("Sender variant",
-                       ["Variant A — PM or automated","Variant B — Consultant sends"],
-                       horizontal=True, key="w_var")
-        vk = "variant_a" if "A" in var else "variant_b"
-        subj_r, body_r = render_template(tmpl_w[vk]["body"], tmpl_w["subject"], auto_ctx)
-        lib_meta = _welcome_library(); ssf_w = lib_meta.get("ss_milestone_on_send")
+        var=st.radio("Sender variant",
+                     ["Variant A — PM or automated","Variant B — Consultant sends"],
+                     horizontal=True,key="w_var")
+        vk="variant_a" if "A" in var else "variant_b"
 
-        # Pre-send checks — card with no background
-        st.markdown('<div class="ce-card">', unsafe_allow_html=True)
-        st.markdown('<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;opacity:.6;margin-bottom:6px">Pre-send checks</div>', unsafe_allow_html=True)
-        _has_recip = bool(recip and "@" in recip)
-        _has_sfdc  = bool(sfdc_email)
-        _has_tmpl  = bool(tmpl_w)
-        _no_phs    = not _missing_phs(body_r + subj_r)
-        for ok, msg in [
-            (_has_sfdc,  "SFDC contact linked" if _has_sfdc else "No SFDC match — enter recipient manually"),
-            (_has_recip, "Recipient email set" if _has_recip else "Recipient email missing"),
-            (_has_tmpl,  f"Template: {tmpl_w['display_name']}" if _has_tmpl else "No template matched"),
-            (not _intro_done, "No Welcome email on record (ready to send)" if not _intro_done else f"Welcome already sent {iv} — check before resending"),
+        # Build context and render
+        auto_ctx=build_auto_context(sel,_disp,{"contact_name":cname} if cname else None)
+        if cname: auto_ctx["CUSTOMER_CONTACT_NAME"]=cname
+        auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
+        subj_w,body_w=render_template(tmpl_w[vk]["body"],tmpl_w["subject"],auto_ctx)
+
+        # Values that were auto-filled (non-empty, not placeholders)
+        auto_vals_w={v for v in auto_ctx.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
+
+        lib_meta=_welcome_library(); ssf_w=lib_meta.get("ss_milestone_on_send")
+
+        # Pre-send checks
+        st.markdown('<p class="ce-label" style="margin-top:8px">Pre-send checks</p>',unsafe_allow_html=True)
+        for ok,msg in [
+            (bool(sfdc_email), "SFDC contact linked" if sfdc_email else "No SFDC match — enter recipient manually"),
+            (bool(recip and "@" in recip), "Recipient email set" if recip and "@" in recip else "Recipient email missing"),
+            (bool(tmpl_w), f"Template: {tmpl_w['display_name']}"),
+            (not _intro_done, "Welcome email not yet sent — ready" if not _intro_done else f"Welcome already sent {iv} — check before resending"),
         ]:
-            cls = "check-ok" if ok else "check-bad"
-            icon = "✓" if ok else "✗"
-            st.markdown(f'<div class="check-row {cls}">{icon}&nbsp; {msg}</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            cls="chk-ok" if ok else "chk-bad"
+            icon="✓" if ok else "✗"
+            st.markdown(f'<div class="{cls}">{icon}&nbsp; {msg}</div>',unsafe_allow_html=True)
 
-        if ssf_w:
-            st.markdown(f'<div class="ce-tip">On send, <b>{ssf_w}</b> will be date-stamped in Smartsheet.</div>', unsafe_allow_html=True)
+        # Update preview state
+        st.session_state["ce_prev_subj"]=subj_w
+        st.session_state["ce_prev_body"]=body_w
+        st.session_state["ce_prev_auto"]=auto_vals_w
+        st.session_state["ce_prev_ssf"]=ssf_w
+        st.session_state["ce_prev_miss"]=_missing_phs(body_w+subj_w)
 
-        st.session_state["ce_preview_subject"] = subj_r
-        st.session_state["ce_preview_body"]    = body_r
-
-        _can_send = _has_recip and not _missing_phs(body_r + subj_r)
-        c1,c2 = st.columns([1,2])
-        with c1:
-            st.button("Copy plain text", key="w_copy", use_container_width=True)
-        with c2:
-            lbl = "Send & complete Welcome stage" if st.session_state.get("_gmail_approved") else "📋 Log Send"
-            if st.button(lbl, key="btn_w", type="primary", use_container_width=True, disabled=not _has_recip):
-                st.session_state["_req_w"] = {"subj":subj_r,"body":body_r,"ssf":ssf_w}
-                st.rerun()
+        # Send footer
+        if _send_footer("w",ssf_w,subj_w,body_w,recip,cc_in):
+            st.session_state["_req_w"]={"subj":subj_w,"body":body_w,"ssf":ssf_w}
+            st.rerun()
         if st.session_state.get("_req_w"):
-            r = st.session_state.pop("_req_w")
+            r=st.session_state.pop("_req_w")
             try:
                 with st.spinner("Logging…"):
-                    ok,sid = execute_send(project_id=project_id,template_id=f"welcome_{_sku_key or 'manual'}",
+                    ok,sid=execute_send(project_id=project_id,
+                        template_id=f"welcome_{tmpl_w.get('sku_key','manual')}",
                         template_name=f"Welcome — {tmpl_w['display_name']}",
                         subject=r["subj"],body=r["body"],recipient_email=recip,
                         cc_emails=cc_emails,ss_milestone_field=r["ssf"])
                 if ok:
                     st.success(f"✓ Logged — ID: `{sid}`")
-                    if r["ssf"] and _do_write(project_id, r["ssf"], datetime.date.today(), sel):
-                        mark_ss_writeback_done(sid)
+                    if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                        if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
                 else: st.error(f"Failed: {sid}")
             except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
     # ── TAB: Post-Session ─────────────────────────────────────────────────────
     with tab_s:
-        st.session_state["_ce_tab"] = "Post-Session"
-        psk = _ps_key(str(product_raw))
+        st.session_state["_ce_tab"]="Post-Session"
+
+        # Recipient (compact repeat — needed so recip is in scope)
+        st.markdown('<p class="ce-label">Recipient</p>',unsafe_allow_html=True)
+        recip_s=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to_s",label_visibility="collapsed")
+        st.caption("To (recipient email)")
+        cname_s=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn_s")
+        cc_in_s=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc_s")
+        cc_emails_s=[e.strip() for e in cc_in_s.split(",") if e.strip()]
+        recip=recip_s; cname=cname_s; cc_in=cc_in_s; cc_emails=cc_emails_s
+
+        psk=_ps_key(str(product_raw))
         if not psk:
             st.caption(f"No post-session templates for '{product_raw}'.")
         else:
-            sessions = get_post_session_templates(psk)
-            sopts = {s["id"]:(f"Session {s['session_number']} — {s['name']}"+(f" [{s['variant_note']}]" if s.get("variant_note") else ""),s) for s in sessions}
-            cid = st.selectbox("Session",list(sopts.keys()),format_func=lambda k:sopts[k][0],key="s_pick")
-            _,tmpl_s = sopts[cid]
+            sessions=get_post_session_templates(psk)
+            sopts={s["id"]:(f"Session {s['session_number']} — {s['name']}"+(f" [{s['variant_note']}]" if s.get("variant_note") else ""),s) for s in sessions}
+            cid=st.selectbox("Session",list(sopts.keys()),format_func=lambda k:sopts[k][0],key="s_pick")
+            _,tmpl_s=sopts[cid]
             st.caption(f"Audience: {tmpl_s.get('audience','Full project team')}")
-            mctx: dict = {}
+
+            mctx: dict={}
             if tmpl_s.get("editable_fields"):
-                with st.expander("Session details",expanded=True):
-                    for f in tmpl_s["editable_fields"]:
-                        k,lb,ft=f["key"],f["label"],f.get("type","text")
-                        req=f.get("required",False); ph=f.get("placeholder","")
-                        if ft=="text":       v=st.text_input(lb+(" *"if req else ""),placeholder=ph,key=f"s_{cid}_{k}")
-                        elif ft=="textarea": v=st.text_area(lb+(" *"if req else ""),placeholder=ph,height=70,key=f"s_{cid}_{k}")
-                        elif ft=="multiselect":
-                            s2=st.multiselect(lb+(" *"if req else ""),options=f.get("options",[]),key=f"s_{cid}_{k}")
-                            v="\n".join(f"  • {o}" for o in s2)
-                        elif ft=="select": v=st.selectbox(lb,f.get("options",[]),key=f"s_{cid}_{k}")
-                        else: v=st.text_input(lb,key=f"s_{cid}_{k}")
-                        mctx[k]=v
-                        if k=="GO_LIVE_READINESS" and v:
-                            rm=tmpl_s.get("go_live_readiness_text",{})
-                            res=rm.get(v[0],v)
-                            if "{HYPERCARE_DATE}" in res: res=res.replace("{HYPERCARE_DATE}",mctx.get("HYPERCARE_DATE","{HYPERCARE_DATE}"))
-                            mctx["GO_LIVE_READINESS_TEXT"]=res
-            subj_s,body_s=render_template(tmpl_s["body"],tmpl_s["subject"],{},{**auto_ctx,**mctx})
+                st.markdown('<p class="ce-label" style="margin-top:8px">Fill in details</p>',unsafe_allow_html=True)
+                _nf=sum(1 for f in tmpl_s["editable_fields"] if f.get("required") and not st.session_state.get(f"s_{cid}_{f['key']}",""))
+                if _nf: st.markdown(f'<div style="font-size:11px;color:#dc2626;margin-bottom:6px">{_nf} required field(s) missing</div>',unsafe_allow_html=True)
+                for f in tmpl_s["editable_fields"]:
+                    k,lb,ft=f["key"],f["label"],f.get("type","text")
+                    req=f.get("required",False); ph=f.get("placeholder","")
+                    lbl_display=lb+(" *" if req else "")
+                    if ft=="text":       v=st.text_input(lbl_display,placeholder=ph,key=f"s_{cid}_{k}")
+                    elif ft=="textarea": v=st.text_area(lbl_display,placeholder=ph,height=70,key=f"s_{cid}_{k}")
+                    elif ft=="multiselect":
+                        s2=st.multiselect(lbl_display,options=f.get("options",[]),key=f"s_{cid}_{k}")
+                        v="\n".join(f"  • {o}" for o in s2)
+                    elif ft=="select": v=st.selectbox(lbl_display,f.get("options",[]),key=f"s_{cid}_{k}")
+                    else: v=st.text_input(lbl_display,key=f"s_{cid}_{k}")
+                    mctx[k]=v
+                    if k=="GO_LIVE_READINESS" and v:
+                        rm=tmpl_s.get("go_live_readiness_text",{})
+                        res=rm.get(v[0],v)
+                        if "{HYPERCARE_DATE}" in res: res=res.replace("{HYPERCARE_DATE}",mctx.get("HYPERCARE_DATE","{HYPERCARE_DATE}"))
+                        mctx["GO_LIVE_READINESS_TEXT"]=res
+
+            auto_ctx_s=build_auto_context(sel,_disp,{"contact_name":cname} if cname else None)
+            if cname: auto_ctx_s["CUSTOMER_CONTACT_NAME"]=cname
+            auto_ctx_s["SENDER"]=_disp; auto_ctx_s["CONSULTANT_NAME"]=_disp
+            subj_s,body_s=render_template(tmpl_s["body"],tmpl_s["subject"],{},{**auto_ctx_s,**mctx})
+            auto_vals_s={v for v in {**auto_ctx_s,**mctx}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
             ssf_s=tmpl_s.get("ss_milestone_on_send")
-            st.session_state["ce_preview_subject"]=subj_s; st.session_state["ce_preview_body"]=body_s
-            if ssf_s: st.markdown(f'<div class="ce-tip">On send, <b>{ssf_s}</b> will be date-stamped.</div>',unsafe_allow_html=True)
-            if st.button("📋 Log Send",key="btn_s",type="primary",disabled=not recip):
+
+            st.session_state["ce_prev_subj"]=subj_s; st.session_state["ce_prev_body"]=body_s
+            st.session_state["ce_prev_auto"]=auto_vals_s; st.session_state["ce_prev_ssf"]=ssf_s
+
+            if _send_footer("s",ssf_s,subj_s,body_s,recip,cc_in_s):
                 st.session_state["_req_s"]={"subj":subj_s,"body":body_s,"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
                 st.rerun()
             if st.session_state.get("_req_s"):
@@ -659,53 +721,79 @@ with compose_col:
                 try:
                     with st.spinner("Logging…"):
                         ok,sid=execute_send(project_id=project_id,template_id=r["tid"],template_name=r["tnm"],
-                            subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                            subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails_s,ss_milestone_field=r["ssf"])
                     if ok:
                         st.success(f"✓ Logged — ID: `{sid}`")
-                        if r["ssf"] and _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
+                        if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                            if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
                     else: st.error(f"Failed: {sid}")
                 except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
     # ── TAB: Lifecycle ────────────────────────────────────────────────────────
     with tab_l:
-        st.session_state["_ce_tab"] = "Lifecycle"
+        st.session_state["_ce_tab"]="Lifecycle"
+
+        st.markdown('<p class="ce-label">Recipient</p>',unsafe_allow_html=True)
+        recip_l=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to_l",label_visibility="collapsed")
+        st.caption("To (recipient email)")
+        cname_l=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn_l")
+        cc_in_l=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc_l")
+        cc_emails_l=[e.strip() for e in cc_in_l.split(",") if e.strip()]
+        recip=recip_l; cname=cname_l; cc_in=cc_in_l; cc_emails=cc_emails_l
+
         lc_all=list_lifecycle_templates()
         lc_opts={t["id"]:t for t in lc_all}
-        lcid=st.selectbox("Template",list(lc_opts.keys()),format_func=lambda k:f"[{lc_opts[k]['category']}] {lc_opts[k]['name']}",key="lc_pick")
+        lcid=st.selectbox("Template",list(lc_opts.keys()),
+                          format_func=lambda k:f"[{lc_opts[k]['category']}] {lc_opts[k]['name']}",key="lc_pick")
         tmpl_l=get_lifecycle_template(lcid)
         st.caption(f"When to send: {tmpl_l['trigger']}")
         for tip in tmpl_l.get("tips",[]): st.markdown(f'<div class="ce-tip">💡 {tip}</div>',unsafe_allow_html=True)
+
         vbody=tmpl_l.get("body","")
         if tmpl_l.get("variants"):
             vlbls={v["key"]:f"{v['label']} — {v['description']}" for v in tmpl_l["variants"]}
-            cv=st.radio("Scenario",list(vlbls.keys()),format_func=lambda k:vlbls[k],key=f"lv_{lcid}",label_visibility="collapsed")
+            cv=st.radio("Scenario",list(vlbls.keys()),format_func=lambda k:vlbls[k],
+                        key=f"lv_{lcid}",label_visibility="collapsed")
             vbody=tmpl_l["variant_bodies"][cv]
+
         mctx_l: dict={}
-        if tmpl_l.get("editable_fields"):
-            with st.expander("Details",expanded=True):
-                for f in tmpl_l["editable_fields"]:
-                    k,lb=f["key"],f["label"]; req=f.get("required",False); src=f.get("source",""); default=str(f.get("default",""))
-                    if src=="drs_prod_cutover":
-                        raw=sel.get("prod_cutover") or sel.get("Prod Cutover")
-                        if raw:
-                            try: default=pd.to_datetime(raw).date().isoformat()
-                            except: pass
-                    elif src=="drs_project_link":
-                        default=str(sel.get("project_link") or sel.get("Project Link") or "")
-                    elif src=="calculated_go_live_plus_14":
-                        glr=sel.get("prod_cutover") or sel.get("go_live_date") or mctx_l.get("GO_LIVE_DATE","")
-                        if glr:
-                            try: default=(pd.to_datetime(glr).date()+datetime.timedelta(days=14)).isoformat()
-                            except: pass
-                    v=st.text_input(lb+(" *"if req else ""),value=default,placeholder="YYYY-MM-DD"if f.get("type")=="date" else "",key=f"l_{lcid}_{k}")
-                    mctx_l[k]=v
-        subj_l,body_l=render_template(vbody,tmpl_l["subject"],{},{**auto_ctx,**mctx_l})
+        _lc_fields=tmpl_l.get("editable_fields",[])
+        if _lc_fields:
+            st.markdown('<p class="ce-label" style="margin-top:8px">Fill in details</p>',unsafe_allow_html=True)
+            _nf_l=sum(1 for f in _lc_fields if f.get("required") and not st.session_state.get(f"l_{lcid}_{f['key']}",""))
+            if _nf_l: st.markdown(f'<div style="font-size:11px;color:#dc2626;margin-bottom:6px">{_nf_l} required field(s) missing</div>',unsafe_allow_html=True)
+            for f in _lc_fields:
+                k,lb=f["key"],f["label"]; req=f.get("required",False); src=f.get("source",""); default=str(f.get("default",""))
+                if src=="drs_prod_cutover":
+                    raw=sel.get("prod_cutover") or sel.get("Prod Cutover")
+                    if raw:
+                        try: default=pd.to_datetime(raw).date().isoformat()
+                        except: pass
+                elif src=="drs_project_link":
+                    default=str(sel.get("project_link") or sel.get("Project Link") or "")
+                elif src=="calculated_go_live_plus_14":
+                    glr=sel.get("prod_cutover") or sel.get("go_live_date") or mctx_l.get("GO_LIVE_DATE","")
+                    if glr:
+                        try: default=(pd.to_datetime(glr).date()+datetime.timedelta(days=14)).isoformat()
+                        except: pass
+                tag=""
+                if default and default not in ("","None"): tag=' <span style="font-size:10px;background:rgba(22,163,74,.12);color:#15803d;padding:1px 5px;border-radius:8px">from project</span>'
+                st.markdown(f'<div style="font-size:12px;margin-bottom:3px">{lb}{" *" if req else ""}{tag}</div>',unsafe_allow_html=True)
+                v=st.text_input("",value=default,placeholder="YYYY-MM-DD"if f.get("type")=="date" else "",
+                                key=f"l_{lcid}_{k}",label_visibility="collapsed")
+                mctx_l[k]=v
+
+        auto_ctx_l=build_auto_context(sel,_disp,{"contact_name":cname_l} if cname_l else None)
+        if cname_l: auto_ctx_l["CUSTOMER_CONTACT_NAME"]=cname_l
+        auto_ctx_l["SENDER"]=_disp; auto_ctx_l["CONSULTANT_NAME"]=_disp
+        subj_l,body_l=render_template(vbody,tmpl_l["subject"],{},{**auto_ctx_l,**mctx_l})
+        auto_vals_l={v for v in {**auto_ctx_l,**mctx_l}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
         ssf_l=tmpl_l.get("ss_milestone_on_send"); gls=mctx_l.get("GO_LIVE_DATE","")
-        st.session_state["ce_preview_subject"]=subj_l; st.session_state["ce_preview_body"]=body_l
-        if ssf_l:
-            fd=", ".join(ssf_l) if isinstance(ssf_l,list) else ssf_l
-            st.markdown(f'<div class="ce-tip">On send, <b>{fd}</b> will be date-stamped (existing values not overwritten).</div>',unsafe_allow_html=True)
-        if st.button("📋 Log Send",key="btn_l",type="primary",disabled=not recip):
+
+        st.session_state["ce_prev_subj"]=subj_l; st.session_state["ce_prev_body"]=body_l
+        st.session_state["ce_prev_auto"]=auto_vals_l; st.session_state["ce_prev_ssf"]=ssf_l
+
+        if _send_footer("l",ssf_l if isinstance(ssf_l,str) else (ssf_l[0] if ssf_l else None),subj_l,body_l,recip_l,cc_in_l):
             st.session_state["_req_l"]={"subj":subj_l,"body":body_l,"ssf":ssf_l,"gls":gls}
             st.rerun()
         if st.session_state.get("_req_l"):
@@ -713,10 +801,10 @@ with compose_col:
             try:
                 with st.spinner("Logging…"):
                     ok,sid=execute_send(project_id=project_id,template_id=lcid,template_name=tmpl_l["name"],
-                        subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                        subject=r["subj"],body=r["body"],recipient_email=recip_l,cc_emails=cc_emails_l,ss_milestone_field=r["ssf"])
                 if ok:
                     st.success(f"✓ Logged — ID: `{sid}`")
-                    if r["ssf"]:
+                    if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
                         try: gld=datetime.date.fromisoformat(r["gls"][:10]) if r["gls"] else datetime.date.today()
                         except: gld=datetime.date.today()
                         for f in (r["ssf"] if isinstance(r["ssf"],list) else [r["ssf"]]):
@@ -725,26 +813,35 @@ with compose_col:
                 else: st.error(f"Failed: {sid}")
             except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
-# ── RIGHT: Email preview + session log ───────────────────────────────────────
+# ── Preview column ─────────────────────────────────────────────────────────────
 with preview_col:
-    st.markdown('<p class="ce-label">Live Preview</p>', unsafe_allow_html=True)
-    _prev_subj = st.session_state.get("ce_preview_subject","")
-    _prev_body = st.session_state.get("ce_preview_body","")
-    if _prev_body:
-        st.markdown(
-            _email_preview_html(_prev_subj, _prev_body, recip, cc_in),
-            unsafe_allow_html=True
-        )
-        # Editable plain text in expander
-        with st.expander("Edit before sending"):
-            st.text_area("Subject", value=_prev_subj, key="preview_subj_edit", height=40)
-            st.text_area("Body", value=_prev_body, key="preview_body_edit", height=280)
-    else:
-        st.markdown('<div class="ce-card" style="text-align:center;padding:40px;opacity:.4">Select a template to see preview</div>',unsafe_allow_html=True)
+    st.markdown('<p class="ce-label">Live Preview</p>',unsafe_allow_html=True)
+    _ps=st.session_state.get("ce_prev_subj","")
+    _pb=st.session_state.get("ce_prev_body","")
+    _pa=st.session_state.get("ce_prev_auto",set())
 
-    # Session send log
-    log = get_session_send_log()
-    proj_log = [e for e in log if e["project_id"]==project_id]
+    _recip_display=(
+        st.session_state.get("ce_to","") or
+        st.session_state.get("ce_to_s","") or
+        st.session_state.get("ce_to_l","") or ""
+    )
+    _cc_display=(
+        st.session_state.get("ce_cc","") or
+        st.session_state.get("ce_cc_s","") or
+        st.session_state.get("ce_cc_l","") or ""
+    )
+
+    if _pb:
+        st.markdown(_email_html(_ps,_pb,_recip_display,_cc_display,_pa),unsafe_allow_html=True)
+        with st.expander("Edit before sending"):
+            st.text_area("Subject",value=_ps,key="prev_subj_edit",height=40)
+            st.text_area("Body",value=_pb,key="prev_body_edit",height=300)
+    else:
+        st.markdown('<div class="ce-card" style="text-align:center;padding:40px 20px;opacity:.4">Select a template to see preview</div>',unsafe_allow_html=True)
+
+    # Session log
+    log=get_session_send_log()
+    proj_log=[e for e in log if e["project_id"]==project_id]
     if proj_log:
         st.markdown('<p class="ce-label" style="margin-top:18px">Sent This Session</p>',unsafe_allow_html=True)
         for e in proj_log:
@@ -753,4 +850,4 @@ with preview_col:
                 f'<div class="log-row"><span class="pill-ok">✓ Sent</span>&nbsp;'
                 f'<b>{e["template_name"]}</b><br>'
                 f'<span style="font-size:11px;opacity:.6">{dt} UTC → {e["recipient_email"]}</span>'
-                f'</div>', unsafe_allow_html=True)
+                f'</div>',unsafe_allow_html=True)
