@@ -141,51 +141,59 @@ def _prod_hints(text):
     return {k for k in _PROD_KW if k.lower() in t}
 
 def _fuzzy_sfdc(df_sfdc, proj_name, acct_name):
-    """Match DRS project to SFDC contacts.
-    Primary: account_name (DRS customer) vs SFDC Account Name column.
-    Secondary: product keyword overlap in opportunity name.
-    Mirrors reengagement page logic exactly.
+    """
+    Exact port of reengagement page fuzzy_match_sfdc.
+    1. Exact opportunity name match
+    2. Fuzzy account + product keyword boost (+30) — returns ALL rows for matched opp
+    3. Account-only fallback at 75%
     """
     if df_sfdc is None or df_sfdc.empty: return pd.DataFrame(), None
     df = df_sfdc.copy()
-    # Find the account column — could be "account" or "account_name" after rename
-    acc_col = None
-    for candidate in ["account","account_name"]:
-        if candidate in df.columns: acc_col = candidate; break
-    if acc_col is None:
-        # Last resort: scan columns for anything containing 'account'
-        for c in df.columns:
-            if "account" in c.lower(): acc_col = c; break
-    if acc_col is None: return pd.DataFrame(), None
+    col_map = {c.lower().strip(): c for c in df.columns}
+    opp_col = col_map.get("opportunity")
+    acc_col = col_map.get("account")
+    oid_col = col_map.get("opportunity_id")
 
-    opp_col = next((c for c in ["opportunity","opportunity_name"] if c in df.columns), None)
-    oid_col = next((c for c in ["opportunity_id"] if c in df.columns), None)
+    # 1. Exact opportunity name match
+    if opp_col:
+        exact = df[df[opp_col].astype(str).str.lower().str.strip()
+                   == str(proj_name).lower().strip()]
+        if not exact.empty: return exact, "Exact match"
 
-    # 1. Exact account match (case-insensitive)
-    exact_acct = df[df[acc_col].astype(str).str.strip().str.lower() == str(acct_name).strip().lower()]
-    if not exact_acct.empty:
-        # Within exact matches, prefer rows whose opportunity contains product keywords
-        dp = _prod_hints(proj_name)
-        if opp_col and dp:
-            prod_match = exact_acct[exact_acct[opp_col].astype(str).apply(lambda x: bool(dp & _prod_hints(x)))]
-            if not prod_match.empty: return prod_match, "Account + product match"
-        return exact_acct, "Exact account match"
+    # 2. Fuzzy account + product keyword scoring
+    drs_words = set(_clean_acct(acct_name))
+    drs_prods = _prod_hints(proj_name)
+    best_score = 0; best_opp_id = None; best_opp_nm = None
+    for _, row in df.iterrows():
+        sfdc_acct  = str(row.get(acc_col or "account", ""))
+        sfdc_opp   = str(row.get(opp_col or "opportunity", ""))
+        sfdc_words = set(_clean_acct(sfdc_acct))
+        word_score = len(drs_words & sfdc_words) / max(len(drs_words), 1) * 100
+        fuzz_score = fuzz.token_set_ratio(" ".join(drs_words), " ".join(sfdc_words))
+        acct_score = max(word_score, fuzz_score * 0.7)
+        prod_match = bool(drs_prods & _prod_hints(sfdc_opp))
+        score = acct_score + (30 if prod_match else 0)
+        if score > best_score:
+            best_score = score
+            best_opp_id = row.get(oid_col) if oid_col else None
+            best_opp_nm = row.get(opp_col) if opp_col else None
 
-    # 2. Fuzzy account match
-    dw = set(_clean_acct(acct_name))
-    dp = _prod_hints(proj_name)
-    scores = df[acc_col].apply(
-        lambda x: fuzz.token_set_ratio(" ".join(dw), " ".join(_clean_acct(str(x))))
-    )
-    df["_sc"] = scores
-    top = df[df["_sc"] >= 60].sort_values("_sc", ascending=False)
-    df.drop(columns=["_sc"], inplace=True, errors="ignore")
-    if not top.empty:
-        # Boost rows with product keyword match in opp name
-        if opp_col and dp:
-            prod_boost = top[top[opp_col].astype(str).apply(lambda x: bool(dp & _prod_hints(x)))]
-            if not prod_boost.empty: return prod_boost, f"Fuzzy match ({int(top.iloc[0]['_sc'] if '_sc' in top.columns else 0)}%) + product"
-        return top, f"Fuzzy account match ({int(top['_sc'].iloc[0] if '_sc' in top.columns else scores.max())}%)"
+    label = f"Fuzzy match ({int(best_score)}%)"
+    if best_score >= 60:
+        if best_opp_id is not None and oid_col:
+            rows = df[df[oid_col] == best_opp_id]
+            if not rows.empty: return rows, label
+        if best_opp_nm is not None and opp_col:
+            rows = df[df[opp_col] == best_opp_nm]
+            if not rows.empty: return rows, label
+
+    # 3. Account-only fallback at 75%
+    if acc_col:
+        df["_sc"] = df[acc_col].apply(
+            lambda x: fuzz.token_set_ratio(str(acct_name).lower(), str(x).lower()))
+        top = df[df["_sc"] >= 75].sort_values("_sc", ascending=False)
+        df.drop(columns=["_sc"], inplace=True, errors="ignore")
+        if not top.empty: return top, "Account match"
 
     return pd.DataFrame(), None
 
@@ -216,6 +224,8 @@ _PMAP = {
     "zoneapp: reconcile with bank connectivity":"ZoneReconcile_BankConnect",
     "zoneapp: reconcile with cc import":"ZoneReconcile_CCImport",
     "zoneapp: e-invoicing":"EInvoicing",
+    "zoneapp: ap payment":"ZoneApprovals",  # AP Payment uses Approvals template
+    "zoneapp: payments":"ZoneApprovals",
     "zoneapp: capture & e-invoicing":"ZoneCapture_EInvoicing",
     "zoneapp: capture and e-invoicing":"ZoneCapture_EInvoicing",
     "zoneapp: capture & approvals":"ZoneCapture_ZoneApprovals",
@@ -513,14 +523,29 @@ if df_sfdc is not None and not df_sfdc.empty:
         ec="email" if "email" in sfdc_match.columns else None
         nc="contact_name" if "contact_name" in sfdc_match.columns else None
         fc="impl_contact_flag" if "impl_contact_flag" in sfdc_match.columns else None
+        pc="is_primary" if "is_primary" in sfdc_match.columns else None
+        # Prefer primary contact (is_primary==1), then impl contact flag, then first row
         br=sfdc_match.iloc[0]
-        if fc:
-            fl=sfdc_match[sfdc_match[fc].astype(str).str.lower().isin(["true","1","yes","x"])]
+        if pc:
+            prim=sfdc_match[sfdc_match[pc].astype(str).isin(["1","True","true","yes"])]
+            if not prim.empty: br=prim.iloc[0]
+        elif fc:
+            fl=sfdc_match[sfdc_match[fc].astype(str).isin(["1","True","true","yes","x"])]
             if not fl.empty: br=fl.iloc[0]
-        sfdc_email=str(br.get(ec,"")).strip() if ec else ""
-        sfdc_cname=str(br.get(nc,"")).strip() if nc else ""
+        sfdc_email=str(br[ec]).strip() if ec and ec in br.index else ""
+        sfdc_cname=str(br[nc]).strip() if nc and nc in br.index else ""
         if sfdc_email in ("nan","None",""): sfdc_email=""
         if sfdc_cname in ("nan","None",""): sfdc_cname=""
+        # Populate widget session state keys directly — this is the reengagement pattern.
+        # Streamlit ignores value= if the key already exists, so we set the keys
+        # ourselves before the widgets render. Only update if SFDC result changed.
+        _sfdc_key=f"_sfdc_match_{project_id}"
+        if st.session_state.get(_sfdc_key) != sfdc_email:
+            st.session_state[_sfdc_key]=sfdc_email
+            for k in ["ce_to","ce_to_s","ce_to_l"]:
+                st.session_state[k]=sfdc_email
+            for k in ["ce_cn","ce_cn_s","ce_cn_l"]:
+                st.session_state[k]=sfdc_cname
 
 # SFDC debug expander — shows when SFDC loaded but no match found
 if _sfdc_debug and not sfdc_label:
@@ -530,15 +555,12 @@ if _sfdc_debug and not sfdc_label:
 # Auto-context (shared)
 _disp=_flip_name(_logged_in)
 
-# Preview state — initialise on first load
-if "ce_prev_subj" not in st.session_state: st.session_state["ce_prev_subj"]=""
-if "ce_prev_body" not in st.session_state: st.session_state["ce_prev_body"]=""
-if "ce_prev_auto" not in st.session_state: st.session_state["ce_prev_auto"]=set()
-if "ce_prev_ssf"  not in st.session_state: st.session_state["ce_prev_ssf"]=None
-if "ce_ss_stamp"  not in st.session_state: st.session_state["ce_ss_stamp"]=True
-# Track which tab is active so only that tab writes to preview
-# Streamlit executes ALL tab bodies on every render; without this guard
-# the last tab always overwrites the preview regardless of which is visible.
+# Preview state — one entry per tab, preview column reads the active one
+if "ce_tab_previews" not in st.session_state:
+    st.session_state["ce_tab_previews"] = {}
+if "ce_ss_stamp" not in st.session_state:
+    st.session_state["ce_ss_stamp"] = True
+# Read which tab was active on the PREVIOUS render (set at end of tab body)
 _active_tab_for_preview = st.session_state.get("_ce_tab","Welcome")
 
 # ── Send footer helper (rendered inside compose col after tabs) ───────────────
@@ -587,13 +609,13 @@ with compose_col:
         st.markdown('<p class="ce-label">Recipient</p>',unsafe_allow_html=True)
         st.markdown('<div class="ce-card">',unsafe_allow_html=True)
         if sfdc_label:
-            st.markdown(f'<div style="font-size:11px;margin-bottom:6px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
         else:
             df_s_loaded=st.session_state.get("df_sfdc")
-            msg="No SFDC match for this project — enter manually" if df_s_loaded is not None else "SFDC contacts not loaded"
-            st.markdown(f'<div style="font-size:11px;margin-bottom:6px"><span class="pill-warn">{msg}</span></div>',unsafe_allow_html=True)
+            msg="No SFDC match — enter manually" if df_s_loaded is not None else "SFDC contacts not loaded"
+            st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-warn">{msg}</span></div>',unsafe_allow_html=True)
+        st.markdown('<div style="font-size:11px;color:inherit;opacity:.7;margin-bottom:2px">To (recipient email)</div>',unsafe_allow_html=True)
         recip=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to",label_visibility="collapsed")
-        st.caption("To (recipient email)")
         cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
         cc_in=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc")
         cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
@@ -658,12 +680,13 @@ with compose_col:
             icon="✓" if ok else "✗"
             st.markdown(f'<div class="{cls}">{icon}&nbsp; {msg}</div>',unsafe_allow_html=True)
 
-        # Update preview state — only when this tab is active
+        # Update preview — always write, preview column reads by active tab key
         if _active_tab_for_preview == "Welcome":
             st.session_state["ce_prev_subj"]=subj_w
             st.session_state["ce_prev_body"]=body_w
             st.session_state["ce_prev_auto"]=auto_vals_w
             st.session_state["ce_prev_ssf"]=ssf_w
+        st.session_state["ce_tab_previews"]["Welcome"]=(subj_w,body_w,auto_vals_w,ssf_w)
 
         # Send footer
         if _send_footer("w",ssf_w,subj_w,body_w,recip,cc_in):
@@ -691,8 +714,8 @@ with compose_col:
 
         # Recipient (compact repeat — needed so recip is in scope)
         st.markdown('<p class="ce-label">Recipient</p>',unsafe_allow_html=True)
+        st.markdown('<div style="font-size:11px;opacity:.7;margin-bottom:2px">To (recipient email)</div>',unsafe_allow_html=True)
         recip_s=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to_s",label_visibility="collapsed")
-        st.caption("To (recipient email)")
         cname_s=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn_s")
         cc_in_s=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc_s")
         cc_emails_s=[e.strip() for e in cc_in_s.split(",") if e.strip()]
@@ -741,6 +764,7 @@ with compose_col:
             if _active_tab_for_preview == "Post-Session":
                 st.session_state["ce_prev_subj"]=subj_s; st.session_state["ce_prev_body"]=body_s
                 st.session_state["ce_prev_auto"]=auto_vals_s; st.session_state["ce_prev_ssf"]=ssf_s
+            st.session_state["ce_tab_previews"]["Post-Session"]=(subj_s,body_s,auto_vals_s,ssf_s)
 
             if _send_footer("s",ssf_s,subj_s,body_s,recip,cc_in_s):
                 st.session_state["_req_s"]={"subj":subj_s,"body":body_s,"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
@@ -763,8 +787,8 @@ with compose_col:
         st.session_state["_ce_tab"]="Lifecycle"
 
         st.markdown('<p class="ce-label">Recipient</p>',unsafe_allow_html=True)
+        st.markdown('<div style="font-size:11px;opacity:.7;margin-bottom:2px">To (recipient email)</div>',unsafe_allow_html=True)
         recip_l=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to_l",label_visibility="collapsed")
-        st.caption("To (recipient email)")
         cname_l=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn_l")
         cc_in_l=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc_l")
         cc_emails_l=[e.strip() for e in cc_in_l.split(",") if e.strip()]
@@ -822,6 +846,7 @@ with compose_col:
         if _active_tab_for_preview == "Lifecycle":
             st.session_state["ce_prev_subj"]=subj_l; st.session_state["ce_prev_body"]=body_l
             st.session_state["ce_prev_auto"]=auto_vals_l; st.session_state["ce_prev_ssf"]=ssf_l
+        st.session_state["ce_tab_previews"]["Lifecycle"]=(subj_l,body_l,auto_vals_l,ssf_l)
 
         if _send_footer("l",ssf_l if isinstance(ssf_l,str) else (ssf_l[0] if ssf_l else None),subj_l,body_l,recip_l,cc_in_l):
             st.session_state["_req_l"]={"subj":subj_l,"body":body_l,"ssf":ssf_l,"gls":gls}
@@ -846,20 +871,26 @@ with compose_col:
 # ── Preview column ─────────────────────────────────────────────────────────────
 with preview_col:
     st.markdown('<p class="ce-label">Live Preview</p>',unsafe_allow_html=True)
-    _ps=st.session_state.get("ce_prev_subj","")
-    _pb=st.session_state.get("ce_prev_body","")
-    _pa=st.session_state.get("ce_prev_auto",set())
 
-    _recip_display=(
-        st.session_state.get("ce_to","") or
-        st.session_state.get("ce_to_s","") or
-        st.session_state.get("ce_to_l","") or ""
-    )
-    _cc_display=(
-        st.session_state.get("ce_cc","") or
-        st.session_state.get("ce_cc_s","") or
-        st.session_state.get("ce_cc_l","") or ""
-    )
+    # Read from tab-keyed dict — always shows the correct tab's template
+    _cur_tab = st.session_state.get("_ce_tab","Welcome")
+    _tab_data = st.session_state.get("ce_tab_previews",{}).get(_cur_tab)
+    if _tab_data:
+        _ps,_pb,_pa,_ = _tab_data
+    else:
+        _ps=st.session_state.get("ce_prev_subj","")
+        _pb=st.session_state.get("ce_prev_body","")
+        _pa=st.session_state.get("ce_prev_auto",set())
+
+    # Recipient — prefer the active tab's widget key
+    _tab_to_key = {"Welcome":"ce_to","Post-Session":"ce_to_s","Lifecycle":"ce_to_l"}
+    _tab_cc_key = {"Welcome":"ce_cc","Post-Session":"ce_cc_s","Lifecycle":"ce_cc_l"}
+    _recip_display = (st.session_state.get(_tab_to_key.get(_cur_tab,"ce_to"),"") or
+                      st.session_state.get("ce_to","") or
+                      st.session_state.get("ce_to_s","") or
+                      st.session_state.get("ce_to_l","") or "")
+    _cc_display = (st.session_state.get(_tab_cc_key.get(_cur_tab,"ce_cc"),"") or
+                   st.session_state.get("ce_cc","") or "")
 
     if _pb:
         st.markdown(_email_html(_ps,_pb,_recip_display,_cc_display,_pa),unsafe_allow_html=True)
