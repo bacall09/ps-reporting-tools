@@ -478,9 +478,17 @@ else:
 df_cust_all=df_cust_all.reset_index(drop=True)
 
 # Classify projects: mine vs other
+# Determine the effective consultant for "mine" classification
+# For managers viewing as another consultant, "mine" = that consultant's projects
+_browse = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
+_view_as_name = _logged_in  # default: own projects
+if _is_mgr and _browse and _browse not in ("— My own view —","— Select —","👥 All team","") \
+        and not (_browse.startswith("── ") and _browse.endswith(" ──")):
+    _view_as_name = _browse  # viewing as a specific consultant
+
 def _is_mine(row):
     if not pm_col: return True
-    return name_matches(str(row.get(pm_col,"")),_logged_in)
+    return name_matches(str(row.get(pm_col,"")),_view_as_name)
 
 df_cust_all["_mine"]=df_cust_all.apply(_is_mine,axis=1)
 _mine_proj=df_cust_all[df_cust_all["_mine"]].reset_index(drop=True)
@@ -521,7 +529,8 @@ _prev_sid=st.session_state.get("_ce_proj_sid")
 _def_sid=_prev_sid if _prev_sid in _mine_sids else (_mine_sids[0] if _mine_sids else None)
 
 if not _mine_sids:
-    st.info(f"No active projects assigned to you for {selected_customer}.")
+    _va_display = _flip_name(_view_as_name) if _view_as_name != _logged_in else "you"
+    st.info(f"No active projects assigned to {_va_display} for {selected_customer}.")
     st.stop()
 
 # Render mine projects as radio-style cards using Streamlit radio
