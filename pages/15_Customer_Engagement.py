@@ -263,68 +263,119 @@ def _ps_key(p):
 
 def _combined_welcome_template(rows, prod_col):
     """
-    For consolidated welcome: try combined SKU first, then merge individual bodies.
+    Consolidated welcome: tries all permutations of combined SKU keys,
+    then falls back to a clean merge of individual prep sections.
     Returns (tmpl_obj, is_merged:bool)
     """
+    from itertools import permutations as _perms
     skus = [_sku(str(r.get(prod_col,""))) for r in rows if r.get(prod_col)]
-    skus = [s for s in skus if s]
+    skus = list(dict.fromkeys(s for s in skus if s))  # deduplicate, preserve order
     if not skus: return None, False
-    # Try exact combined key (e.g. ZoneCapture_ZoneApprovals)
-    for sep in ["_", ""]:
-        combined_key = sep.join(skus)
-        t = get_welcome_template(combined_key)
+    if len(skus)==1: return get_welcome_template(skus[0]), False
+
+    # Try all permutations of combined SKU key
+    for perm in _perms(skus):
+        t = get_welcome_template("_".join(perm))
         if t: return t, False
-    # Try reversed order
-    combined_key_rev = "_".join(reversed(skus))
-    t = get_welcome_template(combined_key_rev)
-    if t: return t, False
-    # Fallback: merge individual templates — take variant_a body from each,
-    # concatenate prep sections, use first template's subject/boilerplate
+
+    # No combined template — build merged body from individual templates
     base = get_welcome_template(skus[0])
     if not base: return None, False
+
+    prod_names = []
+    for sku in skus:
+        t = get_welcome_template(sku)
+        if t: prod_names.append(t.get("display_name", sku))
+
     merged_bodies = {}
     for vk in ["variant_a", "variant_b"]:
-        sections = []
+        base_body = base.get(vk, {}).get("body","") if vk in base else ""
+        base_lines = base_body.split("\n")
+
+        # Find intro end (where "Before We Begin" / prep starts)
+        prep_start = next(
+            (i for i,l in enumerate(base_lines)
+             if any(kw in l.strip().upper() for kw in ["BEFORE WE BEGIN","GETTING STARTED"])),
+            len(base_lines)
+        )
+        # Find closing start (Key Resources / Next Steps)
+        closing_start = next(
+            (i for i,l in enumerate(base_lines)
+             if any(kw in l.strip().upper() for kw in ["KEY RESOURCES","NEXT STEPS","WHAT HAPPENS NEXT"])),
+            len(base_lines)
+        )
+        intro = "\n".join(base_lines[:prep_start])
+        closing = "\n".join(base_lines[closing_start:])
+
+        # Update intro to reference all products
+        if prod_names:
+            intro = intro.replace(prod_names[0], " and ".join(prod_names))
+
+        # Build merged prep — shared NetSuite section once, then product-specific
+        netsuite_lines = []  # shared across products
+        netsuite_seen = False
+        product_blocks = []
+
         for sku in skus:
             t = get_welcome_template(sku)
-            if t and vk in t:
-                body = t[vk].get("body", "")
-                # Extract just the product-specific prep section
-                # (lines between "BEFORE WE BEGIN" / product header and "KEY RESOURCES")
-                lines = body.split("\n")
-                in_section = False
-                section_lines = [f"\n--- {t.get('display_name',sku)} ---"]
-                for line in lines:
-                    upper = line.strip().upper()
-                    if any(kw in upper for kw in ["BEFORE WE BEGIN","GETTING STARTED","PREPARATION","WHAT YOU'LL NEED"]):
-                        in_section = True
-                    if in_section and any(kw in upper for kw in ["KEY RESOURCES","NEXT STEPS","WHAT HAPPENS NEXT","IMPORTANT NOTE","PLEASE NOTE"]):
-                        break
-                    if in_section:
-                        section_lines.append(line)
-                sections.extend(section_lines)
-        # Build merged body: base intro + all prep sections + base closing
-        base_body = base[vk].get("body","") if vk in base else ""
-        base_lines = base_body.split("\n")
-        # Find split point — after greeting paragraph, before product prep
-        split_idx = 0
-        for i, line in enumerate(base_lines):
-            upper = line.strip().upper()
-            if any(kw in upper for kw in ["BEFORE WE BEGIN","GETTING STARTED","PREPARATION"]):
-                split_idx = i; break
-        closing_start = len(base_lines)
-        for i, line in enumerate(base_lines):
-            upper = line.strip().upper()
-            if any(kw in upper for kw in ["KEY RESOURCES","NEXT STEPS","WHAT HAPPENS NEXT"]):
-                closing_start = i; break
-        intro = "\n".join(base_lines[:split_idx])
-        closing = "\n".join(base_lines[closing_start:])
-        merged_bodies[vk] = {"body": intro + "\n" + "\n".join(sections) + "\n" + closing}
+            if not t or vk not in t: continue
+            body = t[vk].get("body","")
+            blines = body.split("\n")
+            p_start = next(
+                (i for i,l in enumerate(blines)
+                 if any(kw in l.strip().upper() for kw in ["BEFORE WE BEGIN","GETTING STARTED"])),
+                None
+            )
+            p_end = next(
+                (i for i,l in enumerate(blines)
+                 if any(kw in l.strip().upper() for kw in ["KEY RESOURCES","NEXT STEPS","WHAT HAPPENS NEXT"])),
+                len(blines)
+            )
+            if p_start is None: continue
+            prep = blines[p_start:p_end]
+            disp = t.get("display_name", sku)
+
+            # Extract NetSuite env block (shared) and product-specific lines
+            in_ns = False; prod_specific = []
+            for line in prep:
+                u = line.strip().upper()
+                if "NETSUITE ENVIRONMENT" in u:
+                    in_ns = True
+                    if not netsuite_seen:
+                        netsuite_lines.append(line)
+                    continue
+                # Detect transition from NetSuite to product-specific
+                if in_ns and line.strip() and line.strip()[0].isupper() and "•" not in line:
+                    in_ns = False
+                if in_ns:
+                    if not netsuite_seen:
+                        netsuite_lines.append(line)
+                else:
+                    prod_specific.append(line)
+            netsuite_seen = True
+
+            if prod_specific:
+                product_blocks.append(f"\n{disp}:")
+                product_blocks.extend(prod_specific)
+
+        # Assemble prep section
+        prep_section = []
+        prep_section.append("\nBefore We Begin")
+        prep_section.append("To help us get started smoothly, please complete the following:")
+        if netsuite_lines:
+            prep_section.append("\nNetSuite Environment")
+            prep_section.extend(l for l in netsuite_lines if l.strip() and "NETSUITE ENVIRONMENT" not in l.upper())
+        prep_section.extend(product_blocks)
+
+        merged_bodies[vk] = {"body": intro + "\n" + "\n".join(prep_section) + "\n" + closing}
+
     merged = dict(base)
-    merged["variant_a"] = merged_bodies.get("variant_a", base.get("variant_a", {}))
-    merged["variant_b"] = merged_bodies.get("variant_b", base.get("variant_b", {}))
-    prod_names = ", ".join(t.get("display_name","") for sku in skus for t in [get_welcome_template(sku)] if t)
-    merged["display_name"] = f"Consolidated — {prod_names}"
+    merged["variant_a"] = merged_bodies.get("variant_a", base.get("variant_a",{}))
+    merged["variant_b"] = merged_bodies.get("variant_b", base.get("variant_b",{}))
+    merged["display_name"] = f"Consolidated — {' + '.join(prod_names)}"
+    merged["subject"] = base.get("subject","").replace(
+        prod_names[0] if prod_names else "ZZZZ", " + ".join(prod_names)
+    )
     return merged, True
 
 # ── Journey ───────────────────────────────────────────────────────────────────
