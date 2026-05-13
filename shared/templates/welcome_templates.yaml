@@ -1,0 +1,855 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PSPT — Welcome Email Templates
+# Each entry is a standalone welcome template keyed by `sku_key`.
+#
+# sku_key       : matches the Product value from DRS (used for auto-selection)
+# display_name  : human-readable name shown in the UI picker
+# variant_a     : PM/automated send — introduces the consultant in 3rd person
+# variant_b     : Consultant-sent — consultant introduces themselves
+#
+# Placeholders auto-filled from data sources:
+#   {CUSTOMER_CONTACT_NAME}   → SFDC contact name
+#   {CONSULTANT_NAME}         → DRS project_manager / logged-in user
+#   {CUSTOMER}                → DRS customer name
+#   {PS_SUPPORT_EMAIL}        → auto-generated: ps-support+{CUSTOMER_SLUG}@zoneandco.com
+#   {SENDER}                  → logged-in consultant name
+#
+# Placeholders requiring manual input (shown as editable fields in UI):
+#   (none for welcome — fully auto-fillable)
+#
+# ss_milestone_on_send: Smartsheet field to write today's date when sent
+# ─────────────────────────────────────────────────────────────────────────────
+
+ss_milestone_on_send: "Intro. Email Sent"
+
+templates:
+
+  - sku_key: "ZoneCapture"
+    display_name: "ZoneCapture"
+    subject: "Welcome to ZoneCapture!"
+    variant_a:
+      intro: "I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project."
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneCapture dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZCapture Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneCapture Knowledge Base — explore product documentation and FAQs
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Steps
+        Once we've received the above, our team will review your requirement details and begin the Configuration Phase, which typically takes approx. 1–2 weeks (as outlined in your project plan). Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      intro: "My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project."
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneCapture dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZCapture Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneCapture Knowledge Base — explore product documentation and FAQs
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Steps
+        Once we've received the above, our team will review your requirement details and begin the Configuration Phase, which typically takes approx. 1–2 weeks (as outlined in your project plan). Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  - sku_key: "ZoneApprovals"
+    display_name: "ZoneApprovals"
+    subject: "Welcome to ZoneApprovals!"
+    sessions_table:
+      - session: "Enablement"
+        duration: "1.5–2 hrs"
+        focus: "Intro to system, Approval hierarchy & matrices, portlet processing, etc."
+      - session: "Workshop / Q&A #1"
+        duration: "1 hr"
+        focus: "UAT progress check-in, customer-led discussion + Q&A"
+      - session: "Workshop / Q&A #2"
+        duration: "1 hr"
+        focus: "Follow-up UAT progress check-in, optimize setup + Q&A"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneApprovals!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneApprovals dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneApprovals
+        • Confirm one transaction type for configuration in your Sandbox account (e.g., Vendor Bill) — view the list of Supported Record Types
+        • If a workflow already exists for the selected transaction type, remove or disable it to prevent conflicts with ZoneApprovals
+        • Ensure the required NetSuite dependencies and Approval Routing are enabled for the selected transaction type (Setup → Accounting → Set Up Accounting)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZApprovals Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneApprovals Knowledge Base — learn about ZoneApprovals functionality and configuration options
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–9 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will begin the Configuration Phase, which typically takes approx. 1–2 weeks (as outlined in your project plan). Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneApprovals!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneApprovals!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneApprovals dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneApprovals
+        • Confirm one transaction type for configuration in your Sandbox account (e.g., Vendor Bill) — view the list of Supported Record Types
+        • If a workflow already exists for the selected transaction type, remove or disable it to prevent conflicts with ZoneApprovals
+        • Ensure the required NetSuite dependencies and Approval Routing are enabled for the selected transaction type (Setup → Accounting → Set Up Accounting)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZApprovals Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneApprovals Knowledge Base — learn about ZoneApprovals functionality and configuration options
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–9 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will begin the Configuration Phase, which typically takes approx. 1–2 weeks (as outlined in your project plan). Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneApprovals!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  - sku_key: "ZoneReconcile"
+    display_name: "ZoneReconcile (Standard)"
+    subject: "Welcome to ZoneReconcile!"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneReconcile!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneReconcile dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details can be found here: Roles & Permissions
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — please refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZReconcile Project Plan — view tasks, milestones, approximate timelines, and responsibilities for the implementation
+        • ZoneReconcile Knowledge Base — explore product documentation and FAQs
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your sample files and statement examples and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your initial Configuration Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneReconcile!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneReconcile dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details can be found here: Roles & Permissions
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — please refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZReconcile Project Plan — view tasks, milestones, approximate timelines, and responsibilities for the implementation
+        • ZoneReconcile Knowledge Base — explore product documentation and FAQs
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your sample files and statement examples and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your initial Configuration Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  - sku_key: "ZoneReconcile_BankConnect"
+    display_name: "ZoneReconcile with Bank Connectivity"
+    subject: "Welcome to ZoneReconcile with Bank Connectivity!"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneReconcile with Bank Connectivity!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneReconcile dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details: Roles & Permissions
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — please refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZReconcile Project Plan — view a sample Project plan outlining key tasks, milestones, approximate timelines, and responsibilities
+        • ZoneReconcile Knowledge Base — explore product documentation and FAQs
+        • Bank Connectivity documentation
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your sample files and statement examples and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your initial Configuration Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneReconcile with Bank Connectivity!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneReconcile with Bank Connectivity!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneReconcile dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details: Roles & Permissions
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — please refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZReconcile Project Plan — view a sample Project plan outlining key tasks, milestones, approximate timelines, and responsibilities
+        • ZoneReconcile Knowledge Base — explore product documentation and FAQs
+        • Bank Connectivity documentation
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your sample files and statement examples and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your initial Configuration Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneReconcile with Bank Connectivity!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  - sku_key: "ZoneReconcile_CCImport"
+    display_name: "ZoneReconcile with CC Import"
+    subject: "Welcome to ZoneReconcile with CC Import!"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneReconcile with CC Import!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes dedicated consulting sessions for both ZoneReconcile and Credit Card Import. For additional details, please see the ZoneApps Scope documentation, which provides insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details: Roles & Permissions
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+
+        Credit Card Import
+        • Send a Sample credit card file for import verification
+        • Prepare/submit a recent CC statement to use as a real-life example during the session (maximum of 20 lines)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZReconcile Project Plan — view tasks, milestones, approximate timelines, and responsibilities
+        • ZoneReconcile Knowledge Base
+        • Credit Card Import documentation
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented.
+
+        Next Step
+        Once we've received the above, our team will review your sample files and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your initial Configuration Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneReconcile!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneReconcile with CC Import!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes dedicated consulting sessions for both ZoneReconcile and Credit Card Import. For additional details, please see the ZoneApps Scope documentation, which provides insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details: Roles & Permissions
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+
+        Credit Card Import
+        • Send a Sample credit card file for import verification
+        • Prepare/submit a recent CC statement to use as a real-life example during the session (maximum of 20 lines)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZReconcile Project Plan — view tasks, milestones, approximate timelines, and responsibilities
+        • ZoneReconcile Knowledge Base
+        • Credit Card Import documentation
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–10 weeks when multiple products are being implemented.
+
+        Next Step
+        Once we've received the above, our team will review your sample files and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your initial Configuration Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneReconcile!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  - sku_key: "EInvoicing"
+    display_name: "Zone&Co E-Invoicing"
+    subject: "Welcome to Zone&Co E-Invoicing!"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to Zone&Co E-Invoicing!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (1) dedicated E-Invoicing consulting session. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        E-Invoicing
+        • Complete the required Registration with your e-Invoicing registration details — use this link to download the Excel template
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • Sample E-Invoicing Project Plan — view a sample Project plan outlining key tasks, milestones, approximate timelines, and responsibilities
+        • E-Invoicing Knowledge Base — explore product documentation and FAQs
+
+        Note: To help accelerate the overall timeline, there is an option to install configuration in both Sandbox and Production immediately (provided we have the necessary access). This allows us to submit registration paperwork to our third-party provider, Basware, as early as possible. Let us know if you'd like to proceed.
+
+        Next Step
+        Once we've received the above, our team will review your registration details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your E-Invoicing Configuration Review session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with E-Invoicing!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to Zone&Co E-Invoicing!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (1) dedicated E-Invoicing consulting session. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        E-Invoicing
+        • Complete the required Registration with your e-Invoicing registration details — use this link to download the Excel template
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • Sample E-Invoicing Project Plan — view a sample Project plan outlining key tasks, milestones, approximate timelines, and responsibilities
+        • E-Invoicing Knowledge Base — explore product documentation and FAQs
+
+        Note: To help accelerate the overall timeline, there is an option to install configuration in both Sandbox and Production immediately (provided we have the necessary access). This allows us to submit registration paperwork to our third-party provider, Basware, as early as possible. Let us know if you'd like to proceed.
+
+        Next Step
+        Once we've received the above, our team will review your registration details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your E-Invoicing Configuration Review session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with E-Invoicing!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  # ── Bundle SKUs (single project, combined content) ──────────────────────────
+
+  - sku_key: "ZoneCapture_EInvoicing"
+    display_name: "ZoneCapture with E-Invoicing"
+    subject: "Welcome to ZoneCapture with E-Invoicing!"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture with E-Invoicing!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneCapture and (1) E-Invoicing dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+
+        E-Invoicing
+        • Complete the required Registration with your e-Invoicing registration details — use this link to download the Excel template
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • Sample Project Plans:
+          – ZCapture Project Plan
+          – Sample E-Invoicing Project Plan
+        • ZoneCapture Knowledge Base
+        • E-Invoicing Knowledge Base
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–9 weeks when multiple products are being implemented. For customers seeking to accelerate ZCapture delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your scoping details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture with E-Invoicing!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture with E-Invoicing!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) ZoneCapture and (1) E-Invoicing dedicated consulting sessions. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+
+        E-Invoicing
+        • Complete the required Registration with your e-Invoicing registration details — use this link to download the Excel template
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • Sample Project Plans:
+          – ZCapture Project Plan
+          – Sample E-Invoicing Project Plan
+        • ZoneCapture Knowledge Base
+        • E-Invoicing Knowledge Base
+
+        Please note: Our standard implementation timeline is approx. 6–8 weeks, or 7–9 weeks when multiple products are being implemented. For customers seeking to accelerate ZCapture delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your scoping details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture with E-Invoicing!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  - sku_key: "ZoneCapture_ZoneApprovals"
+    display_name: "ZoneCapture and ZoneApprovals"
+    subject: "Welcome to ZoneCapture and ZoneApprovals!"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture and ZoneApprovals!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) dedicated consulting sessions per product — (6) in total for your overall program. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Program Sequencing
+        ZoneCapture and ZoneApprovals are delivered sequentially, with ZoneCapture starting first. ZoneApprovals typically begins once ZoneCapture is in its UAT or Go-Live phase. This approach ensures:
+        • Your team can focus on one product at a time without splitting attention across configurations
+        • ZoneCapture processing behaviors are established before layering in approval routing
+        • Cross-product interactions (e.g., auto-submitting ZoneCapture transactions for approval) can be configured accurately
+
+        Your overall program timeline is approximately 7–10 weeks. Your consultant will coordinate the transition between products based on your progress.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+
+        ZoneApprovals
+        • Confirm one transaction type for configuration in your Sandbox account (e.g., Vendor Bill) — view the list of Supported Record Types
+        • If a workflow already exists for the selected transaction type, remove or disable it to prevent conflicts with ZoneApprovals
+        • Ensure the required NetSuite dependencies and Approval Routing are enabled for the selected transaction type (Setup → Accounting → Set Up Accounting)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • Consolidated ZC & ZA Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneCapture Knowledge Base
+        • ZoneApprovals Knowledge Base
+
+        Please note: Our standard implementation timeline is approx. 7–9 weeks for this program. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your scoping details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture and ZoneApprovals!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture and ZoneApprovals!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) dedicated consulting sessions per product — (6) in total for your overall program. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Program Sequencing
+        ZoneCapture and ZoneApprovals are delivered sequentially, with ZoneCapture starting first. ZoneApprovals typically begins once ZoneCapture is in its UAT or Go-Live phase. This approach ensures:
+        • Your team can focus on one product at a time without splitting attention across configurations
+        • ZoneCapture processing behaviors are established before layering in approval routing
+        • Cross-product interactions (e.g., auto-submitting ZoneCapture transactions for approval) can be configured accurately
+
+        Your overall program timeline is approximately 7–10 weeks. Your consultant will coordinate the transition between products based on your progress.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+
+        ZoneApprovals
+        • Confirm one transaction type for configuration in your Sandbox account (e.g., Vendor Bill) — view the list of Supported Record Types
+        • If a workflow already exists for the selected transaction type, remove or disable it to prevent conflicts with ZoneApprovals
+        • Ensure the required NetSuite dependencies and Approval Routing are enabled for the selected transaction type (Setup → Accounting → Set Up Accounting)
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • Consolidated ZC & ZA Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneCapture Knowledge Base
+        • ZoneApprovals Knowledge Base
+
+        Please note: Our standard implementation timeline is approx. 7–9 weeks for this program. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your scoping details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture and ZoneApprovals!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  - sku_key: "ZoneCapture_ZoneReconcile"
+    display_name: "ZoneCapture and ZoneReconcile"
+    subject: "Welcome to ZoneCapture and ZoneReconcile!"
+    variant_a:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture and ZoneReconcile!
+
+        I'm delighted to introduce your dedicated consultant, {CONSULTANT_NAME}, who will be your main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) dedicated consulting sessions per product — (6) in total for your overall program. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details: Roles & Permissions
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZCapture Project Plan & ZReconcile Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneCapture Knowledge Base & ZoneReconcile Knowledge Base
+
+        Please note: Our standard implementation timeline is approx. 7–9 weeks for this program. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your scoping details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture and ZoneReconcile!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+    variant_b:
+      body: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        It's a pleasure to meet you — and a very warm welcome to ZoneCapture and ZoneReconcile!
+
+        My name is {CONSULTANT_NAME}, and I'll be your dedicated consultant and main point of contact throughout the project.
+
+        YOUR PROJECT JOURNEY
+
+        What to Expect
+        Your implementation includes (3) dedicated consulting sessions per product — (6) in total for your overall program. For additional details, please see the ZoneApps Scope documentation, which provides additional insight to delivery methodology, in-scope activities and associated timelines.
+
+        Before We Begin
+        To help us get started smoothly, please complete the following:
+
+        NetSuite Environment
+        • Provide admin access to your NetSuite environment using this email address: {PS_SUPPORT_EMAIL}
+
+        ZoneCapture
+        • Complete the required Requirements Form with details of your business requirements and setup preferences
+
+        ZoneReconcile
+        • Send a Sample bank export from the bank for import verification — refer to our knowledge base for Supported Bank File Formats
+        • Prepare/submit a recent Bank statement to use as a real-life example during the session (maximum of 20 lines)
+        • Custom Roles Configuration: ask your account administrator to add the appropriate permissions to the custom role(s) — details: Roles & Permissions
+        • Additional preparation guidance can be found here
+
+        Key Resources
+        • ZCapture Project Plan & ZReconcile Project Plan — view tasks, approx. timelines, and responsibilities for the implementation
+        • ZoneCapture Knowledge Base & ZoneReconcile Knowledge Base
+
+        Please note: Our standard implementation timeline is approx. 7–9 weeks for this program. For customers seeking to accelerate delivery, we offer a Premium upgrade option and/or the flexibility to engage additional services on a T&M basis.
+
+        Next Step
+        Once we've received the above, our team will review your scoping details and begin the Configuration Phase, which typically takes approx. 1–2 weeks. Our team will then reach out to schedule your Enablement Session.
+
+        In the meantime, please don't hesitate to reach out with any questions — we're excited to partner with you and support your success with ZoneCapture and ZoneReconcile!
+
+        Looking forward to working together,
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co

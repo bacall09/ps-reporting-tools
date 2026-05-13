@@ -1,0 +1,608 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PSPT — Post-Session Email Templates
+# Grouped by product, then session number.
+#
+# trigger          : lifecycle event that surfaces this template in the UI
+# audience         : who the email is addressed to (shown as guidance in UI)
+# ss_milestone_on_send : Smartsheet field to date-stamp when sent (null = none)
+#
+# Placeholders auto-filled:
+#   {CUSTOMER}                → DRS customer name
+#   {CUSTOMER_CONTACT_NAME}   → SFDC contact name
+#   {CONSULTANT_NAME}         → logged-in user
+#   {SENDER}                  → logged-in user name
+#   {PS_SUPPORT_EMAIL}        → auto-generated
+#
+# Placeholders requiring manual input (editable fields in UI):
+#   {DATE_TIME}               → next session date/time
+#   {RECORDING_LINK}          → session recording URL
+#   {SESSION_NOTES}           → freeform summary of what was discussed
+#   {ACTION_ITEMS}            → freeform list of action items
+#   {GO_LIVE_READINESS}       → consultant selects Option A or B from dropdown
+# ─────────────────────────────────────────────────────────────────────────────
+
+products:
+
+  capture:
+    display_name: "ZoneCapture"
+    sessions:
+
+      - id: "capture_session_1"
+        session_number: 1
+        name: "Post Configuration Enablement"
+        trigger: "After Configuration Enablement session is completed"
+        audience: "NS Admin and/or SME"
+        subject: "{CUSTOMER} — ZoneCapture — Post-Configuration Enablement"
+        ss_milestone_on_send: "Enablement Session"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "PRIMARY_SCENARIOS"
+            label: "Primary Scenario(s) configured"
+            type: "multiselect"
+            options:
+              - "Standalone Bills with Expenses (Non-PO bills with GL Account Coding)"
+              - "Standalone Bills with Items (Non-PO bills with Item Code Coding)"
+              - "PO-Related Bills"
+            required: true
+          - key: "TRANSACTION_TYPES"
+            label: "Transaction Types Configured"
+            type: "text"
+            placeholder: "e.g. Vendor Bill, Purchase Order"
+            required: true
+          - key: "SUBSIDIARIES"
+            label: "Subsidiaries in Scope"
+            type: "text"
+            placeholder: "e.g. SKD SE, SKD US"
+            required: false
+          - key: "SESSION_NOTES"
+            label: "Additional Notes / constraints discussed"
+            type: "textarea"
+            required: false
+          - key: "ACTION_ITEMS"
+            label: "Session-specific action items"
+            type: "textarea"
+            placeholder: "Review/update relevant roles with ZoneCapture permissions: Roles & Permissions KB"
+            required: false
+          - key: "DATE_TIME"
+            label: "Next session date/time"
+            type: "text"
+            required: true
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME} and team,
+
+          Thank you for your time during the Configuration Enablement session. We've completed the initial setup in your Sandbox environment and reviewed the key configuration settings and features.
+
+          What We Discussed
+          Based on our session, here's a summary of your primary use case(s) and configuration decisions:
+
+          Primary Scenario(s): {PRIMARY_SCENARIOS}
+          Transaction Types Configured: {TRANSACTION_TYPES}
+          Subsidiaries in Scope: {SUBSIDIARIES}
+          Additional Notes: {SESSION_NOTES}
+
+          If anything above doesn't look right, please let us know so we can adjust before you begin testing.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Configuration Reference
+          For a detailed summary of what was configured and key reference points, please review the ZoneCapture Configuration Reference guide. This covers:
+          • Main Configuration and Subsidiary Configuration settings
+          • Email Plug-In addresses created in Sandbox
+          • Roles & Permissions requirements
+          • Steps for adding a Subsidiary in the future
+
+          See: ZoneCapture Configuration Reference
+
+          Action Items
+          {ACTION_ITEMS}
+
+          Next Step
+          Your next session is the Application Walkthrough, where we'll walk your project team through processing purchase orders, standalone bills, and data quality reporting.
+          Scheduled for: {DATE_TIME}
+
+          If you have any questions before then, please don't hesitate to reach out.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+      - id: "capture_session_2"
+        session_number: 2
+        name: "Post Application Walkthrough"
+        trigger: "After Application Walkthrough session is completed"
+        audience: "Full project team"
+        subject: "{CUSTOMER} — ZoneCapture — Post-Application Walkthrough"
+        ss_milestone_on_send: "Session #1"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "DATE_TIME"
+            label: "Workshop / Q&A session date/time"
+            type: "text"
+            required: true
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME},
+
+          Thank you for attending the Application Walkthrough session. We covered invoice processing, key functionalities, and data quality reporting. You're now ready to begin testing ZoneCapture in your Sandbox environment.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          UAT Testing & Vendor Setup Guide
+          To support your testing phase, please review the attached guide which covers everything you'll need to test and optimise ZoneCapture. Key areas include:
+          • How to submit invoices (email capture and instant upload)
+          • Vendor master data setup for optimal recognition
+          • Vendor preferences and defaulting options
+          • 3-Way Matching configuration
+          • Dashboard portlets, reminders, and saved searches
+          • GenAI feature overview
+
+          See: ZoneCapture UAT Testing & Vendor Setup Guide
+
+          Quick-Start Testing Tips
+          • Test in Sandbox first — send a small batch of invoices and review results before sending more
+          • Allow approximately 15 minutes from emailing an invoice to seeing it on your dashboard
+          • If data is not read as expected, always Report a Data Quality Issue before troubleshooting further
+
+          Planning Ahead: Go-Live
+          When you're ready to discuss moving to Production, please review the Go-Live Checklist so you can plan ahead.
+          See: ZoneCapture Production Cutover Checklist
+
+          Next Step
+          Your Workshop / Q&A session is scheduled for {DATE_TIME}. This is your opportunity to discuss UAT progress and raise any questions.
+
+          In the meantime, don't hesitate to reach out if anything comes up during testing.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+      - id: "capture_session_3"
+        session_number: 3
+        name: "Post Workshop / Q&A"
+        trigger: "After Workshop / Q&A session (Session 3) is completed"
+        audience: "Full project team"
+        subject: "{CUSTOMER} — ZoneCapture — Workshop / Q&A Follow-Up"
+        ss_milestone_on_send: "Session #2"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "OPEN_ITEMS"
+            label: "Open items (or note 'No open items from this session')"
+            type: "textarea"
+            required: true
+          - key: "GO_LIVE_READINESS"
+            label: "Go-Live Readiness"
+            type: "select"
+            options:
+              - "A: Customer has confirmed readiness — proceed to Go-Live"
+              - "B: UAT still in progress"
+            required: true
+        go_live_readiness_text:
+          A: "You've confirmed readiness to proceed to Go-Live. Please complete the pre-installation steps in the Production Cutover Checklist and provide Production admin access so we can begin the cutover."
+          B: "UAT is still in progress. Please continue testing and let us know when you're ready to discuss Go-Live. Refer to the UAT Testing & Vendor Setup Guide for any outstanding configuration."
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME},
+
+          Thank you for today's Workshop / Q&A session. Below is the recording and a summary of where we stand.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Open Items
+          {OPEN_ITEMS}
+
+          Go-Live Readiness
+          {GO_LIVE_READINESS_TEXT}
+
+          Please reach out if any additional questions come up.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+  approvals:
+    display_name: "ZoneApprovals"
+    sessions:
+
+      - id: "approvals_session_1"
+        session_number: 1
+        name: "Post Enablement Session"
+        trigger: "After Enablement Session (Session 1) is completed"
+        audience: "Full project team"
+        subject: "{CUSTOMER} — ZoneApprovals — Post-Enablement"
+        ss_milestone_on_send: "Enablement Session"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "PRIMARY_SCENARIOS"
+            label: "Primary Scenario(s) configured"
+            type: "multiselect"
+            options:
+              - "Approvals via NetSuite UI (Full License)"
+              - "Approvals via Email (Full, Limited, or No NetSuite License)"
+              - "Approvals with Employee Center License (UI or Email)"
+            required: true
+          - key: "TRANSACTION_TYPES"
+            label: "Transaction Types Configured"
+            type: "text"
+            placeholder: "e.g. Vendor Bill, Purchase Order, Journal Entry"
+            required: true
+          - key: "SUBSIDIARIES"
+            label: "Subsidiaries in Scope"
+            type: "text"
+            placeholder: "e.g. Main Subsidiary"
+            required: false
+          - key: "SESSION_NOTES"
+            label: "Additional Notes / constraints discussed"
+            type: "textarea"
+            required: false
+          - key: "DATE_TIME"
+            label: "Next session date/time"
+            type: "text"
+            required: true
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME} and team,
+
+          Thank you to everyone who joined today's Enablement session. We covered the system setup, approval configuration process, and you're now ready to begin testing ZoneApprovals in your Sandbox environment.
+
+          What We Discussed
+          Based on our session, here's a summary of your primary use case(s) and configuration decisions:
+
+          Primary Scenario(s): {PRIMARY_SCENARIOS}
+          Transaction Types Configured: {TRANSACTION_TYPES}
+          Subsidiaries in Scope: {SUBSIDIARIES}
+          Additional Notes: {SESSION_NOTES}
+
+          If anything above doesn't look right, please let us know so we can adjust before you begin testing.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Testing & Configuration Guide
+          To support your testing phase, please review the ZoneApprovals Post-Enablement Testing Guide, which covers everything you'll need to configure and validate ZoneApprovals in Sandbox. Key areas include:
+          • Adjusting user roles and permissions
+          • Creating Approval Configurations, Hierarchy levels, and Matrix
+          • Testing Approval by email in Sandbox
+          • Configuring email templates and Dashboard Portlets
+          • Using the Bulk Approvals feature
+
+          See: ZoneApprovals Post-Enablement Testing Guide
+
+          Next Steps
+          • Complete your UAT testing in Sandbox using the Testing Guide
+          • Compile any questions or issues for our next session (Workshop / Q&A)
+          • When ready to discuss Go-Live, review the Go-Live Production Cutover Checklist
+
+          Our next session is scheduled for {DATE_TIME}. Please don't hesitate to reach out before then if anything comes up.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+      - id: "approvals_session_2_3"
+        session_number: 2
+        name: "Post Workshop / Q&A (Session 2–3)"
+        trigger: "After Workshop / Q&A session is completed"
+        audience: "Full project team"
+        subject: "{CUSTOMER} — ZoneApprovals — Workshop / Q&A Follow-Up"
+        ss_milestone_on_send: "Session #2"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "OPEN_ITEMS"
+            label: "Open items (or note 'No open items from this session')"
+            type: "textarea"
+            required: true
+          - key: "GO_LIVE_READINESS"
+            label: "Go-Live Readiness"
+            type: "select"
+            options:
+              - "A: Customer has confirmed readiness — proceed to Go-Live"
+              - "B: UAT still in progress"
+            required: true
+        go_live_readiness_text:
+          A: "You've confirmed readiness to proceed to Go-Live. Please complete the pre-installation steps in the Production Cutover Checklist and provide Production admin access so we can begin the cutover."
+          B: "UAT is still in progress. Please continue testing and let us know when you're ready to discuss Go-Live. Refer to the Post-Enablement Testing Guide for any outstanding configuration."
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME},
+
+          Thank you for today's Workshop / Q&A session. Below is the recording and a summary of where we stand.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Open Items
+          {OPEN_ITEMS}
+
+          Go-Live Readiness
+          {GO_LIVE_READINESS_TEXT}
+
+          Please reach out if any additional questions come up.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+  reconcile:
+    display_name: "ZoneReconcile"
+    sessions:
+
+      - id: "reconcile_session_1_legacy"
+        session_number: 1
+        name: "Post Configuration Session (ZoneRec 1.0 Legacy)"
+        trigger: "After Configuration Enablement session is completed"
+        audience: "NS Admin and/or SME"
+        subject: "{CUSTOMER} — ZoneReconcile — Post-Configuration Session"
+        ss_milestone_on_send: "Enablement Session"
+        variant_note: "Use for ZoneRec 1.0 (Legacy) customers"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "BANK_ACCOUNTS"
+            label: "Bank Account(s) Configured"
+            type: "text"
+            placeholder: "e.g. Main operating account — Bank of America"
+            required: true
+          - key: "BANK_FILE_FORMAT"
+            label: "Bank File Format"
+            type: "text"
+            placeholder: "e.g. CSV, BAI2, MT940"
+            required: true
+          - key: "MATCHING_RULES"
+            label: "Matching Rules Configured"
+            type: "text"
+            placeholder: "e.g. standard auto-match, custom rule for intercompany"
+            required: true
+          - key: "SESSION_NOTES"
+            label: "Additional Notes / constraints discussed"
+            type: "textarea"
+            required: false
+          - key: "ACTION_ITEMS"
+            label: "Session-specific action items"
+            type: "textarea"
+            required: false
+          - key: "DATE_TIME"
+            label: "Next session date/time"
+            type: "text"
+            required: true
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME} and team,
+
+          Thank you for your time during the Configuration session. We've completed the initial setup in your Sandbox environment and walked through the core functionality of ZoneReconcile.
+
+          What We Discussed
+          Based on our session, here's a summary of your setup and key decisions:
+
+          Bank Account(s) Configured: {BANK_ACCOUNTS}
+          Bank File Format: {BANK_FILE_FORMAT}
+          Matching Rules Configured: {MATCHING_RULES}
+          Additional Notes: {SESSION_NOTES}
+
+          If anything above doesn't look right, please let us know so we can adjust before you begin testing.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Configuration Reference
+          For a detailed summary of what was configured and key reference points, please review the ZoneReconcile Configuration Reference guide. This covers:
+          • Bank account configuration and file format details
+          • Matching rules and payment difference reasons
+          • Roles & Permissions requirements
+          • Sandbox refresh guidance
+
+          See: ZoneReconcile Configuration Reference
+
+          Action Items
+          {ACTION_ITEMS}
+
+          Next Step
+          Your next session is the Use Case Validation & Configuration Review, where we'll walk through your actual reconciliation scenarios and refine the configuration as needed.
+          To prepare: Please have a bank statement file(s) ready containing the scenarios you'd like to review and test.
+          Scheduled for: {DATE_TIME}
+
+          If you have any questions before then, please don't hesitate to reach out.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+      - id: "reconcile_session_1_bankconnect"
+        session_number: 1
+        name: "Post Configuration Session (ZoneRec 2.0 Bank Connectivity)"
+        trigger: "After Configuration Enablement session is completed"
+        audience: "NS Admin and/or SME"
+        subject: "{CUSTOMER} — ZoneReconcile w/ Bank Connectivity — Post-Configuration Session"
+        ss_milestone_on_send: "Enablement Session"
+        variant_note: "Use for ZoneRec 2.0 (Bank Connectivity) customers"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "BANK_ACCOUNTS"
+            label: "Bank Account(s) Configured"
+            type: "text"
+            placeholder: "e.g. Main operating account — Bank of America"
+            required: true
+          - key: "BANK_FILE_FORMAT"
+            label: "Bank File Format"
+            type: "text"
+            placeholder: "e.g. CSV, BAI2, MT940"
+            required: true
+          - key: "MATCHING_RULES"
+            label: "Matching Rules Configured"
+            type: "text"
+            placeholder: "e.g. standard auto-match, custom rule for intercompany"
+            required: true
+          - key: "SESSION_NOTES"
+            label: "Additional Notes / constraints discussed"
+            type: "textarea"
+            required: false
+          - key: "ACTION_ITEMS"
+            label: "Session-specific action items"
+            type: "textarea"
+            required: false
+          - key: "DATE_TIME"
+            label: "Next session date/time"
+            type: "text"
+            required: true
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME} and team,
+
+          Thank you for your time during the Configuration session. We've completed the initial setup in your Sandbox environment and walked through the core functionality of ZoneReconcile.
+
+          What We Discussed
+          Based on our session, here's a summary of your setup and key decisions:
+
+          Bank Account(s) Configured: {BANK_ACCOUNTS}
+          Bank File Format: {BANK_FILE_FORMAT}
+          Matching Rules Configured: {MATCHING_RULES}
+          Additional Notes: {SESSION_NOTES}
+
+          If anything above doesn't look right, please let us know so we can adjust before you begin testing.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Configuration Reference
+          For a detailed summary of what was configured and key reference points, please review the ZoneReconcile Configuration Reference guide. This covers:
+          • Bank account configuration and file format details
+          • Matching rules and payment difference reasons
+          • Roles & Permissions requirements
+          • Sandbox refresh guidance
+
+          See: ZoneReconcile Configuration Reference
+
+          Bank Connectivity
+          Please review the Bank Connectivity Guide for setup requirements and dependencies.
+
+          Action Items
+          {ACTION_ITEMS}
+
+          Next Step
+          Your next session is the Use Case Validation & Configuration Review, where we'll walk through your actual reconciliation scenarios and refine the configuration as needed.
+          To prepare: Please have a bank statement file(s) ready containing the scenarios you'd like to review and test.
+          Scheduled for: {DATE_TIME}
+
+          If you have any questions before then, please don't hesitate to reach out.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+      - id: "reconcile_session_2"
+        session_number: 2
+        name: "Post Use Case Validation"
+        trigger: "After Use Case Validation & Configuration Review session is completed"
+        audience: "Full project team"
+        subject: "{CUSTOMER} — ZoneReconcile — Post-Use Case Validation"
+        ss_milestone_on_send: "Session #1"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "CONFIG_UPDATES"
+            label: "Configuration updates made (or note 'No configuration changes were required')"
+            type: "textarea"
+            required: true
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME},
+
+          Thank you for attending the Use Case Validation session. We walked through your reconciliation scenarios and refined the configuration as needed. You're now ready to continue testing ZoneReconcile in your Sandbox environment.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Configuration Updates
+          {CONFIG_UPDATES}
+
+          Reconciliation Testing Guide
+          To support your continued UAT, please review the ZoneReconcile Testing Guide, which covers:
+          • Bank statement import and reconciliation workflow
+          • Matching rule validation and refinement
+          • Payment difference handling
+          • Multi-account reconciliation (if applicable)
+          • Common troubleshooting scenarios
+
+          See: ZoneReconcile Testing Guide
+
+          Planning Ahead: Go-Live
+          When you're ready to discuss moving to Production, please review the Go-Live Checklist so you can plan ahead.
+          See: ZoneReconcile Production Cutover Checklist
+
+          Next Step
+          Your Workshop / Q&A session is available when you're ready. This session is flexible — you can use it during UAT for troubleshooting, or save it for post-Go-Live optimisation. Let us know when you'd like to schedule it.
+
+          In the meantime, don't hesitate to reach out if anything comes up during testing.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
+
+      - id: "reconcile_session_3"
+        session_number: 3
+        name: "Post Workshop / Q&A"
+        trigger: "After Workshop / Q&A session (Session 3) is completed"
+        audience: "Full project team"
+        subject: "{CUSTOMER} — ZoneReconcile — Workshop / Q&A Follow-Up"
+        ss_milestone_on_send: "Session #2"
+        editable_fields:
+          - key: "RECORDING_LINK"
+            label: "Session Recording Link"
+            type: "text"
+            required: true
+          - key: "OPEN_ITEMS"
+            label: "Open items (or note 'No open items from this session')"
+            type: "textarea"
+            required: true
+          - key: "GO_LIVE_READINESS"
+            label: "Go-Live Readiness"
+            type: "select"
+            options:
+              - "A: Customer has confirmed readiness — proceed to Go-Live"
+              - "B: UAT still in progress"
+              - "C: Post-Go-Live session — Hypercare optimisation"
+            required: true
+          - key: "HYPERCARE_DATE"
+            label: "Hypercare end date (required for Option C only)"
+            type: "text"
+            required: false
+        go_live_readiness_text:
+          A: "You've confirmed readiness to proceed to Go-Live. Please complete the pre-installation steps in the Production Cutover Checklist and provide Production admin access so we can begin the cutover."
+          B: "UAT is still in progress. Please continue testing and let us know when you're ready to discuss Go-Live. Refer to the Reconciliation Testing Guide for any outstanding scenarios."
+          C: "Great session — we've addressed your post-Go-Live questions and optimised your setup. Your Hypercare period continues through {HYPERCARE_DATE}. Please continue to log any items via your Smartsheet tracker."
+        body: |
+          Hi {CUSTOMER_CONTACT_NAME},
+
+          Thank you for today's Workshop / Q&A session. Below is the recording and a summary of where we stand.
+
+          Session Recording
+          {RECORDING_LINK}
+
+          Open Items
+          {OPEN_ITEMS}
+
+          Go-Live Readiness
+          {GO_LIVE_READINESS_TEXT}
+
+          Please reach out if any additional questions come up.
+
+          Kind regards,
+          {SENDER}
+          Professional Services | Zone & Co
