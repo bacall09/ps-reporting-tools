@@ -381,6 +381,7 @@ intro_col =(cm.get("intro. email sent") or cm.get("intro email sent")
             or cm.get("ms_intro_email") or cm.get("intro_email_sent"))
 legacy_col=cm.get("legacy")
 ss_rid_col=cm.get("_ss_row_id") or cm.get("ss_row_id") or cm.get("row_id")
+sales_rep_col=cm.get("sales rep") or cm.get("sales_rep") or cm.get("account executive") or cm.get("ae")
 
 _ss_row_id_map: dict={}
 if ss_rid_col and id_col:
@@ -510,6 +511,7 @@ compose_col, preview_col = st.columns([1,1],gap="medium")
 # SFDC lookup (shared across all tabs)
 df_sfdc=st.session_state.get("df_sfdc")
 sfdc_email=""; sfdc_cname=""; sfdc_label=None; _sfdc_debug={}
+sfdc_cc_emails: list = []  # additional impl contacts for CC
 if df_sfdc is not None and not df_sfdc.empty:
     _rn={c:_SFDC_COL_MAP[c.lower().strip()] for c in df_sfdc.columns if c.lower().strip() in _SFDC_COL_MAP}
     df_sn=df_sfdc.rename(columns=_rn)
@@ -536,9 +538,16 @@ if df_sfdc is not None and not df_sfdc.empty:
         sfdc_cname=str(br[nc]).strip() if nc and nc in br.index else ""
         if sfdc_email in ("nan","None",""): sfdc_email=""
         if sfdc_cname in ("nan","None",""): sfdc_cname=""
-        # Populate widget session state keys directly — this is the reengagement pattern.
-        # Streamlit ignores value= if the key already exists, so we set the keys
-        # ourselves before the widgets render. Only update if SFDC result changed.
+
+        # Collect remaining impl contacts for CC (exclude the primary To recipient)
+        if ec and fc:
+            impl_rows=sfdc_match[sfdc_match[fc].astype(str).isin(["1","True","true","yes","x"])]
+            for _,r in impl_rows.iterrows():
+                e=str(r.get(ec,"")).strip()
+                if e and e not in ("nan","None","") and e != sfdc_email:
+                    sfdc_cc_emails.append(e)
+
+        # Populate widget session state keys directly
         _sfdc_key=f"_sfdc_match_{project_id}"
         if st.session_state.get(_sfdc_key) != sfdc_email:
             st.session_state[_sfdc_key]=sfdc_email
@@ -546,6 +555,24 @@ if df_sfdc is not None and not df_sfdc.empty:
                 st.session_state[k]=sfdc_email
             for k in ["ce_cn","ce_cn_s","ce_cn_l"]:
                 st.session_state[k]=sfdc_cname
+
+# Sales Rep from DRS → add to CC
+_sales_rep_email=""
+if sales_rep_col:
+    _sr=str(sel.get(sales_rep_col,"")).strip()
+    if _sr and _sr not in ("","nan","None"):
+        # Try to build Zone email from name — same pattern as consultant email
+        _sales_rep_email=_consultant_email(_sr) if "@" not in _sr else _sr
+
+
+# ── Build default CC list (consultant + SFDC additional contacts + Sales Rep) ─
+def _default_cc() -> str:
+    parts = [_consultant_email(_logged_in)]
+    for e in sfdc_cc_emails:
+        if e not in parts: parts.append(e)
+    if _sales_rep_email and _sales_rep_email not in parts:
+        parts.append(_sales_rep_email)
+    return ", ".join(parts)
 
 # SFDC debug expander — shows when SFDC loaded but no match found
 if _sfdc_debug and not sfdc_label:
@@ -617,7 +644,7 @@ with compose_col:
         st.markdown('<div style="font-size:11px;color:inherit;opacity:.7;margin-bottom:2px">To (recipient email)</div>',unsafe_allow_html=True)
         recip=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to",label_visibility="collapsed")
         cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
-        cc_in=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc")
+        cc_in=st.text_input("CC",value=_default_cc(),key="ce_cc")
         cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
         st.markdown('</div>',unsafe_allow_html=True)
 
@@ -717,7 +744,7 @@ with compose_col:
         st.markdown('<div style="font-size:11px;opacity:.7;margin-bottom:2px">To (recipient email)</div>',unsafe_allow_html=True)
         recip_s=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to_s",label_visibility="collapsed")
         cname_s=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn_s")
-        cc_in_s=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc_s")
+        cc_in_s=st.text_input("CC",value=_default_cc(),key="ce_cc_s")
         cc_emails_s=[e.strip() for e in cc_in_s.split(",") if e.strip()]
         recip=recip_s; cname=cname_s; cc_in=cc_in_s; cc_emails=cc_emails_s
 
@@ -790,7 +817,7 @@ with compose_col:
         st.markdown('<div style="font-size:11px;opacity:.7;margin-bottom:2px">To (recipient email)</div>',unsafe_allow_html=True)
         recip_l=st.text_input("To",value=sfdc_email,placeholder="customer@example.com",key="ce_to_l",label_visibility="collapsed")
         cname_l=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn_l")
-        cc_in_l=st.text_input("CC",value=_consultant_email(_logged_in),key="ce_cc_l")
+        cc_in_l=st.text_input("CC",value=_default_cc(),key="ce_cc_l")
         cc_emails_l=[e.strip() for e in cc_in_l.split(",") if e.strip()]
         recip=recip_l; cname=cname_l; cc_in=cc_in_l; cc_emails=cc_emails_l
 
@@ -894,11 +921,36 @@ with preview_col:
 
     if _pb:
         st.markdown(_email_html(_ps,_pb,_recip_display,_cc_display,_pa),unsafe_allow_html=True)
+        # Show CC sources as a caption so consultant knows why those addresses are there
+        _cc_parts=[]
+        if _consultant_email(_logged_in): _cc_parts.append("you")
+        if sfdc_cc_emails: _cc_parts.append(f"{len(sfdc_cc_emails)} other SFDC contact(s)")
+        if _sales_rep_email: _cc_parts.append("Sales Rep")
+        if len(_cc_parts)>1:
+            st.caption(f"CC includes: {', '.join(_cc_parts)}")
         with st.expander("Edit before sending"):
             st.text_area("Subject",value=_ps,key="prev_subj_edit",height=40)
             st.text_area("Body",value=_pb,key="prev_body_edit",height=300)
     else:
-        st.markdown('<div class="ce-card" style="text-align:center;padding:40px 20px;opacity:.4">Select a template to see preview</div>',unsafe_allow_html=True)
+        # Placeholder — shown before any template has rendered
+        _has_proj = bool(sel.get(name_col,"")) if name_col else False
+        if _has_proj:
+            st.markdown(
+                '<div class="ce-card" style="text-align:center;padding:32px 20px">'
+                '<div style="font-size:22px;margin-bottom:8px;opacity:.3">✉</div>'
+                '<div style="font-size:13px;opacity:.5">Preview will appear here once the template loads.</div>'
+                '<div style="font-size:11px;opacity:.35;margin-top:6px">Switch tabs above to load a template.</div>'
+                '</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                '<div class="ce-card" style="text-align:center;padding:32px 20px">'
+                '<div style="font-size:22px;margin-bottom:8px;opacity:.3">✉</div>'
+                '<div style="font-size:13px;opacity:.5">Select a project above to begin.</div>'
+                '</div>',
+                unsafe_allow_html=True
+            )
 
     # Session log
     log=get_session_send_log()
