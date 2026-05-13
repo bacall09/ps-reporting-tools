@@ -141,37 +141,53 @@ def _prod_hints(text):
     return {k for k in _PROD_KW if k.lower() in t}
 
 def _fuzzy_sfdc(df_sfdc, proj_name, acct_name):
+    """Match DRS project to SFDC contacts.
+    Primary: account_name (DRS customer) vs SFDC Account Name column.
+    Secondary: product keyword overlap in opportunity name.
+    Mirrors reengagement page logic exactly.
+    """
     if df_sfdc is None or df_sfdc.empty: return pd.DataFrame(), None
     df = df_sfdc.copy()
-    cm2 = {c.lower().strip():c for c in df.columns}
-    opp = cm2.get("opportunity"); acc = cm2.get("account"); oid = cm2.get("opportunity_id")
-    if opp:
-        exact = df[df[opp].astype(str).str.lower().str.strip()==str(proj_name).lower().strip()]
-        if not exact.empty: return exact,"Exact match"
-    dw = set(_clean_acct(acct_name)); dp = _prod_hints(proj_name)
-    best=0; best_id=None; best_nm=None
-    for _,row in df.iterrows():
-        sa=str(row.get(acc or "account","")); so=str(row.get(opp or "opportunity",""))
-        sw=set(_clean_acct(sa))
-        score=max(len(dw&sw)/max(len(dw),1)*100, fuzz.token_set_ratio(" ".join(dw)," ".join(sw))*0.7)+(30 if bool(dp&_prod_hints(so)) else 0)
-        if score>best:
-            best=score
-            best_id=row.get(oid or "opportunity_id") if oid else None
-            best_nm=row.get(opp or "opportunity") if opp else None
-    lbl=f"Fuzzy match ({int(best)}%)"
-    if best>=60:
-        if best_id is not None and oid:
-            r=df[df[oid]==best_id]
-            if not r.empty: return r,lbl
-        if best_nm is not None and opp:
-            r=df[df[opp]==best_nm]
-            if not r.empty: return r,lbl
-    if acc:
-        df["_sc"]=df[acc].apply(lambda x:fuzz.token_set_ratio(str(acct_name).lower(),str(x).lower()))
-        top=df[df["_sc"]>=75].sort_values("_sc",ascending=False)
-        df.drop(columns=["_sc"],inplace=True)
-        if not top.empty: return top,"Account match"
-    return pd.DataFrame(),None
+    # Find the account column — could be "account" or "account_name" after rename
+    acc_col = None
+    for candidate in ["account","account_name"]:
+        if candidate in df.columns: acc_col = candidate; break
+    if acc_col is None:
+        # Last resort: scan columns for anything containing 'account'
+        for c in df.columns:
+            if "account" in c.lower(): acc_col = c; break
+    if acc_col is None: return pd.DataFrame(), None
+
+    opp_col = next((c for c in ["opportunity","opportunity_name"] if c in df.columns), None)
+    oid_col = next((c for c in ["opportunity_id"] if c in df.columns), None)
+
+    # 1. Exact account match (case-insensitive)
+    exact_acct = df[df[acc_col].astype(str).str.strip().str.lower() == str(acct_name).strip().lower()]
+    if not exact_acct.empty:
+        # Within exact matches, prefer rows whose opportunity contains product keywords
+        dp = _prod_hints(proj_name)
+        if opp_col and dp:
+            prod_match = exact_acct[exact_acct[opp_col].astype(str).apply(lambda x: bool(dp & _prod_hints(x)))]
+            if not prod_match.empty: return prod_match, "Account + product match"
+        return exact_acct, "Exact account match"
+
+    # 2. Fuzzy account match
+    dw = set(_clean_acct(acct_name))
+    dp = _prod_hints(proj_name)
+    scores = df[acc_col].apply(
+        lambda x: fuzz.token_set_ratio(" ".join(dw), " ".join(_clean_acct(str(x))))
+    )
+    df["_sc"] = scores
+    top = df[df["_sc"] >= 60].sort_values("_sc", ascending=False)
+    df.drop(columns=["_sc"], inplace=True, errors="ignore")
+    if not top.empty:
+        # Boost rows with product keyword match in opp name
+        if opp_col and dp:
+            prod_boost = top[top[opp_col].astype(str).apply(lambda x: bool(dp & _prod_hints(x)))]
+            if not prod_boost.empty: return prod_boost, f"Fuzzy match ({int(top.iloc[0]['_sc'] if '_sc' in top.columns else 0)}%) + product"
+        return top, f"Fuzzy account match ({int(top['_sc'].iloc[0] if '_sc' in top.columns else scores.max())}%)"
+
+    return pd.DataFrame(), None
 
 # ── General helpers ───────────────────────────────────────────────────────────
 def _row_dict(row):
@@ -304,7 +320,7 @@ def _email_html(subject, body, to_email, cc_email, auto_values: set):
                 out.append('<div style="margin:4px 0"></div>')
             elif s==s.upper() and len(s)>3 and not s.startswith("•") and not s.startswith("-"):
                 out.append(f'<div class="ep-hdr-txt">{s}</div>')
-            elif s.startswith("•") or (s.startswith("- ") and len(s)>3):
+            elif s.startswith("•") or s.startswith("* ") or (s.startswith("- ") and len(s)>3) or (len(s)>2 and s[0].isdigit() and s[1] in ".)"):
                 out.append(f'<div class="ep-bullet">{s}</div>')
             elif s.endswith(":") and len(s)<60 and s[0].isupper():
                 out.append(f'<div style="font-weight:600;margin-top:8px;color:#0f172a">{s}</div>')
@@ -474,7 +490,12 @@ with info_col:
 # ROW 2: Journey rail (full width, with dates)
 # ═══════════════════════════════════════════════════════════════════════════════
 st.markdown(_build_journey(sel),unsafe_allow_html=True)
-st.markdown('<div style="margin-bottom:16px"></div>',unsafe_allow_html=True)
+st.markdown('<div style="margin-bottom:12px"></div>',unsafe_allow_html=True)
+
+# SFDC debug — remove once matching is confirmed working
+if _sfdc_debug and not sfdc_label:
+    with st.expander("🔍 SFDC match debug (remove once working)", expanded=False):
+        st.json(_sfdc_debug)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ROW 3: Compose (left) | Preview (right)
@@ -483,14 +504,16 @@ compose_col, preview_col = st.columns([1,1],gap="medium")
 
 # SFDC lookup (shared across all tabs)
 df_sfdc=st.session_state.get("df_sfdc")
-sfdc_email=""; sfdc_cname=""; sfdc_label=None
+sfdc_email=""; sfdc_cname=""; sfdc_label=None; _sfdc_debug={}
 if df_sfdc is not None and not df_sfdc.empty:
     _rn={c:_SFDC_COL_MAP[c.lower().strip()] for c in df_sfdc.columns if c.lower().strip() in _SFDC_COL_MAP}
     df_sn=df_sfdc.rename(columns=_rn)
     if "first_name" in df_sn.columns and "last_name" in df_sn.columns:
         df_sn["contact_name"]=(df_sn["first_name"].fillna("").astype(str)+" "+df_sn["last_name"].fillna("").astype(str)).str.strip()
     pnm=str(sel.get(name_col,"")) if name_col else ""
+    _sfdc_debug={"sfdc_cols":list(df_sn.columns),"drs_customer":str(customer),"drs_project":pnm,"rows":len(df_sn)}
     sfdc_match,sfdc_label=_fuzzy_sfdc(df_sn,pnm,str(customer))
+    _sfdc_debug["match_label"]=sfdc_label; _sfdc_debug["match_rows"]=len(sfdc_match)
     if not sfdc_match.empty:
         ec="email" if "email" in sfdc_match.columns else None
         nc="contact_name" if "contact_name" in sfdc_match.columns else None
@@ -529,25 +552,24 @@ def _send_footer(tab_key, ss_field_label, subj, body, recip_val, cc_val):
         st.markdown('<div class="footer-blocked">Complete before sending:</div>',unsafe_allow_html=True)
         st.markdown(f'<div class="footer-missing">{" · ".join(reasons)}</div>',unsafe_allow_html=True)
 
-    c1,c2=st.columns([3,2])
-    with c1:
-        if ss_field_label:
-            st.markdown(f'<div class="footer-chk">',unsafe_allow_html=True)
-            st.session_state["ce_ss_stamp"]=st.checkbox(
-                f"Date-stamp **{ss_field_label}** in Smartsheet",
-                value=st.session_state.get("ce_ss_stamp",True),
-                key=f"ss_chk_{tab_key}",
-            )
-            st.markdown('</div>',unsafe_allow_html=True)
-    with c2:
-        c2a,c2b=st.columns([1,1])
-        with c2a:
-            st.button("Copy text",key=f"copy_{tab_key}",use_container_width=True)
-        with c2b:
-            lbl="Send & log" if st.session_state.get("_gmail_approved") else "📋 Log Send"
-            clicked=st.button(lbl,key=f"send_{tab_key}",type="primary",
-                              use_container_width=True,disabled=not recip_val)
-    st.markdown('</div>',unsafe_allow_html=True)
+    # Checkbox row
+    if ss_field_label:
+        st.session_state["ce_ss_stamp"] = st.checkbox(
+            f"Date-stamp **{ss_field_label}** in Smartsheet",
+            value=st.session_state.get("ce_ss_stamp", True),
+            key=f"ss_chk_{tab_key}",
+        )
+    # Button row — side by side, full width
+    btn_copy, btn_send = st.columns([1, 2])
+    with btn_copy:
+        st.button("Copy text", key=f"copy_{tab_key}", use_container_width=True)
+    with btn_send:
+        lbl = "Send & log" if st.session_state.get("_gmail_approved") else "📋 Log Send"
+        clicked = st.button(
+            lbl, key=f"send_{tab_key}", type="primary",
+            use_container_width=True, disabled=not recip_val,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
     return clicked
 
 # ══════════════════════════════════════════════════════
@@ -577,7 +599,7 @@ with compose_col:
         # Multi-product consolidated toggle
         consolidated=False; all_rows=[sel]
         if siblings:
-            consolidated=st.checkbox(f"Consolidated — one email for all {len(siblings)+1} products",key="ce_con")
+            consolidated=st.checkbox(f"Consolidated email — {len(siblings)+1} Project Types for {customer}",key="ce_con")
             if consolidated:
                 all_rows=[sel]+[_row_dict(df.iloc[sid_map[s]]) for s in siblings]
                 prods=[str(r.get(prod_col,"")) for r in all_rows if r.get(prod_col) and str(r.get(prod_col)) not in ("nan","None")]
@@ -607,9 +629,12 @@ with compose_col:
                      horizontal=True,key="w_var")
         vk="variant_a" if "A" in var else "variant_b"
 
-        # Build context and render
-        auto_ctx=build_auto_context(sel,_disp,{"contact_name":cname} if cname else None)
-        if cname: auto_ctx["CUSTOMER_CONTACT_NAME"]=cname
+        # Build context — read live widget values from session state so preview
+        # updates immediately when consultant types, not just on next rerun
+        _live_cname = st.session_state.get("ce_cn", cname) or cname
+        _live_recip = st.session_state.get("ce_to", recip) or recip
+        auto_ctx=build_auto_context(sel,_disp,{"contact_name":_live_cname} if _live_cname else None)
+        if _live_cname: auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
         auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
         subj_w,body_w=render_template(tmpl_w[vk]["body"],tmpl_w["subject"],auto_ctx)
 
