@@ -46,15 +46,21 @@ st.markdown("""<style>
 .journey-rail{display:flex;border:0.5px solid rgba(128,128,128,.25);border-radius:8px;overflow:hidden;margin:12px 0 16px}
 .sj{flex:1;padding:12px 12px 10px;border-right:0.5px solid rgba(128,128,128,.18);min-width:0;color:inherit}
 .sj:last-child{border-right:none}
-.sj-num{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;color:rgba(128,128,128,.6)}
-.sj-lbl{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sj-date{font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.6}
-.sj.done .sj-num{color:var(--color-text-success,#16a34a)}
-.sj.done .sj-lbl{color:var(--color-text-success,#16a34a);font-weight:600}
-.sj.done .sj-date{color:var(--color-text-success,#16a34a)}
-.sj.active{border-bottom:2px solid #4472C4}
+.sj-num{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;color:rgba(128,128,128,.7)}
+.sj-lbl{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sj-date{font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.7}
+.sj.done{background:rgba(34,197,94,.10)}
+.sj.done .sj-num{color:#16a34a}
+.sj.done .sj-lbl{color:#16a34a;font-weight:600}
+.sj.done .sj-date{color:#16a34a}
+@media(prefers-color-scheme:dark){.sj.done{background:rgba(34,197,94,.08)}.sj.done .sj-num,.sj.done .sj-lbl,.sj.done .sj-date{color:#7ed4a4}}
+.stApp[data-theme="dark"] .sj.done{background:rgba(34,197,94,.08)}
+.stApp[data-theme="dark"] .sj.done .sj-num,.stApp[data-theme="dark"] .sj.done .sj-lbl,.stApp[data-theme="dark"] .sj.done .sj-date{color:#7ed4a4}
+.sj.active{background:rgba(68,114,196,.12);border-bottom:2px solid #4472C4}
 .sj.active .sj-num{color:#4472C4}
 .sj.active .sj-lbl{color:#4472C4;font-weight:600}
+@media(prefers-color-scheme:dark){.sj.active{background:rgba(68,114,196,.15)}}
+.stApp[data-theme="dark"] .sj.active{background:rgba(68,114,196,.15)}
 .sj.locked{opacity:.32}
 
 /* Pills — runbook pattern: rgba backgrounds + dark mode text */
@@ -603,24 +609,9 @@ if not _mine_sids:
 
 # Render mine projects as radio-style cards using Streamlit radio
 def _card_label(row,mine=True):
-    prod=str(row.get(prod_col,"")) if prod_col else ""
+    """Project name only — clean, no redundant concatenation."""
     name=str(row.get(name_col,"")) if name_col else ""
-    # Strip customer prefix for cleaner display
-    short=name
-    for prefix in [selected_customer, selected_customer.split(" - ")[0] if " - " in selected_customer else ""]:
-        if prefix and short.startswith(prefix):
-            short=short[len(prefix):].lstrip(" -·—").strip()
-            break
-    status=str(row.get(status_col,"")) if status_col else ""
-    start_raw=row.get(start_col) if start_col else None
-    start_str=""
-    if start_raw:
-        try: start_str=f" · {pd.to_datetime(start_raw).strftime('%-d %b')}"
-        except: pass
-    iv=row.get(intro_col,"") if intro_col else ""
-    intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
-    welcome_str=" · ✓ sent" if intro_done else " · pending"
-    return f"{short or name}  ·  {prod}  ·  {status}{start_str}{welcome_str}"
+    return name
 
 # Use selectbox for project selection (clean Streamlit widget, no hacks)
 _mine_labels={_mine_sids[i]:_card_label(_row_dict(_mine_proj.iloc[i]),mine=True)
@@ -742,20 +733,7 @@ _disp=_flip_name(_logged_in)
 if "ce_ss_stamp" not in st.session_state: st.session_state["ce_ss_stamp"]=True
 
 with compose_col:
-    # ── Recipient ─────────────────────────────────────────────────────────────
-    st.markdown('<p class="ce-label">Recipient</p>',unsafe_allow_html=True)
-    if sfdc_label:
-        st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
-    else:
-        _msg="No SFDC match — enter manually" if df_sfdc is not None else "SFDC contacts not loaded"
-        st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-warn">{_msg}</span></div>',unsafe_allow_html=True)
-    recip=st.text_input("To (recipient email)",value=sfdc_email,placeholder="customer@example.com",key="ce_to")
-    cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
-    cc_in=st.text_input("CC",value=_default_cc(),key="ce_cc")
-    cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
-
     # ── Communication type + template selector ────────────────────────────────
-    st.markdown('<div style="margin-top:14px"></div>',unsafe_allow_html=True)
     _COMM_TYPES=["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
     _STAGE_TO_COMM={
         "welcome":"Welcome","post_session_1":"Post-Session","post_session_2":"Post-Session",
@@ -781,11 +759,30 @@ with compose_col:
         st.session_state["_ce_tmpl_type"]=_tmpl_type
         st.session_state["_ce_tab"]={"Welcome":"Welcome","Post-Session":"Post-Session","Lifecycle (UAT → Closure)":"Lifecycle"}.get(_tmpl_type,"Welcome")
 
-    # Live context
-    _live_cname=st.session_state.get("ce_cn",cname) or cname
+    # Live context — read after recipient widgets exist
+    _live_cname=st.session_state.get("ce_cn","") or ""
     auto_ctx=build_auto_context(sel,_disp,{"contact_name":_live_cname} if _live_cname else None)
     if _live_cname: auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
     auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
+
+    # ── Recipient (below comm type so consultant knows what they're composing) ─
+    st.markdown('<p class="ce-label" style="margin-top:12px">Recipient</p>',unsafe_allow_html=True)
+    if sfdc_label:
+        st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
+    else:
+        _msg="No SFDC match — enter manually" if df_sfdc is not None else "SFDC contacts not loaded"
+        st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-warn">{_msg}</span></div>',unsafe_allow_html=True)
+    recip=st.text_input("To (recipient email)",value=sfdc_email,placeholder="customer@example.com",key="ce_to")
+    cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
+    cc_in=st.text_input("CC",value=_default_cc(),key="ce_cc")
+    cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
+    # Update live context with typed contact name
+    _live_cname=st.session_state.get("ce_cn",_live_cname) or _live_cname
+    if _live_cname:
+        auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
+        auto_ctx=build_auto_context(sel,_disp,{"contact_name":_live_cname})
+        auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
+        auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
 
     # ── Welcome ───────────────────────────────────────────────────────────────
     if _tmpl_type=="Welcome":
