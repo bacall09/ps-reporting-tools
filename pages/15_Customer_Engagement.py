@@ -101,7 +101,7 @@ st.markdown("""<style>
 .ep-hdr{padding:9px 14px;border-bottom:1px solid #e2e8f0}
 .ep-row{display:flex;gap:8px;font-size:11px;padding:2px 0;color:#64748b}
 .ep-lbl{width:36px;color:#94a3b8;flex-shrink:0}
-.ep-body{padding:14px 16px;font-size:12.5px;color:#0f172a;line-height:1.65;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.ep-body{padding:16px 18px;font-size:13px;color:#0f172a;line-height:1.7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .ep-hdr-txt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#4472C4;margin:10px 0 3px}
 .ep-ph{display:inline;background:rgba(220,38,38,.1);color:#dc2626;border:1px dashed rgba(220,38,38,.4);border-radius:3px;padding:1px 4px;font-size:11px;font-family:monospace}
 .ep-filled{display:inline;background:rgba(22,163,74,.1);color:#15803d;border-radius:3px;padding:1px 4px;font-size:11px}
@@ -230,6 +230,16 @@ def _consultant_email(name):
 
 def _missing_phs(text):
     return list(set(re.findall(r"\{[A-Z_]+\}",text)))
+
+def _inject_customer_subject(subject:str, customer_name:str) -> str:
+    """Insert customer name into subject: 'Welcome to X!' → 'Welcome [Customer] to X!'"""
+    if not customer_name or customer_name in ("nan","None",""): return subject
+    cust = str(customer_name).strip()
+    if subject.lower().startswith("welcome to "):
+        return f"Welcome {cust} to {subject[len('Welcome to '):]}"
+    if subject.lower().startswith("welcome ") and " to " not in subject.lower():
+        return f"Welcome {cust} to ZoneApps!"
+    return subject
 
 _PMAP = {
     "zoneapp: capture":"ZoneCapture","zoneapp: approvals":"ZoneApprovals",
@@ -439,18 +449,66 @@ def _do_write(project_id,ss_field,date_val,drs_row)->bool:
 
 # ── Email preview ─────────────────────────────────────────────────────────────
 def _email_html(subject,body,to_email,cc_email,auto_values:set):
+    # Known section headings from YAML templates — rendered as bold blue
+    _SECTION_HEADS = {
+        "what to expect","before we begin","netsuite environment",
+        "key resources","next step","next steps","zonecapture","zoneapprovals",
+        "zonereconcile","zone e-invoicing","e-invoicing","your project journey",
+        "important to note","how to confirm","what happens next",
+    }
     def _htmlify(text):
         out=[]
-        for line in text.split("\n"):
-            s=line.strip()
-            if not s: out.append('<div style="margin:4px 0"></div>')
-            elif s==s.upper() and len(s)>3 and not s.startswith("•") and not s.startswith("-"):
-                out.append(f'<div class="ep-hdr-txt">{s}</div>')
-            elif s.startswith("•") or s.startswith("* ") or (s.startswith("- ") and len(s)>3) or (len(s)>2 and s[0].isdigit() and s[1] in ".)"):
-                out.append(f'<div class="ep-bullet">{s}</div>')
-            elif s.endswith(":") and len(s)<60 and s[0].isupper():
-                out.append(f'<div style="font-weight:600;margin-top:8px;color:#0f172a">{s}</div>')
-            else: out.append(f'<div>{s}</div>')
+        lines=text.split("\n")
+        i=0
+        while i<len(lines):
+            raw=lines[i]
+            s=raw.strip()
+            if not s:
+                out.append('<div style="margin:7px 0"></div>')
+                while i+1<len(lines) and not lines[i+1].strip(): i+=1
+            elif s.startswith("---") and s.endswith("---"):
+                # Merge separator — subtle divider with product label
+                label=s.strip("- ").strip()
+                out.append(
+                    f'<div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+                    f'letter-spacing:.6px;color:#94a3b8;margin:14px 0 6px;padding-top:12px;'
+                    f'border-top:1px solid #e2e8f0">{label}</div>' if label else
+                    '<hr style="border:none;border-top:1px solid #e2e8f0;margin:12px 0">'
+                )
+            elif s==s.upper() and len(s)>3 and not any(c in s for c in "•→@./"):
+                # ALL CAPS → blue uppercase section header (e.g. YOUR PROJECT JOURNEY)
+                out.append(
+                    f'<div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+                    f'letter-spacing:.8px;color:#4472C4;margin:16px 0 6px">{s}</div>'
+                )
+            elif s.lower() in _SECTION_HEADS:
+                # Known sub-heading → bold blue, larger
+                out.append(
+                    f'<div style="font-size:13px;font-weight:700;color:#4472C4;'
+                    f'margin:14px 0 4px">{s}</div>'
+                )
+            elif s.startswith("•"):
+                # Bullet
+                out.append(
+                    f'<div style="margin:3px 0 3px 14px;color:#0f172a">{s}</div>'
+                )
+            elif s[0].isdigit() and len(s)>2 and s[1] in ".)":
+                # Numbered list
+                out.append(f'<div style="margin:3px 0 3px 14px;color:#0f172a">{s}</div>')
+            elif s.startswith("Please note:") or s.startswith("Note:"):
+                # Note line — slightly muted
+                out.append(
+                    f'<div style="font-size:12px;color:#64748b;margin:8px 0;'
+                    f'border-left:3px solid #e2e8f0;padding-left:10px">{s}</div>'
+                )
+            elif s in ("Kind regards,","Looking forward to working together,","Best regards,"):
+                out.append(f'<div style="margin-top:14px;color:#0f172a">{s}</div>')
+            elif s.startswith("Professional Services") or s.startswith("Zone & Co"):
+                out.append(f'<div style="color:#64748b;font-size:12px">{s}</div>')
+            else:
+                out.append(f'<div style="color:#0f172a">{s}</div>')
+            i+=1
+        return "\n".join(out)
         return "\n".join(out)
     def _highlight(html,auto_vals):
         html=re.sub(r'\{([A-Z_]+)\}',r'<span class="ep-ph">{\1}</span>',html)
@@ -462,6 +520,10 @@ def _email_html(subject,body,to_email,cc_email,auto_values:set):
     body_html=_highlight(_htmlify(body),auto_values)
     missing=_missing_phs(body+subject)
     ph_bar=f'<div class="ep-bar">⚠ {len(missing)} placeholder(s) empty: {", ".join(missing)}</div>' if missing else ""
+    # Large heading from subject (e.g. "Welcome to ZoneApprovals!")
+    subj_heading=""
+    if subject and ("welcome" in subject.lower() or "action required" in subject.lower()):
+        subj_heading=f'<div style="font-size:18px;font-weight:700;color:#4472C4;margin:0 0 16px;padding-bottom:12px;border-bottom:1px solid #e2e8f0">{subject}</div>'
     return f"""<div class="email-preview-wrap">
 <div class="ep-chrome"><span class="ep-dot"></span><span class="ep-dot"></span><span class="ep-dot"></span>
 <span style="font-size:10px;color:#94a3b8;margin-left:6px">Gmail preview</span></div>
@@ -470,7 +532,7 @@ def _email_html(subject,body,to_email,cc_email,auto_values:set):
 <div class="ep-row"><span class="ep-lbl">CC</span>{cc_email or '—'}</div>
 <div class="ep-row"><span class="ep-lbl">SUBJ</span><strong style="color:#0f172a">{subject}</strong></div>
 </div>
-<div class="ep-body">{body_html}</div>
+<div class="ep-body">{subj_heading}{body_html}</div>
 {ph_bar}
 </div>"""
 
@@ -860,6 +922,7 @@ with compose_col:
         var=st.radio("Sender variant",["Variant A — PM or automated","Variant B — Consultant sends"],horizontal=True,key="w_var")
         vk="variant_a" if "A" in var else "variant_b"
         subj_w,body_w=render_template(tmpl_w[vk]["body"],tmpl_w["subject"],auto_ctx)
+        subj_w=_inject_customer_subject(subj_w, customer)
         auto_vals_w={v for v in auto_ctx.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
         lib_meta=_welcome_library(); ssf_w=lib_meta.get("ss_milestone_on_send")
         _trigger=f"When to send: First contact after project kickoff"
@@ -930,6 +993,7 @@ with compose_col:
                         if "{HYPERCARE_DATE}" in res: res=res.replace("{HYPERCARE_DATE}",mctx.get("HYPERCARE_DATE","{HYPERCARE_DATE}"))
                         mctx["GO_LIVE_READINESS_TEXT"]=res
             subj_s,body_s=render_template(tmpl_s["body"],tmpl_s["subject"],{},{**auto_ctx,**mctx})
+            subj_s=_inject_customer_subject(subj_s, customer)
             auto_vals_s={v for v in {**auto_ctx,**mctx}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
             ssf_s=tmpl_s.get("ss_milestone_on_send")
             st.session_state["ce_prev_subj"]=subj_s
@@ -993,6 +1057,7 @@ with compose_col:
                 mctx_l[k]=v
         auto_ctx_l={**auto_ctx}
         subj_l,body_l=render_template(vbody,tmpl_l["subject"],{},{**auto_ctx_l,**mctx_l})
+        subj_l=_inject_customer_subject(subj_l, customer)
         auto_vals_l={v for v in {**auto_ctx_l,**mctx_l}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
         ssf_l=tmpl_l.get("ss_milestone_on_send"); gls=mctx_l.get("GO_LIVE_DATE","")
         st.session_state["ce_prev_subj"]=subj_l
