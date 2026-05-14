@@ -124,6 +124,17 @@ if _df_drs is None or _df_drs.empty:
     st.info("Load Smartsheet DRS data on the Home page.")
     st.stop()
 
+# ── TEMPORARY: DRS column inspector — remove once field names confirmed ───────
+with st.expander("🔍 DRS column debug (temporary — remove after review)", expanded=False):
+    st.caption("Load DRS via Sync button on Home page, then open this to see exact column names.")
+    if _df_drs is not None:
+        st.write("**All columns in df_drs:**")
+        st.write(list(_df_drs.columns))
+        st.write("**Sample row (first project):**")
+        if not _df_drs.empty:
+            st.json({k: str(v) for k, v in _df_drs.iloc[0].items()
+                     if v is not None and str(v) not in ("nan","None","NaT","")})
+
 try:
     from shared.template_engine import (
         get_welcome_template, list_welcome_templates,
@@ -230,6 +241,38 @@ def _consultant_email(name):
 
 def _missing_phs(text):
     return list(set(re.findall(r"\{[A-Z_]+\}",text)))
+
+# ── Customer name extraction — mirrors My Projects page ───────────────────────
+_PC = ["ZEP","ZoneBilling","ZBilling","ZonePayroll","ZPayroll","ZoneCapture",
+       "ZoneApprovals","ZoneReconcile","ZA","ZC","ZR","ZB","ZP"]
+_PW = ["Payroll","Billing","Capture","Approvals","Reconcile","Implementation",
+       "Optimization","Migration","Integration","Training","Support","MSA"]
+
+def _extract_customer_name(project_name):
+    n = str(project_name).strip()
+    m = re.match(r'^(.+?)\s*-\s*[A-Z]{1,4}\s*-\s*.+$', n)
+    if m: return m.group(1).strip()
+    _pc_pat = '|'.join(_PC)
+    m = re.match(r'^(.+?)\s*-\s*(?:' + _pc_pat + r')(?:\s|$|-)', n, re.IGNORECASE)
+    if m: return m.group(1).strip()
+    _pw_pat = '|'.join(_PW)
+    m = re.match(r'^(.+?)\s*-\s*(?:' + _pw_pat + r').+$', n, re.IGNORECASE)
+    if m: return m.group(1).strip()
+    if ' : ' in n: return n.split(' : ')[0].strip()
+    for code in sorted(_PC, key=len, reverse=True):
+        m = re.search(r'\s+' + re.escape(code) + r'(?:\s|$|-)', n, re.IGNORECASE)
+        if m and m.start() > 2: return n[:m.start()].strip()
+    for word in _PW:
+        m = re.search(r'\s+' + re.escape(word) + r'(?:\s|$)', n, re.IGNORECASE)
+        if m and m.start() > 3: return n[:m.start()].strip().rstrip('-').strip()
+    return n
+
+def _looks_like_project_name(val:str) -> bool:
+    """Returns True if a value looks like a project name rather than a customer name."""
+    v = str(val).strip()
+    return (len(v) > 40
+            or any(kw in v for kw in [" - ZA - "," - ZC - "," - ZR - "," - ZB - "])
+            or any(kw.lower() in v.lower() for kw in ["Implementation","ZoneApp","ZApprovals","ZCapture"]))
 
 def _inject_customer_subject(subject:str, customer_name:str) -> str:
     """Insert customer name into subject: 'Welcome to X!' → 'Welcome [Customer] to X!'"""
@@ -627,16 +670,18 @@ def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
 st.markdown('<p class="ce-label">Select Customer</p>',unsafe_allow_html=True)
 
 # Build customer list — all unique customers sorted, preserving original casing
-# ── Customer list — always from FULL DRS (not view-filtered) ─────────────────
-# Use _df_drs directly so all customers appear, then filter projects by view-as below
-if cust_col:
-    _all_customers=sorted(
-        {str(v).strip() for v in _df_drs[cust_col].dropna()
+# ── Customer list — extracted from project_name (no dedicated customer column in DRS) ──
+# Every page that shows customer name derives it from project_name via _extract_customer_name.
+# The SS DRS has no standalone Account/Customer column.
+if name_col:
+    _all_customers = sorted(
+        {_extract_customer_name(str(v)) for v in _df_drs[name_col].dropna()
          if str(v).strip() not in ("","nan","None")},
         key=str.lower
     )
 else:
-    _all_customers=[]
+    _all_customers = []
+_using_extracted = True  # always — customer is always parsed from project_name
 
 if not _all_customers:
     st.warning("No customer data found in DRS. Check the 'Account Name' / 'Customer' column.")
@@ -658,19 +703,18 @@ selected_customer=st.selectbox(
     index=_all_customers.index(_def_cust),
     label_visibility="collapsed",key="ce_customer",
 )
-# Temp debug — shows if wrong column is being used (remove once confirmed)
-if cust_col and any(len(c)>60 for c in _all_customers[:5]):
-    st.caption(f"⚠️ Customer column resolving to: `{cust_col}` — values look like project names. Check DRS 'Account Name' column.")
 # Clear project selection when customer changes
-if st.session_state.get("_ce_customer")!=selected_customer:
-    st.session_state["_ce_customer"]=selected_customer
+if st.session_state.get("_ce_customer") != selected_customer:
+    st.session_state["_ce_customer"] = selected_customer
     for k in list(st.session_state.keys()):
         if any(k.startswith(p) for p in ["_ce_proj","ce_to","ce_cn","ce_cc","_sfdc_match","ce_ss_stamp"]):
-            st.session_state.pop(k,None)
+            st.session_state.pop(k, None)
 
-# ── All projects for this customer (across all consultants) ───────────────────
-if cust_col:
-    df_cust_all=_df_drs[_df_drs[cust_col].astype(str).str.strip()==selected_customer].copy()
+# ── All projects for this customer — always matched via extracted project name ─
+if name_col:
+    df_cust_all = _df_drs[
+        _df_drs[name_col].apply(lambda v: _extract_customer_name(str(v)) == selected_customer)
+    ].copy()
     if status_col:
         df_cust_all=df_cust_all[~df_cust_all[status_col].astype(str).str.lower().isin(["closed","cancelled","complete","completed"])]
     if legacy_col:
@@ -815,7 +859,9 @@ if df_sfdc is not None and not df_sfdc.empty:
     if "first_name" in df_sn.columns and "last_name" in df_sn.columns:
         df_sn["contact_name"]=(df_sn["first_name"].fillna("").astype(str)+" "+df_sn["last_name"].fillna("").astype(str)).str.strip()
     pnm=str(sel.get(name_col,"")) if name_col else ""
-    sfdc_match,sfdc_label=_fuzzy_sfdc(df_sn,pnm,str(customer))
+    # Use extracted customer name for SFDC match when account col has project names
+    _sfdc_acct = selected_customer if not _using_extracted else _extract_customer_name(pnm)
+    sfdc_match,sfdc_label=_fuzzy_sfdc(df_sn,pnm,str(_sfdc_acct))
     if not sfdc_match.empty:
         ec="email" if "email" in sfdc_match.columns else None
         nc="contact_name" if "contact_name" in sfdc_match.columns else None
