@@ -816,7 +816,6 @@ document.getElementById("cb_{tab_key}").addEventListener("click",function(){{
 # ROW 1 — Customer selector
 # ═══════════════════════════════════════════════════════════════════════════════
 st.markdown('<p class="ce-label">Select Project</p>',unsafe_allow_html=True)
-_top_left,_top_right=st.columns([1,2],gap="small")
 
 # Build customer list — from df_all (already filtered by view-as/consultant)
 # This ensures the customer dropdown only shows customers for the viewed consultant.
@@ -865,13 +864,12 @@ if st.session_state.get("_ce_last_browse") != _cur_browse:
 
 _prev_cust=st.session_state.get("_ce_customer")
 _def_cust=_prev_cust if _prev_cust in _all_customers else _all_customers[0]
-with _top_left:
-    st.caption("Customer")
-    selected_customer=st.selectbox(
-        "Customer",options=_all_customers,
-        index=_all_customers.index(_def_cust),
-        label_visibility="collapsed",key="ce_customer",
-    )
+st.markdown('<p class="ce-label" style="margin-bottom:4px">Select customer</p>', unsafe_allow_html=True)
+selected_customer=st.selectbox(
+    "Customer",options=_all_customers,
+    index=_all_customers.index(_def_cust),
+    label_visibility="collapsed",key="ce_customer",
+)
 # Clear project selection when customer changes
 if st.session_state.get("_ce_customer") != selected_customer:
     st.session_state["_ce_customer"] = selected_customer
@@ -984,34 +982,103 @@ def _proj_title(row):
             break
     return name or str(row.get(name_col,""))
 
-_cards=[
-    dict(
-        icon=_proj_icon(_row_dict(_mine_proj.iloc[i])),
-        title=_proj_title(_row_dict(_mine_proj.iloc[i])),
-        description=_proj_desc(_row_dict(_mine_proj.iloc[i])),
-    )
-    for i in range(len(_mine_sids))
-]
+# ── Build project cards HTML — horizontal scrolling row ──────────────────────
+def _badge(row):
+    stat=str(row.get(status_col,"")).lower() if status_col else ""
+    iv=row.get(intro_col,"") if intro_col else ""
+    intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
+    if "hold" in stat:
+        return "<span style=\'display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(214,137,16,.12);color:#854F0B;margin-top:5px\'>On hold</span>"
+    if intro_done:
+        return "<span style=\'display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(22,163,74,.12);color:#15803d;margin-top:5px\'>✓ Welcome sent</span>"
+    return "<span style=\'display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(68,114,196,.12);color:#4472C4;margin-top:5px\'>Welcome pending</span>"
 
-try:
-    from streamlit_extras.card_selector import card_selector
-    st.markdown('<p class="ce-label" style="margin-bottom:4px">Project</p>', unsafe_allow_html=True)
-    _selected_card_idx = card_selector(_cards, key="ce_proj_select")
-    if _selected_card_idx is None:
-        _selected_card_idx = _def_idx
-    selected_sid = _mine_sids[_selected_card_idx]
-except Exception:
-    # Fallback to selectbox if streamlit-extras not installed
-    with _top_right:
-        st.caption("Project")
-        _mine_labels={_mine_sids[i]:_proj_title(_row_dict(_mine_proj.iloc[i]))
-                      for i in range(len(_mine_sids))}
-        selected_sid=st.selectbox(
-            "Your projects", options=_mine_sids,
-            format_func=lambda s:_mine_labels.get(s,s),
-            index=_def_idx, key="ce_proj_select",
-            label_visibility="collapsed",
+def _proj_card_html(row, sid, is_mine, is_selected):
+    title=_proj_title(row)
+    desc=_proj_desc(row)
+    icon=_proj_icon(row)
+    # Map material icon to Tabler equivalent
+    icon_map={"check_circle":"circle-check","mail":"mail","pause_circle":"player-pause"}
+    ti_icon=icon_map.get(icon.replace(":material/","").replace(":",""),"mail")
+    badge=_badge(row)
+    pm=str(row.get(pm_col,"")) if pm_col else ""
+    pm_disp=_flip_name(pm) if pm else ""
+    ini=_initials(pm) if pm else "?"
+    short_pm=pm_disp.split(" ")[0] if pm_disp else "—"
+    iv=row.get(intro_col,"") if intro_col else ""
+    intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
+
+    if is_mine:
+        border = "2px solid #4472C4" if is_selected else "1.5px solid rgba(68,114,196,.45)"
+        bg     = "background:rgba(68,114,196,.06);" if is_selected else ""
+        icon_col = "#4472C4" if is_selected else "var(--color-text-secondary)"
+        title_col= "#4472C4" if is_selected else "var(--color-text-primary)"
+        cursor = "cursor:pointer;"
+        opacity= ""
+        avatar_bg="rgba(68,114,196,.15)"; avatar_col="#4472C4"
+        welcome_txt = f"Welcome sent · {iv[:10]}" if intro_done else "Welcome pending"
+        consult_html=(
+            f"<div style=\'display:flex;align-items:center;gap:5px;margin-top:6px\'>"
+            f"<div style=\'width:16px;height:16px;border-radius:50%;background:{avatar_bg};"
+            f"color:{avatar_col};font-size:8px;font-weight:500;display:inline-flex;"
+            f"align-items:center;justify-content:center;flex-shrink:0\'>{ini}</div>"
+            f"<span style=\'font-size:10px;color:var(--color-text-secondary)\'>{short_pm} · {welcome_txt}</span></div>"
         )
+    else:
+        border = "0.5px solid var(--color-border-tertiary)"
+        bg     = ""
+        icon_col= "var(--color-text-tertiary)"
+        title_col="var(--color-text-secondary)"
+        cursor = "cursor:default;"
+        opacity= "opacity:0.42;"
+        avatar_bg="rgba(128,128,128,.15)"; avatar_col="var(--color-text-tertiary)"
+        assigned_badge="<span style=\'display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(128,128,128,.1);color:var(--color-text-tertiary);margin-top:5px\'>Assigned elsewhere</span>"
+        consult_html=(
+            f"<div style=\'display:flex;align-items:center;gap:5px;margin-top:6px\'>"
+            f"<div style=\'width:16px;height:16px;border-radius:50%;background:{avatar_bg};"
+            f"color:{avatar_col};font-size:8px;font-weight:500;display:inline-flex;"
+            f"align-items:center;justify-content:center;flex-shrink:0\'>{ini}</div>"
+            f"<span style=\'font-size:10px;color:var(--color-text-tertiary)\'>{pm_disp}</span></div>"
+        )
+        badge = assigned_badge
+
+    onclick = f"onclick=\'this.dispatchEvent(new CustomEvent(\'card_click\',{{bubbles:true,detail:{{sid:\'{sid}\'}}}}))\'" if is_mine else ""
+    return (
+        f"<div style=\'flex:0 0 210px;border:{border};border-radius:12px;"
+        f"padding:12px 14px;{bg}{opacity}{cursor}\' {onclick}>"
+        f"<div style=\'font-size:17px;color:{icon_col};margin-bottom:6px\'>"
+        f"<i class=\'ti ti-{ti_icon}\'></i></div>"
+        f"<div style=\'font-size:12px;font-weight:500;color:{title_col};margin-bottom:3px;"
+        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis\'>{title}</div>"
+        f"<div style=\'font-size:11px;color:var(--color-text-secondary);line-height:1.4\'>{desc}</div>"
+        f"{badge}{consult_html}</div>"
+    )
+
+# Build all card HTML
+_all_card_rows=[]
+for i,(_sid,_row) in enumerate(zip(_mine_sids,[_row_dict(_mine_proj.iloc[j]) for j in range(len(_mine_sids))])):
+    _all_card_rows.append(_proj_card_html(_row,_sid,True,_sid==_def_sid))
+for _,_orow in _other_proj.iterrows():
+    _all_card_rows.append(_proj_card_html(_row_dict(_orow),"__other__",False,False))
+
+_cards_html=(
+    "<div style=\'display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;"
+    "scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.2) transparent\'>"
+    + "".join(_all_card_rows) +
+    "</div>"
+)
+
+st.markdown('<p class="ce-label" style="margin-bottom:6px">Select project</p>',unsafe_allow_html=True)
+st.markdown(_cards_html, unsafe_allow_html=True)
+
+# Project selection via selectbox (invisible — cards are visual, this drives state)
+_mine_labels={_mine_sids[i]:_proj_title(_row_dict(_mine_proj.iloc[i])) for i in range(len(_mine_sids))}
+selected_sid=st.selectbox(
+    "Select project",options=_mine_sids,
+    format_func=lambda s:_mine_labels.get(s,s),
+    index=_def_idx,key="ce_proj_select",
+    label_visibility="collapsed",
+)
 
 st.session_state["_ce_proj_sid"]=selected_sid
 
@@ -1464,15 +1531,23 @@ with preview_col:
         _pb = _pb_edit; _using_edit = True
 
     if not _is_composed:
-        # Compose button — preview hidden until clicked
-        st.markdown(
-            '<div style="text-align:center;padding:40px 20px">'
-            '<div style="font-size:28px;margin-bottom:10px;opacity:.2">✉</div>'
-            '<div style="font-size:13px;opacity:.45;margin-bottom:20px">'
-            'Fill in the fields on the left, then generate the preview.</div>'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        try:
+            from streamlit_extras.skeleton import skeleton
+            _sk = skeleton(height=320)
+            _sk.markdown(
+                '<div style="text-align:center;padding:40px 20px;opacity:.4">'
+                '<div style="font-size:24px;margin-bottom:8px">✉</div>'
+                '<div style="font-size:12px">Fill in the fields, then generate preview</div>'
+                '</div>', unsafe_allow_html=True
+            )
+        except Exception:
+            st.markdown(
+                '<div style="text-align:center;padding:40px 20px">'
+                '<div style="font-size:28px;margin-bottom:10px;opacity:.2">✉</div>'
+                '<div style="font-size:13px;opacity:.45;margin-bottom:20px">'
+                'Fill in the fields on the left, then generate the preview.</div>'
+                '</div>', unsafe_allow_html=True
+            )
         if st.button("✉ Generate preview",
                      key=f"btn_compose_{selected_sid}_{_tmpl_type}",
                      type="primary", use_container_width=True):
