@@ -745,7 +745,8 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     elif view_name == "ALL_MANAGERS":
         _view_sub_hero = " · Viewing: Managers"
     elif view_name != selected:
-        _vd = view_name.split(",")[1].strip() if "," in view_name else view_name
+        _vd_parts = view_name.split(",") if "," in view_name else [view_name]
+        _vd = f"{_vd_parts[1].strip()} {_vd_parts[0].strip()}" if len(_vd_parts) == 2 else view_name
         _view_sub_hero = f" · Viewing: {_vd}"
     _date_line = f"{today.strftime('%A')} · {today.strftime('%B %-d')} · {_fy_q} — Week {_week_num}{_view_sub_hero}"
 
@@ -809,13 +810,13 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     _hero.markdown(
         f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
         f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
-        f"<div style='font-size:13px;font-weight:500;color:#08A9B7;margin-bottom:6px;'>{_date_line}</div>"
+        f"<div style='font-size:13px;font-weight:700;color:#08A9B7;margin-bottom:6px;letter-spacing:.1px'>{_date_line}</div>"
         f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;line-height:1.2'>{_greeting}, {_my_display}.</h1>"
         f"<p style='color:rgba(255,255,255,0.55);margin:6px 0 0;font-size:13px;font-family:Manrope,sans-serif;line-height:1.6'>{_summary_str}</p>"
         f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.1);'>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Week utilization</div>"
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
-        f"<div style='font-size:12px;color:var(--color-text-secondary);margin-top:3px;'>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.55);margin-top:3px;'>"
         f"{f'{_wk_total}h / {_wk_billable_h}h billable · {_wk_full_h}h total' if _wk_total is not None else 'No time data this week'}</div>"
         f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
         f"<div><div style='font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.5);margin-bottom:5px;font-weight:500;'>Open projects</div>"

@@ -17,6 +17,18 @@ from shared.config import (
     EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
 )
 
+
+# ── Hero view-as label ────────────────────────────────────────────────────────
+_hero_va_line = ""
+_hero_browse = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
+if _hero_browse and _hero_browse not in ("— My own view —","— Select —","👥 All team",""):
+    if _hero_browse.startswith("── ") and _hero_browse.endswith(" ──"):
+        _hero_va_line = f" · {_hero_browse[3:-3].strip()} team"
+    else:
+        _vd_p = _hero_browse.split(",") if "," in _hero_browse else [_hero_browse]
+        _vd_nm = f"{_vd_p[1].strip()} {_vd_p[0].strip()}" if len(_vd_p)==2 else _hero_browse
+        _hero_va_line = f" · Viewing: {_vd_nm}"
+
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
 <style>

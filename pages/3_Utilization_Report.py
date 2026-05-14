@@ -463,6 +463,15 @@ def main():
     """, unsafe_allow_html=True)
 
     # Hero (intentionally dark — brand element, like other pages)
+    _hero_va_line = ""
+    _hero_browse = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
+    if _hero_browse and _hero_browse not in ("— My own view —","— Select —","👥 All team",""):
+        if _hero_browse.startswith("── ") and _hero_browse.endswith(" ──"):
+            _hero_va_line = f" · {_hero_browse[3:-3].strip()} team"
+        else:
+            _vd_p = _hero_browse.split(",") if "," in _hero_browse else [_hero_browse]
+            _vd_nm = f"{_vd_p[1].strip()} {_vd_p[0].strip()}" if len(_vd_p)==2 else _hero_browse
+            _hero_va_line = f" · Viewing: {_vd_nm}"
     st.markdown(
         "<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 36px 24px;border-radius:10px;"
         "margin-bottom:14px;font-family:Manrope,sans-serif;'>"
@@ -470,7 +479,7 @@ def main():
         "text-transform:uppercase;color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"
         "<h1 style='color:white;margin:0;font-size:26px;'>Utilization Report</h1>"
         "<p style='color:#aac4d0;margin:6px 0 0 0;font-size:13px;'>"
-        "Live utilization credits and capacity from NetSuite. Adjust the period — everything below recomputes automatically.</p>"
+        f"Live utilization credits and capacity from NetSuite. Adjust the period — everything below recomputes automatically.{_hero_va_line}</p>"
         "</div>", unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────
