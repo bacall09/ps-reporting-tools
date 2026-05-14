@@ -1091,35 +1091,28 @@ with compose_col:
     # ── Compose button — gates template rendering (prevents stale cache) ────────
     _compose_key = f"_ce_composed_{selected_sid}_{_tmpl_type}"
     _is_composed = st.session_state.get(_compose_key, False)
-    if not _is_composed:
-        if st.button("✉ Compose email", key=f"btn_compose_{selected_sid}_{_tmpl_type}",
-                     type="primary", use_container_width=False):
-            st.session_state[_compose_key] = True
-            st.rerun()
-        st.markdown('<div style="font-size:12px;opacity:.5;margin-top:6px">Select a communication type above then click Compose to load the template and preview.</div>', unsafe_allow_html=True)
 
-    if _is_composed:
-            # ── Recipient (below comm type so consultant knows what they're composing) ─
-            st.markdown('<p class="ce-label" style="margin-top:12px">Recipient</p>',unsafe_allow_html=True)
-            if sfdc_label:
+    # ── Recipient (below comm type so consultant knows what they're composing) ─
+    st.markdown('<p class="ce-label" style="margin-top:12px">Recipient</p>',unsafe_allow_html=True)
+    if sfdc_label:
                 st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
-            else:
+    else:
                 _msg="No SFDC match — enter manually" if df_sfdc is not None else "SFDC contacts not loaded"
                 st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-warn">{_msg}</span></div>',unsafe_allow_html=True)
-            recip=st.text_input("To (recipient email)",value=sfdc_email,placeholder="customer@example.com",key="ce_to")
-            cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
-            cc_in=st.text_input("CC",value=_default_cc(),key="ce_cc")
-            cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
-            # Update live context with typed contact name
-            _live_cname=st.session_state.get("ce_cn",_live_cname) or _live_cname
-            if _live_cname:
+    recip=st.text_input("To (recipient email)",value=sfdc_email,placeholder="customer@example.com",key="ce_to")
+    cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
+    cc_in=st.text_input("CC",value=_default_cc(),key="ce_cc")
+    cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
+    # Update live context with typed contact name
+    _live_cname=st.session_state.get("ce_cn",_live_cname) or _live_cname
+    if _live_cname:
                 auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
                 auto_ctx=build_auto_context(sel,_disp,{"contact_name":_live_cname})
                 auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
                 auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
 
-            # ── Welcome ───────────────────────────────────────────────────────────────
-            if _tmpl_type=="Welcome":
+    # ── Welcome ───────────────────────────────────────────────────────────────
+    if _tmpl_type=="Welcome":
                 with tmpl_col:
                     _all_rows=[sel]
                     if _consolidated and n_mine>1:
@@ -1182,8 +1175,8 @@ with compose_col:
                         else: st.error(f"Failed: {sid}")
                     except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
-            # ── Post-Session ──────────────────────────────────────────────────────────
-            elif _tmpl_type=="Post-Session":
+    # ── Post-Session ──────────────────────────────────────────────────────────
+    elif _tmpl_type=="Post-Session":
                 psk=_ps_key(str(product_raw))
                 if not psk:
                     with tmpl_col: st.info(f"No post-session templates for '{product_raw}'.")
@@ -1237,8 +1230,8 @@ with compose_col:
                             else: st.error(f"Failed: {sid}")
                         except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
-            # ── Lifecycle ─────────────────────────────────────────────────────────────
-            elif _tmpl_type=="Lifecycle (UAT → Closure)":
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+    elif _tmpl_type=="Lifecycle (UAT → Closure)":
                 lc_all=list_lifecycle_templates()
                 lc_opts={t["id"]:t for t in lc_all}
                 st.caption("Template")
@@ -1305,7 +1298,7 @@ with compose_col:
                         else: st.error(f"Failed: {sid}")
                     except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
-        # ── Preview column ─────────────────────────────────────────────────────────────
+    # ── Preview column ─────────────────────────────────────────────────────────────
 with preview_col:
     st.markdown('<p class="ce-label">Live Preview</p>',unsafe_allow_html=True)
     # Base values from template render
@@ -1315,8 +1308,7 @@ with preview_col:
     _recip_display=st.session_state.get("ce_to","")
     _cc_display=st.session_state.get("ce_cc","")
 
-    # Override with manually edited values if they exist and differ from template
-    # (only apply if the edit keys exist AND the template hasn't just changed)
+    # Override with manually edited values
     _ps_edit=st.session_state.get("prev_subj_edit","")
     _pb_edit=st.session_state.get("prev_body_edit","")
     _using_edit = False
@@ -1325,7 +1317,22 @@ with preview_col:
     if _pb_edit and _pb_edit != _pb:
         _pb = _pb_edit; _using_edit = True
 
-    if _pb:
+    if not _is_composed:
+        # Compose button — preview hidden until clicked
+        st.markdown(
+            '<div style="text-align:center;padding:40px 20px">'
+            '<div style="font-size:28px;margin-bottom:10px;opacity:.2">✉</div>'
+            '<div style="font-size:13px;opacity:.45;margin-bottom:20px">'
+            'Fill in the fields on the left, then generate the preview.</div>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        if st.button("✉ Generate preview",
+                     key=f"btn_compose_{selected_sid}_{_tmpl_type}",
+                     type="primary", use_container_width=True):
+            st.session_state[_compose_key] = True
+            st.rerun()
+    elif _pb:
         st.markdown(_email_html(_ps,_pb,_recip_display,_cc_display,_pa),unsafe_allow_html=True)
         _cc_parts=[]
         if _consultant_email(_logged_in): _cc_parts.append("you")
@@ -1350,12 +1357,6 @@ with preview_col:
         # Expose edited subject/body for send buttons to use
         st.session_state["ce_send_subj"] = _ps
         st.session_state["ce_send_body"] = _pb
-    else:
-        st.markdown(
-            '<div class="ce-card" style="text-align:center;padding:32px 20px">'
-            '<div style="font-size:24px;margin-bottom:10px;opacity:.25">✉</div>'
-            '<div style="font-size:13px;opacity:.45">Select a communication type to see preview</div>'
-            '</div>',unsafe_allow_html=True)
 
     # Session log
     log=get_session_send_log()
