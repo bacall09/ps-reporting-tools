@@ -170,7 +170,9 @@ def build_auto_context(project_row: dict, consultant_name: str, sfdc_contact: Op
 
     Returns a dict of {PLACEHOLDER_KEY: resolved_value} for all auto-fillable fields.
     """
-    customer = project_row.get("customer", "")
+    # DRS stores customer name as "account" (mapped from "Customer" column via SS_COL_MAP_OUT)
+    customer = (project_row.get("customer") or project_row.get("account") or
+                project_row.get("Customer") or "")
     product  = project_row.get("product", project_row.get("project_type", ""))
 
     # Generate the ps-support alias from customer name
