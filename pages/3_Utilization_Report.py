@@ -464,7 +464,7 @@ def main():
 
     # Hero (intentionally dark — brand element, like other pages)
     st.markdown(
-        "<div style='background:#050D1F;padding:28px 36px 24px;border-radius:10px;"
+        "<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 36px 24px;border-radius:10px;"
         "margin-bottom:14px;font-family:Manrope,sans-serif;'>"
         "<div style='font-size:10px;font-weight:700;letter-spacing:2.5px;"
         "text-transform:uppercase;color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"

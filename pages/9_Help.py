@@ -26,7 +26,7 @@ st.markdown("""
 _zone_svg = """"""
 
 _hero = st.empty()
-_hero.markdown(f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;position:relative;overflow:hidden;font-family:Manrope,sans-serif'> {_zone_svg} <div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Professional Services · Tools</div> <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Reference Guide</h1> <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px;font-family:Manrope,sans-serif'>What each page does, what data it uses, and what questions it answers.</p> </div>", unsafe_allow_html=True)
+_hero.markdown(f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;position:relative;overflow:hidden;font-family:Manrope,sans-serif'> {_zone_svg} <div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Professional Services · Tools</div> <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Reference Guide</h1> <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px;font-family:Manrope,sans-serif'>What each page does, what data it uses, and what questions it answers.</p> </div>", unsafe_allow_html=True)
 
 st.markdown('<div class="section-label">Data Sources</div>', unsafe_allow_html=True)
 st.markdown("""

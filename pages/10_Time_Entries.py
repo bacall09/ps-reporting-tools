@@ -24,7 +24,7 @@ if not _session_name:
 # ── Page styles ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .te-hero { background:#050D1F; padding:32px 40px 28px; border-radius:10px; margin-bottom:24px; position:relative; overflow:hidden; font-family:Manrope,sans-serif; }
+    .te-hero { background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%); padding:32px 40px 28px; border-radius:10px; margin-bottom:24px; position:relative; overflow:hidden; font-family:Manrope,sans-serif; }
     .section-label { font-size: 13px; font-weight: 700; text-transform: uppercase;
                      letter-spacing: 0.8px; color: #4472C4; margin-bottom: 8px; }
     .te-stat { font-size: 28px; font-weight: 700; color: inherit; }
