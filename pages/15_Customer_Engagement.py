@@ -1233,7 +1233,8 @@ with compose_col:
         r=st.session_state.pop("_req_w")
         try:
             with st.spinner("Logging…"):
-                _tmpl_w_for_log=get_welcome_template(_sku(str(product_raw))) if product_raw and str(product_raw) not in ("","nan","None") else None
+                _sk_for_log = _sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
+                _tmpl_w_for_log = get_welcome_template(_sk_for_log) if _sk_for_log else None
                 _tid=f"welcome_{_tmpl_w_for_log.get('sku_key','manual')}" if _tmpl_w_for_log else "welcome_manual"
                 _tnm=f"Welcome — {_tmpl_w_for_log.get('display_name','')}" if _tmpl_w_for_log else "Welcome"
                 ok,sid=execute_send(project_id=project_id,template_id=_tid,template_name=_tnm,
