@@ -4,6 +4,32 @@ Upload a Smartsheets DRS export + NetSuite time detail to generate
 a weighted workload score per consultant across active FF projects.
 """
 import streamlit as st
+
+def _get_effective_browse(session_name, role, el, rm, ro, ae, cd, sidebar_key):
+    """Return (browse_str, is_all_team) robust to session wipe and emoji encoding."""
+    _b = (st.session_state.get("_browse_passthrough") or
+          st.session_state.get("home_browse", "")) or ""
+    _is_mgr = role in ("manager", "manager_only", "reporting_only")
+    if _is_mgr and not _b:
+        # No passthrough — show local selector defaulting to All team
+        _active = sorted([n for n in cd if n])
+        _bopts = ["👥 All team"]
+        _by_r = {}
+        for _cn in _active:
+            _loc = el.get(_cn, "")
+            _rg = ro.get(_cn, rm.get(_loc, "Other"))
+            _by_r.setdefault(_rg, []).append(_cn)
+        for _rg in sorted(_by_r.keys()):
+            _bopts.append(f"── {_rg} ──")
+            _bopts.extend(_by_r[_rg])
+        with st.sidebar:
+            st.markdown("**View as:**")
+            _b = st.selectbox("View as", _bopts, key=sidebar_key,
+                              label_visibility="collapsed")
+    _clean = _b.replace("👥", "").strip().lower()
+    _is_all = _clean in ("all team", "") or _b in ("👥 All team", "All team")
+    return _b, _is_all
+
 from shared.whs import (
 
 
@@ -21,7 +47,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from shared.constants import EMPLOYEE_ROLES, SS_COL_MAP, NS_COL_MAP, PHASE_BENCHMARKS, ACTIVE_EMPLOYEES
-from shared.config import NAVY, TEAL, WHITE, LTGRAY, AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP
+from shared.config import NAVY, TEAL, WHITE, LTGRAY, AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP, UTIL_EXEMPT_EMPLOYEES
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -37,120 +63,9 @@ GREEN    = "27AE60"
 AMBER    = "F39C12"
 
 # ── Employee / Region config (mirrors utilization report) ─────────────────────
-EMPLOYEE_ROLES = {
-    # Structure: name -> {role, products, learning, util_exempt (optional)}
-    # roles: Consultant | Project Manager | Solution Architect | Developer
-    # products: assignable product types
-    # learning: in-training — surface as future capacity only, not current
-    # util_exempt: True = excluded from utilization targets
-
-    # ── Project Managers (no product delivery) ────────────────────────────────
-    "Barrio, Nairobi":          {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
-    "Hughes, Madalyn":          {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
-    "Porangada, Suraj":       {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
-    "Cadelina":             {"role": "Project Manager",    "products": [],                                                                                      "learning": []},
-
-    # ── Solution Architects ───────────────────────────────────────────────────
-    "Bell, Stuart":            {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
-    "DiMarco, Nicole R":         {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": []},
-    "Murphy, Conor":          {"role": "Solution Architect", "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
-
-    # ── Developer ─────────────────────────────────────────────────────────────
-    "Church, Jason G":      {"role": "Developer",          "products": ["All"],                                                                                  "learning": [], "util_exempt": True},
-
-    # ── Consultants ───────────────────────────────────────────────────────────
-    "Arestarkhov, Yaroslav":     {"role": "Consultant",         "products": ["Billing", "Capture"],                                                                   "learning": []},
-    "Carpen, Anamaria":          {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
-    "Centinaje, Rhodechild":       {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
-    "Cooke, Ellen":           {"role": "Consultant",         "products": ["Billing", "Payroll"],                                                                   "learning": []},
-    "Dolha, Madalina":           {"role": "Consultant",         "products": ["Capture", "Reconcile", "CC Statement Import", "Reconcile PSP", "e-Invoicing"],          "learning": []},
-    "Finalle-Newton, Jesse":  {"role": "Solution Architect", "products": ["Reporting"],                                                                            "learning": []},
-    "Gardner, Cheryll L":         {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Hopkins, Chris":         {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
-    "Ickler, Georganne":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Isberg, Eric":          {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
-    "Jordanova, Marija":       {"role": "Consultant",         "products": ["Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],     "learning": []},
-    "Lappin, Thomas":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": ["Capture", "Reconcile"]},
-    "Longalong, Santiago":       {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": ["Billing"]},
-    "Mohammad, Manaan":        {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
-    "Morris, Lisa":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "NAQVI, SYED":          {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "Olson, Austin D":           {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Pallone, Daniel":         {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "Raykova, Silvia":         {"role": "Consultant",         "products": ["Capture", "Approvals", "e-Invoicing"],                                                  "learning": []},
-    "Selvakumar, Sajithan":      {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile"],                                                    "learning": []},
-    "Snee, Stefanie J":            {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Swanson, Patti":  {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": [], "util_exempt": True},
-    "Tuazon, Carol":          {"role": "Consultant",         "products": ["Payroll", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"],       "learning": []},
-    "Zoric, Ivan":           {"role": "Consultant",         "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "Reconcile PSP", "SFTP Connector"], "learning": []},
-
-    "Dunn, Steven":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-    "Law, Brandon":           {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-    "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],                                                                                  "learning": []},
-        "Cruz, Daniel":           {"role": "Consultant",         "products": ["All"],                                                                                  "learning": []},
-    # ── Leavers (historical data only) ────────────────────────────────────────
-    "Alam, Laisa":          {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Chan, Joven":          {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
-    "Cloete, Bronwyn":      {"role": "Consultant",         "products": ["Capture", "Approvals"],                                                                 "learning": []},
-    "Eyong, Eyong":         {"role": "Consultant",         "products": ["Capture"],                                                                              "learning": []},
-    "Hamilton, Julie C":    {"role": "Consultant",         "products": ["Reporting"],                                                                            "learning": []},
-    "Hernandez, Camila":    {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-    "Rushbrook, Emma C":    {"role": "Consultant",         "products": ["Payroll"],                                                                              "learning": []},
-    "Strauss, John W":      {"role": "Consultant",         "products": ["Billing"],                                                                              "learning": []},
-}
 
 # ── Employee roster — {name: (location, start_date, end_date)}
 # start/end as "YYYY-MM" strings or None (None = no limit).
-EMPLOYEE_LOCATION = {
-    #  Name                        Location              Start       End
-    # ── Active employees ──────────────────────────────────────────────────────
-    "Arestarkhov, Yaroslav":  ("Czech Republic",      None,       None),
-    "Barrio, Nairobi":        ("USA",                 None,       None),
-    "Bell, Stuart":           ("USA",                 None,       None),
-    "Cadelina":               ("Manila (PH)",         "2026-03",  None),
-    "Carpen, Anamaria":       ("Spain",               None,       None),
-    "Centinaje, Rhodechild":  ("Manila (PH)",         None,       None),
-    "Church, Jason G":        ("USA",                 None,       None),
-    "Cooke, Ellen":           ("Northern Ireland",    None,       None),
-    "Cruz, Daniel":           ("Manila (PH)",         None,       None),
-    "DiMarco, Nicole R":      ("USA",                 None,       None),
-    "Dolha, Madalina":        ("Faroe Islands",       None,       None),
-    "Finalle-Newton, Jesse":  ("USA",                 None,       None),
-    "Gardner, Cheryll L":     ("USA",                 None,       None),
-    "Hopkins, Chris":         ("USA",                 None,       None),
-    "Hughes, Madalyn":        ("USA",                 None,       None),
-    "Ickler, Georganne":      ("USA",                 None,       None),
-    "Isberg, Eric":           ("USA",                 None,       None),
-    "Jordanova, Marija":      ("North Macedonia",     None,       None),
-    "Lappin, Thomas":         ("Northern Ireland",    None,       None),
-    "Longalong, Santiago":    ("Manila (PH)",         None,       None),
-    "Mohammad, Manaan":       ("Canada",              None,       None),
-    "Morris, Lisa":           ("Sydney (NSW)",        None,       None),
-    "Murphy, Conor":          ("USA",                 None,       None),
-    "NAQVI, SYED":            ("Canada",              None,       None),
-    "Olson, Austin D":        ("USA",                 None,       None),
-    "Pallone, Daniel":        ("Sydney (NSW)",        None,       None),
-    "Porangada, Suraj":       ("USA",                 None,       None),
-    "Raykova, Silvia":        ("Netherlands",         None,       None),
-    "Selvakumar, Sajithan":   ("Canada",              None,       None),
-    "Snee, Stefanie J":       ("USA",                 None,       None),
-    "Stone, Matt":            ("USA",                 None,       None),
-    "Swanson, Patti":         ("UK",                  None,       None),
-    "Tuazon, Carol":          ("Manila (PH)",         None,       None),
-    "Zoric, Ivan":            ("Serbia",              None,       None),
-    "Dunn, Steven":           ("USA",                 None,       None),
-    "Law, Brandon":           ("USA",                 None,       None),
-    "Quiambao, Generalyn":    ("Manila (PH)",         None,       None),
-        # ── Leavers ───────────────────────────────────────────────────────────────
-    "Alam, Laisa":            ("USA",                 None,       "2025-12"),
-    "Chan, Joven":            ("Manila (PH)",         None,       "2025-12"),
-    "Cloete, Bronwyn":        ("Netherlands",         None,       "2026-02"),
-    "Eyong, Eyong":           ("USA",                 None,       "2025-12"),
-    "Hamilton, Julie C":      ("USA",                 None,       "2026-01"),
-    "Hernandez, Camila":      ("USA",                 None,       "2025-12"),
-    "Rushbrook, Emma C":      ("Wales",               None,       "2025-12"),
-    "Strauss, John W":        ("USA",                 None,       "2026-03"),
-}
 
 def _emp_location(name):
     """Return location string regardless of tuple or plain string."""
@@ -1093,7 +1008,7 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
         ws_con.column_dimensions[get_column_letter(i)].width = w
 
     # High risk count per consultant
-    high_risk = scored_df[(scored_df["active"]) & (scored_df.get("risk_level", pd.Series(dtype=str)).str.lower().str.contains("high", na=False))]
+    high_risk = scored_df[(scored_df["active"]) & (scored_df.get("risk_level", pd.Series(dtype="object")).str.lower().str.contains("high", na=False))]
     high_risk_count = high_risk.groupby("project_manager")["project_id"].nunique().to_dict() if "risk_level" in scored_df.columns else {}
 
     # Pre-calculate avg weighted score by PS region
@@ -1139,10 +1054,10 @@ def build_excel(scored_df, consultant_df, missing_pm_count, as_of, ns_min_date=N
 
     at_risk_df = scored_df[
         (scored_df["active"]) & (
-            (scored_df.get("risk_level",       pd.Series(dtype=str)).str.lower().str.contains("high",    na=False)) |
-            (scored_df.get("schedule_health",  pd.Series(dtype=str)).str.lower().str.contains("behind",  na=False)) |
-            (scored_df.get("rag",              pd.Series(dtype=str)).str.lower().str.contains("red",     na=False)) |
-            (scored_df.get("client_sentiment", pd.Series(dtype=str)).str.lower().str.contains("negative",na=False))
+            (scored_df.get("risk_level",       pd.Series(dtype="object")).str.lower().str.contains("high",    na=False)) |
+            (scored_df.get("schedule_health",  pd.Series(dtype="object")).str.lower().str.contains("behind",  na=False)) |
+            (scored_df.get("rag",              pd.Series(dtype="object")).str.lower().str.contains("red",     na=False)) |
+            (scored_df.get("client_sentiment", pd.Series(dtype="object")).str.lower().str.contains("negative",na=False))
         )
     ].copy()
 
@@ -1457,14 +1372,8 @@ def main():
     else:
         _title_sfx = ""
 
-    st.markdown(f"""
-        <div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>
-    <svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);opacity:0.06;width:200px;height:200px;pointer-events:none' viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'><g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435ZM1445.252,792.261c-7.628-38.507-22.817-74.472-43.124-107.897-35.582-58.566-85.801-106.77-139.329-149.092-69.784-55.176-145.355-102.407-225.163-141.162-2.165-1.052-4.941.388-5.391,1.627-.426,1.171-.463,3.413.931,4.628,20.341,17.734,39.847,35.55,58.599,55.093,13.286,14.465,26.223,28.012,37.022,44.544,19.784,30.289,35.735,62.168,50.127,95.397,34.512,31.926,64.863,67.358,90.813,106.359,42.427,63.765,57.696,142.663,37.453,217.116-11.436,42.061-34.763,80.507-64.388,112.265-55.859,59.882-133.144,94.711-214.71,99.157-32.507,1.773-64.093-.538-96.013-6.503-28.16-5.262-70.299-23.997-96.538-36.626-2.312-1.112-4.605-.743-6.449.974-12.635,11.76-25.076,22.901-39.051,33.146l-43.32,31.757c-2.68,1.965-2.195,5.562.439,7.808,70.707,60.309,165.779,100.179,259.837,97.033,39.996-1.336,78.686-6.594,117.486-16.111,94.178-23.099,174.952-71.91,236.526-146.957,23.873-29.096,44.355-60.51,59.779-94.956,29.172-65.148,38.357-137.461,24.463-207.601ZM601.099,242.903c-12.268,10.522-48.215,44.405-47.219,60.482.993,16.01,10.781,31.195,25.227,38.155,14.47,6.972,41.303-10.055,53.886-18.311l65.495-42.972c26.305-17.259,52.496-32.716,80.08-47.834l57.464-31.494c20.451-11.209,41.123-19.851,63.235-27.448,35.852-12.318,72.313-18.084,110.322-17.747,29.787.263,58.398,3.408,86.939,11.449,44.037,12.405,82.745,35.987,114.027,69.974,20.347,22.106,37.598,45.332,51.026,71.732,6.962,13.688,13.008,27.156,16.103,42.311,6.48,31.729,12.267,85.992-.676,115.916-6.013,13.902-13.009,26.627-18.289,40.753-.847,2.264-.768,4.767,1.387,6.461l81.366,63.967c2.003,1.574,5.098.298,6.46-1.592,19.285-26.745,34.599-55.578,45.667-86.804,10.617-29.953,15.416-60.246,15.218-92.192-.482-77.938-29.055-152.791-79.976-211.891-67.16-77.946-169.264-137.487-272.877-146.244-33.524-2.834-66.192-1.328-99.421,3.091-82.214,10.934-149.21,45.218-216.385,92.267-48.269,33.807-94.373,69.644-139.062,107.973ZM72.687,567.553c20.03,44.974,54.35,86.652,88.718,121.568,19.447,19.756,38.882,38.258,60.393,55.711l73.052,59.268c30.921,25.086,74.954,56.331,111.096,72.278,11.713,5.168,23.385,8.99,35.917,11.295,12.922,2.375,24.878,1.136,37.309-3.088,18.441-6.266,35.538-14.698,52.671-24.006,1.792-.974,2.85-2.213,3.058-3.936.179-1.483-.47-3.163-1.914-4.548-14.129-13.542-27.174-27.284-42.195-40.056l-78.193-66.48-93.5-82.422c-23.176-20.43-44.471-41.737-65.536-64.239-15.19-16.227-28.591-32.64-40.05-51.639-20.601-34.157-31.396-72.282-30.182-112.398.614-20.279,2.364-39.861,7.45-59.369,8.872-34.031,50.72-76.652,77.451-99.125,3.767-7.04,2.459-14.401,2.885-21.735.884-15.227,3.244-29.908,5.647-44.959,4.285-26.824,22.718-58.984,38.899-80.638,1.348-1.805,1.936-3.535.891-4.937-.951-1.277-2.618-2.49-4.589-2.222-52.436,7.145-104.92,34.806-146.088,67.704-25.632,20.484-48.458,43.456-68.934,69.137-46.339,58.118-62.952,131.49-53.428,204.864,4.697,36.186,14.376,70.75,29.171,103.971ZM1196.886,310.029c-4.882-10.39-12.371-18.773-20.659-26.723-18.771-18.007-40.425-31.674-64.291-42.362-57.569-25.783-110.906-28.064-173.214-22.213-61.067,5.735-111.183,25.069-164.567,54.081-24.678,13.412-48.301,26.866-71.885,42.28l-105.247,68.787c-85.308,55.756-195.138,156.138-256.755,237.876-1.598,2.12-2.206,4.81-.222,6.912l76.342,80.886c1.468,1.556,2.9,1.672,4.715,1.249,1.397-.326,1.99-1.717,2.793-3.377,3.117-6.44,6.665-11.977,11.238-17.864,38.52-49.59,82.099-94.54,130.222-135.261,40.87-34.583,82.783-67.442,126.68-98.902,83.71-59.991,188.529-115.793,291.15-127.921,23.653-2.795,46.328-.575,69.656,3.405,27.197,4.641,52.661,12.543,78.69,21.347l38.004,12.855c13.849,4.685,27.221-3.226,30.503-17.755,2.725-12.064,2.293-25.708-3.154-37.301Z'/></g></svg>
-            <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div>
-            <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Workload Health Score{_title_sfx}</h1>
-            <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Weighted project scoring across active Fixed Fee engagements — by consultant and phase. Each project scored by phase weight × client health × risk multiplier.</p>
-        </div>
-    """, unsafe_allow_html=True)
+    _hero = st.empty()
+    _hero.markdown(f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'> <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div> <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>Workload Health Score{_title_sfx}</h1> <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Weighted project scoring across active Fixed Fee engagements — by consultant and phase. Each project scored by phase weight × client health × risk multiplier.</p> </div>", unsafe_allow_html=True)
 
     # Phase weight reference
     with st.expander("View phase weights & scoring model"):
@@ -1521,13 +1430,18 @@ def main():
             from shared.constants import get_role as _get_role, resolve_view_as, get_region_consultants
             from shared.config import EMPLOYEE_LOCATION as _EL2, PS_REGION_MAP as _RM2, PS_REGION_OVERRIDE as _RO2
             from shared.constants import ACTIVE_EMPLOYEES as _AE2
-            _home_browse = (st.session_state.pop("_browse_passthrough", None) or
-                               st.session_state.get("home_browse", "— My own view —"))
-            _va_name, _va_region, _is_group = resolve_view_as(
-                _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
+            from shared.constants import CONSULTANT_DROPDOWN as _CD2
+            _home_browse, _whs_all_team = _get_effective_browse(
+                _session_name, _get_role(_session_name), _EL2, _RM2, _RO2, _AE2, _CD2, "whs_view_as"
             )
             _role = _get_role(_session_name)
             _is_mgr = _role in ("manager", "manager_only", "reporting_only")
+            if _is_mgr and _whs_all_team:
+                _va_name, _va_region = None, None
+            else:
+                _va_name, _va_region, _is_group = resolve_view_as(
+                    _session_name, _home_browse, EMPLOYEE_ROLES, _EL2, _RM2, _RO2, _AE2
+                )
             _pm_col = next((c for c in ["project_manager", "consultant"] if c in ss_df.columns), None)
             if _va_region:
                 _rc = get_region_consultants(_va_region, _EL2, _RM2, _RO2, _AE2)
@@ -1638,9 +1552,9 @@ A project is flagged if no time has been booked within the NS report window:
     with tab2:
         at_risk = scored_df[
             (scored_df["active"]) & (
-                (scored_df.get("risk_level",      pd.Series(dtype=str)).str.lower().str.contains("high",   na=False)) |
-                (scored_df.get("schedule_health", pd.Series(dtype=str)).str.lower().str.contains("behind", na=False)) |
-                (scored_df.get("rag",             pd.Series(dtype=str)).str.lower().str.contains("red",    na=False))
+                (scored_df.get("risk_level",      pd.Series(dtype="object")).str.lower().str.contains("high",   na=False)) |
+                (scored_df.get("schedule_health", pd.Series(dtype="object")).str.lower().str.contains("behind", na=False)) |
+                (scored_df.get("rag",             pd.Series(dtype="object")).str.lower().str.contains("red",    na=False))
             )
         ]
         if len(at_risk) == 0:

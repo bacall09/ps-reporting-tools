@@ -9,7 +9,7 @@ from datetime import date
 st.session_state["current_page"] = "Project Health"
 
 from shared.constants import (
-    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN,
+    EMPLOYEE_ROLES, CONSULTANT_DROPDOWN, ACTIVE_EMPLOYEES,
     MILESTONE_COLS_MAP, get_role, is_manager,
     name_matches, get_ff_scope,
 )
@@ -49,10 +49,7 @@ if not selected:
     st.stop()
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
-_zone_svg = """<svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);
-opacity:0.06;width:200px;height:200px;pointer-events:none'
-viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'>
-<g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435Z'/></g></svg>"""
+_zone_svg = """"""
 
 df_drs = st.session_state.get("df_drs")
 
@@ -72,10 +69,21 @@ if role in ("manager", "manager_only", "reporting_only"):
 # ── Filter DRS to this consultant/region ─────────────────────────────────────
 my_drs = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
-    pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
+    pm_col = df_drs.get("project_manager", pd.Series(dtype="object")).fillna("")
     if _va_region and role in ("manager", "manager_only", "reporting_only"):
         if _va_region == "__ALL__":
-            my_drs = df_drs.copy()
+            _all_names = set()
+            for _n in ACTIVE_EMPLOYEES:
+                _pts = [p.strip() for p in _n.split(",")]
+                _all_names.add(_n.lower())
+                _all_names.add(_pts[0].lower())
+                if len(_pts) == 2:
+                    _all_names.add(f"{_pts[1]} {_pts[0]}".lower())
+                    _all_names.add(_pts[1].lower())
+            my_drs = df_drs[pm_col.apply(
+                lambda v: str(v).strip().lower() in _all_names
+                       or any(str(v).strip().lower() == ns for ns in _all_names)
+            )].copy()
         else:
             from shared.constants import CONSULTANT_DROPDOWN, resolve_name
             _region_consultants = set()
@@ -93,7 +101,17 @@ if df_drs is not None and not df_drs.empty:
                        or str(v).strip().lower() in _region_consultants
             )].copy()
     elif role in ("manager_only", "reporting_only"):
-        my_drs = df_drs.copy()
+        _all_names2 = set()
+        for _n in ACTIVE_EMPLOYEES:
+            _pts = [p.strip() for p in _n.split(",")]
+            _all_names2.add(_n.lower())
+            _all_names2.add(_pts[0].lower())
+            if len(_pts) == 2:
+                _all_names2.add(f"{_pts[1]} {_pts[0]}".lower())
+                _all_names2.add(_pts[1].lower())
+        my_drs = df_drs[pm_col.apply(
+            lambda v: str(v).strip().lower() in _all_names2
+        )].copy()
     elif role == "manager" and view_as == selected:
         # Manager viewing own projects (no View As set)
         my_drs = df_drs[pm_col.apply(lambda v: name_matches(v, view_as))].copy()
@@ -106,21 +124,8 @@ else:
 _view_label = ("Global Team" if _va_region == "__ALL__" else _va_region + " Team") if _va_region else (
     view_as if view_as != selected else selected
 )
-st.markdown(f"""
-<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;
-            margin-bottom:24px;font-family:Manrope,sans-serif;
-            position:relative;overflow:hidden'>
-  {_zone_svg}
-  <div style='font-size:13px;font-weight:700;letter-spacing:2.5px;
-              text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>
-      Professional Services · Tools</div>
-  <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>
-      Project Health</h1>
-  <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px;
-            font-family:Manrope,sans-serif'>
-      {_view_label} · {today.strftime("%A, %B %-d %Y")}</p>
-</div>
-""", unsafe_allow_html=True)
+_hero = st.empty()
+_hero.markdown(f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px; margin-bottom:24px;font-family:Manrope,sans-serif; position:relative;overflow:hidden'> {_zone_svg} <div style='font-size:13px;font-weight:700;letter-spacing:2.5px; text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'> Professional Services · Tools</div> <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'> Project Health</h1> <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px; font-family:Manrope,sans-serif'> {_view_label} · {today.strftime("%A, %B %-d %Y")}</p> </div>", unsafe_allow_html=True)
 
 if df_drs is None:
     st.info("Load SS DRS on the Home page to view Project Health.")
@@ -146,6 +151,11 @@ def _pidx(p):
 # Active only (exclude on-hold)
 _ioh    = my_drs.get("_on_hold", pd.Series(False, index=my_drs.index)).astype(bool)
 _active = my_drs[~_ioh].copy()
+# ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
+_id_col_dc    = "project_id" if "project_id" in _active.columns else "project_name"
+_n_active_dc  = int(_active[_id_col_dc].nunique()) if not _active.empty else 0
+_n_onhold_dc  = int(my_drs[_ioh]["project_id"].nunique()) if not my_drs.empty and "project_id" in my_drs.columns else int(_ioh.sum())
+
 _legacy = _active.get("legacy", pd.Series(False, index=_active.index)).astype(bool)
 
 # Normalise dates
@@ -173,7 +183,7 @@ _active[["_sched_status","_sched_days","_sched_col"]] = _active.apply(
 )
 
 # ── Delivery summary metrics ──────────────────────────────────────────────────
-_n_active      = len(_active)
+_n_active      = _n_active_dc
 _n_on_track    = len(_active[_active["_sched_status"].isin(["On track","Going live","Delivered"])])
 _n_delayed     = len(_active[_active["_sched_status"] == "Delayed"])
 _n_at_risk     = len(_active[_active["_sched_status"] == "At risk"])

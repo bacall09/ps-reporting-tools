@@ -23,16 +23,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-_zone_svg = """<svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);opacity:0.06;width:200px;height:200px;pointer-events:none' viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'><g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435Z'/></g></svg>"""
+_zone_svg = """"""
 
-st.markdown(f"""
-<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;position:relative;overflow:hidden;font-family:Manrope,sans-serif'>
-  {_zone_svg}
-  <div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Professional Services · Tools</div>
-  <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Reference Guide</h1>
-  <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px;font-family:Manrope,sans-serif'>What each page does, what data it uses, and what questions it answers.</p>
-</div>
-""", unsafe_allow_html=True)
+_hero = st.empty()
+_hero.markdown(f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;position:relative;overflow:hidden;font-family:Manrope,sans-serif'> {_zone_svg} <div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>Professional Services · Tools</div> <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>Reference Guide</h1> <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px;font-family:Manrope,sans-serif'>What each page does, what data it uses, and what questions it answers.</p> </div>", unsafe_allow_html=True)
 
 st.markdown('<div class="section-label">Data Sources</div>', unsafe_allow_html=True)
 st.markdown("""

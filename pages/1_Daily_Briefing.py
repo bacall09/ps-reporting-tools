@@ -151,7 +151,19 @@ view_variants = _name_variants(view_name)
 
 # Build set of names for region/manager views
 _view_name_set = None
-if view_name.startswith("REGION:"):
+_region_names  = []   # always defined regardless of view_name branch
+if view_name == "ALL":
+    # ALL view: scope to active employees only (excludes leavers + unassigned)
+    # Build name variants for every active employee
+    _view_name_set = set()
+    for n in ACTIVE_EMPLOYEES:
+        parts = [p.strip() for p in n.split(",")]
+        _view_name_set.add(n.lower())
+        _view_name_set.add(parts[0].lower())
+        if len(parts) == 2:
+            _view_name_set.add(f"{parts[1]} {parts[0]}".lower())
+            _view_name_set.add(parts[1].lower())
+elif view_name.startswith("REGION:"):
     _region_sel = view_name.split(":", 1)[1]
     # Only include people who actually do product delivery for name matching
     _region_names = [
@@ -159,7 +171,7 @@ if view_name.startswith("REGION:"):
         if _gr(n) == _region_sel
         and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0
     ]
-    # Include name variants but NOT first-name-only (too ambiguous)
+    # Include name variants — also add DRS display name aliases from PS_REGION_OVERRIDE
     _view_name_set = set()
     for n in _region_names:
         parts = [p.strip() for p in n.split(",")]
@@ -167,16 +179,21 @@ if view_name.startswith("REGION:"):
         _view_name_set.add(parts[0].lower())                       # "longalong" (last name)
         if len(parts) == 2:
             _view_name_set.add(f"{parts[1]} {parts[0]}".lower())  # "santiago longalong"
+            _view_name_set.add(parts[1].strip().lower())           # "santiago" (first name)
+    # Add DRS display name aliases (e.g. "Caroline Tuazon" for Tuazon, Carol)
+    for _alias, _alias_region in PS_REGION_OVERRIDE.items():
+        if _alias_region == _region_sel:
+            _view_name_set.add(_alias.lower())
+            _alias_parts = _alias.strip().split()
+            if len(_alias_parts) >= 2:
+                _view_name_set.add(_alias_parts[-1].lower())
 elif view_name == "ALL_MANAGERS":
     _view_name_set = {n.lower() for n in ACTIVE_EMPLOYEES if get_role(n) == "manager_only"}
 
 def _match_name(val):
     """Match a name value against the current view selection."""
-    if view_name == "ALL":
-        return True
     if _view_name_set is not None:
         v = str(val).strip().lower()
-        # Check full string match OR "First Last" / "Last, First" exact match
         return v in _view_name_set or any(
             v == ns or v.startswith(ns + " ") or v.endswith(" " + ns)
             for ns in _view_name_set
@@ -236,19 +253,19 @@ my_projects = pd.DataFrame()
 if df_drs is not None and not df_drs.empty:
     if _is_group_view:
         if _view_name_set is not None:
-            pm_col = df_drs.get("project_manager", pd.Series(dtype=str))
+            pm_col = df_drs.get("project_manager", pd.Series(dtype="object"))
             _drs_by_who = df_drs[pm_col.apply(lambda v: _match_name(str(v)))]
         else:
             _drs_by_who = df_drs
     else:
-        pm_mask = df_drs.get("project_manager", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
+        pm_mask = df_drs.get("project_manager", pd.Series(dtype="object")).apply(lambda v: _match_name(str(v)))
         _drs_by_who = df_drs[pm_mask]
         if _drs_by_who.empty and not is_manager(view_name):
             _drs_by_who = df_drs
             st.caption("ℹ️ No PM column matched — showing all projects.")
 
     if _product_project_types is not None and not _drs_by_who.empty:
-        pt_col = _drs_by_who.get("project_type", pd.Series(dtype=str))
+        pt_col = _drs_by_who.get("project_type", pd.Series(dtype="object"))
         my_projects = _drs_by_who[pt_col.apply(lambda v: _match_project_type(str(v)))].copy()
     else:
         my_projects = _drs_by_who.copy()
@@ -259,7 +276,7 @@ if df_ns is not None and not df_ns.empty:
     if _is_group_view and _view_name_set is None:
         _ns_by_who = df_ns
     else:
-        emp_mask = df_ns.get("employee", pd.Series(dtype=str)).apply(lambda v: _match_name(str(v)))
+        emp_mask = df_ns.get("employee", pd.Series(dtype="object")).apply(lambda v: _match_name(str(v)))
         _ns_by_who = df_ns[emp_mask]
     # Apply product filter to NS if project_type column exists
     if _product_project_types is not None and "project_type" in _ns_by_who.columns:
@@ -323,24 +340,24 @@ _region_pill = (
 ) if region else ""
 _sub_str = " · ".join(_sub_parts)
 
-st.markdown(
-    f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;"
-    f"font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
-    f"<svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);opacity:0.06;width:200px;height:200px;pointer-events:none' viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'><g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435ZM1445.252,792.261c-7.628-38.507-22.817-74.472-43.124-107.897-35.582-58.566-85.801-106.77-139.329-149.092-69.784-55.176-145.355-102.407-225.163-141.162-2.165-1.052-4.941.388-5.391,1.627-.426,1.171-.463,3.413.931,4.628,20.341,17.734,39.847,35.55,58.599,55.093,13.286,14.465,26.223,28.012,37.022,44.544,19.784,30.289,35.735,62.168,50.127,95.397,34.512,31.926,64.863,67.358,90.813,106.359,42.427,63.765,57.696,142.663,37.453,217.116-11.436,42.061-34.763,80.507-64.388,112.265-55.859,59.882-133.144,94.711-214.71,99.157-32.507,1.773-64.093-.538-96.013-6.503-28.16-5.262-70.299-23.997-96.538-36.626-2.312-1.112-4.605-.743-6.449.974-12.635,11.76-25.076,22.901-39.051,33.146l-43.32,31.757c-2.68,1.965-2.195,5.562.439,7.808,70.707,60.309,165.779,100.179,259.837,97.033,39.996-1.336,78.686-6.594,117.486-16.111,94.178-23.099,174.952-71.91,236.526-146.957,23.873-29.096,44.355-60.51,59.779-94.956,29.172-65.148,38.357-137.461,24.463-207.601ZM601.099,242.903c-12.268,10.522-48.215,44.405-47.219,60.482.993,16.01,10.781,31.195,25.227,38.155,14.47,6.972,41.303-10.055,53.886-18.311l65.495-42.972c26.305-17.259,52.496-32.716,80.08-47.834l57.464-31.494c20.451-11.209,41.123-19.851,63.235-27.448,35.852-12.318,72.313-18.084,110.322-17.747,29.787.263,58.398,3.408,86.939,11.449,44.037,12.405,82.745,35.987,114.027,69.974,20.347,22.106,37.598,45.332,51.026,71.732,6.962,13.688,13.008,27.156,16.103,42.311,6.48,31.729,12.267,85.992-.676,115.916-6.013,13.902-13.009,26.627-18.289,40.753-.847,2.264-.768,4.767,1.387,6.461l81.366,63.967c2.003,1.574,5.098.298,6.46-1.592,19.285-26.745,34.599-55.578,45.667-86.804,10.617-29.953,15.416-60.246,15.218-92.192-.482-77.938-29.055-152.791-79.976-211.891-67.16-77.946-169.264-137.487-272.877-146.244-33.524-2.834-66.192-1.328-99.421,3.091-82.214,10.934-149.21,45.218-216.385,92.267-48.269,33.807-94.373,69.644-139.062,107.973ZM72.687,567.553c20.03,44.974,54.35,86.652,88.718,121.568,19.447,19.756,38.882,38.258,60.393,55.711l73.052,59.268c30.921,25.086,74.954,56.331,111.096,72.278,11.713,5.168,23.385,8.99,35.917,11.295,12.922,2.375,24.878,1.136,37.309-3.088,18.441-6.266,35.538-14.698,52.671-24.006,1.792-.974,2.85-2.213,3.058-3.936.179-1.483-.47-3.163-1.914-4.548-14.129-13.542-27.174-27.284-42.195-40.056l-78.193-66.48-93.5-82.422c-23.176-20.43-44.471-41.737-65.536-64.239-15.19-16.227-28.591-32.64-40.05-51.639-20.601-34.157-31.396-72.282-30.182-112.398.614-20.279,2.364-39.861,7.45-59.369,8.872-34.031,50.72-76.652,77.451-99.125,3.767-7.04,2.459-14.401,2.885-21.735.884-15.227,3.244-29.908,5.647-44.959,4.285-26.824,22.718-58.984,38.899-80.638,1.348-1.805,1.936-3.535.891-4.937-.951-1.277-2.618-2.49-4.589-2.222-52.436,7.145-104.92,34.806-146.088,67.704-25.632,20.484-48.458,43.456-68.934,69.137-46.339,58.118-62.952,131.49-53.428,204.864,4.697,36.186,14.376,70.75,29.171,103.971ZM1196.886,310.029c-4.882-10.39-12.371-18.773-20.659-26.723-18.771-18.007-40.425-31.674-64.291-42.362-57.569-25.783-110.906-28.064-173.214-22.213-61.067,5.735-111.183,25.069-164.567,54.081-24.678,13.412-48.301,26.866-71.885,42.28l-105.247,68.787c-85.308,55.756-195.138,156.138-256.755,237.876-1.598,2.12-2.206,4.81-.222,6.912l76.342,80.886c1.468,1.556,2.9,1.672,4.715,1.249,1.397-.326,1.99-1.717,2.793-3.377,3.117-6.44,6.665-11.977,11.238-17.864,38.52-49.59,82.099-94.54,130.222-135.261,40.87-34.583,82.783-67.442,126.68-98.902,83.71-59.991,188.529-115.793,291.15-127.921,23.653-2.795,46.328-.575,69.656,3.405,27.197,4.641,52.661,12.543,78.69,21.347l38.004,12.855c13.849,4.685,27.221-3.226,30.503-17.755,2.725-12.064,2.293-25.708-3.154-37.301Z'/></g></svg>"
-        f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
-    f"color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Daily Briefing</div>"
-    f"<h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>"
-    f"{_greeting}, {_my_display}</h1>"
-    f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>"
-    f"{_sub_str}</p>"
-    f"{_region_pill}"
+_hero = st.empty()
+_hero.markdown(
+    f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
+    f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;'>{_greeting}, {_my_display}.</h1>"
+    f"<p style='color:rgba(255,255,255,0.4);margin:6px 0 0;font-size:13px;'>Loading...</p>"
     f"</div>",
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-# ── Pre-compute snapshot data so briefing can appear before utilization ───────
+# ── Pre-compute snapshot data so hero metrics can be populated ────────────────
 _ioh     = my_projects.get("_on_hold", pd.Series(False, index=my_projects.index)).astype(bool) if not my_projects.empty else pd.Series(dtype=bool)
 _active  = my_projects[~_ioh].copy() if not my_projects.empty else pd.DataFrame()
+# ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
+_id_col_dc    = "project_id" if "project_id" in _active.columns else "project_name"
+_n_active_dc  = int(_active[_id_col_dc].nunique()) if not _active.empty else 0
+_n_onhold_dc  = int(my_projects[_ioh]["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else int(_ioh.sum())
+
 _snap_today = pd.Timestamp.today().normalize()
 _snap_n7    = _snap_today + pd.Timedelta(days=7)
 _snap_14    = _snap_today - pd.Timedelta(days=14)
@@ -376,8 +393,8 @@ if not _active.empty:
     if "start_date" in _pre_trans.columns and not _pre_trans.empty:
         _sd = pd.to_datetime(_pre_trans["start_date"], errors="coerce")
         _months_active = (_snap_today - _sd).dt.days / 30.44
-        _proj_9mo  = _pre_trans[_months_active >= 9].copy()
         _proj_12mo = _pre_trans[_months_active >= 12].copy()
+        _proj_9mo  = _pre_trans[(_months_active >= 9) & (_months_active < 12)].copy()
     else:
         _proj_9mo = _proj_12mo = pd.DataFrame()
 else:
@@ -414,7 +431,7 @@ if len(_stale) > 0:
 if len(_mi) > 0:
     _p2.append(f"**{len(_mi)} project{'s are' if len(_mi)>1 else ' is'} missing an intro email** — a quick win to close before end of week.")
 
-_oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+_oh_count = _n_onhold_dc
 if _oh_count > 0:
     _p3.append(f"You have **{_oh_count} project{'s' if _oh_count>1 else ''} on hold** — ensure On Hold Reason and Responsible for Delay are recorded on each.")
 
@@ -456,14 +473,12 @@ if _p1 or _p2 or _p3:
         _para_reminder = " and ".join(_r_parts) + " — a proactive check-in today would be timely."
 
     _para_quick = ""
-    if len(_proj_9mo) > 0 and len(_proj_12mo) < len(_proj_9mo):
-        _9mo_only = len(_proj_9mo) - len(_proj_12mo)
-        if _9mo_only > 0:
-            _para_quick += f"{_9mo_only} project{'s are' if _9mo_only>1 else ' is'} approaching the 12-month mark — worth a proactive check on timeline and transition plan. "
+    if len(_proj_9mo) > 0:
+        _para_quick += f"{len(_proj_9mo)} project{'s are' if len(_proj_9mo)>1 else ' is'} approaching the 12-month mark (9–12 months active) — worth a proactive check on timeline and transition plan. "
     if len(_rag_yellow) > 0:
         _para_quick += f"{_proj_list(_rag_yellow)} {'are' if len(_rag_yellow)>1 else 'is'} at Yellow RAG — a quick review of blockers now could prevent escalation."
 
-    _oh_count = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
+    _oh_count = _n_onhold_dc
     _para_house = ""
     if _oh_count > 0:
         _para_house = f"{_oh_count} project{'s are' if _oh_count>1 else ' is'} on hold. Make sure each has an On Hold Reason and Responsible for Delay recorded — these are flagged in DRS Health Check if missing."
@@ -515,7 +530,7 @@ if _p1 or _p2 or _p3:
   </div>"""
 
     _bhtml += "</div></div>"
-    st.markdown(_bhtml, unsafe_allow_html=True)
+    # Briefing text rendered inside _col_brief below
 
 
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
@@ -523,7 +538,8 @@ st.markdown('<hr class="divider">', unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 1 — Utilization
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">This Month — Utilization</div>', unsafe_allow_html=True)
+# This Month — Utilization section label hidden (replaced by hero banner + donut panel)
+# st.markdown('<div class="section-label">This Month — Utilization</div>', unsafe_allow_html=True)
 
 prior_htd: dict = {}  # seeded by FF engine; referenced by _build_row
 
@@ -579,18 +595,26 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     if not ff_rows.empty and "project" in ff_rows.columns:
         ff_rows = ff_rows.sort_values(["project", "date"])
 
-        # Build prior_htd — exactly matching Util Report assign_credits:
-        # group by project only, prior = max(htd) - sum(period hours)
+        # Build prior_htd — keyed by project_id (preferred) then project name
+        # prior = max(hours_to_date) - sum(period hours) per project
         prior_htd: dict = {}
         if "hours_to_date" in month_ns.columns:
-            for _proj_key, _grp in month_ns.groupby("project"):
-                _proj_n = " ".join(str(_proj_key).strip().split())
+            _has_pid = "project_id" in month_ns.columns
+            _grp_col = "project_id" if _has_pid else "project"
+            for _proj_key, _grp in month_ns.groupby(_grp_col):
+                _key = str(_proj_key).strip()
                 try:
-                    _max_htd   = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
+                    _max_htd    = float(_grp["hours_to_date"].dropna().astype(float).max() or 0)
                     _period_hrs = float(_grp["hours"].dropna().astype(float).sum() or 0)
-                    prior_htd[_proj_n] = max(0.0, _max_htd - _period_hrs)
+                    prior_htd[_key] = max(0.0, _max_htd - _period_hrs)
                 except Exception:
-                    prior_htd[_proj_n] = 0.0
+                    prior_htd[_key] = 0.0
+            # Also index by project name for fallback lookups
+            if _has_pid and "project" in month_ns.columns:
+                for _pid, _grp in month_ns.groupby("project_id"):
+                    _pname = " ".join(str(_grp["project"].iloc[0]).split())
+                    if _pname and _pname not in prior_htd:
+                        prior_htd[_pname] = prior_htd.get(str(_pid).strip(), 0.0)
 
         import re as _re_db
         _con: dict = {}
@@ -620,16 +644,18 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
                 ff_unscoped += _hrs
                 continue
 
-            # Use project name as key — matching Util Report's consumed dict
-            if _proj not in _con:
-                _con[_proj] = prior_htd.get(_proj, 0.0)
-            _used = _con[_proj]; _rem = _sc - _used
+            # Use project_id as key where available, fall back to project name
+            _pid_r = str(_r.get("project_id","")).strip()
+            _pkey  = _pid_r if _pid_r and _pid_r != "nan" else _proj
+            if _pkey not in _con:
+                _con[_pkey] = prior_htd.get(_pkey, prior_htd.get(_proj, 0.0))
+            _used = _con[_pkey]; _rem = _sc - _used
             if _rem <= 0:
                 ff_overrun += _hrs
             elif _hrs <= _rem:
-                ff_credit += _hrs; _con[_proj] = _used + _hrs
+                ff_credit += _hrs; _con[_pkey] = _used + _hrs
             else:
-                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_proj] = _sc
+                ff_credit += _rem; ff_overrun += _hrs - _rem; _con[_pkey] = _sc
 
     credit_hrs  = round(tm_hrs + ff_credit, 2)
     overrun_hrs  = round(ff_overrun, 2)
@@ -658,59 +684,201 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     # Normalise "Last, First" to match project_manager format
     _whs_score, _whs_label, _whs_col = consultant_whs(_whs_name, df_drs) if (df_drs is not None and not _is_group_view) else (None, "—", "#718096")
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1:
-        _lbl = "Available this month" if avail else "Available hrs (location not mapped)"
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(avail)}</div><div class="metric-lbl">{_lbl} <span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month <span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with c3:
-        if util_pct is not None:
-            # Pacing-aware colouring — compare MTD util against pro-rated target
-            _UTIL_TARGET = 70.0
-            _month_start = today.replace(day=1)
-            _month_end   = (today.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
-            _days_total  = len(pd.bdate_range(_month_start, _month_end))
-            _days_elapsed = len(pd.bdate_range(_month_start, today))
-            _pacing_pct  = round(_UTIL_TARGET * _days_elapsed / _days_total, 1) if _days_total else _UTIL_TARGET
-            _gap         = util_pct - _pacing_pct
-            if _gap >= 0:
-                _ucol      = "#27AE60"
-                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(39,174,96,.15);color:#27AE60">On pace · target {_pacing_pct}%</div>'
-            elif _gap >= -10:
-                _ucol      = "#F39C12"
-                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(243,156,18,.15);color:#F39C12">Behind pace · target {_pacing_pct}%</div>'
-            else:
-                _ucol      = "#C0392B"
-                _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(192,57,43,.15);color:#C0392B">Behind target · goal {_UTIL_TARGET}%</div>'
-            st.markdown(
-                f'<div class="metric-card"><div class="metric-val" style="color:{_ucol}">{util_pct}%</div>' +
-                f'<div class="metric-lbl">Util % · {_fmt_hrs(util_hrs)} credited <span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Colour reflects pacing: compares MTD util against the pro-rated {_UTIL_TARGET}% target for how far through the month we are.">ⓘ</span></div>' +
-                f'{_pace_tag}</div>',
-                unsafe_allow_html=True
-            )
+    # ── Weekly utilization (Mon–Sun current week) ─────────────────────────────
+    _week_start = today - pd.Timedelta(days=today.weekday())  # Monday
+    _week_end   = _week_start + pd.Timedelta(days=6)           # Sunday
+    _UTIL_TARGET_WK = 70.0
+    _week_avail = avail / (pd.bdate_range(today.replace(day=1),
+                           (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)).size
+                          ) * len(pd.bdate_range(_week_start, min(_week_end, today))) if avail else None
+    if not _is_group_view and df_ns is not None:
+        _wk_ns  = my_ns[
+            (pd.to_datetime(my_ns["date"], errors="coerce") >= pd.Timestamp(_week_start)) &
+            (pd.to_datetime(my_ns["date"], errors="coerce") <= pd.Timestamp(_week_end))
+        ] if "date" in my_ns.columns else pd.DataFrame()
+        _wk_ff_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "fixed fee"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
+        _wk_tm_hrs  = float(_wk_ns[_wk_ns.get("billing_type", pd.Series(dtype=str)).str.lower().str.strip() == "t&m"]["hours"].sum()) if not _wk_ns.empty and "billing_type" in _wk_ns.columns else 0.0
+        _wk_total   = round(_wk_ff_hrs + _wk_tm_hrs, 1)
+        _wk_bdays_month = len(pd.bdate_range(today.replace(day=1),
+                             (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)))
+        _wk_avail_h    = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
+        _wk_full_h     = _wk_avail_h
+        _wk_billable_h = round(_wk_full_h * 0.70, 1)
+        _wk_util_pct   = round(_wk_total / _wk_billable_h * 100) if _wk_billable_h else None
+    elif _is_group_view and df_ns is not None and not my_ns.empty:
+        # Group view — aggregate team weekly util
+        _wk_ns_g = my_ns[
+            (pd.to_datetime(my_ns["date"], errors="coerce") >= pd.Timestamp(_week_start)) &
+            (pd.to_datetime(my_ns["date"], errors="coerce") <= pd.Timestamp(_week_end))
+        ] if "date" in my_ns.columns else pd.DataFrame()
+        if not _wk_ns_g.empty and "billing_type" in _wk_ns_g.columns:
+            _wk_total = round(float(
+                _wk_ns_g[_wk_ns_g["billing_type"].str.lower().str.strip().isin(["fixed fee","t&m"])]["hours"].sum()
+            ), 1)
         else:
-            st.metric("Util %", "—", help="Utilization credit hours as a % of Available hours.")
-    with c4:
-        if overrun_pct is not None:
-            _ocol = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_ocol}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % · {_fmt_hrs(overrun_hrs)} over <span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        else:
-            st.metric("FF overrun %", "—", help="Fixed Fee hours logged beyond the scoped budget as a % of available hours.")
-    with c5:
-        if admin_pct is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % · {_fmt_hrs(admin_hrs)} <span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        else:
-            st.metric("Internal %", "—", help="Hours logged against Internal or Admin projects as a % of Available hours.")
-    with c6:
-        if _whs_score is not None:
-            st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS · {_whs_label} <span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        else:
-            st.metric("WHS", "—", help="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects.")
+            _wk_total = 0.0
+        _wk_bdays_month = len(pd.bdate_range(today.replace(day=1),
+                             (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)))
+        _wk_full_h     = round(float(avail) / _wk_bdays_month * 5, 1) if avail and _wk_bdays_month else 40.0
+        _wk_billable_h = round(_wk_full_h * 0.70, 1)
+        _wk_util_pct   = round(_wk_total / _wk_billable_h * 100) if _wk_billable_h else None
+    else:
+        _wk_total = None; _wk_util_pct = None; _wk_full_h = None; _wk_billable_h = None
 
-    # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
-    if ff_unscoped > 0:
-        st.warning(f"⚠️ {_fmt_hrs(ff_unscoped)} on FF projects with NO SCOPE DEFINED — see Utilization Report Watch List tab in the downloaded report.")
+    # ── Overrun MTD ───────────────────────────────────────────────────────────
+    _overrun_mtd = overrun_hrs  # already computed above
+
+    # ── Week number and quarter ───────────────────────────────────────────────
+    _week_num = today.isocalendar()[1]
+    _month_n  = today.month
+    _fy_q     = f"Q{(((_month_n - 1) // 3) + 1)} FY{str(today.year)[2:]}"
+    _view_sub_hero = ""
+    if view_name == "ALL":
+        _view_sub_hero = " · Viewing: All team"
+    elif view_name.startswith("REGION:"):
+        _view_sub_hero = f" · Viewing: {view_name.split(':',1)[1]} team"
+    elif view_name == "ALL_MANAGERS":
+        _view_sub_hero = " · Viewing: Managers"
+    elif view_name != selected:
+        _vd = view_name.split(",")[1].strip() if "," in view_name else view_name
+        _view_sub_hero = f" · Viewing: {_vd}"
+    _date_line = f"{today.strftime('%A')} · {today.strftime('%B %-d')} · {_fy_q} — Week {_week_num}{_view_sub_hero}"
+
+    # ── Summary sentence ──────────────────────────────────────────────────────
+    _ss_parts = []
+    _n_due_wk = len([p for p in _p1 + _p2 + _p3 if p]) if not _is_group_view else 0
+    _n_ms_14  = len(_mi) + (len(_gls) if not _gls.empty else 0)
+    _n_intro  = len(_mi) if not _mi.empty else 0
+    if _n_ms_14 > 0:
+        _ss_parts.append(f"<b style='color:var(--color-text-primary);font-weight:600;'>{_n_ms_14} milestone{'s' if _n_ms_14 > 1 else ''} in the next 14 days</b>")
+    if _n_intro > 0:
+        _ss_parts.append(f"<b style='color:var(--color-text-primary);font-weight:600;'>{_n_intro} intro email{'s' if _n_intro > 1 else ''} pending</b>")
+    if len(_rag_red) > 0:
+        _ss_parts.append(f"<b style='color:#E24B4A;font-weight:600;'>{len(_rag_red)} red RAG project{'s' if len(_rag_red) > 1 else ''}</b>")
+    _summary_str = (
+        "You have " + ", ".join(_ss_parts[:-1]) + (" and " if len(_ss_parts) > 1 else "") + _ss_parts[-1] + "."
+        if _ss_parts else "All clear — no urgent items this week."
+    )
+    # Bold the key numbers/phrases in summary
+    import re as _re
+    _summary_str = _re.sub(r'<b>(\d+[^<]*?)</b>', r"<b style='color:rgba(255,255,255,0.9);'></b>", _summary_str)
+
+    # ── Go-lives in next 14 days ──────────────────────────────────────────────
+    _gl14_col = "effective_go_live_date" if "effective_go_live_date" in _active.columns else "go_live_date"
+    _gl14 = (_active[
+        _active[_gl14_col].notna() &
+        (_active[_gl14_col] >= pd.Timestamp(_snap_today)) &
+        (_active[_gl14_col] <= pd.Timestamp(_snap_today + pd.Timedelta(days=14)))
+    ].sort_values(_gl14_col) if _gl14_col in _active.columns and not _active.empty else pd.DataFrame())
+    _n_gl14 = int(_gl14["project_id"].nunique()) if "project_id" in _gl14.columns else len(_gl14)
+    _gl14_sub = ""
+    if _n_gl14 > 0 and not _gl14.empty:
+        _first_gl = _gl14.iloc[0]
+        _gl_cust  = str(_first_gl.get("project_name","")).split(" - ")[0][:22]
+        _gl_date  = pd.Timestamp(_first_gl.get(_gl14_col)).strftime("%-d %b")
+        _gl14_sub = f"Next: {_gl_cust} · {_gl_date}"
+
+    # ── Overrun week amount from weekly NS slice ──────────────────────────────
+    _wk_overrun = round(overrun_hrs, 1)  # MTD total — weekly split not available at this point
+
+    # ── Pacing badge ──────────────────────────────────────────────────────────
+    if _wk_util_pct is not None:
+        _wk_gap = _wk_util_pct - _UTIL_TARGET_WK
+        if _wk_gap >= 0:
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(99,153,34,0.25);color:#97C459;font-weight:500;'>+{round(_wk_gap)}% ahead</span>"
+        else:
+            _pace_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(226,75,74,0.25);color:#F09595;font-weight:500;'>{round(_wk_gap)}% behind</span>"
+    else:
+        _pace_badge = ""
+
+    # ── Overrun display ───────────────────────────────────────────────────────
+    _overrun_color          = "#F09595" if _wk_overrun > 0 else "rgba(255,255,255,0.85)"
+    _overrun_color_adaptive = "#E24B4A" if _wk_overrun > 0 else "var(--color-text-primary)"
+    _overrun_val   = f"{_wk_overrun}h" if _wk_overrun else "—"
+    _overrun_sub   = "MTD overrun" if _wk_overrun else "no overrun this month"
+    _n_overrun_proj = sum(1 for _ in [True] if _wk_overrun > 0)
+    _overrun_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;'>{_n_overrun_proj} project{'s' if _n_overrun_proj != 1 else ''}</span>" if _wk_overrun > 0 else ""
+    _overrun_badge_adaptive = _overrun_badge  # same style
+
+    # ── Render hero ───────────────────────────────────────────────────────────
+    _hero.markdown(
+        f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+        f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
+        f"<div style='font-size:13px;font-weight:500;color:#08A9B7;margin-bottom:6px;'>{_date_line}</div>"
+        f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;line-height:1.2'>{_greeting}, {_my_display}.</h1>"
+        f"<p style='color:rgba(255,255,255,0.55);margin:6px 0 0;font-size:13px;font-family:Manrope,sans-serif;line-height:1.6'>{_summary_str}</p>"
+        f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.1);'>"
+        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Week utilization</div>"
+        f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_wk_util_pct}%</div>"
+        f"<div style='font-size:12px;color:var(--color-text-secondary);margin-top:3px;'>"
+        f"{f'{_wk_total}h / {_wk_billable_h}h billable · {_wk_full_h}h total' if _wk_total is not None else 'No time data this week'}</div>"
+        f"<div style='margin-top:4px;'>{_pace_badge}</div></div>"
+        f"<div><div style='font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.5);margin-bottom:5px;font-weight:500;'>Open projects</div>"
+        f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_n_onhold_dc} on hold · {int(_n_active_dc + _n_onhold_dc)} assigned total</div></div>"
+        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Go-lives next 14d</div>"
+        f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_gl14}</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_gl14_sub if _gl14_sub else 'None scheduled'}</div></div>"
+        f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>FF overrun</div>"
+        f"<div style='font-size:26px;font-weight:600;color:{_overrun_color};line-height:1.1;'>{_overrun_val}</div>"
+        f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_overrun_sub}</div>"
+        f"{_overrun_badge}</div>"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    # [hidden] c1, c2, c3, c4, c5, c6 = st.columns(6)
+    # [hidden] with c1:
+    # [hidden] _lbl = "Available this month" if avail else "Available hrs (location not mapped)"
+    # [hidden] st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(avail)}</div><div class="metric-lbl">{_lbl} <span class="metric-help" data-tip="Total available hours based on consultant location less Bank or Government holidays.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    # [hidden] with c2:
+    # [hidden] st.markdown(f'<div class="metric-card"><div class="metric-val">{_fmt_hrs(total_booked)}</div><div class="metric-lbl">Hours booked this month <span class="metric-help" data-tip="Total hours logged in NetSuite for this period across all project types (Fixed Fee, T&M, and Internal).">ⓘ</span></div></div>', unsafe_allow_html=True)
+    # [hidden] with c3:
+    # [hidden] if util_pct is not None:
+            # Pacing-aware colouring — compare MTD util against pro-rated target
+    # [hidden] _UTIL_TARGET = 70.0
+    # [hidden] _month_start = today.replace(day=1)
+    # [hidden] _month_end   = (today.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
+    # [hidden] _days_total  = len(pd.bdate_range(_month_start, _month_end))
+    # [hidden] _days_elapsed = len(pd.bdate_range(_month_start, today))
+    # [hidden] _pacing_pct  = round(_UTIL_TARGET * _days_elapsed / _days_total, 1) if _days_total else _UTIL_TARGET
+    # [hidden] _gap         = util_pct - _pacing_pct
+    # [hidden] if _gap >= 0:
+    # [hidden] _ucol      = "#27AE60"
+    # [hidden] _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(39,174,96,.15);color:#27AE60">On pace · target {_pacing_pct}%</div>'
+    # [hidden] elif _gap >= -10:
+    # [hidden] _ucol      = "#F39C12"
+    # [hidden] _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(243,156,18,.15);color:#F39C12">Behind pace · target {_pacing_pct}%</div>'
+    # [hidden] else:
+    # [hidden] _ucol      = "#C0392B"
+    # [hidden] _pace_tag  = f'<div style="margin-top:5px;display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;letter-spacing:.8px;background:rgba(192,57,43,.15);color:#C0392B">Behind target · goal {_UTIL_TARGET}%</div>'
+    # [hidden] st.markdown(
+    # [hidden] f'<div class="metric-card"><div class="metric-val" style="color:{_ucol}">{util_pct}%</div>' +
+    # [hidden] f'<div class="metric-lbl">Util % · {_fmt_hrs(util_hrs)} credited <span class="metric-help" data-tip="Utilization credit hours as a % of Available hours. Colour reflects pacing: compares MTD util against the pro-rated {_UTIL_TARGET}% target for how far through the month we are.">ⓘ</span></div>' +
+    # [hidden] f'{_pace_tag}</div>',
+    # [hidden] unsafe_allow_html=True
+    # [hidden] )
+    # [hidden] else:
+    # [hidden] st.metric("Util %", "—", help="Utilization credit hours as a % of Available hours.")
+    # [hidden] with c4:
+    # [hidden] if overrun_pct is not None:
+    # [hidden] _ocol = "#C0392B" if overrun_pct > 10 else ("#F39C12" if overrun_pct > 0 else "#718096")
+    # [hidden] st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_ocol}">{overrun_pct}%</div><div class="metric-lbl">FF overrun % · {_fmt_hrs(overrun_hrs)} over <span class="metric-help" data-tip="Fixed Fee hours logged beyond the scoped budget as a % of available hours. A non-zero value means one or more FF projects has exceeded its allocated hours and should be reviewed.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    # [hidden] else:
+    # [hidden] st.metric("FF overrun %", "—", help="Fixed Fee hours logged beyond the scoped budget as a % of available hours.")
+    # [hidden] with c5:
+    # [hidden] if admin_pct is not None:
+    # [hidden] st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:#718096">{admin_pct}%</div><div class="metric-lbl">Internal % · {_fmt_hrs(admin_hrs)} <span class="metric-help" data-tip="Hours logged against Internal or Admin projects as a % of Available hours. Includes non-billable tasks, internal meetings, PTO and Admin time.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    # [hidden] else:
+    # [hidden] st.metric("Internal %", "—", help="Hours logged against Internal or Admin projects as a % of Available hours.")
+    # [hidden] with c6:
+    # [hidden] if _whs_score is not None:
+    # [hidden] st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_whs_col}">{_whs_score}</div><div class="metric-lbl">WHS · {_whs_label} <span class="metric-help" data-tip="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects. Higher scores indicate higher risk of consultant overload.">ⓘ</span></div></div>', unsafe_allow_html=True)
+    # [hidden] else:
+    # [hidden] st.metric("WHS", "—", help="Workload Health Score: a composite score based on number of active projects, phase distribution, overrun count, and stale projects.")
+    # [hidden]     # UNCONFIGURED FF hours warning — matches Util Report Watch List behaviour
+    # [hidden] if ff_unscoped > 0:
+    # [hidden] st.warning(f"⚠️ {_fmt_hrs(ff_unscoped)} on FF projects with NO SCOPE DEFINED — see Utilization Report Watch List tab in the downloaded report.")
 else:
     if df_ns is None:
         st.info("Upload NS Time Detail in the sidebar to see your utilization snapshot.")
@@ -724,141 +892,443 @@ else:
 
 # ── Consultant breakdown table (group views only) ─────────────────────────────
 if _is_group_view and not my_ns.empty and "employee" in my_ns.columns:
-    st.markdown('<div class="section-label">Team Breakdown — This Month</div>', unsafe_allow_html=True)
+    try:
+        st.markdown('<div class="section-label">Team Breakdown — This Week</div>', unsafe_allow_html=True)
 
-    my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
-    _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
+        my_ns["date"] = pd.to_datetime(my_ns["date"], errors="coerce")
+        _month_ns_all = my_ns[my_ns["date"].dt.strftime("%Y-%m") == month_key].copy()
 
-    _scope_names  = [n for n in (_region_names if _view_name_set else CONSULTANT_DROPDOWN)
-                     if get_role(n) != "manager_only"
-                     and len(EMPLOYEE_ROLES.get(n, {}).get("products", [])) > 0]
-    _region_key   = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
+        # Weekly NS slice (Mon–Sun current week) — used for hours columns
+        _wk_start_bd = today - pd.Timedelta(days=today.weekday())
+        _wk_end_bd   = _wk_start_bd + pd.Timedelta(days=6)
+        _wk_ns_all   = my_ns[
+            (my_ns["date"] >= pd.Timestamp(_wk_start_bd)) &
+            (my_ns["date"] <= pd.Timestamp(_wk_end_bd))
+        ].copy()
 
-    # Find leavers who were active in this month and belong to this region
-    _month_start = pd.to_datetime(f"{month_key}-01")
-    _month_end   = _month_start + pd.offsets.MonthEnd(0)
-    _days_in_month = _month_end.day
+        # Business days in month and this week — for weekly avail proration
+        _bdays_month = len(pd.bdate_range(
+            today.replace(day=1),
+            (today.replace(day=28) + pd.Timedelta(days=4)).replace(day=1) - pd.Timedelta(days=1)
+        ))
 
-    _leaver_scope = []
-    for _ln, _exit_str in LEAVER_EXIT_DATES.items():
-        if _exit_str is None: continue
-        _exit_dt = pd.to_datetime(_exit_str)
-        if _exit_dt < _month_start: continue          # left before this month
-        if _region_key and _gr(_ln) != _region_key: continue  # wrong region
-        _leaver_scope.append((_ln, _exit_dt))
+        _region_key  = view_name.split(":",1)[1] if view_name.startswith("REGION:") else None
+        _month_start = pd.to_datetime(f"{month_key}-01")
+        _month_end   = _month_start + pd.offsets.MonthEnd(0)
+        _days_in_month = _month_end.day
 
-    def _build_row(cn, is_leaver=False, exit_dt=None):
-        _parts = [p.strip() for p in cn.split(",")]
-        _variants = {cn.lower(), _parts[0].lower()}
-        if len(_parts) == 2:
-            _variants.add(f"{_parts[1]} {_parts[0]}".lower())
+        # ── Build set of DRS project_manager names for manager-inclusion check ──
+        # Managers are included in the table only if they:
+        #   (a) appear as project_manager on any DRS row, OR
+        #   (b) have NS time entries this month against non-internal billing types
+        _drs_pm_names: set = set()
+        if df_drs is not None and not df_drs.empty and "project_manager" in df_drs.columns:
+            for _pm_val in df_drs["project_manager"].dropna().astype(str):
+                _drs_pm_names.add(_pm_val.strip().lower())
+                _pm_parts = [p.strip() for p in _pm_val.split(",")]
+                if len(_pm_parts) == 2:
+                    _drs_pm_names.add(f"{_pm_parts[1]} {_pm_parts[0]}".lower())
+                    _drs_pm_names.add(_pm_parts[0].lower())
 
-        _emp_mask = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
-            lambda v: v in _variants or any(
-                v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
-        )
-        _emp_rows = _month_ns_all[_emp_mask]
+        def _is_manager_included(cn: str) -> bool:
+            """Return True if a manager-role consultant should appear in the table."""
+            _p = [p.strip() for p in cn.split(",")]
+            _v = {cn.lower(), _p[0].lower()}
+            if len(_p) == 2:
+                _v.add(f"{_p[1]} {_p[0]}".lower())
+            # (a) PM on a DRS project
+            if any(v in _drs_pm_names for v in _v):
+                return True
+            # (b) has non-internal time this month
+            if not _month_ns_all.empty and "billing_type" in _month_ns_all.columns:
+                _emp_m = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+                    lambda x: x in _v or any(
+                        x == nv or x.startswith(nv+" ") or x.endswith(" "+nv) for nv in _v)
+                )
+                _bt_m = _month_ns_all[_emp_m]["billing_type"].fillna("").str.strip().str.lower()
+                if (_bt_m != "internal").any():
+                    return True
+            return False
 
-        if _emp_rows.empty:
-            _total = 0.0; _ff = 0.0; _tm = 0.0; _admin = 0.0
-            _ff_util = 0.0; _ff_over = 0.0
-        else:
-            _bt    = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
-            _total = round(_emp_rows["hours"].sum(), 2)
-            _ff    = round(_emp_rows[_bt == "fixed fee"]["hours"].sum(), 2)
-            _tm    = round(_emp_rows[_bt == "t&m"]["hours"].sum(), 2)
-            _admin = round(_emp_rows[_bt == "internal"]["hours"].sum(), 2)
+        # Base scope: exclude manager_only always; include managers only if they pass the check above
+        _base_pool = _region_names if _view_name_set else CONSULTANT_DROPDOWN
+        _scope_names = []
+        for _cn in _base_pool:
+            _cn_role = get_role(_cn)
+            if _cn_role == "manager_only":
+                continue
+            if _cn_role == "manager" and not _is_manager_included(_cn):
+                continue
+            if len(EMPLOYEE_ROLES.get(_cn, {}).get("products", [])) == 0 and _cn_role != "manager":
+                continue
+            _scope_names.append(_cn)
 
-            # Per-consultant FF credit/overrun — mirrors top-level engine exactly
-            # Use same rule: anything not internal or T&M = Fixed Fee
-            _bt_cn = _emp_rows.get("billing_type", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
-            _ff_rows_cn = _emp_rows[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date") if not _emp_rows.empty else pd.DataFrame()
-            _ff_util = 0.0; _ff_over = 0.0
-            if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
-                _con_cn: dict = {}
-                for _, _fr in _ff_rows_cn.iterrows():
-                    _fp    = " ".join(str(_fr.get("project","")).split())
-                    _ftype = str(_fr.get("project_type","")).strip()
-                    _fh    = float(_fr.get("hours", 0) or 0)
-                    if _fh <= 0: continue
-                    _fm = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
-                           if k.strip().lower() in _ftype.lower()]
-                    _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
-                    if _fsc is None:
-                        _ff_util += _fh; continue  # UNCONFIGURED: not counted as overrun
-                    _fck = (_fp, _ftype)  # composite key: project + product type (matches top-level)
-                    if _fck not in _con_cn:
-                        _con_cn[_fck] = prior_htd.get(_fck, prior_htd.get((_fp,), 0.0))
-                    _fused = _con_cn[_fck]; _frem = _fsc - _fused
-                    if _frem <= 0:
-                        _ff_over += _fh
-                    elif _fh <= _frem:
-                        _ff_util += _fh; _con_cn[_fck] = _fused + _fh
-                    else:
-                        _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fck] = _fsc
+        # Leavers active this month in this region
+        _leaver_scope = []
+        for _ln, _exit_str in LEAVER_EXIT_DATES.items():
+            if _exit_str is None: continue
+            _exit_dt = pd.to_datetime(_exit_str)
+            if _exit_dt < _month_start: continue
+            if _region_key and _gr(_ln) != _region_key: continue
+            _leaver_scope.append((_ln, _exit_dt))
+
+        # ── RAG lookup: per-consultant red/yellow count from DRS ──────────────
+        # Keyed on project_manager name variants → {red: int, yellow: int}
+        _rag_by_pm: dict = {}
+        if df_drs is not None and not df_drs.empty and "rag" in df_drs.columns and "project_manager" in df_drs.columns:
+            for _, _dr in df_drs.iterrows():
+                _pm_raw = str(_dr.get("project_manager", "") or "").strip()
+                _rv     = str(_dr.get("rag", "") or "").strip().lower()
+                if not _pm_raw or _rv not in ("red", "yellow"):
+                    continue
+                # Normalise PM name to "First Last" key for lookup
+                _pm_p = [p.strip() for p in _pm_raw.split(",")]
+                _pm_key = f"{_pm_p[1]} {_pm_p[0]}".lower() if len(_pm_p) == 2 else _pm_raw.lower()
+                if _pm_key not in _rag_by_pm:
+                    _rag_by_pm[_pm_key] = {"red": 0, "yellow": 0}
+                _rag_by_pm[_pm_key][_rv] += 1
+                # Also index by "Last, First" and last-name-only for robust matching
+                _rag_by_pm[_pm_raw.lower()] = _rag_by_pm[_pm_key]
+                if _pm_p:
+                    _rag_by_pm[_pm_p[0].lower()] = _rag_by_pm[_pm_key]
+
+        def _get_rag_counts(cn: str) -> tuple[int, int]:
+            """Return (red_count, yellow_count) for projects managed by cn."""
+            _p = [p.strip() for p in cn.split(",")]
+            _keys = [cn.lower(), _p[0].lower()]
+            if len(_p) == 2:
+                _keys.append(f"{_p[1]} {_p[0]}".lower())
+            for _k in _keys:
+                if _k in _rag_by_pm:
+                    return _rag_by_pm[_k]["red"], _rag_by_pm[_k]["yellow"]
+            return 0, 0
+
+        def _build_row(cn, is_leaver=False, exit_dt=None):
+            _parts = [p.strip() for p in cn.split(",")]
+            _variants = {cn.lower(), _parts[0].lower()}
+            if len(_parts) == 2:
+                _variants.add(f"{_parts[1]} {_parts[0]}".lower())
+
+            # Month NS rows for this consultant (for overrun calculation)
+            _emp_mask_mo = _month_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+                lambda v: v in _variants or any(
+                    v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
+            )
+            _emp_rows_mo = _month_ns_all[_emp_mask_mo]
+
+            # Week NS rows for this consultant (for hours-this-week columns)
+            _emp_mask_wk = _wk_ns_all["employee"].astype(str).str.strip().str.lower().apply(
+                lambda v: v in _variants or any(
+                    v == nv or v.startswith(nv+" ") or v.endswith(" "+nv) for nv in _variants)
+            ) if not _wk_ns_all.empty else pd.Series(dtype=bool)
+            _emp_rows_wk = _wk_ns_all[_emp_mask_wk] if not _wk_ns_all.empty else pd.DataFrame()
+
+            # FF credit/overrun uses MONTH data (matches top-level engine)
+            if _emp_rows_mo.empty:
+                _ff_util = 0.0; _ff_over = 0.0
+            else:
+                _bt_cn = _emp_rows_mo.get("billing_type", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
+                _ff_rows_cn = _emp_rows_mo[(_bt_cn != "internal") & (_bt_cn != "t&m")].sort_values("date")
+                _ff_util = 0.0; _ff_over = 0.0
+                if not _ff_rows_cn.empty and "project" in _ff_rows_cn.columns:
+                    _con_cn: dict = {}
+                    for _, _fr in _ff_rows_cn.iterrows():
+                        _fp    = " ".join(str(_fr.get("project","")).split())
+                        _ftype = str(_fr.get("project_type","")).strip()
+                        _fh    = float(_fr.get("hours", 0) or 0)
+                        if _fh <= 0: continue
+                        _fm = [(k, float(v)) for k, v in DEFAULT_SCOPE.items()
+                               if k.strip().lower() in _ftype.lower()]
+                        _fsc = max(_fm, key=lambda x: len(x[0]))[1] if _fm else None
+                        if _fsc is None:
+                            _ff_util += _fh; continue
+                        _pid_fr = str(_fr.get("project_id","")).strip()
+                        _fpkey  = _pid_fr if _pid_fr and _pid_fr != "nan" else _fp
+                        if _fpkey not in _con_cn:
+                            _con_cn[_fpkey] = prior_htd.get(_fpkey, prior_htd.get(_fp, 0.0))
+                        _fused = _con_cn[_fpkey]; _frem = _fsc - _fused
+                        if _frem <= 0:
+                            _ff_over += _fh
+                        elif _fh <= _frem:
+                            _ff_util += _fh; _con_cn[_fpkey] = _fused + _fh
+                        else:
+                            _ff_util += _frem; _ff_over += _fh - _frem; _con_cn[_fpkey] = _fsc
             _ff_util = round(_ff_util, 2)
             _ff_over = round(_ff_over, 2)
 
-        _cl = EMPLOYEE_LOCATION.get(cn, "")
-        _cr = PS_REGION_OVERRIDE.get(cn, PS_REGION_MAP.get(_cl, ""))
-        _avail_full = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
-        if isinstance(_avail_full, tuple): _avail_full = _avail_full[0]
-        _avail_full = float(_avail_full) if _avail_full else None
+            # Internal % uses MONTH data (same as before)
+            _admin = 0.0
+            if not _emp_rows_mo.empty and "billing_type" in _emp_rows_mo.columns:
+                _bt_mo = _emp_rows_mo["billing_type"].fillna("").str.strip().str.lower()
+                _admin = round(_emp_rows_mo[_bt_mo == "internal"]["hours"].sum(), 2)
 
-        # Prorate if leaver
-        if is_leaver and exit_dt is not None and _avail_full:
-            _days_worked = min(exit_dt.day, _days_in_month)
-            _avail_cn = round(_avail_full * _days_worked / _days_in_month, 2)
-        else:
-            _avail_cn = _avail_full
+            # Weekly util hours (FF + T&M this week only — for the Util % column)
+            _wk_ff = 0.0; _wk_tm = 0.0
+            if not _emp_rows_wk.empty and "billing_type" in _emp_rows_wk.columns:
+                _bt_wk = _emp_rows_wk["billing_type"].fillna("").str.strip().str.lower()
+                _wk_ff = round(_emp_rows_wk[(_bt_wk != "internal") & (_bt_wk != "t&m")]["hours"].sum(), 2)
+                _wk_tm = round(_emp_rows_wk[_bt_wk == "t&m"]["hours"].sum(), 2)
 
-        _util_h_cn   = round(_ff_util + _tm, 2)
-        _util_pct_cn = round(_util_h_cn / _avail_cn * 100, 1) if _avail_cn and _util_h_cn > 0 else None
-        _over_pct_cn = round(_ff_over   / _avail_cn * 100, 1) if _avail_cn and _ff_over > 0 else None
-        _int_pct_cn  = round(_admin     / _avail_cn * 100, 1) if _avail_cn and _admin > 0 else None
+            # Available hours — monthly total prorated to weekly
+            _cl = EMPLOYEE_LOCATION.get(cn, "")
+            _cr = PS_REGION_OVERRIDE.get(cn, PS_REGION_MAP.get(_cl, ""))
+            _avail_full = AVAIL_HOURS.get(_cl, AVAIL_HOURS.get(_cr, {})).get(month_key)
+            if isinstance(_avail_full, tuple): _avail_full = _avail_full[0]
+            _avail_full = float(_avail_full) if _avail_full else None
 
-        _display  = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
-        if is_leaver and exit_dt:
-            _display += " *"
+            if is_leaver and exit_dt is not None and _avail_full:
+                _days_worked = min(exit_dt.day, _days_in_month)
+                _avail_mo = round(_avail_full * _days_worked / _days_in_month, 2)
+            else:
+                _avail_mo = _avail_full
 
-        _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
-        return {
-            "Consultant":    _display,
-            "WHS":           f"{_whs_s} · {_whs_l}" if _whs_s is not None else "—",
-            "Avail h":       _avail_cn or "—",
-            "FF Util h":     _ff_util or "—",
-            "FF Overrun h":  _ff_over or "—",
-            "T&M h":         _tm or "—",
-            "Internal h":    _admin or "—",
-            "Util %":        f"{_util_pct_cn}%" if _util_pct_cn is not None else "—",
-            "FF Overrun %":  f"{_over_pct_cn}%" if _over_pct_cn is not None else "—",
-            "Internal %":    f"{_int_pct_cn}%" if _int_pct_cn is not None else "—",
-        }
+            # Weekly avail: monthly ÷ business days in month × 5
+            _avail_wk = round(_avail_mo / _bdays_month * 5, 1) if _avail_mo and _bdays_month else None
 
-    _rows = [_build_row(cn) for cn in _scope_names]
-    _rows += [_build_row(ln, is_leaver=True, exit_dt=ex) for ln, ex in _leaver_scope]
+            # Util %: weekly billable ÷ weekly avail (apples-to-apples)
+            _wk_bill    = round(_wk_ff + _wk_tm, 2)
+            _util_pct   = round(_wk_bill / _avail_wk * 100, 1) if _avail_wk and _wk_bill > 0 else None
+            # FF Overrun %: MTD overrun ÷ monthly avail (shows severity relative to capacity)
+            _over_pct   = round(_ff_over / _avail_mo * 100, 1) if _avail_mo and _ff_over > 0 else None
+            # Internal %: MTD internal ÷ monthly avail
+            _int_pct    = round(_admin   / _avail_mo * 100, 1) if _avail_mo and _admin > 0 else None
 
-    if _rows:
-        _tbl = pd.DataFrame(_rows)
-        st.dataframe(
-            _tbl,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
-                "WHS":          st.column_config.TextColumn("WHS",          width="small"),
-                "Avail h":      st.column_config.TextColumn("Avail h",      width="small"),
-                "FF Util h":    st.column_config.TextColumn("FF Util h",    width="small"),
-                "FF Overrun h": st.column_config.TextColumn("FF Overrun h", width="small"),
-                "T&M h":        st.column_config.TextColumn("T&M h",        width="small"),
-                "Internal h":   st.column_config.TextColumn("Internal h",   width="small"),
-                "Util %":       st.column_config.TextColumn("Util %",       width="small"),
-                "FF Overrun %": st.column_config.TextColumn("FF Overrun %", width="small"),
-                "Internal %":   st.column_config.TextColumn("Internal %",   width="small"),
+            _display = f"{_parts[1].strip()} {_parts[0]}" if len(_parts) == 2 else cn
+            if is_leaver and exit_dt:
+                _display += " *"
+
+            _whs_s, _whs_l, _ = consultant_whs(cn, df_drs) if df_drs is not None else (None, "—", None)
+            _rag_r, _rag_y    = _get_rag_counts(cn)
+
+            # Status — utilization signal only (RAG is its own column)
+            # Priority: Overrun > High WHS > OK > No data
+            if _ff_over > 0:
+                _status = "Overrun"
+            elif _whs_s is not None and _whs_s >= 75:
+                _status = "High WHS"
+            elif _wk_bill > 0 or not _emp_rows_mo.empty:
+                _status = "OK"
+            else:
+                _status = "No data"
+
+            return {
+                "_cn":          cn,           # canonical name for sorting
+                "Consultant":   _display,
+                "_whs_score":   _whs_s,
+                "_whs_label":   _whs_l or "—",
+                "_avail_wk":    _avail_wk,
+                "_util_pct":    _util_pct,
+                "_ff_over":     _ff_over,
+                "_over_pct":    _over_pct,
+                "_int_pct":     _int_pct,
+                "_rag_r":       _rag_r,
+                "_rag_y":       _rag_y,
+                "_status":      _status,
             }
+
+        _rows = [_build_row(cn) for cn in _scope_names]
+        _rows += [_build_row(ln, is_leaver=True, exit_dt=ex) for ln, ex in _leaver_scope]
+
+        if _rows:
+            import numpy as _np
+
+            _raw = pd.DataFrame(_rows)
+
+            # ── Sort: Overrun first → High WHS → OK → No data ─────────────────
+            _STATUS_ORDER = {"Overrun": 0, "High WHS": 1, "OK": 2, "No data": 3}
+            _raw["_sort_status"] = _raw["_status"].map(_STATUS_ORDER).fillna(9)
+            # Within same status, sort by overrun hours desc, then WHS desc
+            _raw = _raw.sort_values(
+                ["_sort_status", "_ff_over", "_whs_score"],
+                ascending=[True, False, False],
+            ).reset_index(drop=True)
+
+            # ── Build display columns ─────────────────────────────────────────
+            def _whs_str(score, label):
+                if score is None or (isinstance(score, float) and _np.isnan(float(score or _np.nan))):
+                    return "No data"
+                return f"{score:.1f} · {label}"
+
+            def _fmt(v, decimals=1, suffix=""):
+                if v is None: return ""
+                try:
+                    f = float(v)
+                    if _np.isnan(f) or f == 0: return ""
+                    return f"{f:.{decimals}f}{suffix}"
+                except (TypeError, ValueError):
+                    return ""
+
+            def _rag_str(r, y):
+                parts = []
+                if r > 0: parts.append(f"{r}R")
+                if y > 0: parts.append(f"{y}Y")
+                return " · ".join(parts) if parts else ""
+
+            # Totals
+            def _safe_sum(col):
+                s = _raw[col].dropna()
+                return round(float(s.sum()), 2) if len(s) else None
+
+            _t_avail_wk  = _safe_sum("_avail_wk")
+            _t_ff_over   = _safe_sum("_ff_over")
+            _t_rag_r     = int(_raw["_rag_r"].sum())
+            _t_rag_y     = int(_raw["_rag_y"].sum())
+            _whs_scores  = _raw["_whs_score"].dropna()
+            _avg_whs     = round(float(_whs_scores.mean()), 1) if len(_whs_scores) else None
+            _n_consult   = len(_raw)
+
+            # Weighted team util %: sum of (util_h) / sum of (avail_wk)
+            # Recalculate from raw data is not available here — use average of non-null util_pct
+            _t_util_p = round(float(_raw["_util_pct"].dropna().mean()), 1) if _raw["_util_pct"].notna().any() else None
+            _t_over_p = round(_t_ff_over / (_safe_sum("_avail_wk") or 1) * 100, 1) if _t_ff_over else None
+
+            # Build final display DataFrame
+            _disp_rows = []
+            for _, _r in _raw.iterrows():
+                _disp_rows.append({
+                    "Consultant":   _r["Consultant"],
+                    "Workload":     _whs_str(_r["_whs_score"], _r["_whs_label"]),
+                    "Avail (wk)":   _fmt(_r["_avail_wk"], 1),
+                    "Util %":       float(_r["_util_pct"]) if _r["_util_pct"] is not None else 0.0,
+                    "FF Overrun":   _fmt(_r["_ff_over"], 2, "h") + (f"  {_fmt(_r['_over_pct'], 1, '%')}" if _r["_over_pct"] else ""),
+                    "Internal %":   _fmt(_r["_int_pct"], 1, "%"),
+                    "RAG":          _rag_str(int(_r["_rag_r"]), int(_r["_rag_y"])),
+                    "Status":       _r["_status"],
+                    # sentinels for styling
+                    "_ff_over_raw": _r["_ff_over"],
+                    "_status_raw":  _r["_status"],
+                    "_whs_raw":     _r["_whs_score"],
+                    "_rag_r_raw":   _r["_rag_r"],
+                })
+
+            _tbl = pd.DataFrame(_disp_rows)
+
+            _totals_disp = pd.DataFrame([{
+                "Consultant":   f"Team total · {_n_consult}",
+                "Workload":     f"AVG {_avg_whs}" if _avg_whs is not None else "—",
+                "Avail (wk)":   _fmt(_t_avail_wk, 1),
+                "Util %":       float(_t_util_p) if _t_util_p is not None else 0.0,
+                "FF Overrun":   _fmt(_t_ff_over, 2, "h"),
+                "Internal %":   "",
+                "RAG":          _rag_str(_t_rag_r, _t_rag_y),
+                "Status":       "",
+            }])
+
+            # ── Styler: overrun row highlight + WHS high row tint ─────────────
+            _OVER_ROW  = "background-color: rgba(239,68,68,0.06);"
+            _OVER_CELL = "background-color: rgba(239,68,68,0.13); color: #dc2626; font-weight: 500;"
+            _WHS_ROW   = "background-color: rgba(239,159,39,0.06);"
+            _RAG_CELL  = "color: #a32d2d; font-weight: 500;"
+
+            def _row_style(row):
+                n = len(row)
+                base = [""] * n
+                s = row.get("_status_raw", "")
+                o = float(row.get("_ff_over_raw") or 0)
+                r = float(row.get("_rag_r_raw") or 0)
+                if s == "Overrun":
+                    base = [_OVER_ROW] * n
+                elif s == "High WHS":
+                    base = [_WHS_ROW] * n
+                idx = list(row.index)
+                # Overrun cell
+                if "FF Overrun" in idx and o > 0:
+                    base[idx.index("FF Overrun")] = _OVER_CELL
+                # RAG cell red tint when red projects present
+                if "RAG" in idx and r > 0:
+                    base[idx.index("RAG")] = _RAG_CELL
+                return base
+
+            _display_cols = ["Consultant","Workload","Avail (wk)","Util %","FF Overrun","Internal %","RAG","Status"]
+            _styler = _tbl.style.apply(_row_style, axis=1)
+
+            # ── Render ────────────────────────────────────────────────────────
+            st.dataframe(
+                _styler,
+                use_container_width=True,
+                hide_index=True,
+                column_order=_display_cols,
+                column_config={
+                    "Consultant":   st.column_config.TextColumn("Consultant",   width="medium"),
+                    "Workload":     st.column_config.TextColumn("Workload",     width="small"),
+                    "Avail (wk)":   st.column_config.TextColumn("Avail (wk)",  width="small"),
+                    "Util %":       st.column_config.ProgressColumn(
+                                        "Util %",
+                                        help="Weekly billable hours (FF + T&M this week) ÷ weekly available hours",
+                                        format="%.1f%%",
+                                        min_value=0,
+                                        max_value=100,
+                                        width="medium",
+                                    ),
+                    "FF Overrun":   st.column_config.TextColumn(
+                                        "FF Overrun",
+                                        help="MTD Fixed Fee hours beyond scope · hours and % of monthly available",
+                                        width="small",
+                                    ),
+                    "Internal %":   st.column_config.TextColumn(
+                                        "Internal %",
+                                        help="MTD internal hours as % of monthly available",
+                                        width="small",
+                                    ),
+                    "RAG":          st.column_config.TextColumn(
+                                        "RAG",
+                                        help="Red and Yellow RAG projects managed by this consultant (from DRS)",
+                                        width="small",
+                                    ),
+                    "Status":       st.column_config.TextColumn(
+                                        "Status",
+                                        help="Overrun: FF hours exceeded scope  ·  High WHS: workload score ≥ 75  ·  OK: active, no flags",
+                                        width="small",
+                                    ),
+                    # hide sentinels
+                    "_ff_over_raw": None,
+                    "_status_raw":  None,
+                    "_whs_raw":     None,
+                    "_rag_r_raw":   None,
+                },
+            )
+
+            # Totals row
+            st.dataframe(
+                _totals_disp.style.set_properties(**{
+                    "font-weight": "600",
+                    "border-top":  "2px solid rgba(128,128,128,0.3)",
+                }),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Consultant": st.column_config.TextColumn("Consultant", width="medium"),
+                    "Workload":   st.column_config.TextColumn("Workload",   width="small"),
+                    "Avail (wk)": st.column_config.TextColumn("Avail (wk)", width="small"),
+                    "Util %":     st.column_config.ProgressColumn(
+                                      "Util %", format="%.1f%%",
+                                      min_value=0, max_value=100, width="medium",
+                                  ),
+                    "FF Overrun": st.column_config.TextColumn("FF Overrun", width="small"),
+                    "Internal %": st.column_config.TextColumn("Internal %", width="small"),
+                    "RAG":        st.column_config.TextColumn("RAG",        width="small"),
+                    "Status":     st.column_config.TextColumn("Status",     width="small"),
+                },
+            )
+
+            if _leaver_scope:
+                st.caption("* Available hours prorated to exit date")
+            st.caption(
+                "Avail (wk): monthly available ÷ business days × 5  ·  "
+                "Util %: billable hours this week ÷ weekly avail  ·  "
+                "FF Overrun & Internal %: month-to-date  ·  "
+                "Status: Overrun > High WHS (≥75) > OK"
+            )
+
+    except Exception as _db_err:
+        st.warning(
+            "\u26a0\ufe0f Team breakdown could not load. This usually means the "
+            "uploaded time data is from an older export format. "
+            "Please upload a current NS Time Detail export and try again.",
+            icon="\u26a0\ufe0f"
         )
-        if _leaver_scope:
-            st.caption("* Available hours prorated")
+        with st.expander("Technical details (for support)", expanded=False):
+            st.code(str(_db_err))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════════════════════
@@ -876,7 +1346,22 @@ else:
         _pn   = str(r.get("project_name","") or "")
         _cust = _pn.split(" - ")[0].strip()[:22] if " - " in _pn else _pn[:22]
         _pt   = str(r.get("project_type","") or "")
-        _prod = _pt.split(":")[-1].strip().split()[0] if _pt else ""
+        # Extract product family: "ZonePay: Implementation" → "ZonePayroll"
+        # "ZEP: Implementation" → "ZEP"
+        # Map common short codes to display names
+        _PROD_DISPLAY = {
+            "zonepay":    "ZonePayroll",
+            "zonebill":   "ZoneBilling",
+            "zoneapp":    "ZoneApps",
+            "zonerpt":    "ZoneReporting",
+            "zep":        "ZEP",
+            "zab":        "ZoneBilling",
+        }
+        if _pt:
+            _prefix = _pt.split(":")[0].strip().lower()
+            _prod = _PROD_DISPLAY.get(_prefix, _pt.split(":")[0].strip())
+        else:
+            _prod = ""
         return f"{_cust} : {_prod}" if _prod else _cust
 
     # Phase breakdown — exclude Unassigned, sort by phase order
@@ -907,87 +1392,395 @@ else:
     _pc_assigned   = [(ph, cnt) for ph, cnt in _pc_sorted if _pidx_db(ph) >= 0]
     _unassigned_ct = sum(cnt for ph, cnt in _pc_sorted if _pidx_db(ph) < 0)
 
-    # ── Section: Utilization already above — now RAG & Risk ───────────────────
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">My Projects — RAG &amp; Risk</div>', unsafe_allow_html=True)
-    r2a, r2b, r2c, r2d, r2e = st.columns(5)
-    with r2a:
-        _col = "#C0392B" if len(_rag_red) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_red)}</div><div class="metric-lbl">Red RAG</div></div>', unsafe_allow_html=True)
-        for _, _rr in _rag_red.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_rr)}</div>', unsafe_allow_html=True)
-    with r2b:
-        _col = "#F39C12" if len(_rag_yellow) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_rag_yellow)}</div><div class="metric-lbl">Yellow RAG</div></div>', unsafe_allow_html=True)
-        for _, _ry in _rag_yellow.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_ry)}</div>', unsafe_allow_html=True)
-    with r2c:
-        _oh_snap = int(_ioh.sum()) if hasattr(_ioh, "sum") else 0
-        _col = "#F39C12" if _oh_snap > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{_oh_snap}</div><div class="metric-lbl">On Hold</div></div>', unsafe_allow_html=True)
-        if _oh_snap > 0:
-            _oh_proj = my_projects[_ioh] if not my_projects.empty else pd.DataFrame()
-            for _, _or in _oh_proj.head(3).iterrows():
-                st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{str(_or.get("project_name","")).split(" - ")[0][:24]}</div>', unsafe_allow_html=True)
-    with r2d:
-        _col = "#F39C12" if len(_proj_9mo) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_9mo)}</div><div class="metric-lbl">9+ months active <span class="metric-help" data-tip="Active projects 9 or more months from Start Date that have not yet reached Phase 08. Ready for Support Transition.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        for _, _p9 in _proj_9mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p9)}</div>', unsafe_allow_html=True)
-    with r2e:
-        _col = "#C0392B" if len(_proj_12mo) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_proj_12mo)}</div><div class="metric-lbl">12+ months active <span class="metric-help" data-tip="Active projects at or beyond 12 months from Start Date that have not yet reached Phase 08. May need escalation review.">ⓘ</span></div></div>', unsafe_allow_html=True)
-        for _, _p12 in _proj_12mo.head(3).iterrows():
-            st.markdown(f'<div style="font-size:14px;opacity:.65;padding:1px 0">{_rag_label(_p12)}</div>', unsafe_allow_html=True)
+    # ── New donut panel: RAG, Phase breakdown, My projects snapshot, Project age ─
 
-    # ── Section: My Projects — Snapshot ───────────────────────────────────────
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="section-label">My Projects — Snapshot</div>', unsafe_allow_html=True)
-    r1a, r1b, r1c, r1d, r1e = st.columns(5)
-    with r1a:
-        _col = "#27AE60" if len(_gls) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_gls)}</div><div class="metric-lbl">Going live this week</div></div>', unsafe_allow_html=True)
-        for _, r in _gls.iterrows():
-            _cust = str(r.get("project_name","")).split(" - ")[0].strip()
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with r1b:
-        _col = "#F39C12" if len(_ihc) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_ihc)}</div><div class="metric-lbl">In hypercare</div></div>', unsafe_allow_html=True)
-        for _, r in _ihc.iterrows():
-            _cust = str(r.get("project_name","")).split(" - ")[0].strip()
-            st.markdown(f'<div style="font-size:13px;opacity:.65;padding:1px 0">{_cust[:28]} · {pd.Timestamp(r.get("effective_go_live_date") or r["go_live_date"]).strftime("%-d %b")}</div>', unsafe_allow_html=True)
-    with r1c:
-        _col = "#C0392B" if len(_mi) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_mi)}</div><div class="metric-lbl">Missing intro email <span class="metric-help" data-tip="Excludes legacy projects and projects with hours already logged. Only flags genuinely new projects missing the intro milestone.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with r1d:
-        _col = "#C0392B" if len(_stale) > 0 else "inherit"
-        st.markdown(f'<div class="metric-card"><div class="metric-val" style="color:{_col}">{len(_stale)}</div><div class="metric-lbl">Need re-engagement <span class="metric-help" data-tip="Active projects with 14+ days since last NS time entry. On-hold projects excluded.">ⓘ</span></div></div>', unsafe_allow_html=True)
-    with r1e:
-        st.markdown(f'<div class="metric-card"><div class="metric-val">{len(_active)}</div><div class="metric-lbl">Active Projects</div></div>', unsafe_allow_html=True)
+    def _donut_svg(segments, cx=32, cy=32, r=24, sw=7):
+        """Build stacked donut SVG circles from list of (pct, color) tuples."""
+        total = sum(p for p, _ in segments)
+        if total == 0:
+            return f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="rgba(128,128,128,0.2)" stroke-width="{sw}"/>'
+        circumference = 2 * 3.14159 * r
+        out = f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="rgba(128,128,128,0.2)" stroke-width="{sw}"/>'
+        offset = 38  # start at top
+        for pct, color in segments:
+            dash = round((pct / total) * circumference, 1)
+            gap  = round(circumference - dash, 1)
+            out += (f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" '
+                    f'stroke-width="{sw}" stroke-dasharray="{dash} {gap}" '
+                    f'stroke-dashoffset="{offset}" stroke-linecap="round"/>')
+            offset -= dash
+        return out
 
-    # ── Phase breakdown row ────────────────────────────────────────────────────
-    # Build full list: assigned phases + Unassigned if any
-    _pc_display = list(_pc_assigned)
-    if _unassigned_ct > 0:
-        _pc_display.append(("Unassigned", _unassigned_ct))
-
-    if _pc_display:
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
-        st.markdown('<div class="section-label">Project Phase Breakdown</div>', unsafe_allow_html=True)
-        _ph_cols = st.columns(len(_pc_display))
-        for _phi, (ph, cnt) in enumerate(_pc_display):
-            _abbr = (
-                "Unassigned" if ph == "Unassigned"
-                else _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:20])
+    def _donut_card(title, center_val, center_sub, segments, legend_rows, note=None):
+        """Render a donut card via st.markdown."""
+        svg_inner = _donut_svg(segments)
+        legend_html = ""
+        for dot_color, label, val in legend_rows:
+            legend_html += (
+                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;'>"
+                f"<div style='display:flex;align-items:center;gap:6px;font-size:13px;color:var(--color-text-secondary);'>"
+                f"<div style='width:8px;height:8px;border-radius:50%;background:{dot_color};flex-shrink:0;'></div>{label}</div>"
+                f"<span style='font-size:14px;font-weight:600;color:var(--color-text-primary);'>{val}</span></div>"
             )
-            with _ph_cols[_phi]:
-                _card_style = "opacity:0.5" if ph == "Unassigned" else ""
+        note_html = (
+            f"<div style='margin-top:8px;padding-top:8px;border-top:1px solid rgba(128,128,128,0.18);"
+            f"font-size:11px;color:var(--color-text-secondary);'>{note}</div>"
+        ) if note else ""
+        st.markdown(
+            f"<div style='background:var(--color-background-primary);"
+            f"border:1px solid rgba(128,128,128,0.25);"
+            f"border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
+            f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;"
+            f"color:var(--color-text-secondary);margin-bottom:12px;'>{title}</div>"
+            f"<div style='display:flex;align-items:center;gap:16px;'>"
+            f"<div style='position:relative;width:92px;height:92px;flex-shrink:0;'>"
+            f"<svg viewBox='0 0 64 64' width='92' height='92'>{svg_inner}</svg>"
+            f"<div style='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
+            f"<span style='font-size:16px;font-weight:600;color:var(--color-text-primary);line-height:1;'>{center_val}</span>"
+            f"<span style='font-size:11px;color:var(--color-text-secondary);margin-top:2px;'>{center_sub}</span>"
+            f"</div></div>"
+            f"<div style='flex:1;'>{legend_html}</div></div>"
+            f"{note_html}</div>",
+            unsafe_allow_html=True
+        )
+
+    # ── Column layout: briefing text left, donuts right ───────────────────────
+    _col_brief, _col_donuts = st.columns([1.4, 1.0], gap="large")
+
+    with _col_donuts:
+        # ── My utilization donut ──────────────────────────────────────────────
+        if util_pct is not None:
+            _UTIL_TARGET_DISP = 70.0
+            _util_segs = [(util_pct, "#08A9B7"), (max(0, 100 - util_pct), "var(--color-border-tertiary)")]
+            _pu_badge  = ""
+            _month_start2 = today.replace(day=1)
+            _month_end2   = (today.replace(day=28)+pd.Timedelta(days=4)).replace(day=1)-pd.Timedelta(days=1)
+            _days_total2  = len(pd.bdate_range(_month_start2, _month_end2))
+            _days_elapsed2= len(pd.bdate_range(_month_start2, today))
+            _gap2 = (_wk_util_pct or 0) - _UTIL_TARGET_DISP
+            if _gap2 >= 0:
+                _pace_c = "#97C459"; _pace_str = f"+{round(_gap2)}% ahead"
+            else:
+                _pace_c = "#F09595"; _pace_str = f"{round(_gap2)}% behind"
+            st.markdown(
+                f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
+                f"<div style='font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);margin-bottom:10px;'>My utilization · week of {_week_start.strftime('%b %-d')}</div>"
+                f"<div style='display:flex;align-items:center;gap:14px;'>"
+                f"<div style='position:relative;width:92px;height:92px;flex-shrink:0;'>"
+                f"<svg viewBox='0 0 64 64' width='92' height='92'>"
+                f"<circle cx='32' cy='32' r='24' fill='none' stroke='rgba(128,128,128,0.2)' stroke-width='7'/>"
+                f"<circle cx='32' cy='32' r='24' fill='none' stroke='#27AE60' stroke-width='7' "
+                f"stroke-dasharray='{round((_wk_util_pct or 0)/100*151,1)} {round((1-(_wk_util_pct or 0)/100)*151,1)}' stroke-dashoffset='38' stroke-linecap='round'/>"
+                f"</svg>"
+                f"<div style='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;'>"
+                f"<span style='font-size:13px;font-weight:500;color:var(--color-text-primary);line-height:1;'>{_wk_util_pct or '—'}%</span>"
+                f"<span style='font-size:9px;color:var(--color-text-secondary);margin-top:1px;'>util</span></div></div>"
+                f"<div style='flex:1;display:flex;flex-direction:column;gap:5px;'>"
+                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Billable hrs</span><span style='font-size:12px;font-weight:500;'>{_wk_total or '—'}h / {_wk_billable_h or '—'}h</span></div>"
+                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Target</span><span style='font-size:12px;font-weight:500;'>{int(_UTIL_TARGET_DISP)}%</span></div>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center;'><span style='font-size:12px;color:var(--color-text-secondary);'>Pacing</span>"
+                f"<span style='font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(128,128,128,0.1);color:{_pace_c};font-weight:500;'>{_pace_str}</span></div>"
+                f"<div style='display:flex;justify-content:space-between;'><span style='font-size:12px;color:var(--color-text-secondary);'>Overrun hrs</span>"
+                f"<span style='font-size:12px;font-weight:500;color:{'#E24B4A' if overrun_hrs > 0 else 'var(--color-text-primary)'};'>{_fmt_hrs(overrun_hrs)} MTD</span></div>"
+                f"</div></div></div>",
+                unsafe_allow_html=True
+            )
+
+        # ── WHS above donuts ──────────────────────────────────────────────────
+        if _whs_score is not None:
+            st.markdown(
+                f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);"
+                f"border-radius:10px;padding:12px 14px;margin-bottom:10px;"
+                f"display:flex;justify-content:space-between;align-items:center;'>"
+                f"<div><div style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;"
+                f"color:var(--color-text-secondary);margin-bottom:4px;'>Workload health score</div>"
+                f"<div style='font-size:11px;color:var(--color-text-secondary);'>Composite · projects, phases, overrun, stale</div></div>"
+                f"<div style='text-align:right;'>"
+                f"<div style='font-size:28px;font-weight:500;color:{_whs_col};'>{_whs_score}</div>"
+                f"<div style='font-size:11px;color:{_whs_col};'>{_whs_label}</div></div></div>",
+                unsafe_allow_html=True
+            )
+
+        # 1 — RAG & risk
+        _n_rag_total  = int(my_projects["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else 0
+        _n_green      = max(0, _n_rag_total - len(_rag_red) - len(_rag_yellow))
+        _rv_all       = my_projects["rag"].fillna("").astype(str).str.strip().str.lower() if "rag" in my_projects.columns and not my_projects.empty else pd.Series(dtype=str)
+        _n_unrated    = int((_rv_all == "").sum()) if len(_rv_all) > 0 else 0
+        _n_green_conf = max(0, _n_green - _n_unrated)
+        _n_rag_rated  = len(_rag_yellow) + len(_rag_red)  # Red + Yellow only = "at risk"
+        _rag_note     = f"* {_n_unrated} unrated project{'s' if _n_unrated != 1 else ''} — RAG not yet set" if _n_unrated > 0 else None
+        _donut_card(
+            "RAG &amp; risk",
+            str(_n_rag_rated), "at risk",
+            [(_n_green_conf, "#639922"), (len(_rag_yellow), "#EF9F27"), (len(_rag_red), "#E24B4A"), (_n_unrated, "#888780")],
+            [
+                ("#639922", "Green",   str(_n_green_conf)),
+                ("#EF9F27", "Yellow",  str(len(_rag_yellow))),
+                ("#E24B4A", "Red",     str(len(_rag_red))),
+                ("#888780", "Unrated", str(_n_unrated)),
+            ],
+            note=_rag_note
+        )
+
+        # 2 — Phase breakdown
+        _PHASE_GROUPS = [
+            ("Onboarding / Req",   ["00.", "01."], "#534AB7"),
+            ("Config / Training",  ["02.", "03."], "#378ADD"),
+            ("UAT",                ["04."],        "#08A9B7"),
+            ("Prep / Go-Live",     ["05.", "06."], "#EF9F27"),
+            ("Data Migration",     ["07."],        "#E24B4A"),
+            ("Ready for Support",  ["08.", "10."], "#639922"),
+            ("Phase 2 Scoping",    ["09."],        "#888780"),
+        ]
+        _phase_counts      = {}
+        _phase_blank       = 0
+        _phase_unmatched   = 0
+        _phase_pending_bil = 0
+        if "phase" in _active.columns and not _active.empty:
+            for ph in _active["phase"].fillna(""):
+                pl = str(ph).strip().lower()
+                if not pl:
+                    _phase_blank += 1
+                    continue
+                matched = False
+                for grp_name, prefixes, _ in _PHASE_GROUPS:
+                    if any(pl.startswith(p) for p in prefixes):
+                        # Special callout for 10. still in progress
+                        if pl.startswith("10."):
+                            _phase_pending_bil += 1
+                        _phase_counts[grp_name] = _phase_counts.get(grp_name, 0) + 1
+                        matched = True
+                        break
+                if not matched:
+                    _phase_unmatched += 1
+        _ph_note_parts = []
+        if _phase_blank > 0:
+            _ph_note_parts.append(f"{_phase_blank} project{'s' if _phase_blank != 1 else ''} with no phase set")
+        if _phase_pending_bil > 0:
+            _ph_note_parts.append(f"{_phase_pending_bil} marked Complete/Pending Billing — check status")
+        if _phase_unmatched > 0:
+            _ph_note_parts.append(f"{_phase_unmatched} in unrecognised phase")
+        _ph_note = " · ".join(_ph_note_parts) if _ph_note_parts else None
+        _ph_segs   = [(_phase_counts.get(g, 0), c) for g, _, c in _PHASE_GROUPS if _phase_counts.get(g, 0) > 0]
+        _ph_legend = [(c, g, str(_phase_counts.get(g, 0))) for g, _, c in _PHASE_GROUPS if _phase_counts.get(g, 0) > 0]
+        _donut_card(
+            "Phase breakdown",
+            str(_n_active_dc), "open",
+            _ph_segs, _ph_legend,
+            note=_ph_note
+        )
+
+
+        # 3 — My projects snapshot
+        _n_assigned  = int(my_projects["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else 0
+        _n_open      = _n_active_dc  # active = not on hold
+        _n_onhold    = _n_onhold_dc
+        _n_pend_cl   = int(my_projects[my_projects.get("_pending_close", pd.Series(False, index=my_projects.index)).astype(bool)]["project_id"].nunique()) if not my_projects.empty and "project_id" in my_projects.columns else 0
+        # Active = projects with NS time this month
+        _this_month_key = today.strftime("%Y-%m")
+        _active_proj_ids: set = set()
+        if df_ns is not None and not my_ns.empty and "project_id" in my_ns.columns and "date" in my_ns.columns:
+            _mn2 = my_ns.copy()
+            _mn2["_m"] = pd.to_datetime(_mn2["date"], errors="coerce").dt.strftime("%Y-%m")
+            _active_proj_ids = set(_mn2[_mn2["_m"] == _this_month_key]["project_id"].dropna().unique())
+        _n_time_active = len(_active_proj_ids)
+        _snap_note = "* Active = open projects with recent time booked"
+        _donut_card(
+            "My projects snapshot",
+            str(_n_assigned), "assigned",
+            [(_n_open, "#08A9B7"), (_n_time_active, "#378ADD"), (_n_onhold, "#888780"), (_n_pend_cl, "#534AB7")],
+            [
+                ("#08A9B7", "Open",          str(_n_open)),
+                ("#378ADD", "Active *",      str(_n_time_active)),
+                ("#888780", "On hold",       str(_n_onhold)),
+                ("#534AB7", "Pending close", str(_n_pend_cl)),
+            ],
+            note=_snap_note
+        )
+
+        # 4 — Project age
+        _age_bands = [("<3 months", 0, 3, "#08A9B7"), ("3–6 months", 3, 6, "#378ADD"),
+                      ("6–9 months", 6, 9, "#EF9F27"), ("9–12 months", 9, 12, "#E24B4A")]
+        _age_counts = {b[0]: 0 for b in _age_bands}
+        _age_12plus = 0
+        _avg_months = None
+        if "start_date" in _active.columns and not _active.empty:
+            _sd2 = pd.to_datetime(_active["start_date"], errors="coerce")
+            _mo  = (_snap_today - _sd2).dt.days / 30.44
+            _avg_months = round(_mo.dropna().mean(), 1) if not _mo.dropna().empty else None
+            for _, m in _mo.dropna().items():
+                for band_name, lo, hi, _ in _age_bands:
+                    if lo <= m < hi:
+                        _age_counts[band_name] += 1
+                        break
+                else:
+                    if m >= 12:
+                        _age_12plus += 1
+        _age_segs   = [(_age_counts[b[0]], b[3]) for b in _age_bands]
+        _age_legend = [(b[3], b[0], str(_age_counts[b[0]])) for b in _age_bands]
+        _age_note   = f"{_age_12plus} project{'s' if _age_12plus != 1 else ''} at 12+ months — escalation review recommended" if _age_12plus > 0 else None
+        _donut_card(
+            "Project age",
+            str(_avg_months) if _avg_months else "—", "avg mo",
+            _age_segs, _age_legend,
+            note=_age_note
+        )
+
+        # WHS card moved above donuts
+
+    with _col_brief:
+        # ── This Week's Focus (briefing text) ────────────────────────────────
+        if '_bhtml' in dir() or '_bhtml' in locals():
+            pass  # rendered below
+        try:
+            st.markdown(_bhtml, unsafe_allow_html=True)
+        except Exception:
+            pass
+
+        # ── Priority task list ────────────────────────────────────────────────
+        if not _is_group_view and df_drs is not None and not my_projects.empty:
+            _due_items = []
+
+            # Intro emails pending — uncapped, concrete action with SS writeback
+            for _, _mr in _mi.iterrows():
+                _cust  = str(_mr.get("project_name","")).split(" - ")[0][:35]
+                _pid   = str(_mr.get("project_id",""))
+                _ptype = str(_mr.get("project_type","")).strip()
+                _sub   = f"{_ptype} · {_pid}" if _ptype else _pid
+                _due_items.append({"dot": "#EF9F27", "name": f"Intro email pending — {_cust}", "sub": _sub, "row_id": _mr.get("_ss_row_id"), "type": "intro"})
+
+            # Go-lives this week — confirm readiness, uncapped
+            for _, _gr2 in _gls.iterrows():
+                _cust  = str(_gr2.get("project_name","")).split(" - ")[0][:35]
+                _pid   = str(_gr2.get("project_id",""))
+                _ptype = str(_gr2.get("project_type","")).strip()
+                _gl_d  = pd.Timestamp(_gr2.get(_gld_col)).strftime("%-d %b") if _gld_col in _gr2.index else ""
+                _sub   = f"{_ptype} · {_pid} · Scheduled {_gl_d}" if _ptype else f"{_pid} · Scheduled {_gl_d}"
+                _due_items.append({"dot": "#639922", "name": f"Confirm go-live readiness — {_cust}", "sub": _sub, "row_id": None, "type": "golive"})
+
+            # Stale projects — send outreach via Customer Engagement, uncapped
+            for _, _sr in _stale.iterrows():
+                _cust  = str(_sr.get("project_name","")).split(" - ")[0][:35]
+                _pid   = str(_sr.get("project_id",""))
+                _ptype = str(_sr.get("project_type","")).strip()
+                _days  = int(_sr.get("days_inactive", 0))
+                _sub   = f"{_ptype} · {_pid} · {_days} days inactive" if _ptype else f"{_pid} · {_days} days inactive"
+                _due_items.append({"dot": "#888780", "name": f"Re-engage — {_cust}", "sub": _sub, "row_id": None, "type": "stale"})
+
+            if _due_items:
+                with st.container(border=True):
+                    _hc1, _hc2 = st.columns([3, 1])
+                    _hc1.markdown("<span style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>This week's priorities</span>", unsafe_allow_html=True)
+                    _hc2.markdown(f"<span style='font-size:12px;color:var(--color-text-secondary);float:right;'>{len(_due_items)} items</span>", unsafe_allow_html=True)
+
+                    for idx, item in enumerate(_due_items):
+                        # Key on type + project ID (first token of sub) + DRS load ts
+                        _pid_key  = str(item.get("sub","")).split("·")[- 1 if item["type"] == "stale" else 0].strip()[:20].replace(" ","")
+                        _drs_ts   = str(st.session_state.get("drs_load_ts", ""))[:10]
+                        _done_key = f"done_{item['type']}_{_pid_key}_{_drs_ts}"
+                        _is_done  = st.session_state.get(_done_key, False)
+                        _ic1, _ic2 = st.columns([6, 1])
+                        with _ic1:
+                            _strike = "text-decoration:line-through;opacity:0.4;" if _is_done else ""
+                            st.markdown(
+                                f"<div style='display:flex;align-items:flex-start;gap:8px;padding:4px 0;{_strike}'>"
+                                f"<div style='width:7px;height:7px;border-radius:50%;background:{item['dot']};flex-shrink:0;margin-top:5px;'></div>"
+                                f"<div><div style='font-size:13px;font-weight:500;'>{item['name']}</div>"
+                                f"<div style='font-size:11px;color:var(--color-text-secondary);'>{item['sub']}</div></div>"
+                                f"</div>",
+                                unsafe_allow_html=True
+                            )
+                        with _ic2:
+                            if not _is_done:
+                                if st.button("✓ Done", key=f"btn_{idx}", use_container_width=True):
+                                    st.session_state[_done_key] = True
+                                    if item["type"] == "intro":
+                                        try:
+                                            from shared.smartsheet_api import write_row_updates
+                                            _row_id = item.get("row_id")
+                                            if _row_id:
+                                                _ok, _errs = write_row_updates([{
+                                                    "_ss_row_id": _row_id,
+                                                    "project_name": item["name"],
+                                                    "changes": {"ms_intro_email": pd.Timestamp.today().normalize()}
+                                                }])
+                                                if _ok:
+                                                    st.toast("✓ Intro email date updated in Smartsheet", icon="✅")
+                                                else:
+                                                    _err_msg = _errs[0] if _errs else "unknown error"
+                                                    st.toast(f"⚠ SS write failed: {_err_msg}", icon="⚠️")
+                                            else:
+                                                # No row ID — DRS loaded from CSV upload, not API
+                                                st.toast("Marked locally — sync DRS via API to write back", icon="ℹ️")
+                                        except Exception as _e:
+                                            st.toast(f"Saved locally — sync pending ({type(_e).__name__})", icon="ℹ️")
+                                    st.rerun()
+                            else:
+                                st.markdown("<span style='font-size:11px;color:var(--color-text-secondary);'>Done ✓</span>", unsafe_allow_html=True)
+
+
+
+        # Next 14 days milestone list
+        _ms14_items = []
+        if not _active.empty:
+            _ms_cols = {
+                "ms_intro_email":    ("Intro email", "#378ADD"),
+                "ms_config_start":   ("Config start", "#534AB7"),
+                "ms_uat_signoff":    ("UAT sign-off", "#EF9F27"),
+                "ms_hypercare_start":("Hypercare start", "#534AB7"),
+            }
+            _gl14_items = []
+            if _gl14_col in _active.columns:
+                for _, _gr3 in _gl14.iterrows():
+                    _cust = str(_gr3.get("project_name","")).split(" - ")[0][:28]
+                    _pid2 = str(_gr3.get("project_id",""))
+                    _dt   = pd.Timestamp(_gr3.get(_gl14_col))
+                    _gl14_items.append({"dt": _dt, "name": "Go-live", "cust": _cust, "pid": _pid2, "dot": "#639922", "badge": "Go-live", "badge_bg": "#EAF3DE", "badge_col": "#3B6D11"})
+
+            for ms_col, (ms_label, ms_color) in _ms_cols.items():
+                if ms_col in _active.columns:
+                    for _, _row in _active.iterrows():
+                        _dt2 = pd.to_datetime(_row.get(ms_col), errors="coerce")
+                        if pd.isna(_dt2): continue
+                        if _snap_today <= _dt2 <= _snap_today + pd.Timedelta(days=14):
+                            _cust = str(_row.get("project_name","")).split(" - ")[0][:28]
+                            _pid2 = str(_row.get("project_id",""))
+                            _ms14_items.append({"dt": _dt2, "name": ms_label, "cust": _cust, "pid": _pid2, "dot": ms_color, "badge": None})
+
+            _ms14_items = sorted(_gl14_items + _ms14_items, key=lambda x: x["dt"])
+
+        if _ms14_items:
+            st.markdown(
+                f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);"
+                f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
+                f"<span style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>Next 14 days</span>"
+                f"<span style='font-size:12px;color:var(--color-text-secondary);'>{len(_ms14_items)} scheduled</span></div>",
+                unsafe_allow_html=True
+            )
+            for item in _ms14_items[:8]:
+                _days_away = (item["dt"].normalize() - pd.Timestamp(_snap_today)).days
+                _day_str   = item["dt"].strftime("%b %-d")
+                _rel_str   = f"in {_days_away}d" if _days_away > 0 else "today"
+                _badge_html = ""
+                if item.get("badge"):
+                    _bg  = item.get("badge_bg", "var(--color-background-info)")
+                    _tc  = item.get("badge_col", "var(--color-text-info)")
+                    _badge_html = f"<span style='font-size:10px;padding:2px 7px;border-radius:4px;background:{_bg};color:{_tc};font-weight:500;flex-shrink:0;'>{item['badge']}</span>"
                 st.markdown(
-                    f'<div class="metric-card" style="padding:8px 10px;{_card_style}">' +
-                    f'<div class="metric-val" style="font-size:24px">{cnt}</div>' +
-                    f'<div class="metric-lbl" style="font-size:12px">{_abbr}</div></div>',
+                    f"<div style='display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(128,128,128,0.18);'>"
+                    f"<div style='min-width:44px;'>"
+                    f"<div style='font-size:12px;font-weight:500;color:var(--color-text-primary);'>{_day_str}</div>"
+                    f"<div style='font-size:10px;color:var(--color-text-secondary);'>{_rel_str}</div></div>"
+                    f"<div style='width:7px;height:7px;border-radius:50%;background:{item['dot']};flex-shrink:0;'></div>"
+                    f"<div style='flex:1;min-width:0;'>"
+                    f"<div style='font-size:13px;font-weight:500;color:var(--color-text-primary);'>{item['name']}</div>"
+                    f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:1px;'>{item['cust']} · {item['pid']}</div></div>"
+                    f"{_badge_html}</div>",
                     unsafe_allow_html=True
                 )
+            st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 st.caption("PS Projects & Tools · Internal use only · Data loaded this session only")

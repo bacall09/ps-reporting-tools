@@ -1,0 +1,342 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PSPT — Lifecycle Email Templates
+# UAT Signoff, Go-Live & Hypercare, Hypercare Closure, Support Transition
+#
+# These templates are product-agnostic — {PRODUCT_NAME} is the key variable.
+# Multi-variant templates surface a scenario picker in the UI before rendering.
+#
+# ss_milestone_on_send: Smartsheet field to date-stamp when sent (null = none)
+#
+# Placeholders auto-filled:
+#   {CUSTOMER_CONTACT_NAME}   → SFDC contact name
+#   {CUSTOMER}                → DRS customer name
+#   {PRODUCT_NAME}            → DRS product field
+#   {SENDER}                  → logged-in user name
+#   {SMARTSHEET_TRACKER_URL}  → DRS project link
+#
+# Placeholders requiring manual input:
+#   {UAT_END_DATE}            → date picker in UI
+#   {GO_LIVE_DATE}            → date picker (auto-filled from DRS if available)
+#   {HYPERCARE_END_DATE}      → calculated: go_live_date + 14 days
+#   {HYPERCARE_CLOSURE_DATE}  → date picker
+#   Various URL fields        → text input
+# ─────────────────────────────────────────────────────────────────────────────
+
+templates:
+
+  # ── UAT Signoff ────────────────────────────────────────────────────────────
+
+  - id: "uat_signoff"
+    category: "UAT"
+    name: "UAT Sign-Off Request"
+    trigger: "When UAT window is approaching close and formal sign-off is required"
+    subject: "Action Required: {PRODUCT_NAME} UAT Sign-Off"
+    ss_milestone_on_send: "UAT Signoff"
+    variants:
+      - key: "A"
+        label: "Scenario A — Config not yet in Production"
+        description: "Configuration has not yet been moved to Production. Customer reply → cutover → Go-Live + Hypercare begins."
+      - key: "B"
+        label: "Scenario B — In Production, not yet used"
+        description: "Config already in Production (e.g. Sandbox refresh). Customer has not yet started using Production. Customer reply → Hypercare begins."
+      - key: "C"
+        label: "Scenario C — In Production and being used"
+        description: "Config in Production and customer has begun using the product without formal sign-off. Production usage is deemed as acceptance."
+    editable_fields:
+      - key: "UAT_END_DATE"
+        label: "UAT End Date"
+        type: "date"
+        required: true
+      - key: "SMARTSHEET_TRACKER_URL"
+        label: "Smartsheet Tracker URL"
+        type: "text"
+        source: "drs_project_link"
+        required: true
+    placeholder_key:
+      CUSTOMER_CONTACT_NAME: "Primary contact's first name"
+      PRODUCT_NAME: "Zone product implemented (e.g. ZoneCapture)"
+      UAT_END_DATE: "Final date of the two-week UAT window"
+      SMARTSHEET_TRACKER_URL: "Link to the project's Smartsheet tracker/form"
+    variant_bodies:
+      A: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        Thank you for your time and effort during the User Acceptance Testing phase for {PRODUCT_NAME}. Your UAT window concludes on {UAT_END_DATE}, and we're pleased to hear that testing has been progressing well.
+
+        What Happens Next
+        To proceed to Go-Live, we need your formal confirmation that {PRODUCT_NAME} and its configuration meet your requirements and are operating as expected. Once we receive your sign-off, our team will cut over the configuration to your Production environment, which will mark your official Go-Live date and the start of your two-week Hypercare period.
+
+        How to Confirm
+        Please reply to this email confirming that you are satisfied with {PRODUCT_NAME} and ready to proceed to Go-Live.
+
+        Important to Note
+        Any configuration changes requested after the cutover to Production fall outside the project scope and may be subject to additional fees. If there are any outstanding items you'd like to address before signing off, please log them via your Smartsheet tracker ({SMARTSHEET_TRACKER_URL}) so we can review together before the UAT window closes.
+
+        We're looking forward to getting you live. Please don't hesitate to reach out if you have any questions.
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+      B: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        Thank you for your time and effort during the User Acceptance Testing phase for {PRODUCT_NAME}. Your UAT window concludes on {UAT_END_DATE}, and we're pleased to hear that testing has been progressing well.
+
+        A Note on Your Environment
+        As you may be aware, your {PRODUCT_NAME} configuration is already present in your Production environment. This was carried over as part of a recent Sandbox refresh and does not affect your UAT process — we still need your formal sign-off before we consider the implementation complete.
+
+        What Happens Next
+        Once we receive your confirmation, this will serve as your official Go-Live date and the start of your two-week Hypercare period. During Hypercare, you can report any issues or questions via your Smartsheet tracker, and our team will address all items within the project scope.
+
+        How to Confirm
+        Please reply to this email confirming that you are satisfied with {PRODUCT_NAME} and ready to proceed.
+
+        Important to Note
+        Any configuration changes requested after sign-off fall outside the project scope and may be subject to additional fees. If there are outstanding items to address before signing off, please log them via your Smartsheet tracker ({SMARTSHEET_TRACKER_URL}) so we can review together.
+
+        We're looking forward to getting you into Hypercare and through to full Support. Please don't hesitate to reach out if you have any questions.
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+      C: |
+        Hi {CUSTOMER_CONTACT_NAME} and team,
+
+        Thank you for your continued engagement throughout the {PRODUCT_NAME} implementation. We can see that your team has begun using {PRODUCT_NAME} in your Production environment — it's great to see the solution in action.
+
+        What This Means for Your Project
+        In line with the implementation scope shared at the start of the project, use of {PRODUCT_NAME} in Production serves as confirmation that the product and its configuration are operating as expected and meet the agreed-upon requirements. As such, your Go-Live date is now in effect and your two-week Hypercare period has commenced.
+
+        During Hypercare
+        Our team will continue to support you with any questions or issues that fall within the project scope. Please log any items via your Smartsheet tracker ({SMARTSHEET_TRACKER_URL}). After Hypercare, you'll transition to our Support team for ongoing assistance.
+
+        Important to Note
+        • Any configuration changes requested after Production deployment fall outside the project scope and may be subject to additional fees.
+        • Product enhancement requests will be managed through the Product team and will not affect your transition to Support.
+
+        We're delighted to see you getting value from {PRODUCT_NAME} and are here to ensure a smooth Hypercare period. Please reach out if you have any questions.
+
+        Kind regards,
+        {SENDER}
+        Professional Services | Zone & Co
+
+  # ── Go-Live & Hypercare Kickoff ────────────────────────────────────────────
+
+  - id: "go_live_hypercare_kickoff"
+    category: "Go-Live"
+    name: "Go-Live & Hypercare Kick-off"
+    trigger: "Immediately after cutover to Production is complete (or after sign-off in UAT Scenarios B/C)"
+    subject: "You're Live! {PRODUCT_NAME} Hypercare Has Started"
+    ss_milestone_on_send:
+      - "Prod Cutover"
+      - "Hypercare Start"
+      - "Go-Live Date"
+    ss_milestone_note: >
+      Prod Cutover and Hypercare Start are written independently.
+      If either field already has a value in Smartsheet it will NOT be
+      overwritten — the consultant will be prompted to confirm the dates
+      manually if they differ.
+    tips:
+      - "Send on the same day as (or the business day immediately following) the cutover to Production."
+      - "For UAT Scenario B or C, send as soon as the customer's sign-off is received or Production usage is confirmed."
+      - "CC EMEA Team Lead and Director of PS, EMEA."
+      - "For multi-product implementations going live on the same date, combine into a single email and list all products."
+    editable_fields:
+      - key: "GO_LIVE_DATE"
+        label: "Go-Live Date"
+        type: "date"
+        source: "drs_prod_cutover"
+        required: true
+      - key: "HYPERCARE_END_DATE"
+        label: "Hypercare End Date"
+        type: "date"
+        source: "calculated_go_live_plus_14"
+        required: true
+      - key: "SMARTSHEET_TRACKER_URL"
+        label: "Smartsheet Tracker URL"
+        type: "text"
+        source: "drs_project_link"
+        required: true
+    body: |
+      Hi {CUSTOMER_CONTACT_NAME} and team,
+
+      Great news — your {PRODUCT_NAME} configuration has been successfully deployed to Production. Your {PRODUCT_NAME} Go-Live date is {GO_LIVE_DATE}, and your two-week Hypercare period is now underway.
+
+      What Is Hypercare?
+      Hypercare is a two-week period of focused support from your Implementation Consultant. It's designed to help you settle into using {PRODUCT_NAME} in your live environment with confidence. During this time, our team will:
+      • Respond to any questions related to {PRODUCT_NAME} and its configuration
+      • Monitor and address any issues reported during this period
+      • Resolve all reported items that fall within the project scope before transitioning you to Support
+
+      How to Report Issues
+      Please continue to log any questions, issues, or feedback via your Smartsheet tracker:
+      {SMARTSHEET_TRACKER_URL}
+
+      Key Dates
+      • Go-Live: {GO_LIVE_DATE}
+      • Hypercare End: {HYPERCARE_END_DATE}
+
+      Good to Know
+      • Any configuration changes requested after Production deployment fall outside the project scope and may be subject to additional fees.
+      • Product enhancement requests will be managed through the Product team and will not affect your transition to Support.
+
+      We're excited to see your team using {PRODUCT_NAME} in Production. Don't hesitate to reach out — that's exactly what Hypercare is for.
+
+      Kind regards,
+      {SENDER}
+      Professional Services | Zone & Co
+
+  # ── Week 1 Hypercare Check-in ──────────────────────────────────────────────
+
+  - id: "hypercare_week1_checkin"
+    category: "Hypercare"
+    name: "Week 1 Hypercare Check-in"
+    trigger: "End of Week 1 of Hypercare (Friday, or last business day)"
+    subject: "{PRODUCT_NAME} Hypercare — Week 1 Check-In"
+    ss_milestone_on_send: null
+    tips:
+      - "Send on the Friday of Week 1 (or the last business day of the first week)."
+      - "This email is intentionally lighter in tone — it's a relationship touchpoint, not a process email."
+      - "If the customer has logged multiple open items in the tracker, consider referencing them briefly."
+    editable_fields:
+      - key: "HYPERCARE_END_DATE"
+        label: "Hypercare End Date"
+        type: "date"
+        source: "calculated_go_live_plus_14"
+        required: true
+      - key: "SMARTSHEET_TRACKER_URL"
+        label: "Smartsheet Tracker URL"
+        type: "text"
+        source: "drs_project_link"
+        required: true
+    body: |
+      Hi {CUSTOMER_CONTACT_NAME} and team,
+
+      We're now one week into your Hypercare period for {PRODUCT_NAME}, and I wanted to check in to see how things are going.
+
+      A Few Questions
+      • Is {PRODUCT_NAME} performing as expected in your day-to-day workflows?
+      • Are there any outstanding questions or issues your team has encountered that haven't yet been logged?
+      • Is there anything you'd like us to prioritise before the end of Hypercare?
+
+      If there are any items to flag, please continue to log them via your Smartsheet tracker ({SMARTSHEET_TRACKER_URL}). We'll make sure everything within scope is addressed before your Hypercare window closes.
+
+      What's Ahead
+      Your Hypercare period runs through {HYPERCARE_END_DATE}. After that, you'll transition to our dedicated Support team, who will be your ongoing point of contact for any questions or assistance. We'll share full details and resources when we make that handover.
+
+      In the meantime, don't forget that our Knowledge Base is a great resource for common questions, how-to guides, and best practices for {PRODUCT_NAME}.
+
+      Looking forward to hearing how your first week has gone.
+
+      Kind regards,
+      {SENDER}
+      Professional Services | Zone & Co
+
+  # ── Hypercare Closure ──────────────────────────────────────────────────────
+
+  - id: "hypercare_closure"
+    category: "Hypercare"
+    name: "Hypercare Closure & Support Transition"
+    trigger: "Business day immediately following the end of the Hypercare period"
+    subject: "Congratulations! Welcome to Zone & Co. Support — {PRODUCT_NAME}"
+    ss_milestone_on_send: "Transition to Support"
+    tips:
+      - "Send on the business day immediately following the end of the Hypercare period (typically two weeks post go-live)."
+      - "Confirm with the project team that no open critical issues remain before sending."
+      - "CC the customer's Account Manager and Zone Support inbox."
+    editable_fields:
+      - key: "KNOWLEDGE_BASE_URL"
+        label: "Knowledge Base URL"
+        type: "text"
+        required: true
+      - key: "SUPPORT_FORM_URL"
+        label: "Support Form URL"
+        type: "text"
+        required: true
+      - key: "SUPPORT_DETAILS_URL"
+        label: "Support Details / SLA Page URL"
+        type: "text"
+        required: true
+      - key: "ZONE_PRODUCT_OVERVIEW_URL"
+        label: "Zone Products Overview URL"
+        type: "text"
+        default: "https://www.zoneandco.com/"
+        required: false
+    body: |
+      Hi {CUSTOMER_CONTACT_NAME} and team,
+
+      Congratulations on completing your {PRODUCT_NAME} implementation! It's been a pleasure working with you and your team through this process.
+
+      What This Means
+      Your two-week Hypercare period has now concluded. Going forward, our dedicated Support team will be your primary point of contact for any questions, troubleshooting, or guidance. They're well-equipped to help you get the most out of {PRODUCT_NAME}.
+
+      Your Support Toolkit
+      To help you hit the ground running, here are the key resources available to you:
+      • Knowledge Base: {KNOWLEDGE_BASE_URL}
+      • Submit a Support Case: {SUPPORT_FORM_URL}
+      • Support Details & SLAs: {SUPPORT_DETAILS_URL}
+
+      Explore More from Zone & Co
+      Now that {PRODUCT_NAME} is up and running, you may be interested in how other Zone solutions can streamline more of your finance operations — all natively within NetSuite. Curious about any of these? Your Account Manager would be happy to walk you through how they complement {PRODUCT_NAME}.
+
+      Or explore the full suite at {ZONE_PRODUCT_OVERVIEW_URL}
+
+      Need More from Professional Services?
+      If your team would like additional support beyond standard product assistance — such as further training sessions, exploring new use cases, or optimising your configuration — simply raise a Support ticket and reference "consultancy" or "optimization", and the Support team will connect you with our Professional Services team to scope the engagement.
+
+      Thank You
+      It's been a pleasure working with your team. We're proud to have you as part of the Zone & Co family and look forward to supporting your continued success.
+
+      Warm regards,
+      {SENDER}
+      Professional Services | Zone & Co
+
+  # ── Support Transition Follow-up (Unresponsive) ───────────────────────────
+
+  - id: "support_transition_followup"
+    category: "Hypercare"
+    name: "Support Transition Follow-up (Unresponsive Customer)"
+    trigger: "3–5 business days after Hypercare Closure email if no customer response received"
+    subject: "{PRODUCT_NAME} — Your Support Team Is Ready for You"
+    ss_milestone_on_send: null
+    tips:
+      - "Send only if the customer has not responded to the Hypercare Closure & Support Transition email."
+      - "This email serves as an important internal record that the customer was formally notified of the transition."
+    editable_fields:
+      - key: "HYPERCARE_CLOSURE_DATE"
+        label: "Hypercare Closure Date"
+        type: "date"
+        required: true
+      - key: "KNOWLEDGE_BASE_URL"
+        label: "Knowledge Base URL"
+        type: "text"
+        required: true
+      - key: "SUPPORT_FORM_URL"
+        label: "Support Form URL"
+        type: "text"
+        required: true
+      - key: "SUPPORT_DETAILS_URL"
+        label: "Support Details / SLA Page URL"
+        type: "text"
+        required: true
+    body: |
+      Hi {CUSTOMER_CONTACT_NAME} and team,
+
+      I hope all is well. I wanted to follow up on our recent communication regarding the completion of your {PRODUCT_NAME} Hypercare period.
+
+      As your two-week Hypercare window concluded on {HYPERCARE_CLOSURE_DATE}, your account has now been transitioned to our Support team. Going forward, they will be your primary point of contact for any day-to-day questions, troubleshooting, or guidance related to {PRODUCT_NAME}.
+
+      How to Get Help
+      Our Support team is ready and available to assist you:
+      • Knowledge Base: {KNOWLEDGE_BASE_URL}
+      • Submit a Support Case: {SUPPORT_FORM_URL}
+      • Support Details & SLAs: {SUPPORT_DETAILS_URL}
+
+      Need More from Professional Services?
+      If your team would like additional support beyond standard product assistance — such as further training sessions, exploring new use cases, or optimising your configuration — simply raise a Support ticket and reference "consultancy" or "optimization", and the Support team will connect you with our Professional Services team to scope the engagement.
+
+      We're proud to have you as part of the Zone & Co family and want to make sure you continue to get the most out of {PRODUCT_NAME}. If you have any questions about the transition or need any assistance, please don't hesitate to reach out.
+
+      Kind regards,
+      {SENDER}
+      Professional Services | Zone & Co

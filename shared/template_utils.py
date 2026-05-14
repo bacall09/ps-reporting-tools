@@ -221,8 +221,9 @@ SS_COL_MAP_OUT = {
 
 INACTIVE_PHASES_OUT = {
     "10. complete/pending final billing",
-    "11. on hold",
     "12. ps review",
+    # NOTE: "11. on hold" intentionally excluded — on-hold projects are kept
+    # and tagged via _on_hold flag from the status column instead
 }
 
 

@@ -14,6 +14,12 @@ from shared.constants import (
     MILESTONE_COLS_MAP, get_role, is_manager, name_matches,
     resolve_name, get_ff_scope, DEFAULT_SCOPE,
 )
+from shared.constants import NO_ACCESS
+try:
+    from shared.constants import _LEAVERS as _LEAVER_SET
+except ImportError:
+    _LEAVER_SET = set()
+_ALL_LEAVERS = set(NO_ACCESS) | _LEAVER_SET
 from shared.utils import calc_consultant_util
 from shared.config import (
     AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
@@ -56,10 +62,28 @@ if not selected:
 view_as    = selected
 _va_region = None
 if role in ("manager", "manager_only", "reporting_only"):
-    _pick = st.session_state.get("home_browse", "— My own view —")
+    _pick = (st.session_state.get("_browse_passthrough") or
+             st.session_state.get("home_browse", "")) or ""
+    if not _pick:
+        # No passthrough — show local selector
+        from shared.constants import CONSULTANT_DROPDOWN as _CDP
+        _bopts_pa = ["👥 All team"]
+        _by_r_pa = {}
+        for _cn_pa in sorted(_CDP):
+            _loc_pa = EMPLOYEE_LOCATION.get(_cn_pa, "")
+            _rg_pa = PS_REGION_OVERRIDE.get(_cn_pa, PS_REGION_MAP.get(_loc_pa, "Other"))
+            _by_r_pa.setdefault(_rg_pa, []).append(_cn_pa)
+        for _rg_pa in sorted(_by_r_pa.keys()):
+            _bopts_pa.append(f"── {_rg_pa} ──")
+            _bopts_pa.extend(_by_r_pa[_rg_pa])
+        with st.sidebar:
+            st.markdown("**View as:**")
+            _pick = st.selectbox("View as", _bopts_pa, key="pa_view_as",
+                                 label_visibility="collapsed")
+    _pick_clean = _pick.replace("👥", "").strip().lower()
     if _pick and _pick.startswith("── ") and _pick.endswith(" ──"):
         _va_region = _pick[3:-3].strip()
-    elif _pick and _pick in ("👥 All team", "All team"):
+    elif _pick_clean in ("all team", "") or _pick in ("👥 All team", "All team"):
         _va_region = None  # show all team — handled by manager_only path
         view_as    = selected
     elif _pick and _pick not in ("— My own view —", "— Select —", ""):
@@ -71,10 +95,7 @@ df_drs = st.session_state.get("df_drs")
 df_ns  = st.session_state.get("df_ns")
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
-_zone_svg = """<svg style='position:absolute;right:-40px;top:50%;transform:translateY(-50%);
-opacity:0.06;width:200px;height:200px;pointer-events:none'
-viewBox='0 0 1482 1286.25' xmlns='http://www.w3.org/2000/svg'>
-<g fill='#3B9EFF' fill-rule='evenodd'><path d='M975.127,924.953c2.608-2.68,1.744-5.496-.42-7.829l-57.415-61.872c-2.463-2.655-5.025-2.878-8.443-.991-10.398,5.739-19.024,12.314-27.949,19.885-83.252,70.621-197.471,155.494-298.93,195.556-17.993,7.105-35.256,13.178-54.191,17.329-62.148,13.627-131.853,15.491-192.702-5.298-64.93-22.183-113.878-68.722-142.715-130.542-28.647-61.415-22.393-131.406,11.352-189.217,2.598-2.793,1.405-6.055-1.389-8.184-35.341-26.918-40.303-33.439-69.367-65.686-1.449-1.607-4.102-2.401-5.903-1.138-13.105,9.189-23.232,20.534-33.172,32.961-16.499,20.629-29.73,42.605-38.718,67.541-5.127,10.469-8.378,20.486-10.885,32.065-13.633,62.973-7.701,128.685,17.402,188.142,23.839,56.463,65.297,103.638,114.77,139.169,32.418,23.283,66.848,42.548,103.476,58.385,25.142,10.871,50.281,18.994,76.934,25.12,96.392,22.153,188.876,4.496,276.774-38.393,42.916-20.94,83.188-45.685,121.922-73.568,75.733-54.514,154.643-126.72,219.571-193.435Z'/></g></svg>"""
+_zone_svg = """"""
 
 if _va_region:
     _view_label = _va_region + " Team"
@@ -88,21 +109,8 @@ elif role in ("manager", "manager_only", "reporting_only"):
 else:
     _vp = [p.strip() for p in selected.split(",")]
     _view_label = f"{_vp[1].split()[0]} {_vp[0]}" if len(_vp) == 2 else selected
-st.markdown(f"""
-<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;
-            margin-bottom:24px;font-family:Manrope,sans-serif;
-            position:relative;overflow:hidden'>
-  {_zone_svg}
-  <div style='font-size:13px;font-weight:700;letter-spacing:2.5px;
-              text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'>
-      Professional Services · Tools</div>
-  <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'>
-      Portfolio Analytics</h1>
-  <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px;
-            font-family:Manrope,sans-serif'>
-      {_view_label} · {today.strftime("%B %Y")}</p>
-</div>
-""", unsafe_allow_html=True)
+_hero = st.empty()
+_hero.markdown(f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px; margin-bottom:24px;font-family:Manrope,sans-serif; position:relative;overflow:hidden'> {_zone_svg} <div style='font-size:13px;font-weight:700;letter-spacing:2.5px; text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'> Professional Services · Tools</div> <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'> Portfolio Analytics</h1> <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px; font-family:Manrope,sans-serif'> {_view_label} · {today.strftime("%B %Y")}</p> </div>", unsafe_allow_html=True)
 
 if df_drs is None:
     st.info("Load SS DRS on the Home page to view Portfolio Analytics.")
@@ -121,11 +129,13 @@ def _get_region_consultants(region):
 if _va_region:
     _team_consultants = _get_region_consultants(_va_region)
 elif role == "manager_only":
-    _team_consultants = set(CONSULTANT_DROPDOWN)
+    _team_consultants = set(ACTIVE_EMPLOYEES)
 elif role in ("manager", "reporting_only"):
-    _pick_curr = st.session_state.get("home_browse", "— My own view —")
-    if _pick_curr in ("👥 All team", "All team"):
-        _team_consultants = set(CONSULTANT_DROPDOWN)
+    _pick_curr = (st.session_state.get("_browse_passthrough") or
+                  st.session_state.get("home_browse", "")) or ""
+    _pick_curr_clean = _pick_curr.replace("👥", "").strip().lower()
+    if _pick_curr_clean in ("all team", "") or _pick_curr in ("👥 All team", "All team"):
+        _team_consultants = set(ACTIVE_EMPLOYEES)
     elif view_as != selected:
         _team_consultants = {view_as}
     else:
@@ -140,16 +150,47 @@ else:
     _team_consultants = {view_as}
 
 # ── Filter DRS to team ────────────────────────────────────────────────────────
-pm_col = df_drs.get("project_manager", pd.Series(dtype=str)).fillna("")
+pm_col = df_drs.get("project_manager", pd.Series(dtype="object")).fillna("")
 
 def _in_team(v):
     return any(name_matches(v, _n) for _n in _team_consultants)
 
 team_drs = df_drs[pm_col.apply(_in_team)].copy() if _team_consultants else df_drs.copy()
 
+# ── Leaver-assigned and unassigned projects (always from full df_drs) ─────────
+def _is_leaver_pm(v):
+    v = str(v).strip()
+    if not v or v.lower() in ("", "nan", "none"): return False
+    return any(name_matches(v, ln) for ln in _ALL_LEAVERS)
+
+def _is_unassigned_pm(v):
+    v = str(v).strip()
+    return not v or v.lower() in ("", "nan", "none", "unassigned", "tbd")
+
+_all_pm_col     = df_drs.get("project_manager", pd.Series(dtype="object")).fillna("")
+_leaver_drs     = df_drs[_all_pm_col.apply(_is_leaver_pm)].copy()
+_unassigned_drs = df_drs[_all_pm_col.apply(_is_unassigned_pm)].copy()
+_n_leaver       = int(_leaver_drs["project_id"].nunique()) if "project_id" in _leaver_drs.columns and not _leaver_drs.empty else len(_leaver_drs)
+_n_unassigned   = int(_unassigned_drs["project_id"].nunique()) if "project_id" in _unassigned_drs.columns and not _unassigned_drs.empty else len(_unassigned_drs)
+# Derive pending_close from phase col — use contains for robustness against casing/spacing variants
+if "_pending_close" in df_drs.columns:
+    _pc_mask = df_drs["_pending_close"].astype(bool)
+elif "phase" in df_drs.columns:
+    _ph_norm = df_drs["phase"].fillna("").str.strip().str.lower()
+    _pc_mask = _ph_norm.str.contains("complete", na=False) & _ph_norm.str.contains("pending", na=False)
+else:
+    _pc_mask = pd.Series(False, index=df_drs.index)
+_pending_close_drs = df_drs[_pc_mask].copy()
+_n_pending_close   = int(_pending_close_drs["project_id"].nunique()) if "project_id" in _pending_close_drs.columns and not _pending_close_drs.empty else len(_pending_close_drs)
+
 # Active projects (not on hold)
 _ioh     = team_drs.get("_on_hold", pd.Series(False, index=team_drs.index)).astype(bool)
 _active  = team_drs[~_ioh].copy()
+# ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
+_id_col_dc    = "project_id" if "project_id" in _active.columns else "project_name"
+_n_active_dc  = int(_active[_id_col_dc].nunique()) if not _active.empty else 0
+_n_onhold_dc  = int(team_drs[_ioh]["project_id"].nunique()) if not team_drs.empty and "project_id" in team_drs.columns else int(_ioh.sum())
+
 
 # Phase order
 PHASE_ORDER = [
@@ -165,74 +206,357 @@ def _pidx(p):
     return -1
 
 # ── Portfolio Snapshot metrics ────────────────────────────────────────────────
-_n_active   = len(_active)
-_n_onhold   = int(_ioh.sum())
-_n_total    = len(team_drs)           # all rows for this team/consultant
-_n_team     = len(_team_consultants)
-_oh_denom   = _n_active + _n_onhold   # for on-hold rate: active+onhold (not total which may include completed)
+_n_active   = _n_active_dc
+_n_onhold   = _n_onhold_dc
+_n_total    = _n_active_dc + _n_onhold_dc
+# Count consultants who actually have projects in DRS (matches workload table)
+if not team_drs.empty and "project_manager" in team_drs.columns:
+    _active_pms = set(team_drs["project_manager"].dropna().str.strip().str.lower().unique())
+    _n_team = sum(
+        1 for _n in _team_consultants
+        if any(name_matches(pm, _n) for pm in _active_pms)
+    )
+else:
+    _n_team = len(_team_consultants)
+_oh_denom   = _n_active + _n_onhold
 
-# RAG across all projects (including on-hold) — matches Daily Briefing behaviour
-_rag_col    = team_drs.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+_rag_col    = team_drs.get("rag", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
 _n_red      = int((_rag_col == "red").sum())
 _n_yellow   = int((_rag_col == "yellow").sum())
 _n_at_risk  = _n_red + _n_yellow
 _risk_pct   = round(100 * _n_at_risk / (_n_active + _n_onhold)) if (_n_active + _n_onhold) else 0
-
 _oh_pct     = round(100 * _n_onhold / _oh_denom) if _oh_denom else 0
 
-# Avg project duration (months from start to today for active)
 _durations  = []
 if "start_date" in _active.columns:
     _sd = pd.to_datetime(_active["start_date"], errors="coerce")
     _durations = [((today - s).days / 30.44) for s in _sd if pd.notna(s)]
 _avg_dur = round(sum(_durations) / len(_durations), 1) if _durations else None
 
+_pre_trans = _active[_active["phase"].fillna("").apply(
+    lambda p: _pidx(p) < _pidx("08. ready for support transition")
+)] if "phase" in _active.columns else _active
+if "start_date" in _pre_trans.columns:
+    _sd2 = pd.to_datetime(_pre_trans["start_date"], errors="coerce")
+    _n_9mo = int((((today - _sd2).dt.days / 30.44) >= 9).sum())
+else:
+    _n_9mo = 0
+
 st.markdown('<div class="section-label">Portfolio Snapshot</div>', unsafe_allow_html=True)
-ps1, ps2, ps3, ps4, ps5 = st.columns(5)
-with ps1:
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val">{_n_active}</div>
-      <div class="metric-lbl">Active projects</div>
-      <div class="metric-sub">{_n_team} consultants</div>
-    </div>""", unsafe_allow_html=True)
-with ps2:
-    _rc = "#C0392B" if _risk_pct >= 20 else ("#F39C12" if _risk_pct >= 10 else "inherit")
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_rc}">{_risk_pct}%</div>
-      <div class="metric-lbl">Projects at risk</div>
-      <div class="metric-sub">{_n_red} Red · {_n_yellow} Yellow RAG</div>
-    </div>""", unsafe_allow_html=True)
-with ps3:
-    _ohc = "#F39C12" if _oh_pct >= 20 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_ohc}">{_oh_pct}%</div>
-      <div class="metric-lbl">On-hold rate</div>
-      <div class="metric-sub">{_n_onhold} of {_n_total} projects</div>
-    </div>""", unsafe_allow_html=True)
-with ps4:
-    _dur_txt = f"{_avg_dur}mo" if _avg_dur else "—"
-    _durc = "#F39C12" if (_avg_dur or 0) >= 9 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_durc}">{_dur_txt}</div>
-      <div class="metric-lbl">Avg project duration</div>
-      <div class="metric-sub">active projects</div>
-    </div>""", unsafe_allow_html=True)
-with ps5:
-    # Projects 9mo+ not yet at transition
-    _pre_trans = _active[_active["phase"].fillna("").apply(
-        lambda p: _pidx(p) < _pidx("08. ready for support transition")
-    )] if "phase" in _active.columns else _active
-    if "start_date" in _pre_trans.columns:
-        _sd2 = pd.to_datetime(_pre_trans["start_date"], errors="coerce")
-        _n_9mo = int((((today - _sd2).dt.days / 30.44) >= 9).sum())
-    else:
-        _n_9mo = 0
-    _9moc = "#F39C12" if _n_9mo > 0 else "inherit"
-    st.markdown(f"""<div class="metric-card">
-      <div class="metric-val" style="color:{_9moc}">{_n_9mo}</div>
-      <div class="metric-lbl">9+ months active</div>
-      <div class="metric-sub">excl. phase 08+</div>
-    </div>""", unsafe_allow_html=True)
+
+_lv_col = "#F39C12" if _n_leaver > 0 else "inherit"
+_ua_col = "#C0392B" if _n_unassigned > 0 else "inherit"
+_pc_col = "#F39C12" if _n_pending_close > 0 else "inherit"
+_rc     = "#C0392B" if _risk_pct >= 20 else ("#F39C12" if _risk_pct >= 10 else "inherit")
+_dur_txt2 = f"{_avg_dur}mo" if _avg_dur else "—"
+_durc2  = "#F39C12" if (_avg_dur or 0) >= 9 else "inherit"
+_9moc   = "#F39C12" if _n_9mo > 0 else "inherit"
+
+st.markdown(f"""
+<style>
+.snap-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}}
+.snap-card {{
+    border: 1px solid rgba(128,128,128,.2);
+    border-radius: 8px;
+    padding: 14px 16px;
+    min-width: 0;
+}}
+.snap-val  {{ font-size: 28px; font-weight: 700; line-height: 1.1; color: inherit; }}
+.snap-lbl  {{ font-size: 13px; opacity: .6; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.snap-sub  {{ font-size: 11px; opacity: .45; margin-top: 2px; }}
+</style>
+<div class="snap-grid">
+  <div class="snap-card">
+    <div class="snap-val">{_n_active}</div>
+    <div class="snap-lbl">Active</div>
+    <div class="snap-sub">{_n_team} consultants</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:#F39C12">{_n_onhold}</div>
+    <div class="snap-lbl">On hold</div>
+    <div class="snap-sub">{_oh_pct}% of total</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_lv_col}">{_n_leaver}</div>
+    <div class="snap-lbl">Need reassignment</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_ua_col}">{_n_unassigned}</div>
+    <div class="snap-lbl">Unassigned</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_pc_col}">{_n_pending_close}</div>
+    <div class="snap-lbl">Pending close</div>
+    <div class="snap-sub">Active status · closed phase</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_rc}">{_risk_pct}%</div>
+    <div class="snap-lbl">Projects at risk</div>
+    <div class="snap-sub">{_n_red} Red · {_n_yellow} Yellow</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_durc2}">{_dur_txt2}</div>
+    <div class="snap-lbl">Avg duration</div>
+    <div class="snap-sub">active projects</div>
+  </div>
+  <div class="snap-card">
+    <div class="snap-val" style="color:{_9moc}">{_n_9mo}</div>
+    <div class="snap-lbl">9+ months active</div>
+    <div class="snap-sub">excl. phase 08+</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Expandable detail for leaver-assigned and unassigned ─────────────────────
+if _n_leaver > 0 or _n_unassigned > 0 or _n_pending_close > 0:
+    _exp1, _exp2, _exp3 = st.columns(3)
+    if _n_leaver > 0:
+        with _exp1:
+            with st.expander(f"⚠️ {_n_leaver} project{'s' if _n_leaver != 1 else ''} need reassignment — view"):
+                _lv_cols = ["project_name","project_manager","project_type","_on_hold","ps_region"]
+                _lv_show = _leaver_drs[[c for c in _lv_cols if c in _leaver_drs.columns]].copy()
+                _lv_show = _lv_show.rename(columns={
+                    "project_name": "Project", "project_manager": "Former PM",
+                    "project_type": "Product", "_on_hold": "On Hold", "ps_region": "Region"
+                })
+                if "On Hold" in _lv_show.columns:
+                    _lv_show["Status"] = _lv_show["On Hold"].apply(lambda x: "On Hold" if x else "Active")
+                    _lv_show = _lv_show.drop(columns=["On Hold"])
+                st.dataframe(_lv_show, use_container_width=True, hide_index=True)
+    if _n_unassigned > 0:
+        with _exp2:
+            with st.expander(f"⚠️ {_n_unassigned} unassigned project{'s' if _n_unassigned != 1 else ''} — view & assign"):
+                _ua_cols = ["project_name","project_type","_on_hold","start_date"]
+                _ua_show = _unassigned_drs[[c for c in _ua_cols if c in _unassigned_drs.columns]].copy()
+                _ua_show = _ua_show.rename(columns={
+                    "project_name": "Project", "project_type": "Product",
+                    "_on_hold": "On Hold", "start_date": "Start Date"
+                })
+                if "On Hold" in _ua_show.columns:
+                    _ua_show["Status"] = _ua_show["On Hold"].apply(lambda x: "On Hold" if x else "Active")
+                    _ua_show = _ua_show.drop(columns=["On Hold"])
+                if "Start Date" in _ua_show.columns:
+                    _ua_show["Start Date"] = pd.to_datetime(_ua_show["Start Date"], errors="coerce").dt.strftime("%b %Y").fillna("—")
+                st.dataframe(_ua_show, use_container_width=True, hide_index=True)
+    if _n_pending_close > 0:
+        with _exp3:
+            with st.expander(f"⚠️ {_n_pending_close} project{'s' if _n_pending_close != 1 else ''} pending close — view & action"):
+                _pc_cols = ["project_name","project_manager","project_type","status","ps_region"]
+                _pc_show = _pending_close_drs[[c for c in _pc_cols if c in _pending_close_drs.columns]].copy()
+                _pc_show = _pc_show.rename(columns={
+                    "project_name": "Project", "project_manager": "PM",
+                    "project_type": "Product", "status": "Status", "ps_region": "Region"
+                })
+                st.caption("Phase 10 (Complete/Pending Final Billing) with status not yet Closed. Update status in DRS.")
+                st.dataframe(_pc_show, use_container_width=True, hide_index=True)
+
+# ── Product Mix ───────────────────────────────────────────────────────────────
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Product Mix</div>', unsafe_allow_html=True)
+
+if "project_type" in _active.columns:
+    # ── Family → type keyword mapping ─────────────────────────────────────────
+    # Each tuple: (family_name, family_color, {type_keyword: display_label})
+    # project_type is matched case-insensitively after stripping "ZoneApp:" prefix
+    _FAMILIES = [
+        ("ZoneApps", "#1D9E75", {
+            "capture":             "Capture",
+            "approvals":           "Approvals",
+            "reconcile 2.0":       "Reconcile 2.0",
+            "reconcile psp":       "Reconcile PSP",
+            "reconcile":           "Reconcile",
+            "e-invoicing":         "e-Invoicing",
+            "einvoicing":          "e-Invoicing",
+            "cc statement import": "CC Statement Import",
+            "sftp connector":      "SFTP Connector",
+            "sftp":                "SFTP Connector",
+            "payments":            "Payments",
+            "ap payment":          "AP Payment",
+            "premium":             "Premium",
+            "consulting":          "Consulting",
+        }),
+        ("ZoneBilling", "#3266ad", {
+            "zab implementation":    "ZAB Implementation",
+            "zab partner":           "ZAB Partner Impl",
+            "zb_standard":           "ZB_Standard",
+            "zb standard":           "ZB_Standard",
+            "zb_premium":            "ZB_Premium",
+            "zb premium":            "ZB_Premium",
+            "optimization audit":    "Optimization Audit",
+            "subscription services": "Subscription Services",
+            "optimization":          "Optimization",
+        }),
+        ("ZonePayroll", "#D85A30", {
+            "zep: implementation": "ZEP Implementation",
+            "zep: optimization":   "ZEP Optimization",
+            "zep implementation":  "ZEP Implementation",
+            "zep optimization":    "ZEP Optimization",
+            "zep":                 "ZEP",
+            "implementation":      "Implementation",
+            "optimization":        "Optimization",
+            "support":             "Support",
+        }),
+        ("ZoneReporting", "#888780", {
+            "install":      "Install / DWH",
+            "dwh":          "Install / DWH",
+            "optimization": "Optimization",
+        }),
+    ]
+
+    def _classify_to_family(raw_pt):
+        """Return (family_name, type_label) for a raw project_type string."""
+        pt = str(raw_pt).strip()
+        # Strip ZoneApp:, ZoneBill:, ZonePay:, ZoneRpt: prefixes
+        if ":" in pt:
+            pt_clean = pt.split(":", 1)[1].strip().lower()
+            prefix   = pt.split(":", 1)[0].strip().lower()
+        else:
+            pt_clean = pt.lower()
+            prefix   = ""
+        # Determine family from prefix first
+        prefix_map = {
+            "zoneapp": 0, "zoneapps": 0,
+            "zonebill": 1, "zonebilling": 1,
+            "zonepay": 2, "zonepayroll": 2,
+            "zonerpt": 3, "zonereporting": 3,
+        }
+        family_idx = prefix_map.get(prefix, None)
+        # Search in the identified family (or all families if prefix unknown)
+        search_families = [_FAMILIES[family_idx]] if family_idx is not None else _FAMILIES
+        for fam_name, fam_col, kw_map in search_families:
+            # Longest-match first to avoid "reconcile" matching before "reconcile 2.0"
+            for kw in sorted(kw_map.keys(), key=len, reverse=True):
+                if kw in pt_clean:
+                    return fam_name, kw_map[kw]
+        return "Other", pt.split(":")[-1].strip() or pt
+
+    # Count by family and type
+    _fam_type_counts = {}   # family_name → {type_label: count}
+    _fam_totals      = {}   # family_name → total
+    _other_counts    = {}   # for unmatched types
+    _grand_total     = 0
+
+    for raw_pt in _active["project_type"].fillna("Unknown"):
+        fam, typ = _classify_to_family(raw_pt)
+        if fam == "Other":
+            _other_counts[typ] = _other_counts.get(typ, 0) + 1
+        else:
+            if fam not in _fam_type_counts:
+                _fam_type_counts[fam] = {}
+            _fam_type_counts[fam][typ] = _fam_type_counts[fam].get(typ, 0) + 1
+        _fam_totals[fam] = _fam_totals.get(fam, 0) + 1
+        _grand_total += 1
+
+    _pm_left, _pm_right = st.columns(2)
+    _fam_left  = [f for f in _FAMILIES if f[0] in ("ZoneApps", "ZoneReporting")]
+    _fam_right = [f for f in _FAMILIES if f[0] in ("ZoneBilling", "ZonePayroll")]
+    if _other_counts:
+        _fam_right.append(("Other", "#B4B2A9", _other_counts))
+
+    def _render_family(fam_name, fam_col, kw_map_or_counts):
+        fam_total = _fam_totals.get(fam_name, 0)
+        if fam_total == 0:
+            return
+        fam_pct = round(100 * fam_total / _grand_total) if _grand_total else 0
+        # Family header + family-level bar (% of total portfolio)
+        st.markdown(
+            f"<div style='margin-bottom:6px'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px'>"
+            f"<span style='font-size:13px;font-weight:600;color:var(--color-text-primary)'>{fam_name}</span>"
+            f"<span style='font-size:12px;color:var(--color-text-secondary)'>{fam_total} · {fam_pct}%</span>"
+            f"</div>"
+            f"<div style='background:rgba(128,128,128,.12);border-radius:3px;height:5px'>"
+            f"<div style='height:5px;border-radius:3px;width:{fam_pct}%;background:{fam_col}'></div>"
+            f"</div></div>",
+            unsafe_allow_html=True
+        )
+        # Type rows indented
+        type_counts = _fam_type_counts.get(fam_name, {}) if fam_name != "Other" else _other_counts
+        if not type_counts:
+            return
+        type_max = max(type_counts.values()) or 1
+        for typ_lbl, typ_cnt in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
+            bar_w = round(100 * typ_cnt / type_max)
+            st.markdown(
+                f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;padding-left:10px'>"
+                f"<span style='font-size:12px;color:var(--color-text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{typ_lbl}</span>"
+                f"<div style='background:rgba(128,128,128,.12);border-radius:2px;height:3px;flex:2'>"
+                f"<div style='height:3px;border-radius:2px;width:{bar_w}%;background:{fam_col};opacity:0.65'></div></div>"
+                f"<span style='font-size:12px;color:var(--color-text-tertiary);min-width:24px;text-align:right'>{typ_cnt}</span>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+        st.markdown("<div style='margin-bottom:14px'></div>", unsafe_allow_html=True)
+
+    with _pm_left:
+        for fam_name, fam_col, kw_map in _fam_left:
+            _render_family(fam_name, fam_col, kw_map)
+
+    with _pm_right:
+        for fam_name, fam_col, kw_map in _fam_right:
+            _render_family(fam_name, fam_col, kw_map)
+
+else:
+    st.info("No project type data available.")
+
+# ── Phase Distribution ────────────────────────────────────────────────────────
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Phase Distribution</div>', unsafe_allow_html=True)
+
+if "phase" in _active.columns:
+    _PHASE_ABBREV = {
+        "00. onboarding":                   "Onboarding",
+        "01. requirements and design":       "Requirements and Design",
+        "02. configuration":                 "Configuration",
+        "03. enablement/training":           "Enablement/Training",
+        "04. uat":                           "UAT",
+        "05. prep for go-live":              "Prep for Go-Live",
+        "06. go-live":                       "Go-Live",
+        "07. data migration":                "Data Migration",
+        "08. ready for support transition":  "Ready for Support Transition",
+        "09. phase 2 scoping":               "Phase 2 Scoping",
+    }
+    _ph_counts = {}
+    for ph in _active["phase"].fillna("Unassigned"):
+        _ph_clean = str(ph).strip()
+        _ph_counts[_ph_clean] = _ph_counts.get(_ph_clean, 0) + 1
+
+    _ph_sorted = sorted(
+        _ph_counts.items(),
+        key=lambda x: (_pidx(x[0]) if _pidx(x[0]) >= 0 else 999)
+    )
+    _ph_total = sum(v for _, v in _ph_sorted)
+    _max_ph   = max(v for _, v in _ph_sorted) if _ph_sorted else 1
+
+    _ph_cols = st.columns(2)
+    _ph_left  = [(ph, cnt) for ph, cnt in _ph_sorted if _pidx(ph) < 5 or _pidx(ph) == -1]
+    _ph_right = [(ph, cnt) for ph, cnt in _ph_sorted if _pidx(ph) >= 5 and _pidx(ph) != -1]
+
+    for col_items, col_widget in [(_ph_left, _ph_cols[0]), (_ph_right, _ph_cols[1])]:
+        with col_widget:
+            for ph, cnt in col_items:
+                _abbr = _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:24])
+                if ph in ("Unassigned", ""):
+                    _abbr = "Unassigned"
+                _pct  = round(100 * cnt / _ph_total) if _ph_total else 0
+                _bar_w = round(100 * cnt / _max_ph)
+                st.markdown(f"""
+                <div style='margin-bottom:10px'>
+                  <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
+                    <span>{ _abbr}</span>
+                    <span style='opacity:.55'>{cnt} · {_pct}%</span>
+                  </div>
+                  <div class='bar-track'>
+                    <div class='bar-fill' style='width:{_bar_w}%;background:#08A9B7'></div>
+                  </div>
+                </div>""", unsafe_allow_html=True)
+
+st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ── Consultant Workload Table ─────────────────────────────────────────────────
 st.markdown('<hr class="divider">', unsafe_allow_html=True)
@@ -319,7 +643,7 @@ for _cn in sorted(_team_consultants):
     if _n_proj == 0 and _n_oh == 0: continue
 
     # RAG — includes on-hold projects, matching Daily Briefing behaviour
-    _cm_rag = _cm.get("rag", pd.Series(dtype=str)).fillna("").str.strip().str.lower()
+    _cm_rag = _cm.get("rag", pd.Series(dtype="object")).fillna("").str.strip().str.lower()
     _cm_red = int((_cm_rag == "red").sum())
     _cm_yel = int((_cm_rag == "yellow").sum())
 
@@ -342,7 +666,7 @@ for _cn in sorted(_team_consultants):
     # Util % MTD — full scope-capped calculation matching Daily Briefing exactly
     _cm_util = "—"
     if df_ns is not None and not df_ns.empty:
-        _cm_ns = df_ns[df_ns.get("employee", pd.Series(dtype=str)).fillna("").apply(
+        _cm_ns = df_ns[df_ns.get("employee", pd.Series(dtype="object")).fillna("").apply(
             lambda v: name_matches(v, _cn)
         )]
         _cn_loc = EMPLOYEE_LOCATION.get(_cn, "")
@@ -494,108 +818,4 @@ if _cw_rows:
 else:
     st.info("No consultant project data found for this view.")
 
-# ── Product Mix ───────────────────────────────────────────────────────────────
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-st.markdown('<div class="section-label">Product Mix</div>', unsafe_allow_html=True)
-
-if "project_type" in _active.columns:
-    _pt_counts = {}
-    for pt in _active["project_type"].fillna("Unknown"):
-        _pt = str(pt).strip()
-        _prod = _pt.split(":")[-1].strip() if ":" in _pt else _pt
-        # Keep full product name (e.g. "AP Payment", "Capture", "ZoneApp: Billing")
-        # Just strip the "ZoneApp:" prefix if present
-        if not _prod: _prod = "Unknown"
-        _pt_counts[_prod] = _pt_counts.get(_prod, 0) + 1
-
-    _pt_sorted = sorted(_pt_counts.items(), key=lambda x: x[1], ascending=False) \
-        if False else sorted(_pt_counts.items(), key=lambda x: x[1], reverse=True)
-    _pt_total  = sum(v for _, v in _pt_sorted)
-    _max_count = max(v for _, v in _pt_sorted) if _pt_sorted else 1
-
-    _pm_cols = st.columns(2)
-    with _pm_cols[0]:
-        for prod, cnt in _pt_sorted[:len(_pt_sorted)//2 + 1]:
-            _pct = round(100 * cnt / _pt_total) if _pt_total else 0
-            _bar_w = round(100 * cnt / _max_count)
-            st.markdown(f"""
-            <div style='margin-bottom:10px'>
-              <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
-                <span>{prod}</span>
-                <span style='opacity:.55'>{cnt} · {_pct}%</span>
-              </div>
-              <div class='bar-track'>
-                <div class='bar-fill' style='width:{_bar_w}%;background:#3B9EFF'></div>
-              </div>
-            </div>""", unsafe_allow_html=True)
-    with _pm_cols[1]:
-        for prod, cnt in _pt_sorted[len(_pt_sorted)//2 + 1:]:
-            _pct = round(100 * cnt / _pt_total) if _pt_total else 0
-            _bar_w = round(100 * cnt / _max_count)
-            st.markdown(f"""
-            <div style='margin-bottom:10px'>
-              <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
-                <span>{prod}</span>
-                <span style='opacity:.55'>{cnt} · {_pct}%</span>
-              </div>
-              <div class='bar-track'>
-                <div class='bar-fill' style='width:{_bar_w}%;background:#3B9EFF'></div>
-              </div>
-            </div>""", unsafe_allow_html=True)
-else:
-    st.info("No project type data available.")
-
-# ── Phase Distribution ────────────────────────────────────────────────────────
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-st.markdown('<div class="section-label">Phase Distribution</div>', unsafe_allow_html=True)
-
-if "phase" in _active.columns:
-    _PHASE_ABBREV = {
-        "00. onboarding":                   "Onboarding",
-        "01. requirements and design":       "Requirements and Design",
-        "02. configuration":                 "Configuration",
-        "03. enablement/training":           "Enablement/Training",
-        "04. uat":                           "UAT",
-        "05. prep for go-live":              "Prep for Go-Live",
-        "06. go-live":                       "Go-Live",
-        "07. data migration":                "Data Migration",
-        "08. ready for support transition":  "Ready for Support Transition",
-        "09. phase 2 scoping":               "Phase 2 Scoping",
-    }
-    _ph_counts = {}
-    for ph in _active["phase"].fillna("Unassigned"):
-        _ph_clean = str(ph).strip()
-        _ph_counts[_ph_clean] = _ph_counts.get(_ph_clean, 0) + 1
-
-    _ph_sorted = sorted(
-        _ph_counts.items(),
-        key=lambda x: (_pidx(x[0]) if _pidx(x[0]) >= 0 else 999)
-    )
-    _ph_total = sum(v for _, v in _ph_sorted)
-    _max_ph   = max(v for _, v in _ph_sorted) if _ph_sorted else 1
-
-    _ph_cols = st.columns(2)
-    _ph_left  = [(ph, cnt) for ph, cnt in _ph_sorted if _pidx(ph) < 5 or _pidx(ph) == -1]
-    _ph_right = [(ph, cnt) for ph, cnt in _ph_sorted if _pidx(ph) >= 5 and _pidx(ph) != -1]
-
-    for col_items, col_widget in [(_ph_left, _ph_cols[0]), (_ph_right, _ph_cols[1])]:
-        with col_widget:
-            for ph, cnt in col_items:
-                _abbr = _PHASE_ABBREV.get(str(ph).strip().lower(), str(ph).split(".")[-1].strip()[:24])
-                if ph in ("Unassigned", ""):
-                    _abbr = "Unassigned"
-                _pct  = round(100 * cnt / _ph_total) if _ph_total else 0
-                _bar_w = round(100 * cnt / _max_ph)
-                st.markdown(f"""
-                <div style='margin-bottom:10px'>
-                  <div style='display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px'>
-                    <span>{ _abbr}</span>
-                    <span style='opacity:.55'>{cnt} · {_pct}%</span>
-                  </div>
-                  <div class='bar-track'>
-                    <div class='bar-fill' style='width:{_bar_w}%;background:#08A9B7'></div>
-                  </div>
-                </div>""", unsafe_allow_html=True)
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
 st.markdown('<div style="font-size:11px;opacity:.4;text-align:center;margin-top:4px">PS Projects & Tools · Internal use only · Data loaded this session only</div>', unsafe_allow_html=True)
