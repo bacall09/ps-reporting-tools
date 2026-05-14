@@ -1016,7 +1016,11 @@ def _proj_card_html(row, sid, is_mine, is_selected):
         cursor = "cursor:pointer;"
         opacity= ""
         avatar_bg="rgba(68,114,196,.15)"; avatar_col="#4472C4"
-        welcome_txt = f"Welcome sent · {iv[:10]}" if intro_done else "Welcome pending"
+        try:
+            _iv_str = pd.to_datetime(iv).strftime("%-d %b") if iv else ""
+        except Exception:
+            _iv_str = str(iv)[:10]
+        welcome_txt = f"Welcome sent · {_iv_str}" if intro_done else "Welcome pending"
         consult_html=(
             f"<div style=\'display:flex;align-items:center;gap:5px;margin-top:6px\'>"
             f"<div style=\'width:16px;height:16px;border-radius:50%;background:{avatar_bg};"
