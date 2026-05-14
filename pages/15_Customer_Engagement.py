@@ -1007,39 +1007,55 @@ if df_sfdc is not None and not df_sfdc.empty:
         pc="is_primary" if "is_primary" in sfdc_match.columns else None
         ac="account" if "account" in sfdc_match.columns else None
 
-        # If fuzzy match — verify the account column actually matches our customer
-        # This prevents picking contacts from a different company at a low match score
-        if sfdc_label and "%" in sfdc_label and ac:
-            _acct_verify = sfdc_match[
+        # ALWAYS verify account before picking contact — prevents cross-company contamination
+        if ac:
+            _acct_exact = sfdc_match[
                 sfdc_match[ac].astype(str).str.strip().str.lower() == str(_sfdc_acct).strip().lower()
             ]
-            if not _acct_verify.empty:
-                sfdc_match = _acct_verify
+            if not _acct_exact.empty:
+                sfdc_match = _acct_exact
                 sfdc_label = "Exact account match"
+            else:
+                # Fuzzy account verification — token ratio >= 80
+                from rapidfuzz import fuzz as _fuzz2
+                sfdc_match["_acct_sc"] = sfdc_match[ac].apply(
+                    lambda x: _fuzz2.token_set_ratio(str(_sfdc_acct).lower(), str(x).lower()))
+                best_sc = sfdc_match["_acct_sc"].max()
+                if best_sc >= 80:
+                    sfdc_match = sfdc_match[sfdc_match["_acct_sc"] == best_sc]
+                    sfdc_label = f"Account match ({int(best_sc)}%)"
+                else:
+                    # No reliable account match — clear results
+                    sfdc_match = sfdc_match.iloc[0:0]
+                    sfdc_label = None
+                sfdc_match = sfdc_match.drop(columns=["_acct_sc"], errors="ignore")
 
-        br=sfdc_match.iloc[0]
-        # Priority: is_primary=1 first, then impl_contact_flag=1, then first row
-        if pc:
-            prim=sfdc_match[sfdc_match[pc].astype(str).isin(["1","True","true","yes"])]
-            if not prim.empty: br=prim.iloc[0]
-        elif fc:
-            fl=sfdc_match[sfdc_match[fc].astype(str).isin(["1","True","true","yes","x"])]
-            if not fl.empty: br=fl.iloc[0]
-        sfdc_email=str(br[ec]).strip() if ec and ec in br.index else ""
-        sfdc_cname=str(br[nc]).strip() if nc and nc in br.index else ""
-        if sfdc_email in ("nan","None",""): sfdc_email=""
-        if sfdc_cname in ("nan","None",""): sfdc_cname=""
-        if ec and fc:
-            impl_rows=sfdc_match[sfdc_match[fc].astype(str).isin(["1","True","true","yes","x"])]
-            for _,r in impl_rows.iterrows():
-                e=str(r.get(ec,"")).strip()
-                if e and e not in ("nan","None","") and e!=sfdc_email:
-                    sfdc_cc_emails.append(e)
+        if not sfdc_match.empty:
+            br=sfdc_match.iloc[0]
+            # Priority: is_primary=1 first, then impl_contact_flag=1, then first row
+            if pc:
+                prim=sfdc_match[sfdc_match[pc].astype(str).isin(["1","True","true","yes"])]
+                if not prim.empty: br=prim.iloc[0]
+            elif fc:
+                fl=sfdc_match[sfdc_match[fc].astype(str).isin(["1","True","true","yes","x"])]
+                if not fl.empty: br=fl.iloc[0]
+            sfdc_email=str(br[ec]).strip() if ec and ec in br.index else ""
+            sfdc_cname=str(br[nc]).strip() if nc and nc in br.index else ""
+            if sfdc_email in ("nan","None",""): sfdc_email=""
+            if sfdc_cname in ("nan","None",""): sfdc_cname=""
+            if ec and fc:
+                impl_rows=sfdc_match[sfdc_match[fc].astype(str).isin(["1","True","true","yes","x"])]
+                for _,r in impl_rows.iterrows():
+                    e=str(r.get(ec,"")).strip()
+                    if e and e not in ("nan","None","") and e!=sfdc_email:
+                        sfdc_cc_emails.append(e)
+
+        # Always update session state on project change — clears stale values
         _sfdc_key=f"_sfdc_match_{project_id}"
-        if st.session_state.get(_sfdc_key)!=sfdc_email:
-            st.session_state[_sfdc_key]=sfdc_email
-            st.session_state["ce_to"]=sfdc_email
-            st.session_state["ce_cn"]=sfdc_cname
+        if st.session_state.get(_sfdc_key) != sfdc_email:
+            st.session_state[_sfdc_key] = sfdc_email
+            st.session_state["ce_to"] = sfdc_email
+            st.session_state["ce_cn"] = sfdc_cname
 
 # Sales Rep from DRS
 _sales_rep_email=""
@@ -1120,21 +1136,24 @@ with compose_col:
         _tmpl_pre = get_welcome_template(_sk_pre) if _sk_pre else None
         if not _tmpl_pre:
             _opts_pre = list_welcome_templates()
-            _w_ch = st.selectbox("Template", [t["display_name"] for t in _opts_pre], key="w_manual_pre", label_visibility="collapsed")
+            # Use same key as branch — this IS the selector
+            st.selectbox("Template", [t["display_name"] for t in _opts_pre], key="w_manual", label_visibility="collapsed")
         else:
-            st.selectbox("Template", [_tmpl_pre.get("display_name","")], key="w_tmpl_pre", disabled=True, label_visibility="collapsed")
+            st.selectbox("Template", [_tmpl_pre.get("display_name","")], key="w_tmpl_disp", disabled=True, label_visibility="collapsed")
     elif _tmpl_type == "Post-Session":
         _psk_pre = _ps_key(str(product_raw))
         if _psk_pre:
             _sessions_pre = get_post_session_templates(_psk_pre)
             _sopts_pre = {s["id"]: f"Session {s['session_number']} — {s['name']}" for s in _sessions_pre}
-            st.selectbox("Template", list(_sopts_pre.keys()), format_func=lambda k: _sopts_pre[k], key="s_pick_pre", label_visibility="collapsed")
+            # Use same key as branch
+            st.selectbox("Template", list(_sopts_pre.keys()), format_func=lambda k: _sopts_pre[k], key="s_pick", label_visibility="collapsed")
         else:
-            st.selectbox("Template", ["No templates for this product type"], key="s_pick_pre_empty", disabled=True, label_visibility="collapsed")
+            st.caption("No post-session templates for this product type.")
     elif _tmpl_type == "Lifecycle (UAT → Closure)":
         _lc_pre = list_lifecycle_templates()
         _lc_pre_opts = {t["id"]: f"[{t['category']}] {t['name']}" for t in _lc_pre}
-        st.selectbox("Template", list(_lc_pre_opts.keys()), format_func=lambda k: _lc_pre_opts[k], key="lc_pick_pre", label_visibility="collapsed")
+        # Use same key as branch
+        st.selectbox("Template", list(_lc_pre_opts.keys()), format_func=lambda k: _lc_pre_opts[k], key="lc_pick", label_visibility="collapsed")
 
     # ── Recipient ─────────────────────────────────────────────────────────────
     st.markdown('<p class="ce-label" style="margin-top:12px">Recipient</p>',unsafe_allow_html=True)
@@ -1242,7 +1261,7 @@ with compose_col:
                             if _is_date:
                                 import datetime as _dt2
                                 _dv=st.session_state.get(f"s_{cid}_{k}")
-                                _date_val=st.date_input(lbl_d,value=_dv if isinstance(_dv,_dt2.date) else None,key=f"s_{cid}_{k}",format="DD/MM/YYYY")
+                                _date_val=st.date_input(lbl_d,value=_dv if isinstance(_dv,_dt2.date) else None,key=f"s_{cid}_{k}")
                                 v=_date_val.strftime("%-d %B %Y") if _date_val else ""
                             elif ft=="text":       v=st.text_input(lbl_d,placeholder=ph,key=f"s_{cid}_{k}")
                             elif ft=="textarea": v=st.text_area(lbl_d,placeholder=ph,height=70,key=f"s_{cid}_{k}")
@@ -1300,15 +1319,16 @@ with compose_col:
                 if _lc_fields:
                     st.markdown('<p class="ce-label" style="margin-top:8px">Fill in details</p>',unsafe_allow_html=True)
                     for f in _lc_fields:
-                        k,lb=f["key"],f["label"]; req=f.get("required",False); src=f.get("source",""); default=str(f.get("default",""))
-                        if src=="drs_prod_cutover":
+                        k,lb=f["key"],f["label"]; req=f.get("required",False)
+                        fsrc=f.get("source",""); default=str(f.get("default",""))
+                        if fsrc=="drs_prod_cutover":
                             raw=sel.get("prod_cutover") or sel.get("Prod Cutover")
                             if raw:
                                 try: default=pd.to_datetime(raw).date().isoformat()
                                 except: pass
-                        elif src=="drs_project_link":
+                        elif fsrc=="drs_project_link":
                             default=str(sel.get("project_link") or sel.get("Project Link") or "")
-                        elif src=="calculated_go_live_plus_14":
+                        elif fsrc=="calculated_go_live_plus_14":
                             glr=sel.get("prod_cutover") or sel.get("go_live_date") or mctx_l.get("GO_LIVE_DATE","")
                             if glr:
                                 try: default=(pd.to_datetime(glr).date()+datetime.timedelta(days=14)).isoformat()
@@ -1316,8 +1336,18 @@ with compose_col:
                         tag=""
                         if default and default not in ("","None"): tag=' <span style="font-size:10px;background:rgba(22,163,74,.12);color:#15803d;padding:1px 5px;border-radius:8px">from project</span>'
                         st.markdown(f'<div style="font-size:12px;margin-bottom:3px">{lb}{" *" if req else ""}{tag}</div>',unsafe_allow_html=True)
-                        v=st.text_input("",value=default,placeholder="YYYY-MM-DD" if f.get("type")=="date" else "",
-                                        key=f"l_{lcid}_{k}",label_visibility="collapsed")
+                        _is_lc_date = f.get("type")=="date" or "date" in lb.lower()
+                        if _is_lc_date:
+                            _ldv=st.session_state.get(f"l_{lcid}_{k}")
+                            _ldate=st.date_input(lb+(" *" if req else ""),
+                                                  value=_ldv if isinstance(_ldv,datetime.date) else None,
+                                                  key=f"l_{lcid}_{k}",
+                                                  label_visibility="collapsed")
+                            v=_ldate.strftime("%-d %B %Y") if _ldate else default
+                        else:
+                            v=st.text_input("",value=default,
+                                            placeholder="Enter value",
+                                            key=f"l_{lcid}_{k}",label_visibility="collapsed")
                         mctx_l[k]=v
                 auto_ctx_l={**auto_ctx}
                 subj_l,body_l=render_template(vbody,tmpl_l["subject"],{},{**auto_ctx_l,**mctx_l})
