@@ -425,20 +425,38 @@ def _combined_welcome_template(rows, prod_col):
 
 # ── Journey ───────────────────────────────────────────────────────────────────
 _JOURNEY=[
-    {"id":"welcome",            "label":"Welcome",         "ms_col":"ms_intro_email",  "ms_alt":"Intro. Email Sent"},
-    {"id":"post_session_1",     "label":"Post-Session #1", "ms_col":"ms_enablement",   "ms_alt":"Enablement Session"},
-    {"id":"post_session_2",     "label":"Post-Session #2", "ms_col":"ms_session1",     "ms_alt":"Session #1"},
-    {"id":"uat_signoff",        "label":"UAT Sign-Off",    "ms_col":"ms_uat_signoff",  "ms_alt":"UAT Signoff"},
-    {"id":"go_live",            "label":"Go-Live",         "ms_col":"ms_prod_cutover", "ms_alt":"Prod Cutover"},
-    {"id":"hypercare_closure",  "label":"Hypercare close", "ms_col":"ms_transition",   "ms_alt":"Transition to Support"},
+    {"id":"welcome",              "label":"Welcome",            "ms_col":"ms_intro_email",   "ms_alt":"Intro. Email Sent",       "calc":None},
+    {"id":"post_enablement",      "label":"Post-Enablement",    "ms_col":"ms_enablement",    "ms_alt":"Enablement Session",      "calc":None},
+    {"id":"post_session_1",       "label":"Post-Session #1",    "ms_col":"ms_session1",      "ms_alt":"Session #1",              "calc":None},
+    {"id":"post_session_2",       "label":"Post-Session #2",    "ms_col":"ms_session2",      "ms_alt":"Session #2",              "calc":None},
+    {"id":"uat_signoff",          "label":"UAT Sign-Off",       "ms_col":"ms_uat_signoff",   "ms_alt":"UAT Signoff",             "calc":None},
+    {"id":"go_live",              "label":"Go-Live",            "ms_col":"ms_prod_cutover",  "ms_alt":"Prod Cutover",            "calc":None},
+    {"id":"hypercare_checkin",    "label":"Hypercare Check-in", "ms_col":None,               "ms_alt":None,                      "calc":"go_live_plus_5"},
+    {"id":"hypercare_closure",    "label":"Hypercare close",    "ms_col":"ms_transition",    "ms_alt":"Transition to Support",   "calc":None},
 ]
 
 def _ms_date(stage, drs_row):
+    """Returns sent date string for done stages, projected date for calc stages."""
     if not drs_row: return ""
+    # Calculated stage — derive from another milestone
+    if stage.get("calc") == "go_live_plus_5":
+        gl = drs_row.get("ms_prod_cutover") or drs_row.get("Prod Cutover")
+        if not gl or str(gl).strip() in ("","None","nan","NaT"): return ""
+        try:
+            return _add_biz_days(gl, 5).strftime("%-d %b") + " (proj.)"
+        except: return ""
+    if not stage.get("ms_col"): return ""
     v = drs_row.get(stage["ms_col"]) or drs_row.get(stage["ms_alt"])
     if not v or str(v).strip() in ("","None","nan","NaT"): return ""
     try: return pd.to_datetime(v).strftime("%-d %b")
     except: return str(v)[:10]
+
+def _stage_is_done(stage, drs_row):
+    """Returns True only for stages with an actual recorded date (not projected)."""
+    if not drs_row or stage.get("calc"): return False
+    if not stage.get("ms_col"): return False
+    v = drs_row.get(stage["ms_col"]) or drs_row.get(stage["ms_alt"])
+    return bool(v and str(v).strip() not in ("","None","nan","NaT"))
 
 def _add_biz_days(start_date, n):
     d = pd.Timestamp(start_date)
@@ -473,7 +491,7 @@ def _build_journey(drs_row):
     lbl_s = "font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:rgba(128,128,128,.5);margin-bottom:2px"
     val_s = "font-size:12px;font-weight:500;color:var(--color-text-primary)"
 
-    statuses = ["done" if _ms_date(s, drs_row) else "pending" for s in _JOURNEY]
+    statuses = ["done" if _stage_is_done(s, drs_row) else "pending" for s in _JOURNEY]
     first_p  = next((i for i, ss in enumerate(statuses) if ss == "pending"), len(_JOURNEY)-1)
 
     def _step_col(i):
@@ -504,10 +522,12 @@ def _build_journey(drs_row):
         opacity = "opacity:.32;" if cls == "locked" else ""
         num     = f"✓ 0{i+1}" if statuses[i]=="done" else (f"▼ 0{i+1}" if cls=="active" else f"0{i+1}")
         date_str= _ms_date(stage, drs_row)
-        sub     = f"Sent {date_str}" if date_str else ("composing" if cls=="active" else "—")
+        is_calc = bool(stage.get("calc"))
+        sub     = f"Sent {date_str}" if (date_str and not is_calc) else (date_str if (date_str and is_calc) else ("composing" if cls=="active" else "—"))
+        extra_style = "border-left:2px dashed rgba(68,114,196,.35);" if is_calc and cls not in ("locked",) else ""
         br      = "" if i == len(_JOURNEY)-1 else "border-right:0.5px solid rgba(128,128,128,.15);"
         stage_html.append(
-            f'<div style="flex:1;padding:12px 12px 10px;{br}min-width:0;{opacity}{bg}">' +
+            f'<div style="flex:1;padding:12px 12px 10px;{br}min-width:0;{opacity}{bg}{extra_style}">' +
             f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;color:{nc}">{num}</div>' +
             f'<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{nc}">{stage["label"]}</div>' +
             f'<div style="font-size:10px;margin-top:3px;color:{dc}">{sub}</div></div>'
@@ -743,7 +763,7 @@ def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
 # ROW 1 — Customer selector
 # ═══════════════════════════════════════════════════════════════════════════════
 st.markdown('<p class="ce-label">Select Project</p>',unsafe_allow_html=True)
-_top_left,_top_right=st.columns([1,1],gap="small")
+_top_left,_top_right=st.columns([1,2],gap="small")
 
 # Build customer list — all unique customers sorted, preserving original casing
 # ── Customer list ─────────────────────────────────────────────────────────────
@@ -1020,24 +1040,26 @@ with compose_col:
     _COMM_TYPES=["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
     st.markdown('<div style="margin-bottom:4px"></div>', unsafe_allow_html=True)
     _STAGE_TO_COMM={
-        "welcome":"Welcome","post_session_1":"Post-Session","post_session_2":"Post-Session",
+        "welcome":"Welcome",
+        "post_enablement":"Post-Session","post_session_1":"Post-Session","post_session_2":"Post-Session",
         "uat_signoff":"Lifecycle (UAT → Closure)","go_live":"Lifecycle (UAT → Closure)",
-        "hypercare_closure":"Lifecycle (UAT → Closure)",
+        "hypercare_checkin":"Lifecycle (UAT → Closure)","hypercare_closure":"Lifecycle (UAT → Closure)",
     }
     # Smart default: derive from first pending journey stage
     # Only auto-set on project change (not on every render — respect user's manual choice)
     _proj_changed = st.session_state.get("_last_proj_sid_for_comm") != selected_sid
     if _proj_changed:
-        _statuses_d = ["done" if _ms_date(s,sel) else "pending" for s in _JOURNEY]
+        _statuses_d = ["done" if _stage_is_done(s,sel) else "pending" for s in _JOURNEY]
         _first_pend = next((i for i,st2 in enumerate(_statuses_d) if st2=="pending"), 0)
         _smart_default = _STAGE_TO_COMM.get(_JOURNEY[_first_pend]["id"],"Welcome")
         st.session_state["_ce_tmpl_type"] = _smart_default
         st.session_state["_last_proj_sid_for_comm"] = selected_sid
-    st.caption("Communication type")
+    st.markdown('<p class="ce-label" style="margin-top:8px;margin-bottom:4px">Communication type</p>', unsafe_allow_html=True)
     comm_col,tmpl_col=st.columns([1,2], gap="small")
     with comm_col:
         _tmpl_type=st.selectbox(
             "Communication type",options=_COMM_TYPES,
+            label_visibility="collapsed",
             index=_COMM_TYPES.index(st.session_state.get("_ce_tmpl_type","Welcome")),
             key="ce_tmpl_type",
         )
