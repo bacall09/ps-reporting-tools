@@ -815,7 +815,6 @@ document.getElementById("cb_{tab_key}").addEventListener("click",function(){{
 # ═══════════════════════════════════════════════════════════════════════════════
 # ROW 1 — Customer selector
 # ═══════════════════════════════════════════════════════════════════════════════
-st.markdown('<p class="ce-label">Select Project</p>',unsafe_allow_html=True)
 
 # Build customer list — from df_all (already filtered by view-as/consultant)
 # This ensures the customer dropdown only shows customers for the viewed consultant.
@@ -949,17 +948,13 @@ def _proj_icon(row):
     return ":material/mail:"
 
 def _proj_desc(row):
-    prod=str(row.get(prod_col,"")) if prod_col else ""
     stat=str(row.get(status_col,"")) if status_col else ""
     start_raw=row.get(start_col) if start_col else None
     start_str=""
     if start_raw:
-        try: start_str=f" · {pd.to_datetime(start_raw).strftime('%-d %b %Y')}"
+        try: start_str=f" · <span style=\'opacity:.55\'>Project start:</span> {pd.to_datetime(start_raw).strftime('%-d %b %Y')}"
         except: pass
-    iv=row.get(intro_col,"") if intro_col else ""
-    intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
-    welcome=f" · ✓ Welcome sent" if intro_done else " · Welcome pending"
-    return f"{prod} · {stat}{start_str}{welcome}"
+    return f"<span style=\'opacity:.55\'>Status:</span> {stat}{start_str}"
 
 def _proj_title(row):
     name=str(row.get(name_col,"")) if name_col else ""
@@ -1008,13 +1003,12 @@ def _proj_card_html(row, sid, is_mine, is_selected):
             _iv_str = pd.to_datetime(iv).strftime("%-d %b") if iv else ""
         except Exception:
             _iv_str = str(iv)[:10]
-        welcome_txt = f"Welcome sent · {_iv_str}" if intro_done else "Welcome pending"
         consult_html=(
             f"<div style=\'display:flex;align-items:center;gap:5px;margin-top:6px\'>"
             f"<div style=\'width:16px;height:16px;border-radius:50%;background:{avatar_bg};"
             f"color:{avatar_col};font-size:8px;font-weight:500;display:inline-flex;"
             f"align-items:center;justify-content:center;flex-shrink:0\'>{ini}</div>"
-            f"<span style=\'font-size:10px;color:var(--color-text-secondary)\'>{short_pm} · {welcome_txt}</span></div>"
+            f"<span style=\'font-size:10px;color:var(--color-text-secondary)\'>{short_pm}</span></div>"
         )
     else:
         border = "1px solid rgba(128,128,128,.3)"
@@ -1064,7 +1058,6 @@ st.markdown('<p class="ce-label" style="margin-bottom:6px">Select project</p>',u
 st.markdown(_cards_html,unsafe_allow_html=True)
 
 # Project selection via selectbox (invisible — cards are visual, this drives state)
-st.markdown('<p class="ce-label" style="margin-bottom:6px">Select project</p>',unsafe_allow_html=True)
 _mine_labels={_mine_sids[i]:_proj_title(_row_dict(_mine_proj.iloc[i])) for i in range(len(_mine_sids))}
 selected_sid=st.selectbox(
     "Select project",options=_mine_sids,
