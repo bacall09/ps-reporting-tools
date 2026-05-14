@@ -300,7 +300,13 @@ _PMAP = {
     "zonecapture and zoneapprovals":"ZoneCapture_ZoneApprovals",
     "zonecapture and zonereconcile":"ZoneCapture_ZoneReconcile",
 }
+# Project types that have no welcome template — excluded from welcome + consolidated
+_NO_WELCOME_TYPES = {"zoneapp: premium","premium"}
+
 def _sku(p): return _PMAP.get(str(p).strip().lower())
+def _has_welcome(p):
+    """Returns True if this project type has a welcome template."""
+    return str(p).strip().lower() not in _NO_WELCOME_TYPES and bool(_sku(str(p)))
 def _ps_key(p):
     p=str(p).lower()
     if "capture" in p: return "capture"
@@ -1188,8 +1194,8 @@ with compose_col:
     _next_stage = _JOURNEY[_next_idx]["id"] if _next_idx >= 0 else "welcome"
 
     # Filter available comm types based on progress
-    # Hide Welcome if the last done stage is past Welcome (index > 0)
-    _hide_welcome = _last_done >= 1  # at least Post-Enablement is done
+    # Hide Welcome if: last done stage is past Welcome, OR project type has no welcome template
+    _hide_welcome = _last_done >= 1 or not _has_welcome(str(product_raw))
     _COMM_TYPES = ["Post-Session","Lifecycle (UAT → Closure)"] if _hide_welcome else ["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
 
     # Smart default — only auto-set on project change
@@ -1242,7 +1248,14 @@ with compose_col:
             if ok:
                 st.success(f"✓ Logged — ID: `{sid}`")
                 if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                    if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
+                    # Option A: for consolidated sends, stamp ALL mine project rows
+                    _rows_to_stamp = r.get("all_rows", [sel])
+                    for _stamp_row in _rows_to_stamp:
+                        _stamp_pid = str(_stamp_row.get(id_col, project_id)) if id_col else project_id
+                        if "_ss_row_id" not in _stamp_row and _stamp_pid in _ss_row_id_map:
+                            _stamp_row = dict(_stamp_row); _stamp_row["_ss_row_id"] = _ss_row_id_map[_stamp_pid]
+                        _do_write(_stamp_pid, r["ssf"], datetime.date.today(), _stamp_row)
+                    mark_ss_writeback_done(sid)
             else: st.error(f"Failed: {sid}")
         except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
@@ -1326,7 +1339,9 @@ with compose_col:
     if _tmpl_type=="Welcome":
                 _all_rows=[sel]
                 if _consolidated and n_mine>1:
-                    _all_rows=[_row_dict(_mine_proj.iloc[i]) for i in range(n_mine)]
+                    # Exclude Premium project types — no welcome template for those
+                    _all_rows=[_row_dict(_mine_proj.iloc[i]) for i in range(n_mine)
+                               if _has_welcome(str(_mine_proj.iloc[i].get(prod_col,"")))]
                 _is_merged=False
                 if _consolidated and n_mine>1:
                     tmpl_w,_is_merged=_combined_welcome_template(_all_rows,prod_col)
@@ -1369,7 +1384,8 @@ with compose_col:
                 st.session_state["ce_prev_auto"]=auto_vals_w
 
                 if _send_footer("w",ssf_w,subj_w,body_w,recip):
-                    st.session_state["_req_w"]={"subj":st.session_state.get("ce_send_subj",subj_w),"body":st.session_state.get("ce_send_body",body_w),"ssf":ssf_w}
+                    _stamp_rows = _all_rows if (_consolidated and len(_all_rows)>1) else [sel]
+                    st.session_state["_req_w"]={"subj":st.session_state.get("ce_send_subj",subj_w),"body":st.session_state.get("ce_send_body",body_w),"ssf":ssf_w,"all_rows":_stamp_rows}
                     st.rerun()
 
     # ── Post-Session ──────────────────────────────────────────────────────────
