@@ -177,6 +177,7 @@ SS_COL_MAP_OUT = {
     "status":                 "status",
     "start date":             "start_date",
     "start date (subscription)": "subscription_start_date",  # kept separate — not project start
+    "signed date":            "signed_date",    # contract sign date — used for outreach due calc
     "go live date":           "go_live_date",
     "territory":              "territory",
     "billing type":           "billing_type",
