@@ -579,6 +579,19 @@ def _do_write(project_id,ss_field,date_val,drs_row)->bool:
     if not ss_row_id:
         st.warning("⚠️ Writeback requires DRS loaded via **Sync SS DRS data** on Home page.")
         return False
+    # Map SS display field names to internal keys expected by write_row_updates
+    _SS_DISPLAY_TO_INTERNAL = {
+        "Intro. Email Sent":        "ms_intro_email",
+        "Intro Email Sent":         "ms_intro_email",
+        "Enablement Session":       "ms_enablement",
+        "Session #1":               "ms_session1",
+        "Session #2":               "ms_session2",
+        "UAT Signoff":              "ms_uat_signoff",
+        "Prod Cutover":             "ms_prod_cutover",
+        "Hypercare Start":          "ms_hypercare_start",
+        "Transition to Support":    "ms_transition",
+        "Go-Live Date":             "go_live_date",
+    }
     fields=[ss_field] if isinstance(ss_field,str) else ss_field
     wrote=False; pn=str(drs_row.get("project_name",project_id)) if drs_row else project_id
     for f in fields:
@@ -586,7 +599,8 @@ def _do_write(project_id,ss_field,date_val,drs_row)->bool:
             p=build_ss_writeback(project_id,f,date_val,current_drs_row=drs_row)
             if p["skipped"]: st.info(f"ℹ️ **{f}** already set — not overwritten."); continue
             if not p["fields"]: continue
-            ok,errs=write_row_updates([{"_ss_row_id":ss_row_id,"project_name":pn,"changes":{f:date_val.isoformat()}}])
+            internal_key = _SS_DISPLAY_TO_INTERNAL.get(f, f)
+            ok,errs=write_row_updates([{"_ss_row_id":ss_row_id,"project_name":pn,"changes":{internal_key:date_val.isoformat()}}])
             if ok: st.success(f"✓ Smartsheet: **{f}** → {date_val.strftime('%d %b %Y')}"); wrote=True
             for e in (errs or []): st.warning(f"Writeback error: {e}")
         except Exception as ex: st.warning(f"Writeback failed for **{f}**: {ex}")
@@ -1249,11 +1263,15 @@ with compose_col:
                 ok,sid=execute_send(project_id=project_id,template_id=_tid,template_name=_tnm,
                     subject=r["subj"],body=r["body"],recipient_email=_recip_for_send,cc_emails=_cc_for_send,ss_milestone_field=r["ssf"])
             if ok:
-                st.success(f"✓ Logged — ID: `{sid}`")
+                # For consolidated sends, log an entry per project
+                _rows_for_log = r.get("all_rows", [sel])
+                _display_name = _tnm
+                if len(_rows_for_log) > 1:
+                    _display_name = f"Consolidated Welcome ({len(_rows_for_log)} projects)"
+                st.success(f"✓ Logged — ID: `{sid}` · {_display_name}")
                 if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                    # Option A: for consolidated sends, stamp ALL mine project rows
-                    _rows_to_stamp = r.get("all_rows", [sel])
-                    for _stamp_row in _rows_to_stamp:
+                    # Option A: stamp ALL consolidated project rows
+                    for _stamp_row in _rows_for_log:
                         _stamp_pid = str(_stamp_row.get(id_col, project_id)) if id_col else project_id
                         if "_ss_row_id" not in _stamp_row and _stamp_pid in _ss_row_id_map:
                             _stamp_row = dict(_stamp_row); _stamp_row["_ss_row_id"] = _ss_row_id_map[_stamp_pid]
