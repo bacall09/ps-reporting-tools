@@ -1037,30 +1037,45 @@ if "ce_ss_stamp" not in st.session_state: st.session_state["ce_ss_stamp"]=True
 
 with compose_col:
     # ── Communication type + template selector ────────────────────────────────
-    _COMM_TYPES=["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
-    st.markdown('<div style="margin-bottom:4px"></div>', unsafe_allow_html=True)
     _STAGE_TO_COMM={
         "welcome":"Welcome",
         "post_enablement":"Post-Session","post_session_1":"Post-Session","post_session_2":"Post-Session",
         "uat_signoff":"Lifecycle (UAT → Closure)","go_live":"Lifecycle (UAT → Closure)",
         "hypercare_checkin":"Lifecycle (UAT → Closure)","hypercare_closure":"Lifecycle (UAT → Closure)",
     }
-    # Smart default: derive from first pending journey stage
-    # Only auto-set on project change (not on every render — respect user's manual choice)
+    _statuses_d = ["done" if _stage_is_done(s,sel) else "pending" for s in _JOURNEY]
+    _last_done  = max((i for i,s in enumerate(_statuses_d) if s=="done"), default=-1)
+    # Next actionable stage = first pending after the last done stage
+    _next_idx   = next((i for i in range(_last_done+1, len(_JOURNEY))
+                        if _statuses_d[i]=="pending"), _last_done)
+    _next_stage = _JOURNEY[_next_idx]["id"] if _next_idx >= 0 else "welcome"
+
+    # Filter available comm types based on progress
+    # Hide Welcome if any non-welcome stage is done (project is clearly past onboarding)
+    _any_post_done = any(_statuses_d[i]=="done" for i,s in enumerate(_JOURNEY) if s["id"]!="welcome")
+    _COMM_TYPES = ["Post-Session","Lifecycle (UAT → Closure)"] if _any_post_done else ["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
+
+    # Smart default — only auto-set on project change
     _proj_changed = st.session_state.get("_last_proj_sid_for_comm") != selected_sid
     if _proj_changed:
-        _statuses_d = ["done" if _stage_is_done(s,sel) else "pending" for s in _JOURNEY]
-        _first_pend = next((i for i,st2 in enumerate(_statuses_d) if st2=="pending"), 0)
-        _smart_default = _STAGE_TO_COMM.get(_JOURNEY[_first_pend]["id"],"Welcome")
+        _smart_default = _STAGE_TO_COMM.get(_next_stage, _COMM_TYPES[0])
+        # Ensure smart default is in the available options
+        if _smart_default not in _COMM_TYPES:
+            _smart_default = _COMM_TYPES[0]
         st.session_state["_ce_tmpl_type"] = _smart_default
         st.session_state["_last_proj_sid_for_comm"] = selected_sid
     st.markdown('<p class="ce-label" style="margin-top:8px;margin-bottom:4px">Communication type</p>', unsafe_allow_html=True)
     comm_col,tmpl_col=st.columns([1,2], gap="small")
     with comm_col:
+        _cur_type = st.session_state.get("_ce_tmpl_type", _COMM_TYPES[0])
+        # If current value was filtered out (e.g. Welcome hidden), reset to first available
+        if _cur_type not in _COMM_TYPES:
+            _cur_type = _COMM_TYPES[0]
+            st.session_state["_ce_tmpl_type"] = _cur_type
         _tmpl_type=st.selectbox(
             "Communication type",options=_COMM_TYPES,
             label_visibility="collapsed",
-            index=_COMM_TYPES.index(st.session_state.get("_ce_tmpl_type","Welcome")),
+            index=_COMM_TYPES.index(_cur_type),
             key="ce_tmpl_type",
         )
         st.session_state["_ce_tmpl_type"]=_tmpl_type
