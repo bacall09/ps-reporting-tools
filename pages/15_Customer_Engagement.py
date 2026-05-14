@@ -28,12 +28,18 @@ if _hero_browse and _hero_browse not in ("— My own view —","— Select —",
         _vd_nm = f"{_vd_p[1].strip()} {_vd_p[0].strip()}" if len(_vd_p)==2 else _hero_browse
         _hero_va_line = f" · Viewing: {_vd_nm}"
 
-st.markdown("""
-<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:20px 28px 16px;border-radius:0 0 8px 8px;margin-bottom:20px'>
-  <span style='color:#4472C4;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase'>Customer Engagement</span>
-  <h2 style='color:#ffffff;margin:4px 0 0;font-size:22px;font-weight:600;letter-spacing:-0.3px'>Customer Engagement</h2>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    "<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);"
+    "padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
+    "<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+    "color:#7dd3fc;margin-bottom:8px'>Professional Services · Customer Engagement</div>"
+    "<h1 style='color:#fff;margin:0 0 6px;font-size:26px;font-weight:700;font-family:Manrope,sans-serif'>"
+    "Customer Engagement</h1>"
+    "<p style='color:rgba(255,255,255,.45);margin:0;font-size:13px;font-family:Manrope,sans-serif'>"
+    "Compose and track customer lifecycle communications</p>"
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 # ── CSS — runbook compliant ───────────────────────────────────────────────────
 st.markdown("""<style>
