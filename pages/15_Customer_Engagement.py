@@ -1042,8 +1042,11 @@ def _proj_card_html(row, sid, is_mine, is_selected):
 
 # Build all card HTML
 _all_card_rows=[]
+# Use current selectbox value for highlight — falls back to _def_sid on first render
+_currently_selected = st.session_state.get("ce_proj_select", _def_sid)
+if _currently_selected not in _mine_sids: _currently_selected = _def_sid
 for i,(_sid,_row) in enumerate(zip(_mine_sids,[_row_dict(_mine_proj.iloc[j]) for j in range(len(_mine_sids))])):
-    _all_card_rows.append(_proj_card_html(_row,_sid,True,_sid==_def_sid))
+    _all_card_rows.append(_proj_card_html(_row,_sid,True,_sid==_currently_selected))
 for _,_orow in _other_proj.iterrows():
     _all_card_rows.append(_proj_card_html(_row_dict(_orow),"__other__",False,False))
 
@@ -1224,6 +1227,55 @@ with compose_col:
     _compose_key = f"_ce_composed_{selected_sid}_{_tmpl_type}"
     _is_composed = st.session_state.get(_compose_key, False)
 
+    # ── Send request handlers — run every render, outside branch logic ────────
+    # This ensures logging fires even if template type changed since button click
+    if st.session_state.get("_req_w"):
+        r=st.session_state.pop("_req_w")
+        try:
+            with st.spinner("Logging…"):
+                _tmpl_w_for_log=get_welcome_template(_sku(str(product_raw))) if product_raw and str(product_raw) not in ("","nan","None") else None
+                _tid=f"welcome_{_tmpl_w_for_log.get('sku_key','manual')}" if _tmpl_w_for_log else "welcome_manual"
+                _tnm=f"Welcome — {_tmpl_w_for_log.get('display_name','')}" if _tmpl_w_for_log else "Welcome"
+                ok,sid=execute_send(project_id=project_id,template_id=_tid,template_name=_tnm,
+                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+            if ok:
+                st.success(f"✓ Logged — ID: `{sid}`")
+                if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                    if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
+            else: st.error(f"Failed: {sid}")
+        except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
+
+    if st.session_state.get("_req_s"):
+        r=st.session_state.pop("_req_s")
+        try:
+            with st.spinner("Logging…"):
+                ok,sid=execute_send(project_id=project_id,template_id=r["tid"],template_name=r["tnm"],
+                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+            if ok:
+                st.success(f"✓ Logged — ID: `{sid}`")
+                if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                    if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
+            else: st.error(f"Failed: {sid}")
+        except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
+
+    if st.session_state.get("_req_l"):
+        r=st.session_state.pop("_req_l")
+        try:
+            with st.spinner("Logging…"):
+                ok,sid=execute_send(project_id=project_id,template_id=r.get("tid","lifecycle"),
+                    template_name=r.get("tnm","Lifecycle"),
+                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+            if ok:
+                st.success(f"✓ Logged — ID: `{sid}`")
+                if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                    try: gld=datetime.date.fromisoformat(r["gls"][:10]) if r.get("gls") else datetime.date.today()
+                    except: gld=datetime.date.today()
+                    for _sf in (r["ssf"] if isinstance(r["ssf"],list) else [r["ssf"]]):
+                        wd=gld if _sf in (SS_GO_LIVE_DATE,SS_PROD_CUTOVER) else datetime.date.today()
+                        if _do_write(project_id,_sf,wd,sel): mark_ss_writeback_done(sid)
+            else: st.error(f"Failed: {sid}")
+        except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
+
     # ── Template selector — right after comm type, before recipient ─────────────
     st.markdown('<p class="ce-label" style="margin-top:8px;margin-bottom:2px">Template</p>', unsafe_allow_html=True)
     if _tmpl_type == "Welcome":
@@ -1318,19 +1370,6 @@ with compose_col:
                 if _send_footer("w",ssf_w,subj_w,body_w,recip):
                     st.session_state["_req_w"]={"subj":st.session_state.get("ce_send_subj",subj_w),"body":st.session_state.get("ce_send_body",body_w),"ssf":ssf_w}
                     st.rerun()
-                if st.session_state.get("_req_w"):
-                    r=st.session_state.pop("_req_w")
-                    try:
-                        with st.spinner("Logging…"):
-                            ok,sid=execute_send(project_id=project_id,template_id=f"welcome_{tmpl_w.get('sku_key','manual')}",
-                                template_name=f"Welcome — {tmpl_w.get('display_name','')}",
-                                subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
-                        if ok:
-                            st.success(f"✓ Logged — ID: `{sid}`")
-                            if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                                if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
-                        else: st.error(f"Failed: {sid}")
-                    except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
     # ── Post-Session ──────────────────────────────────────────────────────────
     elif _tmpl_type=="Post-Session":
@@ -1381,18 +1420,6 @@ with compose_col:
                     if _send_footer("s",ssf_s,subj_s,body_s,recip):
                         st.session_state["_req_s"]={"subj":st.session_state.get("ce_send_subj",subj_s),"body":st.session_state.get("ce_send_body",body_s),"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
                         st.rerun()
-                    if st.session_state.get("_req_s"):
-                        r=st.session_state.pop("_req_s")
-                        try:
-                            with st.spinner("Logging…"):
-                                ok,sid=execute_send(project_id=project_id,template_id=r["tid"],template_name=r["tnm"],
-                                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
-                            if ok:
-                                st.success(f"✓ Logged — ID: `{sid}`")
-                                if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                                    if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
-                            else: st.error(f"Failed: {sid}")
-                        except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
     elif _tmpl_type=="Lifecycle (UAT → Closure)":
@@ -1455,22 +1482,6 @@ with compose_col:
                 if _send_footer("l",ssf_l if isinstance(ssf_l,str) else (ssf_l[0] if ssf_l else None),subj_l,body_l,recip):
                     st.session_state["_req_l"]={"subj":st.session_state.get("ce_send_subj",subj_l),"body":st.session_state.get("ce_send_body",body_l),"ssf":ssf_l,"gls":gls}
                     st.rerun()
-                if st.session_state.get("_req_l"):
-                    r=st.session_state.pop("_req_l")
-                    try:
-                        with st.spinner("Logging…"):
-                            ok,sid=execute_send(project_id=project_id,template_id=lcid,template_name=tmpl_l["name"],
-                                subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
-                        if ok:
-                            st.success(f"✓ Logged — ID: `{sid}`")
-                            if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                                try: gld=datetime.date.fromisoformat(r["gls"][:10]) if r["gls"] else datetime.date.today()
-                                except: gld=datetime.date.today()
-                                for f in (r["ssf"] if isinstance(r["ssf"],list) else [r["ssf"]]):
-                                    wd=gld if f in (SS_GO_LIVE_DATE,SS_PROD_CUTOVER) else datetime.date.today()
-                                    if _do_write(project_id,f,wd,sel): mark_ss_writeback_done(sid)
-                        else: st.error(f"Failed: {sid}")
-                    except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
     # ── Preview column ─────────────────────────────────────────────────────────────
 with preview_col:
