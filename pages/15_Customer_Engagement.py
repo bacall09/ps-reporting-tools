@@ -767,32 +767,28 @@ def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
 st.markdown('<p class="ce-label">Select Project</p>',unsafe_allow_html=True)
 _top_left,_top_right=st.columns([1,2],gap="small")
 
-# Build customer list — all unique customers sorted, preserving original casing
-# ── Customer list ─────────────────────────────────────────────────────────────
-# The Smartsheet "Customer" column comes through as "account" after SS_COL_MAP_OUT rename.
-# Use it directly when populated; extract from project_name as fallback for older rows.
+# Build customer list — from df_all (already filtered by view-as/consultant)
+# This ensures the customer dropdown only shows customers for the viewed consultant.
 if cust_col:
-    _raw = _df_drs[cust_col].fillna("").astype(str).str.strip()
+    _raw = df_all[cust_col].fillna("").astype(str).str.strip()
     _populated = _raw[~_raw.isin(["","nan","None"])]
     _coverage = len(_populated) / max(len(_raw), 1)
     if _coverage >= 0.5:
-        # Account/Customer column is well-populated — use directly
         _all_customers = sorted(
             {v for v in _populated if v not in ("","nan","None")},
             key=str.lower
         )
         _using_extracted = False
     else:
-        # Sparse — fall back to extracting from project_name
         _all_customers = sorted(
-            {_extract_customer_name(str(v)) for v in _df_drs[name_col].dropna()
+            {_extract_customer_name(str(v)) for v in df_all[name_col].dropna()
              if str(v).strip() not in ("","nan","None")} if name_col else set(),
             key=str.lower
         )
         _using_extracted = True
 elif name_col:
     _all_customers = sorted(
-        {_extract_customer_name(str(v)) for v in _df_drs[name_col].dropna()
+        {_extract_customer_name(str(v)) for v in df_all[name_col].dropna()
          if str(v).strip() not in ("","nan","None")},
         key=str.lower
     )
@@ -1113,26 +1109,25 @@ with compose_col:
 
     # ── Welcome ───────────────────────────────────────────────────────────────
     if _tmpl_type=="Welcome":
-                with tmpl_col:
-                    _all_rows=[sel]
-                    if _consolidated and n_mine>1:
-                        _all_rows=[_row_dict(_mine_proj.iloc[i]) for i in range(n_mine)]
-                    _is_merged=False
-                    if _consolidated and n_mine>1:
-                        tmpl_w,_is_merged=_combined_welcome_template(_all_rows,prod_col)
-                    else:
-                        _sk=_sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
-                        tmpl_w=get_welcome_template(_sk) if _sk else None
-                    if not tmpl_w:
-                        opts=list_welcome_templates()
-                        ch=st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual",label_visibility="collapsed")
-                        tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
-                    else:
-                        disp=tmpl_w.get("display_name","")
-                        st.caption("Template")
-                        st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
-                    if _is_merged:
-                        st.markdown('<div class="ce-tip">Consolidated: one email covering all products. Prep sections merged.</div>',unsafe_allow_html=True)
+                _all_rows=[sel]
+                if _consolidated and n_mine>1:
+                    _all_rows=[_row_dict(_mine_proj.iloc[i]) for i in range(n_mine)]
+                _is_merged=False
+                if _consolidated and n_mine>1:
+                    tmpl_w,_is_merged=_combined_welcome_template(_all_rows,prod_col)
+                else:
+                    _sk=_sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
+                    tmpl_w=get_welcome_template(_sk) if _sk else None
+                if not tmpl_w:
+                    opts=list_welcome_templates()
+                    ch=st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual",label_visibility="collapsed")
+                    tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
+                else:
+                    disp=tmpl_w.get("display_name","")
+                    st.caption("Template")
+                    st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
+                if _is_merged:
+                    st.markdown('<div class="ce-tip">Consolidated: one email covering all products. Prep sections merged.</div>',unsafe_allow_html=True)
 
                 var=st.radio("Sender variant",["Variant A — PM or automated","Variant B — Consultant sends"],horizontal=True,key="w_var")
                 vk="variant_a" if "A" in var else "variant_b"
@@ -1179,7 +1174,7 @@ with compose_col:
     elif _tmpl_type=="Post-Session":
                 psk=_ps_key(str(product_raw))
                 if not psk:
-                    with tmpl_col: st.info(f"No post-session templates for '{product_raw}'.")
+                    st.info(f"No post-session templates for '{product_raw}'.")
                 else:
                     sessions=get_post_session_templates(psk)
                     sopts={s["id"]:(f"Session {s['session_number']} — {s['name']}"+(f" [{s['variant_note']}]" if s.get("variant_note") else ""),s) for s in sessions}
