@@ -365,5 +365,28 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
+    # ── Appearance ────────────────────────────────────────────────────────────
+    st.markdown("---")
+    _theme_choice = st.radio(
+        "Appearance",
+        ["Light", "Dark"],
+        index=0 if st.session_state.get("_theme","Light")=="Light" else 1,
+        horizontal=True,
+        key="home_theme",
+    )
+    st.session_state["_theme"] = _theme_choice
+    if _theme_choice == "Dark":
+        st.markdown("""<style>
+.stApp { background-color: #0E1117 !important; color: #FAFAFA !important; }
+.stApp .stMarkdown, .stApp p, .stApp label { color: #FAFAFA !important; }
+section[data-testid="stSidebar"] { background-color: #161B22 !important; }
+.stApp .stDataFrame, .stApp .stTable { color: #FAFAFA !important; }
+</style>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""<style>
+.stApp { background-color: #FFFFFF !important; color: #1A1A1A !important; }
+section[data-testid="stSidebar"] { background-color: #F8F9FA !important; }
+</style>""", unsafe_allow_html=True)
+
 # ── Run the selected page ─────────────────────────────────────────────────────
 pg.run()
