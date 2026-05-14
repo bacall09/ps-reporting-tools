@@ -1186,13 +1186,13 @@ with compose_col:
                     _sk=_sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
                     tmpl_w=get_welcome_template(_sk) if _sk else None
                 if not tmpl_w:
+                    # Template chosen via pre-flight selector above Recipient
                     opts=list_welcome_templates()
-                    ch=st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual",label_visibility="collapsed")
-                    tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
-                else:
-                    disp=tmpl_w.get("display_name","")
-                    st.caption("Template")
-                    st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
+                    _w_ch=st.session_state.get("w_manual","")
+                    if _w_ch:
+                        tmpl_w=get_welcome_template(next((t["sku_key"] for t in opts if t["display_name"]==_w_ch),None))
+                    if not tmpl_w and opts:
+                        tmpl_w=get_welcome_template(opts[0]["sku_key"])
                 if _is_merged:
                     st.markdown('<div class="ce-tip">Consolidated: one email covering all products. Prep sections merged.</div>',unsafe_allow_html=True)
 
@@ -1245,8 +1245,9 @@ with compose_col:
                 else:
                     sessions=get_post_session_templates(psk)
                     sopts={s["id"]:(f"Session {s['session_number']} — {s['name']}"+(f" [{s['variant_note']}]" if s.get("variant_note") else ""),s) for s in sessions}
-                    st.caption("Template")
-                    cid=st.selectbox("Template",list(sopts.keys()),format_func=lambda k:sopts[k][0],key="s_pick",label_visibility="collapsed")
+                    # cid driven by pre-flight selector key="s_pick"
+                    cid=st.session_state.get("s_pick",list(sopts.keys())[0] if sopts else None)
+                    if cid not in sopts: cid=list(sopts.keys())[0] if sopts else None
                     _,tmpl_s=sopts[cid]
                     st.caption(f"Audience: {tmpl_s.get('audience','Full project team')} · {tmpl_s.get('trigger','')}")
                     mctx:dict={}
@@ -1302,10 +1303,9 @@ with compose_col:
     elif _tmpl_type=="Lifecycle (UAT → Closure)":
                 lc_all=list_lifecycle_templates()
                 lc_opts={t["id"]:t for t in lc_all}
-                st.caption("Template")
-                lcid=st.selectbox("Template",list(lc_opts.keys()),
-                                      format_func=lambda k:f"[{lc_opts[k]['category']}] {lc_opts[k]['name']}",
-                                      key="lc_pick",label_visibility="collapsed")
+                # lcid driven by pre-flight selector key="lc_pick"
+                lcid=st.session_state.get("lc_pick",list(lc_opts.keys())[0] if lc_opts else None)
+                if lcid not in lc_opts: lcid=list(lc_opts.keys())[0] if lc_opts else None
                 tmpl_l=get_lifecycle_template(lcid)
                 st.caption(f"When to send: {tmpl_l['trigger']}")
                 for tip in tmpl_l.get("tips",[]): st.markdown(f'<div class="ce-tip">💡 {tip}</div>',unsafe_allow_html=True)
