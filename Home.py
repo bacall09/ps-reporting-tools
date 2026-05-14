@@ -101,6 +101,13 @@ if _os.path.exists("zone_ps_logo.svg"):
     st.logo("zone_ps_logo.svg", size="large", link=None)
 
 st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+html, body, [class*="css"], .stApp, .stMarkdown, .stTextInput, .stSelectbox,
+.stTextArea, .stButton, .stCheckbox, .stRadio, .stExpander,
+[data-testid="stSidebar"], [data-testid="stHeader"],
+h1, h2, h3, h4, h5, h6, p, span, div, label, button {
+    font-family: 'Manrope', sans-serif !important;
+}
 html body [data-testid="stFileUploaderDropzoneInstructions"] {
     display: none !important;
     visibility: hidden !important;
