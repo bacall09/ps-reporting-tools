@@ -1234,6 +1234,9 @@ with compose_col:
     _is_composed = st.session_state.get(_compose_key, False)
 
     # ── Send request handlers — run every render, outside branch logic ────────
+    # Read recipient values from session state (widgets defined later in this render)
+    _recip_for_send = st.session_state.get("ce_to","")
+    _cc_for_send = [e.strip() for e in st.session_state.get("ce_cc","").split(",") if e.strip()]
     # This ensures logging fires even if template type changed since button click
     if st.session_state.get("_req_w"):
         r=st.session_state.pop("_req_w")
@@ -1244,7 +1247,7 @@ with compose_col:
                 _tid=f"welcome_{_tmpl_w_for_log.get('sku_key','manual')}" if _tmpl_w_for_log else "welcome_manual"
                 _tnm=f"Welcome — {_tmpl_w_for_log.get('display_name','')}" if _tmpl_w_for_log else "Welcome"
                 ok,sid=execute_send(project_id=project_id,template_id=_tid,template_name=_tnm,
-                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                    subject=r["subj"],body=r["body"],recipient_email=_recip_for_send,cc_emails=_cc_for_send,ss_milestone_field=r["ssf"])
             if ok:
                 st.success(f"✓ Logged — ID: `{sid}`")
                 if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
@@ -1264,7 +1267,7 @@ with compose_col:
         try:
             with st.spinner("Logging…"):
                 ok,sid=execute_send(project_id=project_id,template_id=r["tid"],template_name=r["tnm"],
-                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                    subject=r["subj"],body=r["body"],recipient_email=_recip_for_send,cc_emails=_cc_for_send,ss_milestone_field=r["ssf"])
             if ok:
                 st.success(f"✓ Logged — ID: `{sid}`")
                 if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
@@ -1278,7 +1281,7 @@ with compose_col:
             with st.spinner("Logging…"):
                 ok,sid=execute_send(project_id=project_id,template_id=r.get("tid","lifecycle"),
                     template_name=r.get("tnm","Lifecycle"),
-                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                    subject=r["subj"],body=r["body"],recipient_email=_recip_for_send,cc_emails=_cc_for_send,ss_milestone_field=r["ssf"])
             if ok:
                 st.success(f"✓ Logged — ID: `{sid}`")
                 if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
