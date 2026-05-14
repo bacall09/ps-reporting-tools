@@ -707,7 +707,12 @@ if ss_rid_col and id_col:
         pid=str(r.get(id_col,"")).strip(); rid=r.get(ss_rid_col)
         if pid and rid: _ss_row_id_map[pid]=rid
 
-# View-as filter (managers)
+# Role filter — consultants see only their own projects
+if not _is_mgr and pm_col:
+    _f = df_all[df_all[pm_col].apply(lambda x: name_matches(str(x), _logged_in))]
+    if not _f.empty: df_all = _f
+
+# View-as filter (managers only)
 if _is_mgr and pm_col:
     _browse=st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
     if _browse and _browse not in ("— My own view —","— Select —","👥 All team",""):
@@ -1000,7 +1005,20 @@ if df_sfdc is not None and not df_sfdc.empty:
         nc="contact_name" if "contact_name" in sfdc_match.columns else None
         fc="impl_contact_flag" if "impl_contact_flag" in sfdc_match.columns else None
         pc="is_primary" if "is_primary" in sfdc_match.columns else None
+        ac="account" if "account" in sfdc_match.columns else None
+
+        # If fuzzy match — verify the account column actually matches our customer
+        # This prevents picking contacts from a different company at a low match score
+        if sfdc_label and "%" in sfdc_label and ac:
+            _acct_verify = sfdc_match[
+                sfdc_match[ac].astype(str).str.strip().str.lower() == str(_sfdc_acct).strip().lower()
+            ]
+            if not _acct_verify.empty:
+                sfdc_match = _acct_verify
+                sfdc_label = "Exact account match"
+
         br=sfdc_match.iloc[0]
+        # Priority: is_primary=1 first, then impl_contact_flag=1, then first row
         if pc:
             prim=sfdc_match[sfdc_match[pc].astype(str).isin(["1","True","true","yes"])]
             if not prim.empty: br=prim.iloc[0]
@@ -1056,9 +1074,9 @@ with compose_col:
     _next_stage = _JOURNEY[_next_idx]["id"] if _next_idx >= 0 else "welcome"
 
     # Filter available comm types based on progress
-    # Hide Welcome if any non-welcome stage is done (project is clearly past onboarding)
-    _any_post_done = any(_statuses_d[i]=="done" for i,s in enumerate(_JOURNEY) if s["id"]!="welcome")
-    _COMM_TYPES = ["Post-Session","Lifecycle (UAT → Closure)"] if _any_post_done else ["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
+    # Hide Welcome if the last done stage is past Welcome (index > 0)
+    _hide_welcome = _last_done >= 1  # at least Post-Enablement is done
+    _COMM_TYPES = ["Post-Session","Lifecycle (UAT → Closure)"] if _hide_welcome else ["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
 
     # Smart default — only auto-set on project change
     _proj_changed = st.session_state.get("_last_proj_sid_for_comm") != selected_sid
@@ -1095,7 +1113,30 @@ with compose_col:
     _compose_key = f"_ce_composed_{selected_sid}_{_tmpl_type}"
     _is_composed = st.session_state.get(_compose_key, False)
 
-    # ── Recipient (below comm type so consultant knows what they're composing) ─
+    # ── Template selector — right after comm type, before recipient ─────────────
+    st.markdown('<p class="ce-label" style="margin-top:8px;margin-bottom:2px">Template</p>', unsafe_allow_html=True)
+    if _tmpl_type == "Welcome":
+        _sk_pre = _sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
+        _tmpl_pre = get_welcome_template(_sk_pre) if _sk_pre else None
+        if not _tmpl_pre:
+            _opts_pre = list_welcome_templates()
+            _w_ch = st.selectbox("Template", [t["display_name"] for t in _opts_pre], key="w_manual_pre", label_visibility="collapsed")
+        else:
+            st.selectbox("Template", [_tmpl_pre.get("display_name","")], key="w_tmpl_pre", disabled=True, label_visibility="collapsed")
+    elif _tmpl_type == "Post-Session":
+        _psk_pre = _ps_key(str(product_raw))
+        if _psk_pre:
+            _sessions_pre = get_post_session_templates(_psk_pre)
+            _sopts_pre = {s["id"]: f"Session {s['session_number']} — {s['name']}" for s in _sessions_pre}
+            st.selectbox("Template", list(_sopts_pre.keys()), format_func=lambda k: _sopts_pre[k], key="s_pick_pre", label_visibility="collapsed")
+        else:
+            st.selectbox("Template", ["No templates for this product type"], key="s_pick_pre_empty", disabled=True, label_visibility="collapsed")
+    elif _tmpl_type == "Lifecycle (UAT → Closure)":
+        _lc_pre = list_lifecycle_templates()
+        _lc_pre_opts = {t["id"]: f"[{t['category']}] {t['name']}" for t in _lc_pre}
+        st.selectbox("Template", list(_lc_pre_opts.keys()), format_func=lambda k: _lc_pre_opts[k], key="lc_pick_pre", label_visibility="collapsed")
+
+    # ── Recipient ─────────────────────────────────────────────────────────────
     st.markdown('<p class="ce-label" style="margin-top:12px">Recipient</p>',unsafe_allow_html=True)
     if sfdc_label:
                 st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
@@ -1197,7 +1238,13 @@ with compose_col:
                         for f in tmpl_s["editable_fields"]:
                             k,lb,ft=f["key"],f["label"],f.get("type","text"); req=f.get("required",False); ph=f.get("placeholder","")
                             lbl_d=lb+(" *" if req else "")
-                            if ft=="text":       v=st.text_input(lbl_d,placeholder=ph,key=f"s_{cid}_{k}")
+                            _is_date = "date" in lb.lower() or "date" in k.lower() or "date/time" in lb.lower()
+                            if _is_date:
+                                import datetime as _dt2
+                                _dv=st.session_state.get(f"s_{cid}_{k}")
+                                _date_val=st.date_input(lbl_d,value=_dv if isinstance(_dv,_dt2.date) else None,key=f"s_{cid}_{k}",format="DD/MM/YYYY")
+                                v=_date_val.strftime("%-d %B %Y") if _date_val else ""
+                            elif ft=="text":       v=st.text_input(lbl_d,placeholder=ph,key=f"s_{cid}_{k}")
                             elif ft=="textarea": v=st.text_area(lbl_d,placeholder=ph,height=70,key=f"s_{cid}_{k}")
                             elif ft=="multiselect":
                                 s2=st.multiselect(lbl_d,options=f.get("options",[]),key=f"s_{cid}_{k}")
