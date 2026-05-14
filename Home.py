@@ -27,8 +27,8 @@ _consultant_pages = [
     st.Page("pages/8_My_Projects.py",            title="My Projects",           icon=":material/folder_open:"),
     st.Page("pages/11_Project_Health.py",        title="Project Health",        icon=":material/show_chart:"),
     st.Page("pages/99_Customer_Profile.py",     title="Customer Profile",      icon=":material/business:"),
-    st.Page("pages/2_Customer_Reengagement.py",  title="Inactive Customer Outreach", icon=":material/mail:"),
     st.Page("pages/15_Customer_Engagement.py",   title="Customer Engagement",   icon=":material/mark_email_read:"),
+    st.Page("pages/2_Customer_Reengagement.py",  title="Inactive Customer Outreach", icon=":material/mail:"),
     st.Page("pages/3_Utilization_Report.py",     title="Utilization Report",    icon=":material/monitor_heart:"),
     st.Page("pages/4_Workload_Health_Score.py",  title="Workload Health Score", icon=":material/speed:"),
     st.Page("pages/6_DRS_Health_Check.py",       title="DRS Health Check",      icon=":material/shield_with_heart:"),
@@ -352,41 +352,15 @@ with st.sidebar:
                     unsafe_allow_html=True)
     if any(k in st.session_state for k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue","df_tm_sow"]):
         if st.button("Clear loaded data", use_container_width=True, key="home_clear"):
-            # Clear dataframes and uploader widget states
             keys_to_clear = [
                 "df_drs","df_ns","df_sfdc","df_ns_unassigned",
                 "hub_ns","hub_sfdc","hub_ns_unassigned",
             ]
-            # Also clear any FormData/file widget state Streamlit holds internally
             for k in list(st.session_state.keys()):
                 if k in ["df_drs","df_ns","df_sfdc","df_ns_unassigned","df_revenue","df_tm_sow"] or k.startswith("hub_"):
                     del st.session_state[k]
-            # Clear any @st.cache_data caches so stale processed results don't persist
             st.cache_data.clear()
             st.rerun()
-
-    # ── Appearance ────────────────────────────────────────────────────────────
-    st.markdown("---")
-    _theme_choice = st.radio(
-        "Appearance",
-        ["Light", "Dark"],
-        index=0 if st.session_state.get("_theme","Light")=="Light" else 1,
-        horizontal=True,
-        key="home_theme",
-    )
-    st.session_state["_theme"] = _theme_choice
-    if _theme_choice == "Dark":
-        st.markdown("""<style>
-.stApp { background-color: #0E1117 !important; color: #FAFAFA !important; }
-.stApp .stMarkdown, .stApp p, .stApp label { color: #FAFAFA !important; }
-section[data-testid="stSidebar"] { background-color: #161B22 !important; }
-.stApp .stDataFrame, .stApp .stTable { color: #FAFAFA !important; }
-</style>""", unsafe_allow_html=True)
-    else:
-        st.markdown("""<style>
-.stApp { background-color: #FFFFFF !important; color: #1A1A1A !important; }
-section[data-testid="stSidebar"] { background-color: #F8F9FA !important; }
-</style>""", unsafe_allow_html=True)
 
 # ── Run the selected page ─────────────────────────────────────────────────────
 pg.run()
