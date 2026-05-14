@@ -16,12 +16,14 @@ from rapidfuzz import fuzz
 
 st.session_state["current_page"] = "Customer Engagement"
 
-st.markdown("""
-<div style='background:#050D1F;padding:20px 28px 16px;border-radius:0 0 8px 8px;margin-bottom:20px'>
-  <span style='color:#4472C4;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase'>Customer Engagement</span>
-  <h2 style='color:#ffffff;margin:4px 0 0;font-size:22px;font-weight:600;letter-spacing:-0.3px'>Lifecycle Email Composer</h2>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    "<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+    "<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Customer Engagement</div>"
+    "<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;'>Lifecycle Email Composer</h1>"
+    "<p style='color:rgba(255,255,255,0.4);margin:6px 0 0;font-size:13px;font-family:Manrope,sans-serif;'>Compose and track customer lifecycle communications</p>"
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 # ── CSS — runbook compliant ───────────────────────────────────────────────────
 st.markdown("""<style>
@@ -1065,21 +1067,20 @@ with compose_col:
         st.session_state["_ce_tmpl_type"] = _smart_default
         st.session_state["_last_proj_sid_for_comm"] = selected_sid
     st.markdown('<p class="ce-label" style="margin-top:8px;margin-bottom:4px">Communication type</p>', unsafe_allow_html=True)
-    comm_col,tmpl_col=st.columns([1,2], gap="small")
-    with comm_col:
-        _cur_type = st.session_state.get("_ce_tmpl_type", _COMM_TYPES[0])
-        # If current value was filtered out (e.g. Welcome hidden), reset to first available
-        if _cur_type not in _COMM_TYPES:
-            _cur_type = _COMM_TYPES[0]
-            st.session_state["_ce_tmpl_type"] = _cur_type
-        _tmpl_type=st.selectbox(
-            "Communication type",options=_COMM_TYPES,
-            label_visibility="collapsed",
-            index=_COMM_TYPES.index(_cur_type),
-            key="ce_tmpl_type",
-        )
-        st.session_state["_ce_tmpl_type"]=_tmpl_type
-        st.session_state["_ce_tab"]={"Welcome":"Welcome","Post-Session":"Post-Session","Lifecycle (UAT → Closure)":"Lifecycle"}.get(_tmpl_type,"Welcome")
+    _cur_type = st.session_state.get("_ce_tmpl_type", _COMM_TYPES[0])
+    if _cur_type not in _COMM_TYPES:
+        _cur_type = _COMM_TYPES[0]
+        st.session_state["_ce_tmpl_type"] = _cur_type
+    _tmpl_type=st.selectbox(
+        "Communication type",options=_COMM_TYPES,
+        label_visibility="collapsed",
+        index=_COMM_TYPES.index(_cur_type),
+        key="ce_tmpl_type",
+    )
+    st.session_state["_ce_tmpl_type"]=_tmpl_type
+    st.session_state["_ce_tab"]={"Welcome":"Welcome","Post-Session":"Post-Session","Lifecycle (UAT → Closure)":"Lifecycle"}.get(_tmpl_type,"Welcome")
+    # tmpl_col — template selectbox renders below comm type in each branch
+    tmpl_col = None  # placeholder so branch code doesn't break
 
     # Live context — read after recipient widgets exist
     _live_cname=st.session_state.get("ce_cn","") or ""
@@ -1087,216 +1088,224 @@ with compose_col:
     if _live_cname: auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
     auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
 
-    # ── Recipient (below comm type so consultant knows what they're composing) ─
-    st.markdown('<p class="ce-label" style="margin-top:12px">Recipient</p>',unsafe_allow_html=True)
-    if sfdc_label:
-        st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
-    else:
-        _msg="No SFDC match — enter manually" if df_sfdc is not None else "SFDC contacts not loaded"
-        st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-warn">{_msg}</span></div>',unsafe_allow_html=True)
-    recip=st.text_input("To (recipient email)",value=sfdc_email,placeholder="customer@example.com",key="ce_to")
-    cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
-    cc_in=st.text_input("CC",value=_default_cc(),key="ce_cc")
-    cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
-    # Update live context with typed contact name
-    _live_cname=st.session_state.get("ce_cn",_live_cname) or _live_cname
-    if _live_cname:
-        auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
-        auto_ctx=build_auto_context(sel,_disp,{"contact_name":_live_cname})
-        auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
-        auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
+    # ── Compose button — gates template rendering (prevents stale cache) ────────
+    _compose_key = f"_ce_composed_{selected_sid}_{_tmpl_type}"
+    _is_composed = st.session_state.get(_compose_key, False)
+    if not _is_composed:
+        if st.button("✉ Compose email", key=f"btn_compose_{selected_sid}_{_tmpl_type}",
+                     type="primary", use_container_width=False):
+            st.session_state[_compose_key] = True
+            st.rerun()
+        st.markdown('<div style="font-size:12px;opacity:.5;margin-top:6px">Select a communication type above then click Compose to load the template and preview.</div>', unsafe_allow_html=True)
 
-    # ── Welcome ───────────────────────────────────────────────────────────────
-    if _tmpl_type=="Welcome":
-        with tmpl_col:
-            _all_rows=[sel]
-            if _consolidated and n_mine>1:
-                _all_rows=[_row_dict(_mine_proj.iloc[i]) for i in range(n_mine)]
-            _is_merged=False
-            if _consolidated and n_mine>1:
-                tmpl_w,_is_merged=_combined_welcome_template(_all_rows,prod_col)
+    if _is_composed:
+            # ── Recipient (below comm type so consultant knows what they're composing) ─
+            st.markdown('<p class="ce-label" style="margin-top:12px">Recipient</p>',unsafe_allow_html=True)
+            if sfdc_label:
+                st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-ok">✓ {sfdc_label}</span></div>',unsafe_allow_html=True)
             else:
-                _sk=_sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
-                tmpl_w=get_welcome_template(_sk) if _sk else None
-            if not tmpl_w:
-                opts=list_welcome_templates()
-                ch=st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual",label_visibility="collapsed")
-                tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
-            else:
-                disp=tmpl_w.get("display_name","")
+                _msg="No SFDC match — enter manually" if df_sfdc is not None else "SFDC contacts not loaded"
+                st.markdown(f'<div style="font-size:11px;margin-bottom:4px"><span class="pill-warn">{_msg}</span></div>',unsafe_allow_html=True)
+            recip=st.text_input("To (recipient email)",value=sfdc_email,placeholder="customer@example.com",key="ce_to")
+            cname=st.text_input("Contact name",value=sfdc_cname,placeholder="First name",key="ce_cn")
+            cc_in=st.text_input("CC",value=_default_cc(),key="ce_cc")
+            cc_emails=[e.strip() for e in cc_in.split(",") if e.strip()]
+            # Update live context with typed contact name
+            _live_cname=st.session_state.get("ce_cn",_live_cname) or _live_cname
+            if _live_cname:
+                auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
+                auto_ctx=build_auto_context(sel,_disp,{"contact_name":_live_cname})
+                auto_ctx["CUSTOMER_CONTACT_NAME"]=_live_cname
+                auto_ctx["SENDER"]=_disp; auto_ctx["CONSULTANT_NAME"]=_disp
+
+            # ── Welcome ───────────────────────────────────────────────────────────────
+            if _tmpl_type=="Welcome":
                 with tmpl_col:
+                    _all_rows=[sel]
+                    if _consolidated and n_mine>1:
+                        _all_rows=[_row_dict(_mine_proj.iloc[i]) for i in range(n_mine)]
+                    _is_merged=False
+                    if _consolidated and n_mine>1:
+                        tmpl_w,_is_merged=_combined_welcome_template(_all_rows,prod_col)
+                    else:
+                        _sk=_sku(str(product_raw)) if product_raw and str(product_raw) not in ("","nan","None") else None
+                        tmpl_w=get_welcome_template(_sk) if _sk else None
+                    if not tmpl_w:
+                        opts=list_welcome_templates()
+                        ch=st.selectbox("Template",[t["display_name"] for t in opts],key="w_manual",label_visibility="collapsed")
+                        tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
+                    else:
+                        disp=tmpl_w.get("display_name","")
+                        st.caption("Template")
+                        st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
+                    if _is_merged:
+                        st.markdown('<div class="ce-tip">Consolidated: one email covering all products. Prep sections merged.</div>',unsafe_allow_html=True)
+
+                var=st.radio("Sender variant",["Variant A — PM or automated","Variant B — Consultant sends"],horizontal=True,key="w_var")
+                vk="variant_a" if "A" in var else "variant_b"
+                subj_w,body_w=render_template(tmpl_w[vk]["body"],tmpl_w["subject"],auto_ctx)
+                subj_w=_inject_customer_subject(subj_w, customer)
+                auto_vals_w={v for v in auto_ctx.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
+                lib_meta=_welcome_library(); ssf_w=lib_meta.get("ss_milestone_on_send")
+                _trigger=f"When to send: First contact after project kickoff"
+                st.caption(_trigger)
+
+                iv=sel.get(intro_col,"") if intro_col else ""
+                _intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
+                st.markdown('<p class="ce-label" style="margin-top:8px">Pre-send checks</p>',unsafe_allow_html=True)
+                for ok,msg in [
+                    (bool(sfdc_email),"SFDC contact linked" if sfdc_email else "No SFDC match — enter recipient manually"),
+                    (bool(recip and "@" in recip),"Recipient email set" if recip and "@" in recip else "Recipient email missing"),
+                    (bool(tmpl_w),f"Template: {tmpl_w.get('display_name','')}"),
+                    (not _intro_done,"Welcome not yet sent — ready" if not _intro_done else f"Welcome already sent {iv} — check before resending"),
+                ]:
+                    st.markdown(f'<div class="{"chk-ok" if ok else "chk-bad"}">{"✓" if ok else "✗"}&nbsp; {msg}</div>',unsafe_allow_html=True)
+
+                st.session_state["ce_prev_subj"]=subj_w
+                st.session_state["ce_prev_body"]=body_w
+                st.session_state["ce_prev_auto"]=auto_vals_w
+
+                if _send_footer("w",ssf_w,subj_w,body_w,recip):
+                    st.session_state["_req_w"]={"subj":st.session_state.get("ce_send_subj",subj_w),"body":st.session_state.get("ce_send_body",body_w),"ssf":ssf_w}
+                    st.rerun()
+                if st.session_state.get("_req_w"):
+                    r=st.session_state.pop("_req_w")
+                    try:
+                        with st.spinner("Logging…"):
+                            ok,sid=execute_send(project_id=project_id,template_id=f"welcome_{tmpl_w.get('sku_key','manual')}",
+                                template_name=f"Welcome — {tmpl_w.get('display_name','')}",
+                                subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                        if ok:
+                            st.success(f"✓ Logged — ID: `{sid}`")
+                            if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                                if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
+                        else: st.error(f"Failed: {sid}")
+                    except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
+
+            # ── Post-Session ──────────────────────────────────────────────────────────
+            elif _tmpl_type=="Post-Session":
+                psk=_ps_key(str(product_raw))
+                if not psk:
+                    with tmpl_col: st.info(f"No post-session templates for '{product_raw}'.")
+                else:
+                    sessions=get_post_session_templates(psk)
+                    sopts={s["id"]:(f"Session {s['session_number']} — {s['name']}"+(f" [{s['variant_note']}]" if s.get("variant_note") else ""),s) for s in sessions}
                     st.caption("Template")
-                    st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
-            if _is_merged:
-                st.markdown('<div class="ce-tip">Consolidated: one email covering all products. Prep sections merged.</div>',unsafe_allow_html=True)
+                    cid=st.selectbox("Template",list(sopts.keys()),format_func=lambda k:sopts[k][0],key="s_pick",label_visibility="collapsed")
+                    _,tmpl_s=sopts[cid]
+                    st.caption(f"Audience: {tmpl_s.get('audience','Full project team')} · {tmpl_s.get('trigger','')}")
+                    mctx:dict={}
+                    if tmpl_s.get("editable_fields"):
+                        st.markdown('<p class="ce-label" style="margin-top:8px">Fill in details</p>',unsafe_allow_html=True)
+                        _nf=sum(1 for f in tmpl_s["editable_fields"] if f.get("required") and not st.session_state.get(f"s_{cid}_{f['key']}",""))
+                        if _nf: st.markdown(f'<div style="font-size:11px;color:#dc2626;margin-bottom:6px">{_nf} required field(s) missing</div>',unsafe_allow_html=True)
+                        for f in tmpl_s["editable_fields"]:
+                            k,lb,ft=f["key"],f["label"],f.get("type","text"); req=f.get("required",False); ph=f.get("placeholder","")
+                            lbl_d=lb+(" *" if req else "")
+                            if ft=="text":       v=st.text_input(lbl_d,placeholder=ph,key=f"s_{cid}_{k}")
+                            elif ft=="textarea": v=st.text_area(lbl_d,placeholder=ph,height=70,key=f"s_{cid}_{k}")
+                            elif ft=="multiselect":
+                                s2=st.multiselect(lbl_d,options=f.get("options",[]),key=f"s_{cid}_{k}")
+                                v="\n".join(f"  • {o}" for o in s2)
+                            elif ft=="select": v=st.selectbox(lbl_d,f.get("options",[]),key=f"s_{cid}_{k}")
+                            else: v=st.text_input(lbl_d,key=f"s_{cid}_{k}")
+                            mctx[k]=v
+                            if k=="GO_LIVE_READINESS" and v:
+                                rm=tmpl_s.get("go_live_readiness_text",{}); res=rm.get(v[0],v)
+                                if "{HYPERCARE_DATE}" in res: res=res.replace("{HYPERCARE_DATE}",mctx.get("HYPERCARE_DATE","{HYPERCARE_DATE}"))
+                                mctx["GO_LIVE_READINESS_TEXT"]=res
+                    subj_s,body_s=render_template(tmpl_s["body"],tmpl_s["subject"],{},{**auto_ctx,**mctx})
+                    subj_s=_inject_customer_subject(subj_s, customer)
+                    auto_vals_s={v for v in {**auto_ctx,**mctx}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
+                    ssf_s=tmpl_s.get("ss_milestone_on_send")
+                    st.session_state["ce_prev_subj"]=subj_s
+                    st.session_state["ce_prev_body"]=body_s
+                    st.session_state["ce_prev_auto"]=auto_vals_s
+                    if _send_footer("s",ssf_s,subj_s,body_s,recip):
+                        st.session_state["_req_s"]={"subj":st.session_state.get("ce_send_subj",subj_s),"body":st.session_state.get("ce_send_body",body_s),"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
+                        st.rerun()
+                    if st.session_state.get("_req_s"):
+                        r=st.session_state.pop("_req_s")
+                        try:
+                            with st.spinner("Logging…"):
+                                ok,sid=execute_send(project_id=project_id,template_id=r["tid"],template_name=r["tnm"],
+                                    subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                            if ok:
+                                st.success(f"✓ Logged — ID: `{sid}`")
+                                if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                                    if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
+                            else: st.error(f"Failed: {sid}")
+                        except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
-        var=st.radio("Sender variant",["Variant A — PM or automated","Variant B — Consultant sends"],horizontal=True,key="w_var")
-        vk="variant_a" if "A" in var else "variant_b"
-        subj_w,body_w=render_template(tmpl_w[vk]["body"],tmpl_w["subject"],auto_ctx)
-        subj_w=_inject_customer_subject(subj_w, customer)
-        auto_vals_w={v for v in auto_ctx.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
-        lib_meta=_welcome_library(); ssf_w=lib_meta.get("ss_milestone_on_send")
-        _trigger=f"When to send: First contact after project kickoff"
-        st.caption(_trigger)
-
-        iv=sel.get(intro_col,"") if intro_col else ""
-        _intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
-        st.markdown('<p class="ce-label" style="margin-top:8px">Pre-send checks</p>',unsafe_allow_html=True)
-        for ok,msg in [
-            (bool(sfdc_email),"SFDC contact linked" if sfdc_email else "No SFDC match — enter recipient manually"),
-            (bool(recip and "@" in recip),"Recipient email set" if recip and "@" in recip else "Recipient email missing"),
-            (bool(tmpl_w),f"Template: {tmpl_w.get('display_name','')}"),
-            (not _intro_done,"Welcome not yet sent — ready" if not _intro_done else f"Welcome already sent {iv} — check before resending"),
-        ]:
-            st.markdown(f'<div class="{"chk-ok" if ok else "chk-bad"}">{"✓" if ok else "✗"}&nbsp; {msg}</div>',unsafe_allow_html=True)
-
-        st.session_state["ce_prev_subj"]=subj_w
-        st.session_state["ce_prev_body"]=body_w
-        st.session_state["ce_prev_auto"]=auto_vals_w
-
-        if _send_footer("w",ssf_w,subj_w,body_w,recip):
-            st.session_state["_req_w"]={"subj":st.session_state.get("ce_send_subj",subj_w),"body":st.session_state.get("ce_send_body",body_w),"ssf":ssf_w}
-            st.rerun()
-        if st.session_state.get("_req_w"):
-            r=st.session_state.pop("_req_w")
-            try:
-                with st.spinner("Logging…"):
-                    ok,sid=execute_send(project_id=project_id,template_id=f"welcome_{tmpl_w.get('sku_key','manual')}",
-                        template_name=f"Welcome — {tmpl_w.get('display_name','')}",
-                        subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
-                if ok:
-                    st.success(f"✓ Logged — ID: `{sid}`")
-                    if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                        if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
-                else: st.error(f"Failed: {sid}")
-            except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
-
-    # ── Post-Session ──────────────────────────────────────────────────────────
-    elif _tmpl_type=="Post-Session":
-        psk=_ps_key(str(product_raw))
-        if not psk:
-            with tmpl_col: st.info(f"No post-session templates for '{product_raw}'.")
-        else:
-            sessions=get_post_session_templates(psk)
-            sopts={s["id"]:(f"Session {s['session_number']} — {s['name']}"+(f" [{s['variant_note']}]" if s.get("variant_note") else ""),s) for s in sessions}
-            with tmpl_col:
+            # ── Lifecycle ─────────────────────────────────────────────────────────────
+            elif _tmpl_type=="Lifecycle (UAT → Closure)":
+                lc_all=list_lifecycle_templates()
+                lc_opts={t["id"]:t for t in lc_all}
                 st.caption("Template")
-                cid=st.selectbox("Template",list(sopts.keys()),format_func=lambda k:sopts[k][0],key="s_pick",label_visibility="collapsed")
-            _,tmpl_s=sopts[cid]
-            st.caption(f"Audience: {tmpl_s.get('audience','Full project team')} · {tmpl_s.get('trigger','')}")
-            mctx:dict={}
-            if tmpl_s.get("editable_fields"):
-                st.markdown('<p class="ce-label" style="margin-top:8px">Fill in details</p>',unsafe_allow_html=True)
-                _nf=sum(1 for f in tmpl_s["editable_fields"] if f.get("required") and not st.session_state.get(f"s_{cid}_{f['key']}",""))
-                if _nf: st.markdown(f'<div style="font-size:11px;color:#dc2626;margin-bottom:6px">{_nf} required field(s) missing</div>',unsafe_allow_html=True)
-                for f in tmpl_s["editable_fields"]:
-                    k,lb,ft=f["key"],f["label"],f.get("type","text"); req=f.get("required",False); ph=f.get("placeholder","")
-                    lbl_d=lb+(" *" if req else "")
-                    if ft=="text":       v=st.text_input(lbl_d,placeholder=ph,key=f"s_{cid}_{k}")
-                    elif ft=="textarea": v=st.text_area(lbl_d,placeholder=ph,height=70,key=f"s_{cid}_{k}")
-                    elif ft=="multiselect":
-                        s2=st.multiselect(lbl_d,options=f.get("options",[]),key=f"s_{cid}_{k}")
-                        v="\n".join(f"  • {o}" for o in s2)
-                    elif ft=="select": v=st.selectbox(lbl_d,f.get("options",[]),key=f"s_{cid}_{k}")
-                    else: v=st.text_input(lbl_d,key=f"s_{cid}_{k}")
-                    mctx[k]=v
-                    if k=="GO_LIVE_READINESS" and v:
-                        rm=tmpl_s.get("go_live_readiness_text",{}); res=rm.get(v[0],v)
-                        if "{HYPERCARE_DATE}" in res: res=res.replace("{HYPERCARE_DATE}",mctx.get("HYPERCARE_DATE","{HYPERCARE_DATE}"))
-                        mctx["GO_LIVE_READINESS_TEXT"]=res
-            subj_s,body_s=render_template(tmpl_s["body"],tmpl_s["subject"],{},{**auto_ctx,**mctx})
-            subj_s=_inject_customer_subject(subj_s, customer)
-            auto_vals_s={v for v in {**auto_ctx,**mctx}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
-            ssf_s=tmpl_s.get("ss_milestone_on_send")
-            st.session_state["ce_prev_subj"]=subj_s
-            st.session_state["ce_prev_body"]=body_s
-            st.session_state["ce_prev_auto"]=auto_vals_s
-            if _send_footer("s",ssf_s,subj_s,body_s,recip):
-                st.session_state["_req_s"]={"subj":st.session_state.get("ce_send_subj",subj_s),"body":st.session_state.get("ce_send_body",body_s),"ssf":ssf_s,"tid":tmpl_s["id"],"tnm":tmpl_s["name"]}
-                st.rerun()
-            if st.session_state.get("_req_s"):
-                r=st.session_state.pop("_req_s")
-                try:
-                    with st.spinner("Logging…"):
-                        ok,sid=execute_send(project_id=project_id,template_id=r["tid"],template_name=r["tnm"],
-                            subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
-                    if ok:
-                        st.success(f"✓ Logged — ID: `{sid}`")
-                        if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                            if _do_write(project_id,r["ssf"],datetime.date.today(),sel): mark_ss_writeback_done(sid)
-                    else: st.error(f"Failed: {sid}")
-                except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
+                lcid=st.selectbox("Template",list(lc_opts.keys()),
+                                      format_func=lambda k:f"[{lc_opts[k]['category']}] {lc_opts[k]['name']}",
+                                      key="lc_pick",label_visibility="collapsed")
+                tmpl_l=get_lifecycle_template(lcid)
+                st.caption(f"When to send: {tmpl_l['trigger']}")
+                for tip in tmpl_l.get("tips",[]): st.markdown(f'<div class="ce-tip">💡 {tip}</div>',unsafe_allow_html=True)
+                vbody=tmpl_l.get("body","")
+                if tmpl_l.get("variants"):
+                    vlbls={v["key"]:f"{v['label']} — {v['description']}" for v in tmpl_l["variants"]}
+                    cv=st.radio("Scenario",list(vlbls.keys()),format_func=lambda k:vlbls[k],key=f"lv_{lcid}",label_visibility="collapsed")
+                    vbody=tmpl_l["variant_bodies"][cv]
+                mctx_l:dict={}
+                _lc_fields=tmpl_l.get("editable_fields",[])
+                if _lc_fields:
+                    st.markdown('<p class="ce-label" style="margin-top:8px">Fill in details</p>',unsafe_allow_html=True)
+                    for f in _lc_fields:
+                        k,lb=f["key"],f["label"]; req=f.get("required",False); src=f.get("source",""); default=str(f.get("default",""))
+                        if src=="drs_prod_cutover":
+                            raw=sel.get("prod_cutover") or sel.get("Prod Cutover")
+                            if raw:
+                                try: default=pd.to_datetime(raw).date().isoformat()
+                                except: pass
+                        elif src=="drs_project_link":
+                            default=str(sel.get("project_link") or sel.get("Project Link") or "")
+                        elif src=="calculated_go_live_plus_14":
+                            glr=sel.get("prod_cutover") or sel.get("go_live_date") or mctx_l.get("GO_LIVE_DATE","")
+                            if glr:
+                                try: default=(pd.to_datetime(glr).date()+datetime.timedelta(days=14)).isoformat()
+                                except: pass
+                        tag=""
+                        if default and default not in ("","None"): tag=' <span style="font-size:10px;background:rgba(22,163,74,.12);color:#15803d;padding:1px 5px;border-radius:8px">from project</span>'
+                        st.markdown(f'<div style="font-size:12px;margin-bottom:3px">{lb}{" *" if req else ""}{tag}</div>',unsafe_allow_html=True)
+                        v=st.text_input("",value=default,placeholder="YYYY-MM-DD" if f.get("type")=="date" else "",
+                                        key=f"l_{lcid}_{k}",label_visibility="collapsed")
+                        mctx_l[k]=v
+                auto_ctx_l={**auto_ctx}
+                subj_l,body_l=render_template(vbody,tmpl_l["subject"],{},{**auto_ctx_l,**mctx_l})
+                subj_l=_inject_customer_subject(subj_l, customer)
+                auto_vals_l={v for v in {**auto_ctx_l,**mctx_l}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
+                ssf_l=tmpl_l.get("ss_milestone_on_send"); gls=mctx_l.get("GO_LIVE_DATE","")
+                st.session_state["ce_prev_subj"]=subj_l
+                st.session_state["ce_prev_body"]=body_l
+                st.session_state["ce_prev_auto"]=auto_vals_l
+                if _send_footer("l",ssf_l if isinstance(ssf_l,str) else (ssf_l[0] if ssf_l else None),subj_l,body_l,recip):
+                    st.session_state["_req_l"]={"subj":st.session_state.get("ce_send_subj",subj_l),"body":st.session_state.get("ce_send_body",body_l),"ssf":ssf_l,"gls":gls}
+                    st.rerun()
+                if st.session_state.get("_req_l"):
+                    r=st.session_state.pop("_req_l")
+                    try:
+                        with st.spinner("Logging…"):
+                            ok,sid=execute_send(project_id=project_id,template_id=lcid,template_name=tmpl_l["name"],
+                                subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
+                        if ok:
+                            st.success(f"✓ Logged — ID: `{sid}`")
+                            if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
+                                try: gld=datetime.date.fromisoformat(r["gls"][:10]) if r["gls"] else datetime.date.today()
+                                except: gld=datetime.date.today()
+                                for f in (r["ssf"] if isinstance(r["ssf"],list) else [r["ssf"]]):
+                                    wd=gld if f in (SS_GO_LIVE_DATE,SS_PROD_CUTOVER) else datetime.date.today()
+                                    if _do_write(project_id,f,wd,sel): mark_ss_writeback_done(sid)
+                        else: st.error(f"Failed: {sid}")
+                    except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
 
-    # ── Lifecycle ─────────────────────────────────────────────────────────────
-    elif _tmpl_type=="Lifecycle (UAT → Closure)":
-        lc_all=list_lifecycle_templates()
-        lc_opts={t["id"]:t for t in lc_all}
-        with tmpl_col:
-            st.caption("Template")
-            lcid=st.selectbox("Template",list(lc_opts.keys()),
-                              format_func=lambda k:f"[{lc_opts[k]['category']}] {lc_opts[k]['name']}",
-                              key="lc_pick",label_visibility="collapsed")
-        tmpl_l=get_lifecycle_template(lcid)
-        st.caption(f"When to send: {tmpl_l['trigger']}")
-        for tip in tmpl_l.get("tips",[]): st.markdown(f'<div class="ce-tip">💡 {tip}</div>',unsafe_allow_html=True)
-        vbody=tmpl_l.get("body","")
-        if tmpl_l.get("variants"):
-            vlbls={v["key"]:f"{v['label']} — {v['description']}" for v in tmpl_l["variants"]}
-            cv=st.radio("Scenario",list(vlbls.keys()),format_func=lambda k:vlbls[k],key=f"lv_{lcid}",label_visibility="collapsed")
-            vbody=tmpl_l["variant_bodies"][cv]
-        mctx_l:dict={}
-        _lc_fields=tmpl_l.get("editable_fields",[])
-        if _lc_fields:
-            st.markdown('<p class="ce-label" style="margin-top:8px">Fill in details</p>',unsafe_allow_html=True)
-            for f in _lc_fields:
-                k,lb=f["key"],f["label"]; req=f.get("required",False); src=f.get("source",""); default=str(f.get("default",""))
-                if src=="drs_prod_cutover":
-                    raw=sel.get("prod_cutover") or sel.get("Prod Cutover")
-                    if raw:
-                        try: default=pd.to_datetime(raw).date().isoformat()
-                        except: pass
-                elif src=="drs_project_link":
-                    default=str(sel.get("project_link") or sel.get("Project Link") or "")
-                elif src=="calculated_go_live_plus_14":
-                    glr=sel.get("prod_cutover") or sel.get("go_live_date") or mctx_l.get("GO_LIVE_DATE","")
-                    if glr:
-                        try: default=(pd.to_datetime(glr).date()+datetime.timedelta(days=14)).isoformat()
-                        except: pass
-                tag=""
-                if default and default not in ("","None"): tag=' <span style="font-size:10px;background:rgba(22,163,74,.12);color:#15803d;padding:1px 5px;border-radius:8px">from project</span>'
-                st.markdown(f'<div style="font-size:12px;margin-bottom:3px">{lb}{" *" if req else ""}{tag}</div>',unsafe_allow_html=True)
-                v=st.text_input("",value=default,placeholder="YYYY-MM-DD" if f.get("type")=="date" else "",
-                                key=f"l_{lcid}_{k}",label_visibility="collapsed")
-                mctx_l[k]=v
-        auto_ctx_l={**auto_ctx}
-        subj_l,body_l=render_template(vbody,tmpl_l["subject"],{},{**auto_ctx_l,**mctx_l})
-        subj_l=_inject_customer_subject(subj_l, customer)
-        auto_vals_l={v for v in {**auto_ctx_l,**mctx_l}.values() if v and str(v).strip() and len(str(v))>2 and "{" not in str(v)}
-        ssf_l=tmpl_l.get("ss_milestone_on_send"); gls=mctx_l.get("GO_LIVE_DATE","")
-        st.session_state["ce_prev_subj"]=subj_l
-        st.session_state["ce_prev_body"]=body_l
-        st.session_state["ce_prev_auto"]=auto_vals_l
-        if _send_footer("l",ssf_l if isinstance(ssf_l,str) else (ssf_l[0] if ssf_l else None),subj_l,body_l,recip):
-            st.session_state["_req_l"]={"subj":st.session_state.get("ce_send_subj",subj_l),"body":st.session_state.get("ce_send_body",body_l),"ssf":ssf_l,"gls":gls}
-            st.rerun()
-        if st.session_state.get("_req_l"):
-            r=st.session_state.pop("_req_l")
-            try:
-                with st.spinner("Logging…"):
-                    ok,sid=execute_send(project_id=project_id,template_id=lcid,template_name=tmpl_l["name"],
-                        subject=r["subj"],body=r["body"],recipient_email=recip,cc_emails=cc_emails,ss_milestone_field=r["ssf"])
-                if ok:
-                    st.success(f"✓ Logged — ID: `{sid}`")
-                    if r["ssf"] and st.session_state.get("ce_ss_stamp",True):
-                        try: gld=datetime.date.fromisoformat(r["gls"][:10]) if r["gls"] else datetime.date.today()
-                        except: gld=datetime.date.today()
-                        for f in (r["ssf"] if isinstance(r["ssf"],list) else [r["ssf"]]):
-                            wd=gld if f in (SS_GO_LIVE_DATE,SS_PROD_CUTOVER) else datetime.date.today()
-                            if _do_write(project_id,f,wd,sel): mark_ss_writeback_done(sid)
-                else: st.error(f"Failed: {sid}")
-            except Exception as ex: st.error(f"Error: {ex}"); st.exception(ex)
-
-# ── Preview column ─────────────────────────────────────────────────────────────
+        # ── Preview column ─────────────────────────────────────────────────────────────
 with preview_col:
     st.markdown('<p class="ce-label">Live Preview</p>',unsafe_allow_html=True)
     # Base values from template render
