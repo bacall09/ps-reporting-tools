@@ -600,7 +600,7 @@ def _do_write(project_id,ss_field,date_val,drs_row)->bool:
             if p["skipped"]: st.info(f"ℹ️ **{f}** already set — not overwritten."); continue
             if not p["fields"]: continue
             internal_key = _SS_DISPLAY_TO_INTERNAL.get(f, f)
-            ok,errs=write_row_updates([{"_ss_row_id":ss_row_id,"project_name":pn,"changes":{internal_key:date_val.isoformat()}}])
+            ok,errs=write_row_updates([{"_ss_row_id":int(ss_row_id),"project_name":pn,"changes":{internal_key:date_val.isoformat()}}])
             if ok: st.success(f"✓ Smartsheet: **{f}** → {date_val.strftime('%d %b %Y')}"); wrote=True
             for e in (errs or []): st.warning(f"Writeback error: {e}")
         except Exception as ex: st.warning(f"Writeback failed for **{f}**: {ex}")
