@@ -747,6 +747,10 @@ df_all["_needs_welcome"]=df_all.apply(_needs_intro,axis=1)
 
 # ── Send footer helper ────────────────────────────────────────────────────────
 def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
+    import urllib.parse
+    import json as _json
+    import streamlit.components.v1 as _components
+
     missing=_missing_phs(body+subj)
     can_send=bool(recip_val and "@" in recip_val) and not missing
     st.markdown('<div class="send-footer">',unsafe_allow_html=True)
@@ -764,12 +768,47 @@ def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
             value=st.session_state.get("ce_ss_stamp",True),
             key=f"ss_chk_{tab_key}",
         )
-    btn_c,btn_s=st.columns([1,2])
-    with btn_c:
-        st.button("Copy text",key=f"copy_{tab_key}",use_container_width=True)
-    with btn_s:
+
+    # ── Action buttons ────────────────────────────────────────────────────────
+    _cc_val = st.session_state.get("ce_cc","")
+    _to_str = recip_val or ""
+    _subj_enc = urllib.parse.quote(subj)
+    _body_enc = urllib.parse.quote(body)
+    _mailto = f"mailto:{_to_str}?subject={_subj_enc}&body={_body_enc}"
+    if _cc_val:
+        _mailto = f"mailto:{_to_str}?cc={urllib.parse.quote(_cc_val)}&subject={_subj_enc}&body={_body_enc}"
+
+    # HTML for copy button with clipboard API
+    _body_html = body.replace('\n','<br>')
+    _h = _json.dumps(f"<div style='font-family:Manrope,Arial,sans-serif;font-size:14px;line-height:1.7'>{_body_html}</div>")
+    _p = _json.dumps(body)
+
+    btn1, btn2, btn3 = st.columns([2,2,2])
+    with btn1:
+        st.markdown(
+            f"<a href='{_mailto}' target='_blank'>"
+            f"<button style='background:#1e2c63;color:white;border:none;padding:9px 0;"
+            f"border-radius:6px;font-family:Manrope,sans-serif;font-size:13px;font-weight:600;"
+            f"cursor:pointer;width:100%;'>✉️ Open in Email</button></a>",
+            unsafe_allow_html=True
+        )
+    with btn2:
+        _components.html(f"""<!DOCTYPE html><html><body style="margin:0;padding:0">
+<button id="cb_{tab_key}" style="background:#1e2c63;color:white;border:none;padding:9px 0;border-radius:6px;font-family:Manrope,sans-serif;font-size:13px;font-weight:600;cursor:pointer;width:100%">📋 Copy (Formatted)</button>
+<span id="st_{tab_key}" style="font-size:12px;margin-left:6px"></span>
+<script>
+var h={_h};var p={_p};
+document.getElementById("cb_{tab_key}").addEventListener("click",function(){{
+  navigator.clipboard.write([new ClipboardItem({{"text/html":new Blob([h],{{type:"text/html"}}),"text/plain":new Blob([p],{{type:"text/plain"}})}})]).then(function(){{
+    document.getElementById("st_{tab_key}").innerText="✅ Copied!";
+    setTimeout(function(){{document.getElementById("st_{tab_key}").innerText=""}},3000);
+  }}).catch(function(){{document.getElementById("st_{tab_key}").innerText="⚠️ Use Open in Email"}});
+}});
+</script></body></html>""", height=50)
+    with btn3:
         lbl="Send & log" if st.session_state.get("_gmail_approved") else "📋 Log Send"
         clicked=st.button(lbl,key=f"send_{tab_key}",type="primary",use_container_width=True,disabled=not recip_val)
+
     st.markdown('</div>',unsafe_allow_html=True)
     return clicked
 
@@ -904,36 +943,76 @@ def _proj_sid(row):
     if name_col and row.get(name_col): return str(row[name_col])
     return str(row.name)
 
-# Build cards HTML + track clickable sids for mine projects
 _mine_sids=[_proj_sid(_row_dict(r)) for _,r in _mine_proj.iterrows()]
 _prev_sid=st.session_state.get("_ce_proj_sid")
 _def_sid=_prev_sid if _prev_sid in _mine_sids else (_mine_sids[0] if _mine_sids else None)
+_def_idx=_mine_sids.index(_def_sid) if _def_sid in _mine_sids else 0
 
 if not _mine_sids:
     _va_display = _flip_name(_view_as_name) if _view_as_name != _logged_in else "you"
     st.info(f"No active projects assigned to {_va_display} for {selected_customer}.")
     st.stop()
 
-# Render mine projects as radio-style cards using Streamlit radio
-def _card_label(row,mine=True):
-    """Project name only — clean, no redundant concatenation."""
+# Build card dicts for card_selector
+def _proj_icon(row):
+    iv=row.get(intro_col,"") if intro_col else ""
+    intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
+    stat=str(row.get(status_col,"")).lower() if status_col else ""
+    if "hold" in stat: return ":material/pause_circle:"
+    if intro_done: return ":material/check_circle:"
+    return ":material/mail:"
+
+def _proj_desc(row):
+    prod=str(row.get(prod_col,"")) if prod_col else ""
+    stat=str(row.get(status_col,"")) if status_col else ""
+    start_raw=row.get(start_col) if start_col else None
+    start_str=""
+    if start_raw:
+        try: start_str=f" · {pd.to_datetime(start_raw).strftime('%-d %b %Y')}"
+        except: pass
+    iv=row.get(intro_col,"") if intro_col else ""
+    intro_done=iv and str(iv).strip() not in ("","None","nan","NaT")
+    welcome=f" · ✓ Welcome sent" if intro_done else " · Welcome pending"
+    return f"{prod} · {stat}{start_str}{welcome}"
+
+def _proj_title(row):
     name=str(row.get(name_col,"")) if name_col else ""
-    return name
+    # Strip customer prefix for cleaner display
+    for prefix in [selected_customer, selected_customer.split(" - ")[0] if " - " in selected_customer else ""]:
+        if prefix and name.startswith(prefix):
+            name=name[len(prefix):].lstrip(" -·—").strip()
+            break
+    return name or str(row.get(name_col,""))
 
-# Use selectbox for project selection (clean Streamlit widget, no hacks)
-_mine_labels={_mine_sids[i]:_card_label(_row_dict(_mine_proj.iloc[i]),mine=True)
-              for i in range(len(_mine_sids))}
-
-with _top_right:
-    st.caption("Project")
-    selected_sid=st.selectbox(
-        "Your projects",
-        options=_mine_sids,
-        format_func=lambda s:_mine_labels.get(s,s),
-        index=_mine_sids.index(_def_sid) if _def_sid in _mine_sids else 0,
-        key="ce_proj_select",
-        label_visibility="collapsed",
+_cards=[
+    dict(
+        icon=_proj_icon(_row_dict(_mine_proj.iloc[i])),
+        title=_proj_title(_row_dict(_mine_proj.iloc[i])),
+        description=_proj_desc(_row_dict(_mine_proj.iloc[i])),
     )
+    for i in range(len(_mine_sids))
+]
+
+try:
+    from streamlit_extras.card_selector import card_selector
+    st.markdown('<p class="ce-label" style="margin-bottom:4px">Project</p>', unsafe_allow_html=True)
+    _selected_card_idx = card_selector(_cards, key="ce_proj_select")
+    if _selected_card_idx is None:
+        _selected_card_idx = _def_idx
+    selected_sid = _mine_sids[_selected_card_idx]
+except Exception:
+    # Fallback to selectbox if streamlit-extras not installed
+    with _top_right:
+        st.caption("Project")
+        _mine_labels={_mine_sids[i]:_proj_title(_row_dict(_mine_proj.iloc[i]))
+                      for i in range(len(_mine_sids))}
+        selected_sid=st.selectbox(
+            "Your projects", options=_mine_sids,
+            format_func=lambda s:_mine_labels.get(s,s),
+            index=_def_idx, key="ce_proj_select",
+            label_visibility="collapsed",
+        )
+
 st.session_state["_ce_proj_sid"]=selected_sid
 
 # Clear stale state on project change
@@ -1007,28 +1086,16 @@ if df_sfdc is not None and not df_sfdc.empty:
         pc="is_primary" if "is_primary" in sfdc_match.columns else None
         ac="account" if "account" in sfdc_match.columns else None
 
-        # ALWAYS verify account before picking contact — prevents cross-company contamination
-        if ac:
+        # Light account sanity check — only filter when we have a clear better match
+        # Trust _fuzzy_sfdc's output; only override if exact account match available
+        if ac and sfdc_label and sfdc_label != "Exact match":
             _acct_exact = sfdc_match[
                 sfdc_match[ac].astype(str).str.strip().str.lower() == str(_sfdc_acct).strip().lower()
             ]
             if not _acct_exact.empty:
                 sfdc_match = _acct_exact
                 sfdc_label = "Exact account match"
-            else:
-                # Fuzzy account verification — token ratio >= 80
-                from rapidfuzz import fuzz as _fuzz2
-                sfdc_match["_acct_sc"] = sfdc_match[ac].apply(
-                    lambda x: _fuzz2.token_set_ratio(str(_sfdc_acct).lower(), str(x).lower()))
-                best_sc = sfdc_match["_acct_sc"].max()
-                if best_sc >= 80:
-                    sfdc_match = sfdc_match[sfdc_match["_acct_sc"] == best_sc]
-                    sfdc_label = f"Account match ({int(best_sc)}%)"
-                else:
-                    # No reliable account match — clear results
-                    sfdc_match = sfdc_match.iloc[0:0]
-                    sfdc_label = None
-                sfdc_match = sfdc_match.drop(columns=["_acct_sc"], errors="ignore")
+            # If no exact match, keep _fuzzy_sfdc's result — it already ranked by best score
 
         if not sfdc_match.empty:
             br=sfdc_match.iloc[0]
