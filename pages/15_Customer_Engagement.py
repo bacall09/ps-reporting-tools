@@ -590,10 +590,17 @@ def _do_write(project_id,ss_field,date_val,drs_row)->bool:
 def _email_html(subject,body,to_email,cc_email,auto_values:set):
     # Known section headings from YAML templates — rendered as bold blue
     _SECTION_HEADS = {
+        # Welcome
         "what to expect","before we begin","netsuite environment",
-        "key resources","next step","next steps","zonecapture","zoneapprovals",
-        "zonereconcile","zone e-invoicing","e-invoicing","your project journey",
-        "important to note","how to confirm","what happens next",
+        "key resources","next step","next steps","your project journey",
+        "zonecapture","zoneapprovals","zonereconcile","zone e-invoicing","e-invoicing",
+        "zonecapture and zoneapprovals","zonecapture and zonereconcile",
+        # Post-session
+        "what we discussed","session recording","configuration reference",
+        "action items","key highlights","uat preparation","what's next",
+        # Lifecycle
+        "what happens next","how to confirm","important to note",
+        "hypercare support","support transition","go-live summary",
     }
     def _htmlify(text):
         out=[]
