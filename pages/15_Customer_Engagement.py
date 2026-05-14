@@ -670,18 +670,37 @@ def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
 st.markdown('<p class="ce-label">Select Customer</p>',unsafe_allow_html=True)
 
 # Build customer list — all unique customers sorted, preserving original casing
-# ── Customer list — extracted from project_name (no dedicated customer column in DRS) ──
-# Every page that shows customer name derives it from project_name via _extract_customer_name.
-# The SS DRS has no standalone Account/Customer column.
-if name_col:
+# ── Customer list ─────────────────────────────────────────────────────────────
+# The Smartsheet "Customer" column comes through as "account" after SS_COL_MAP_OUT rename.
+# Use it directly when populated; extract from project_name as fallback for older rows.
+if cust_col:
+    _raw = _df_drs[cust_col].fillna("").astype(str).str.strip()
+    _populated = _raw[~_raw.isin(["","nan","None"])]
+    _coverage = len(_populated) / max(len(_raw), 1)
+    if _coverage >= 0.5:
+        # Account/Customer column is well-populated — use directly
+        _all_customers = sorted(
+            {v for v in _populated if v not in ("","nan","None")},
+            key=str.lower
+        )
+        _using_extracted = False
+    else:
+        # Sparse — fall back to extracting from project_name
+        _all_customers = sorted(
+            {_extract_customer_name(str(v)) for v in _df_drs[name_col].dropna()
+             if str(v).strip() not in ("","nan","None")} if name_col else set(),
+            key=str.lower
+        )
+        _using_extracted = True
+elif name_col:
     _all_customers = sorted(
         {_extract_customer_name(str(v)) for v in _df_drs[name_col].dropna()
          if str(v).strip() not in ("","nan","None")},
         key=str.lower
     )
+    _using_extracted = True
 else:
-    _all_customers = []
-_using_extracted = True  # always — customer is always parsed from project_name
+    _all_customers = []; _using_extracted = True
 
 if not _all_customers:
     st.warning("No customer data found in DRS. Check the 'Account Name' / 'Customer' column.")
@@ -710,8 +729,12 @@ if st.session_state.get("_ce_customer") != selected_customer:
         if any(k.startswith(p) for p in ["_ce_proj","ce_to","ce_cn","ce_cc","_sfdc_match","ce_ss_stamp"]):
             st.session_state.pop(k, None)
 
-# ── All projects for this customer — always matched via extracted project name ─
-if name_col:
+# ── All projects for this customer ───────────────────────────────────────────
+if not _using_extracted and cust_col:
+    df_cust_all = _df_drs[
+        _df_drs[cust_col].astype(str).str.strip() == selected_customer
+    ].copy()
+elif name_col:
     df_cust_all = _df_drs[
         _df_drs[name_col].apply(lambda v: _extract_customer_name(str(v)) == selected_customer)
     ].copy()
@@ -859,8 +882,10 @@ if df_sfdc is not None and not df_sfdc.empty:
     if "first_name" in df_sn.columns and "last_name" in df_sn.columns:
         df_sn["contact_name"]=(df_sn["first_name"].fillna("").astype(str)+" "+df_sn["last_name"].fillna("").astype(str)).str.strip()
     pnm=str(sel.get(name_col,"")) if name_col else ""
-    # Use extracted customer name for SFDC match when account col has project names
-    _sfdc_acct = selected_customer if not _using_extracted else _extract_customer_name(pnm)
+    # Use account column for SFDC match when available, extract as fallback
+    _sfdc_acct = (str(sel.get(cust_col,"")).strip()
+                  if cust_col and sel.get(cust_col) and str(sel.get(cust_col)) not in ("","nan","None")
+                  else selected_customer)
     sfdc_match,sfdc_label=_fuzzy_sfdc(df_sn,pnm,str(_sfdc_acct))
     if not sfdc_match.empty:
         ec="email" if "email" in sfdc_match.columns else None
