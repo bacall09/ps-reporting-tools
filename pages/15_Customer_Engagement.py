@@ -912,27 +912,15 @@ df_cust_all["_mine"]=df_cust_all.apply(_is_mine,axis=1)
 _mine_proj=df_cust_all[df_cust_all["_mine"]].reset_index(drop=True)
 _other_proj=df_cust_all[~df_cust_all["_mine"]].reset_index(drop=True)
 
-n_mine=len(_mine_proj); n_other=len(_other_proj); n_total=n_mine+n_other
+n_mine=len(_mine_proj); n_other=len(_other_proj)
 
-# ── Project header row ────────────────────────────────────────────────────────
-_ph_left,_ph_right=st.columns([2,1])
-with _ph_left:
-    st.markdown(
-        f'<p class="ce-label" style="margin-bottom:4px">'
-        f'{n_total} project{"s" if n_total!=1 else ""}'
-        f' · {n_mine} yours'
-        + (f', {n_other} assigned elsewhere' if n_other else '')
-        + '</p>',
-        unsafe_allow_html=True
+# Consolidated welcome checkbox — shown only when ≥2 mine projects exist
+_consolidated=False
+if n_mine>1:
+    _consolidated=st.checkbox(
+        f"Consolidated welcome ({n_mine} products)",
+        key="ce_con",value=False
     )
-with _ph_right:
-    # Consolidated welcome checkbox — shown only when ≥2 mine projects exist
-    _consolidated=False
-    if n_mine>1:
-        _consolidated=st.checkbox(
-            f"Consolidated welcome ({n_mine} products)",
-            key="ce_con",value=False
-        )
 
 # ── Project cards ─────────────────────────────────────────────────────────────
 # Current selection — persistent via stable project ID
@@ -1029,7 +1017,7 @@ def _proj_card_html(row, sid, is_mine, is_selected):
             f"<span style=\'font-size:10px;color:var(--color-text-secondary)\'>{short_pm} · {welcome_txt}</span></div>"
         )
     else:
-        border = "0.5px solid var(--color-border-tertiary)"
+        border = "1px solid rgba(128,128,128,.3)"
         bg     = ""
         icon_col= "var(--color-text-tertiary)"
         title_col="var(--color-text-secondary)"
@@ -1073,9 +1061,10 @@ _cards_html=(
 )
 
 st.markdown('<p class="ce-label" style="margin-bottom:6px">Select project</p>',unsafe_allow_html=True)
-st.markdown(_cards_html, unsafe_allow_html=True)
+st.markdown(_cards_html,unsafe_allow_html=True)
 
 # Project selection via selectbox (invisible — cards are visual, this drives state)
+st.markdown('<p class="ce-label" style="margin-bottom:6px">Select project</p>',unsafe_allow_html=True)
 _mine_labels={_mine_sids[i]:_proj_title(_row_dict(_mine_proj.iloc[i])) for i in range(len(_mine_sids))}
 selected_sid=st.selectbox(
     "Select project",options=_mine_sids,
@@ -1103,32 +1092,7 @@ if "_ss_row_id" not in sel and project_id in _ss_row_id_map:
     sel["_ss_row_id"]=_ss_row_id_map[project_id]
 
 # Render other consultants' projects (read-only, informational)
-if n_other>0:
-    with st.expander(f"Also at {selected_customer} — {n_other} project{'s' if n_other!=1 else ''} assigned to other consultants",expanded=False):
-        for _,r in _other_proj.iterrows():
-            rd=_row_dict(r)
-            _pm=str(rd.get(pm_col,"")) if pm_col else "—"
-            _pm_disp=_flip_name(_pm)
-            _ini=_initials(_pm)
-            _prod=str(rd.get(prod_col,"")) if prod_col else ""
-            _nm=str(rd.get(name_col,"")) if name_col else ""
-            _stat=str(rd.get(status_col,"")) if status_col else ""
-            _iv=rd.get(intro_col,"") if intro_col else ""
-            _intro_done=_iv and str(_iv).strip() not in ("","None","nan","NaT")
-            _welcome=f"Welcome sent {_iv}" if _intro_done else "Welcome pending"
-            st.markdown(
-                f'<div class="proj-card other" style="opacity:.6;margin-bottom:5px">'
-                f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
-                f'<div class="proj-name">{_nm}</div>'
-                f'<span class="pill-gray">{_prod}</span>'
-                f'</div>'
-                f'<div class="proj-meta">{_stat}</div>'
-                f'<div class="proj-consultant">'
-                f'<div class="avatar other">{_ini}</div>'
-                f'{_pm_disp} · {_welcome}'
-                f'</div></div>',
-                unsafe_allow_html=True
-            )
+# other-consultant cards rendered inline in card row above
 
 # ── Row 2: Journey rail ───────────────────────────────────────────────────────
 st.markdown(_build_journey(sel),unsafe_allow_html=True)
