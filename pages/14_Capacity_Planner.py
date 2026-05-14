@@ -142,7 +142,7 @@ apps_consultants = sorted([c for c in CONSULTANT_DROPDOWN if is_apps_consultant(
 _vp       = [p.strip() for p in selected.split(",")] if selected else []
 _display  = f"{_vp[1].split()[0]} {_vp[0]}" if len(_vp) == 2 else (selected or "Manager")
 st.markdown(
-    f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px;"
+    f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:32px 40px 28px;border-radius:10px;"
     f"margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
     f"<div style='font-size:13px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;"
     f"color:#3B9EFF;margin-bottom:10px'>Professional Services · Management</div>"

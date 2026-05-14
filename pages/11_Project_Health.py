@@ -125,7 +125,7 @@ _view_label = ("Global Team" if _va_region == "__ALL__" else _va_region + " Team
     view_as if view_as != selected else selected
 )
 _hero = st.empty()
-_hero.markdown(f"<div style='background:#050D1F;padding:32px 40px 28px;border-radius:10px; margin-bottom:24px;font-family:Manrope,sans-serif; position:relative;overflow:hidden'> {_zone_svg} <div style='font-size:13px;font-weight:700;letter-spacing:2.5px; text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'> Professional Services · Tools</div> <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'> Project Health</h1> <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px; font-family:Manrope,sans-serif'> {_view_label} · {today.strftime("%A, %B %-d %Y")}</p> </div>", unsafe_allow_html=True)
+_hero.markdown(f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:32px 40px 28px;border-radius:10px; margin-bottom:24px;font-family:Manrope,sans-serif; position:relative;overflow:hidden'> {_zone_svg} <div style='font-size:13px;font-weight:700;letter-spacing:2.5px; text-transform:uppercase;color:#3B9EFF;margin-bottom:10px'> Professional Services · Tools</div> <h1 style='color:white;margin:0;font-size:28px;font-family:Manrope,sans-serif'> Project Health</h1> <p style='color:rgba(255,255,255,0.45);margin:6px 0 0;font-size:14px; font-family:Manrope,sans-serif'> {_view_label} · {today.strftime("%A, %B %-d %Y")}</p> </div>", unsafe_allow_html=True)
 
 if df_drs is None:
     st.info("Load SS DRS on the Home page to view Project Health.")

@@ -342,7 +342,7 @@ _sub_str = " · ".join(_sub_parts)
 
 _hero = st.empty()
 _hero.markdown(
-    f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+    f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
     f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
     f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;'>{_greeting}, {_my_display}.</h1>"
     f"<p style='color:rgba(255,255,255,0.4);margin:6px 0 0;font-size:13px;'>Loading...</p>"
@@ -807,7 +807,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
 
     # ── Render hero ───────────────────────────────────────────────────────────
     _hero.markdown(
-        f"<div style='background:#050D1F;padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
+        f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif;'>"
         f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px;'>Professional Services · Daily Briefing</div>"
         f"<div style='font-size:13px;font-weight:500;color:#08A9B7;margin-bottom:6px;'>{_date_line}</div>"
         f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif;line-height:1.2'>{_greeting}, {_my_display}.</h1>"
