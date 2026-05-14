@@ -433,34 +433,116 @@ _JOURNEY=[
     {"id":"hypercare_closure",  "label":"Hypercare close", "ms_col":"ms_transition",   "ms_alt":"Transition to Support"},
 ]
 
-def _ms_date(stage,drs_row):
+def _ms_date(stage, drs_row):
     if not drs_row: return ""
-    v=drs_row.get(stage["ms_col"]) or drs_row.get(stage["ms_alt"])
+    v = drs_row.get(stage["ms_col"]) or drs_row.get(stage["ms_alt"])
     if not v or str(v).strip() in ("","None","nan","NaT"): return ""
     try: return pd.to_datetime(v).strftime("%-d %b")
     except: return str(v)[:10]
 
+def _add_biz_days(start_date, n):
+    d = pd.Timestamp(start_date)
+    added = 0
+    while added < n:
+        d += pd.Timedelta(days=1)
+        if d.weekday() < 5: added += 1
+    return d
+
+def _sub_biz_days(start_date, n):
+    d = pd.Timestamp(start_date)
+    subtracted = 0
+    while subtracted < n:
+        d -= pd.Timedelta(days=1)
+        if d.weekday() < 5: subtracted += 1
+    return d
+
+def _calc_outreach_due(signed_date, project_start):
+    """10 biz days from signed date; if within 10 biz days of project start, use start minus 5 biz days."""
+    if not signed_date or str(signed_date).strip() in ("","None","nan","NaT"): return None
+    try:
+        candidate = _add_biz_days(signed_date, 10)
+        if project_start and str(project_start).strip() not in ("","None","nan","NaT"):
+            buffer = _sub_biz_days(project_start, 10)
+            if candidate >= buffer:
+                return _sub_biz_days(project_start, 5)
+        return candidate
+    except Exception: return None
+
 def _build_journey(drs_row):
-    statuses=["done" if _ms_date(s,drs_row) else "pending" for s in _JOURNEY]
-    first_p=next((i for i,st in enumerate(statuses) if st=="pending"),len(_JOURNEY)-1)
-    parts=['<div class="journey-rail">']
-    for i,stage in enumerate(_JOURNEY):
-        cls=statuses[i]
-        if i==first_p and cls=="pending": cls="active"
-        elif i>first_p and cls=="pending": cls="locked"
-        num=f"0{i+1}" if i<9 else str(i+1)
-        icon="✓ " if statuses[i]=="done" else ("▼ " if cls=="active" else "")
-        date_str=_ms_date(stage,drs_row)
-        sub=f"Sent {date_str}" if date_str else ("composing" if cls=="active" else "")
-        parts.append(
-            f'<div class="sj {cls}">'
-            f'<div class="sj-num">{icon}{num}</div>'
-            f'<div class="sj-lbl">{stage["label"]}</div>'
-            f'<div class="sj-date">{sub}</div>'
-            f'</div>'
+    """Customer Profile card pattern adapted for comms milestones + outreach due date."""
+    lbl_s = "font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:rgba(128,128,128,.5);margin-bottom:2px"
+    val_s = "font-size:12px;font-weight:500;color:var(--color-text-primary)"
+
+    statuses = ["done" if _ms_date(s, drs_row) else "pending" for s in _JOURNEY]
+    first_p  = next((i for i, ss in enumerate(statuses) if ss == "pending"), len(_JOURNEY)-1)
+
+    def _step_col(i):
+        if statuses[i] == "done": return "#16a34a"
+        if i == first_p: return "#4472C4"
+        return "rgba(128,128,128,.18)"
+
+    bar_labels = "".join(
+        f'<div style="flex:1;font-size:9px;color:rgba(128,128,128,.45);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{s["label"]}</div>'
+        for s in _JOURNEY
+    )
+    bar_steps = "".join(
+        f'<div style="flex:1;height:4px;border-radius:2px;background:{_step_col(i)}"></div>'
+        for i in range(len(_JOURNEY))
+    )
+
+    stage_html = []
+    for i, stage in enumerate(_JOURNEY):
+        cls = statuses[i]
+        if i == first_p and cls == "pending": cls = "active"
+        elif i > first_p and cls == "pending": cls = "locked"
+        if cls == "done":
+            bg = "background:rgba(34,197,94,.09);"; nc = "#16a34a"; dc = "rgba(22,163,74,.7)"
+        elif cls == "active":
+            bg = "background:rgba(68,114,196,.11);border-bottom:2px solid #4472C4;"; nc = "#4472C4"; dc = "rgba(68,114,196,.7)"
+        else:
+            bg = ""; nc = "var(--color-text-secondary)"; dc = "rgba(128,128,128,.5)"
+        opacity = "opacity:.32;" if cls == "locked" else ""
+        num     = f"✓ 0{i+1}" if statuses[i]=="done" else (f"▼ 0{i+1}" if cls=="active" else f"0{i+1}")
+        date_str= _ms_date(stage, drs_row)
+        sub     = f"Sent {date_str}" if date_str else ("composing" if cls=="active" else "—")
+        br      = "" if i == len(_JOURNEY)-1 else "border-right:0.5px solid rgba(128,128,128,.15);"
+        stage_html.append(
+            f'<div style="flex:1;padding:12px 12px 10px;{br}min-width:0;{opacity}{bg}">' +
+            f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;color:{nc}">{num}</div>' +
+            f'<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{nc}">{stage["label"]}</div>' +
+            f'<div style="font-size:10px;margin-top:3px;color:{dc}">{sub}</div></div>'
         )
-    parts.append("</div>")
-    return "\n".join(parts)
+
+    def _fd(val):
+        if not val or str(val).strip() in ("","None","nan","NaT"): return "—"
+        try: return pd.to_datetime(val).strftime("%-d %b %Y")
+        except: return str(val)[:10]
+
+    signed_val  = drs_row.get("signed_date")       if drs_row else None
+    start_val   = drs_row.get("start_date")        if drs_row else None
+    go_live_val = (drs_row.get("effective_go_live_date") or drs_row.get("go_live_date")) if drs_row else None
+    due_date    = _calc_outreach_due(signed_val, start_val)
+    due_str     = due_date.strftime("%-d %b %Y") if due_date else "—"
+    today       = pd.Timestamp.today().normalize()
+    overdue     = due_date and due_date < today
+    d_color     = "#dc2626" if overdue else "#4472C4"
+    d_bg        = "rgba(220,38,38,.1)" if overdue else "rgba(68,114,196,.1)"
+
+    meta = (
+        f'<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:0.5px solid rgba(128,128,128,.12)">' +
+        f'<div><div style="{lbl_s}">Signed date</div><div style="{val_s}">{_fd(signed_val)}</div></div>' +
+        f'<div><div style="{lbl_s}">Project start</div><div style="{val_s}">{_fd(start_val)}</div></div>' +
+        f'<div><div style="{lbl_s}">Est. go-live</div><div style="{val_s}">{_fd(go_live_val)}</div></div>' +
+        f'<div style="margin-left:auto"><div style="{lbl_s}">Outreach due date</div>' +
+        f'<div style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;background:{d_bg};color:{d_color}">{"⚠ " if overdue else ""}{due_str}</div></div></div>'
+    )
+    return (
+        f'<div style="margin:14px 0 18px">' +
+        f'<div style="display:flex;gap:2px;margin-bottom:3px">{bar_labels}</div>' +
+        f'<div style="display:flex;gap:3px;margin-bottom:10px">{bar_steps}</div>' +
+        f'<div style="display:flex;border:0.5px solid rgba(128,128,128,.22);border-radius:8px;overflow:hidden">{"".join(stage_html)}</div>' +
+        meta + '</div>'
+    )
 
 # ── Writeback ─────────────────────────────────────────────────────────────────
 def _do_write(project_id,ss_field,date_val,drs_row)->bool:
@@ -587,7 +669,8 @@ intro_col =(cm.get("intro. email sent") or cm.get("intro email sent")
 legacy_col=cm.get("legacy")
 ss_rid_col=cm.get("_ss_row_id") or cm.get("ss_row_id") or cm.get("row_id")
 sales_rep_col=cm.get("sales rep") or cm.get("sales_rep") or cm.get("account executive") or cm.get("ae")
-start_col =cm.get("start_date") or cm.get("start date")
+start_col    =cm.get("start_date")   or cm.get("start date")
+signed_col   =cm.get("signed_date")  or cm.get("signed date")
 
 _ss_row_id_map:dict={}
 if ss_rid_col and id_col:
@@ -703,10 +786,13 @@ if not _all_customers:
 _cur_browse = st.session_state.get("_browse_passthrough") or st.session_state.get("home_browse","")
 if st.session_state.get("_ce_last_browse") != _cur_browse:
     st.session_state["_ce_last_browse"] = _cur_browse
-    for k in ["_ce_customer","ce_customer","_ce_proj_sid","ce_proj_select",
-              "_last_proj_sid","_last_proj_sid_for_comm","ce_to","ce_cn","ce_cc",
-              "_sfdc_match_"+str(st.session_state.get("_ce_proj_sid",""))]:
-        st.session_state.pop(k, None)
+    for k in list(st.session_state.keys()):
+        if any(k.startswith(p) for p in ["_ce_proj","ce_proj","ce_to","ce_cn","ce_cc",
+                                          "_sfdc_match","_last_proj","ce_ss_stamp"]):
+            st.session_state.pop(k, None)
+    st.session_state.pop("_ce_customer", None)
+    st.session_state.pop("ce_customer", None)
+    st.rerun()
 
 _prev_cust=st.session_state.get("_ce_customer")
 _def_cust=_prev_cust if _prev_cust in _all_customers else _all_customers[0]
@@ -947,10 +1033,9 @@ with compose_col:
         _smart_default = _STAGE_TO_COMM.get(_JOURNEY[_first_pend]["id"],"Welcome")
         st.session_state["_ce_tmpl_type"] = _smart_default
         st.session_state["_last_proj_sid_for_comm"] = selected_sid
+    st.caption("Communication type")
     comm_col,tmpl_col=st.columns([1,2], gap="small")
     with comm_col:
-        st.caption("Communication type")
-        st.caption("Communication type")
         _tmpl_type=st.selectbox(
             "Communication type",options=_COMM_TYPES,
             index=_COMM_TYPES.index(st.session_state.get("_ce_tmpl_type","Welcome")),
