@@ -19,15 +19,13 @@ st.session_state["current_page"] = "Customer Engagement"
 st.markdown(
     "<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);"
     "padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;"
-    "font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
-    "<div style='position:absolute;top:-30px;right:-30px;width:180px;height:180px;"
-    "border-radius:50%;background:#0F6E56;opacity:.18;pointer-events:none'></div>"
+    "font-family:Manrope,sans-serif'>"
     "<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
-    "color:#7dd3fc;margin-bottom:8px;position:relative'>Professional Services · Customer Engagement</div>"
+    "color:#7dd3fc;margin-bottom:8px'>Professional Services · Customer Engagement</div>"
     "<h1 style='color:#fff;margin:0 0 6px;font-size:26px;font-weight:700;"
-    "font-family:Manrope,sans-serif;position:relative'>Lifecycle Email Composer</h1>"
+    "font-family:Manrope,sans-serif'>Lifecycle Email Composer</h1>"
     "<p style='color:rgba(255,255,255,.45);margin:0;font-size:13px;"
-    "font-family:Manrope,sans-serif;position:relative'>Compose and track customer lifecycle communications</p>"
+    "font-family:Manrope,sans-serif'>Compose and track customer lifecycle communications</p>"
     "</div>",
     unsafe_allow_html=True,
 )
