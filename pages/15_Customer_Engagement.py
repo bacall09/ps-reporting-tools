@@ -25,6 +25,8 @@ st.markdown("""
 
 # ── CSS — runbook compliant ───────────────────────────────────────────────────
 st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
+html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
 .ce-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:#4472C4;margin:0 0 5px}
 .ce-card{border:1px solid rgba(128,128,128,.22);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:inherit}
 .ce-tip{border-left:3px solid #4472C4;border-radius:0;padding:7px 12px;font-size:12px;margin-bottom:8px;color:inherit}
@@ -43,12 +45,12 @@ st.markdown("""<style>
 .stApp[data-theme="dark"] .avatar{color:#93b4e8}
 
 /* Journey rail — theme-aware (no hardcoded backgrounds) */
-.journey-rail{display:flex;border:0.5px solid rgba(128,128,128,.25);border-radius:8px;overflow:hidden;margin:12px 0 16px}
-.sj{flex:1;padding:12px 12px 10px;border-right:0.5px solid rgba(128,128,128,.18);min-width:0;color:inherit}
+.journey-rail{display:flex;border:0.5px solid rgba(128,128,128,.25);border-radius:8px;overflow:hidden;margin:14px 0 18px}
+.sj{flex:1;padding:14px 14px 12px;border-right:0.5px solid rgba(128,128,128,.18);min-width:0;color:inherit}
 .sj:last-child{border-right:none}
-.sj-num{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;color:rgba(128,128,128,.7)}
-.sj-lbl{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sj-date{font-size:11px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.7}
+.sj-num{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;color:rgba(128,128,128,.6)}
+.sj-lbl{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.1px}
+.sj-date{font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.65;font-weight:400}
 .sj.done{background:rgba(34,197,94,.10)}
 .sj.done .sj-num{color:#16a34a}
 .sj.done .sj-lbl{color:#16a34a;font-weight:600}
@@ -124,16 +126,6 @@ if _df_drs is None or _df_drs.empty:
     st.info("Load Smartsheet DRS data on the Home page.")
     st.stop()
 
-# ── TEMPORARY: DRS column inspector — remove once field names confirmed ───────
-with st.expander("🔍 DRS column debug (temporary — remove after review)", expanded=False):
-    st.caption("Load DRS via Sync button on Home page, then open this to see exact column names.")
-    if _df_drs is not None:
-        st.write("**All columns in df_drs:**")
-        st.write(list(_df_drs.columns))
-        st.write("**Sample row (first project):**")
-        if not _df_drs.empty:
-            st.json({k: str(v) for k, v in _df_drs.iloc[0].items()
-                     if v is not None and str(v) not in ("nan","None","NaT","")})
 
 try:
     from shared.template_engine import (
@@ -667,7 +659,8 @@ def _send_footer(tab_key,ss_field_label,subj,body,recip_val):
 # ═══════════════════════════════════════════════════════════════════════════════
 # ROW 1 — Customer selector
 # ═══════════════════════════════════════════════════════════════════════════════
-st.markdown('<p class="ce-label">Select Customer</p>',unsafe_allow_html=True)
+st.markdown('<p class="ce-label">Select Project</p>',unsafe_allow_html=True)
+_top_left,_top_right=st.columns([1,1],gap="small")
 
 # Build customer list — all unique customers sorted, preserving original casing
 # ── Customer list ─────────────────────────────────────────────────────────────
@@ -717,11 +710,13 @@ if st.session_state.get("_ce_last_browse") != _cur_browse:
 
 _prev_cust=st.session_state.get("_ce_customer")
 _def_cust=_prev_cust if _prev_cust in _all_customers else _all_customers[0]
-selected_customer=st.selectbox(
-    "Customer",options=_all_customers,
-    index=_all_customers.index(_def_cust),
-    label_visibility="collapsed",key="ce_customer",
-)
+with _top_left:
+    st.caption("Customer")
+    selected_customer=st.selectbox(
+        "Customer",options=_all_customers,
+        index=_all_customers.index(_def_cust),
+        label_visibility="collapsed",key="ce_customer",
+    )
 # Clear project selection when customer changes
 if st.session_state.get("_ce_customer") != selected_customer:
     st.session_state["_ce_customer"] = selected_customer
@@ -813,14 +808,16 @@ def _card_label(row,mine=True):
 _mine_labels={_mine_sids[i]:_card_label(_row_dict(_mine_proj.iloc[i]),mine=True)
               for i in range(len(_mine_sids))}
 
-selected_sid=st.selectbox(
-    "Your projects",
-    options=_mine_sids,
-    format_func=lambda s:_mine_labels.get(s,s),
-    index=_mine_sids.index(_def_sid) if _def_sid in _mine_sids else 0,
-    key="ce_proj_select",
-    label_visibility="collapsed",
-)
+with _top_right:
+    st.caption("Project")
+    selected_sid=st.selectbox(
+        "Your projects",
+        options=_mine_sids,
+        format_func=lambda s:_mine_labels.get(s,s),
+        index=_mine_sids.index(_def_sid) if _def_sid in _mine_sids else 0,
+        key="ce_proj_select",
+        label_visibility="collapsed",
+    )
 st.session_state["_ce_proj_sid"]=selected_sid
 
 # Clear stale state on project change
@@ -935,6 +932,7 @@ if "ce_ss_stamp" not in st.session_state: st.session_state["ce_ss_stamp"]=True
 with compose_col:
     # ── Communication type + template selector ────────────────────────────────
     _COMM_TYPES=["Welcome","Post-Session","Lifecycle (UAT → Closure)"]
+    st.markdown('<div style="margin-bottom:4px"></div>', unsafe_allow_html=True)
     _STAGE_TO_COMM={
         "welcome":"Welcome","post_session_1":"Post-Session","post_session_2":"Post-Session",
         "uat_signoff":"Lifecycle (UAT → Closure)","go_live":"Lifecycle (UAT → Closure)",
@@ -949,8 +947,10 @@ with compose_col:
         _smart_default = _STAGE_TO_COMM.get(_JOURNEY[_first_pend]["id"],"Welcome")
         st.session_state["_ce_tmpl_type"] = _smart_default
         st.session_state["_last_proj_sid_for_comm"] = selected_sid
-    comm_col,tmpl_col=st.columns([1,2])
+    comm_col,tmpl_col=st.columns([1,2], gap="small")
     with comm_col:
+        st.caption("Communication type")
+        st.caption("Communication type")
         _tmpl_type=st.selectbox(
             "Communication type",options=_COMM_TYPES,
             index=_COMM_TYPES.index(st.session_state.get("_ce_tmpl_type","Welcome")),
@@ -1002,7 +1002,9 @@ with compose_col:
                 tmpl_w=get_welcome_template(next(t["sku_key"] for t in opts if t["display_name"]==ch))
             else:
                 disp=tmpl_w.get("display_name","")
-                st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
+                with tmpl_col:
+                    st.caption("Template")
+                    st.selectbox("Template",[disp],key="w_tmpl_disp",disabled=True,label_visibility="collapsed")
             if _is_merged:
                 st.markdown('<div class="ce-tip">Consolidated: one email covering all products. Prep sections merged.</div>',unsafe_allow_html=True)
 
@@ -1056,6 +1058,7 @@ with compose_col:
             sessions=get_post_session_templates(psk)
             sopts={s["id"]:(f"Session {s['session_number']} — {s['name']}"+(f" [{s['variant_note']}]" if s.get("variant_note") else ""),s) for s in sessions}
             with tmpl_col:
+                st.caption("Template")
                 cid=st.selectbox("Template",list(sopts.keys()),format_func=lambda k:sopts[k][0],key="s_pick",label_visibility="collapsed")
             _,tmpl_s=sopts[cid]
             st.caption(f"Audience: {tmpl_s.get('audience','Full project team')} · {tmpl_s.get('trigger','')}")
@@ -1107,6 +1110,7 @@ with compose_col:
         lc_all=list_lifecycle_templates()
         lc_opts={t["id"]:t for t in lc_all}
         with tmpl_col:
+            st.caption("Template")
             lcid=st.selectbox("Template",list(lc_opts.keys()),
                               format_func=lambda k:f"[{lc_opts[k]['category']}] {lc_opts[k]['name']}",
                               key="lc_pick",label_visibility="collapsed")
