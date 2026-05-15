@@ -1673,119 +1673,43 @@ else:
                 _sub   = f"{_ptype} · {_pid} · {_days} days inactive" if _ptype else f"{_pid} · {_days} days inactive"
                 _due_items.append({"dot": "#888780", "name": f"Re-engage — {_cust}", "sub": _sub, "row_id": None, "type": "stale"})
 
-            if _due_items:
-                with st.container(border=True):
-                    _hc1, _hc2 = st.columns([3, 1])
-                    _hc1.markdown("<span style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>This week's priorities</span>", unsafe_allow_html=True)
-                    _hc2.markdown(f"<span style='font-size:12px;color:var(--color-text-secondary);float:right;'>{len(_due_items)} items</span>", unsafe_allow_html=True)
-
-                    for idx, item in enumerate(_due_items):
-                        # Key on type + project ID (first token of sub) + DRS load ts
-                        _pid_key  = str(item.get("sub","")).split("·")[- 1 if item["type"] == "stale" else 0].strip()[:20].replace(" ","")
-                        _drs_ts   = str(st.session_state.get("drs_load_ts", ""))[:10]
-                        _done_key = f"done_{item['type']}_{_pid_key}_{_drs_ts}"
-                        _is_done  = st.session_state.get(_done_key, False)
-                        _ic1, _ic2 = st.columns([6, 1])
-                        with _ic1:
-                            _strike = "text-decoration:line-through;opacity:0.4;" if _is_done else ""
-                            st.markdown(
-                                f"<div style='display:flex;align-items:flex-start;gap:8px;padding:4px 0;{_strike}'>"
-                                f"<div style='width:7px;height:7px;border-radius:50%;background:{item['dot']};flex-shrink:0;margin-top:5px;'></div>"
-                                f"<div><div style='font-size:13px;font-weight:500;'>{item['name']}</div>"
-                                f"<div style='font-size:11px;color:var(--color-text-secondary);'>{item['sub']}</div></div>"
-                                f"</div>",
-                                unsafe_allow_html=True
-                            )
-                        with _ic2:
-                            if not _is_done:
-                                if st.button("✓ Done", key=f"btn_{idx}", use_container_width=True):
-                                    st.session_state[_done_key] = True
-                                    if item["type"] == "intro":
-                                        try:
-                                            from shared.smartsheet_api import write_row_updates
-                                            _row_id = item.get("row_id")
-                                            if _row_id:
-                                                _ok, _errs = write_row_updates([{
-                                                    "_ss_row_id": _row_id,
-                                                    "project_name": item["name"],
-                                                    "changes": {"ms_intro_email": pd.Timestamp.today().normalize()}
-                                                }])
-                                                if _ok:
-                                                    st.toast("✓ Intro email date updated in Smartsheet", icon="✅")
-                                                else:
-                                                    _err_msg = _errs[0] if _errs else "unknown error"
-                                                    st.toast(f"⚠ SS write failed: {_err_msg}", icon="⚠️")
-                                            else:
-                                                # No row ID — DRS loaded from CSV upload, not API
-                                                st.toast("Marked locally — sync DRS via API to write back", icon="ℹ️")
-                                        except Exception as _e:
-                                            st.toast(f"Saved locally — sync pending ({type(_e).__name__})", icon="ℹ️")
-                                    st.rerun()
-                            else:
-                                st.markdown("<span style='font-size:11px;color:var(--color-text-secondary);'>Done ✓</span>", unsafe_allow_html=True)
-
-
-
-        # Next 14 days milestone list
-        _ms14_items = []
-        if not _active.empty:
-            _ms_cols = {
-                "ms_intro_email":    ("Intro email", "#378ADD"),
-                "ms_config_start":   ("Config start", "#534AB7"),
-                "ms_uat_signoff":    ("UAT sign-off", "#EF9F27"),
-                "ms_hypercare_start":("Hypercare start", "#534AB7"),
-            }
-            _gl14_items = []
-            if _gl14_col in _active.columns:
-                for _, _gr3 in _gl14.iterrows():
-                    _cust = str(_gr3.get("project_name","")).split(" - ")[0][:28]
-                    _pid2 = str(_gr3.get("project_id",""))
-                    _dt   = pd.Timestamp(_gr3.get(_gl14_col))
-                    _gl14_items.append({"dt": _dt, "name": "Go-live", "cust": _cust, "pid": _pid2, "dot": "#639922", "badge": "Go-live", "badge_bg": "#EAF3DE", "badge_col": "#3B6D11"})
-
-            for ms_col, (ms_label, ms_color) in _ms_cols.items():
-                if ms_col in _active.columns:
-                    for _, _row in _active.iterrows():
-                        _dt2 = pd.to_datetime(_row.get(ms_col), errors="coerce")
-                        if pd.isna(_dt2): continue
-                        if _snap_today <= _dt2 <= _snap_today + pd.Timedelta(days=14):
-                            _cust = str(_row.get("project_name","")).split(" - ")[0][:28]
-                            _pid2 = str(_row.get("project_id",""))
-                            _ms14_items.append({"dt": _dt2, "name": ms_label, "cust": _cust, "pid": _pid2, "dot": ms_color, "badge": None})
-
-            _ms14_items = sorted(_gl14_items + _ms14_items, key=lambda x: x["dt"])
-
-        if _ms14_items:
+            # ── This week's priorities — coming soon ──────────────────────────
             st.markdown(
-                f"<div style='background:var(--color-background-primary);border:1px solid rgba(128,128,128,0.25);"
-                f"border-radius:10px;padding:14px 16px;margin-bottom:12px;'>"
-                f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
-                f"<span style='font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.6px;color:var(--color-text-secondary);'>Next 14 days</span>"
-                f"<span style='font-size:12px;color:var(--color-text-secondary);'>{len(_ms14_items)} scheduled</span></div>",
+                "<div style='border:1px solid rgba(128,128,128,0.2);border-radius:10px;"
+                "padding:20px 20px;margin-bottom:4px;'>"
+                "<div style='font-size:10px;font-weight:600;text-transform:uppercase;"
+                "letter-spacing:0.6px;color:var(--color-text-secondary);margin-bottom:12px'>"
+                "This week's priorities</div>"
+                "<div style='display:flex;align-items:center;gap:12px;'>"
+                "<div style='font-size:22px;opacity:.2'>✓</div>"
+                "<div>"
+                "<div style='font-size:13px;font-weight:500;color:var(--color-text-primary);'>"
+                "Smart priority queue — coming soon</div>"
+                "<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px;'>"
+                "Intro emails due · Overdue outreach · Milestone actions · sorted by urgency</div>"
+                "</div></div></div>",
                 unsafe_allow_html=True
             )
-            for item in _ms14_items[:8]:
-                _days_away = (item["dt"].normalize() - pd.Timestamp(_snap_today)).days
-                _day_str   = item["dt"].strftime("%b %-d")
-                _rel_str   = f"in {_days_away}d" if _days_away > 0 else "today"
-                _badge_html = ""
-                if item.get("badge"):
-                    _bg  = item.get("badge_bg", "var(--color-background-info)")
-                    _tc  = item.get("badge_col", "var(--color-text-info)")
-                    _badge_html = f"<span style='font-size:10px;padding:2px 7px;border-radius:4px;background:{_bg};color:{_tc};font-weight:500;flex-shrink:0;'>{item['badge']}</span>"
-                st.markdown(
-                    f"<div style='display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(128,128,128,0.18);'>"
-                    f"<div style='min-width:44px;'>"
-                    f"<div style='font-size:12px;font-weight:500;color:var(--color-text-primary);'>{_day_str}</div>"
-                    f"<div style='font-size:10px;color:var(--color-text-secondary);'>{_rel_str}</div></div>"
-                    f"<div style='width:7px;height:7px;border-radius:50%;background:{item['dot']};flex-shrink:0;'></div>"
-                    f"<div style='flex:1;min-width:0;'>"
-                    f"<div style='font-size:13px;font-weight:500;color:var(--color-text-primary);'>{item['name']}</div>"
-                    f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:1px;'>{item['cust']} · {item['pid']}</div></div>"
-                    f"{_badge_html}</div>",
-                    unsafe_allow_html=True
-                )
-            st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+        # ── Next 14 days — coming soon ────────────────────────────────────────
+        st.markdown(
+            "<div style='border:1px solid rgba(128,128,128,0.2);border-radius:10px;"
+            "padding:20px 20px;margin-bottom:12px;'>"
+            "<div style='font-size:10px;font-weight:600;text-transform:uppercase;"
+            "letter-spacing:0.6px;color:var(--color-text-secondary);margin-bottom:12px'>"
+            "Next 14 days</div>"
+            "<div style='display:flex;align-items:center;gap:12px;'>"
+            "<div style='font-size:22px;opacity:.2'>📅</div>"
+            "<div>"
+            "<div style='font-size:13px;font-weight:500;color:var(--color-text-primary);'>"
+            "Milestone timeline — coming soon</div>"
+            "<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px;'>"
+            "Go-lives · UAT sign-offs · Hypercare starts · sorted by date</div>"
+            "</div></div></div>",
+            unsafe_allow_html=True
+        )
 
 
 
