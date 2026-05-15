@@ -306,10 +306,10 @@ _hero.markdown(
     f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
     f"color:#7dd3fc;margin-bottom:8px'>Professional Services · My Work</div>"
     f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif'>"
-    f"My Projects — {{_dn}}</h1>"
+    f"My Projects — {_dn}</h1>"
     f"<p style='color:rgba(255,255,255,.45);margin:6px 0 0;font-size:13px;font-family:Manrope,sans-serif'>"
-    f"{{today.strftime('%A, %B %-d %Y')}}</p>"
-    f"{{_metric_tile}}"
+    f"{today.strftime('%A, %B %-d %Y')}</p>"
+    f"{_metric_tile}"
     "</div>",
     unsafe_allow_html=True,
 )
@@ -322,7 +322,7 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 2+3 — Active Projects (editable table + export)
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-label">Active Projects</div>',unsafe_allow_html=True)
+st.markdown('<div class="section-label">Open Projects</div>',unsafe_allow_html=True)
 
 if active.empty:
     st.info("No active projects found.")
