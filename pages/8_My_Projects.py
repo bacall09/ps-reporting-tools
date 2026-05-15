@@ -185,8 +185,8 @@ if df_ns is not None:
     except Exception: pass
 
 _ioh   = my_drs.get("_on_hold",pd.Series(False,index=my_drs.index)).astype(bool)
-on_hold= my_drs[_ioh].copy()
-active = my_drs[~_ioh].copy()
+on_hold= my_drs[_ioh].copy().reset_index(drop=True)
+active = my_drs[~_ioh].copy().reset_index(drop=True)
 # ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
 _id_col_dc    = "project_id" if "project_id" in active.columns else "project_name"
 _n_active_dc  = int(active[_id_col_dc].nunique()) if not active.empty else 0
@@ -332,10 +332,9 @@ def _clean_pid(v):
         return str(int(float(s)))
     except: return str(v).strip()
 
-_ns_htd: dict        = {}
-_ns_tm_hrs: dict     = {}
-_ns_tm_pids: set     = set()
-_ns_period_hrs: dict = {}
+_ns_htd: dict    = {}
+_ns_tm_hrs: dict = {}
+_ns_tm_pids: set = set()
 
 if df_ns is not None and not active.empty:
     _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
@@ -360,13 +359,6 @@ if df_ns is not None and not active.empty:
         for _pid in _tm_ns[_ns_id_col].dropna().unique():
             _k = _clean_pid(_pid)
             if _k: _ns_tm_pids.add(_k)
-    # Hours logged per project (for "Logged" column in at-risk table)
-    if _ns_id_col and "hours" in df_ns.columns:
-        for _pid, _grp in df_ns.groupby(_ns_id_col):
-            _k = _clean_pid(_pid)
-            if _k:
-                try: _ns_period_hrs[_k] = round(float(_grp["hours"].dropna().astype(float).sum() or 0), 2)
-                except: pass
 
 # ── At a glance metrics ───────────────────────────────────────────────────────
 _n_flagged   = int((active["_ne"] > 0).sum() | (active["_nw"] > 0).sum()) if not active.empty and "_ne" in active.columns else 0
@@ -449,185 +441,127 @@ with tab_glance:
 
     st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
-    # ── Projects at risk — identical to Utilization Report "Projects at risk" tab ───
-    if not active.empty:
+    # ── RAG at a glance — Red & Amber only, grouped headers, inline HTML ───────
+    if not active.empty and "rag" in active.columns:
+        _at_risk_rows = active[active["rag"].fillna("").str.strip().str.lower().isin(["red","yellow"])].copy()
+        _n_at_risk = len(_at_risk_rows)
+        st.markdown(
+            f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;"
+            f"color:var(--color-text-secondary);margin-bottom:8px'>RAG at a glance "
+            f"<span style='font-weight:400;opacity:.6'>· {_n_at_risk} Red/Amber project{'s' if _n_at_risk!=1 else ''}</span></div>",
+            unsafe_allow_html=True
+        )
+        # Build scope lookup (same as Utilization Report)
         try:
-            from shared.config import DEFAULT_SCOPE as _DS_at
-            def _at_scope(ptype):
+            from shared.config import DEFAULT_SCOPE as _DS_ar
+            def _ar_scope(ptype):
                 _pt = str(ptype or "").strip().lower()
                 _best = None; _blen = 0
-                for k, v in _DS_at.items():
+                for k,v in _DS_ar.items():
                     if k.strip().lower() in _pt and len(k) > _blen:
                         _best = float(v); _blen = len(k)
                 return _best
         except Exception:
-            def _at_scope(ptype): return None
+            def _ar_scope(ptype): return None
 
-        _risk_rows = []
+        _ar_rows = []
         for _, _r in active.iterrows():
-            _pid_k    = _clean_pid(str(_r.get("project_id", "") or ""))
-            _scope    = _at_scope(_r.get("project_type", ""))
-            _htd_v    = float(_ns_htd.get(_pid_k, 0) or 0)
-            _logged   = float(_ns_period_hrs.get(_pid_k, 0) or 0)
-            _burn     = (_htd_v / _scope) if (_scope and _scope > 0) else None
-            _overrun  = max(0.0, round(_htd_v - _scope, 2)) if (_scope and _scope > 0) else 0.0
-            _rag_v    = str(_r.get("rag", "") or "").strip().lower()
-            _is_over  = _overrun > 0
-            _is_burn  = _burn is not None and _burn >= 0.80 and not _is_over
-            _is_noscope = (
-                _scope is None and
-                str(_r.get("billing_type", "") or "").strip().lower()
-                not in ("t&m", "time and material", "internal")
-            )
-            if not (_is_over or _is_burn or _is_noscope or _rag_v in ("red", "yellow")):
+            _pid_k  = _clean_pid(str(_r.get("project_id","") or ""))
+            _scope  = _ar_scope(_r.get("project_type",""))
+            _htd_v  = float(_ns_htd.get(_pid_k, 0) or 0)
+            _burn   = (_htd_v / _scope) if (_scope and _scope > 0) else None
+            _rag_v  = str(_r.get("rag","") or "").strip().lower()
+            _is_red = _rag_v == "red"
+            _is_amb = _rag_v in ("yellow","amber")
+            _is_over= _scope and _htd_v > _scope
+            _is_burn= _burn is not None and _burn >= 0.80 and not _is_over
+            if not (_is_red or _is_amb or _is_over or _is_burn):
                 continue
-            if _is_noscope:         _stag = ("blue",  "No scope")
-            elif _is_over:          _stag = ("red",   "Overrun")
-            elif _is_burn:          _stag = ("amber", f"Burn {int(_burn*100)}%")
-            elif _rag_v == "red":   _stag = ("red",   "Red RAG")
-            else:                   _stag = ("amber", "Amber RAG")
-            _srank = 1 if _stag[0] == "red" else 2 if _stag[0] == "amber" else 3
-            _risk_rows.append({
-                "project":      _extract_customer_name(str(_r.get("project_name", ""))),
-                "project_type": str(_r.get("project_type", "") or ""),
-                "consultant":   str(_r.get("project_manager", "") or ""),
-                "scoped_hrs":   _scope,
-                "htd_hrs":      _htd_v,
-                "hours_logged": _logged,
-                "burn_pct":     _burn,
-                "overrun_hrs":  _overrun,
-                "_stag":        _stag,
-                "_srank":       _srank,
-            })
+            _cust  = _extract_customer_name(str(_r.get("project_name","")))
+            _ptype = str(_r.get("project_type","") or "—")
+            if _is_over:  _status_tag = ("red","Overrun")
+            elif _is_burn:_status_tag = ("amber",f"Burn {int(_burn*100)}%")
+            elif _is_red: _status_tag = ("red","Red RAG")
+            else:         _status_tag = ("amber","Amber RAG")
+            _ar_rows.append((_r, _cust, _ptype, _scope, _htd_v, _burn, _status_tag))
 
-        if not _risk_rows:
+        if not _ar_rows:
             st.markdown(
-                "<div style=\"border:1px solid rgba(128,128,128,.25);border-radius:8px;"
-                "padding:32px;text-align:center\">"
-                "<div style=\"font-size:28px;margin-bottom:8px\">✓</div>"
-                "<div style=\"font-weight:600;margin-bottom:4px\">No projects at risk</div>"
-                "<div style=\"opacity:.7;font-size:13px\">No FF overruns, no scope burn over 80%,"
-                " no missing scope records.</div>"
-                "</div>", unsafe_allow_html=True)
+                "<div class='util-card' style='text-align:center;padding:24px'>"
+                "<div style='font-size:24px;margin-bottom:6px'>✓</div>"
+                "<div style='font-weight:500;font-size:13px'>No projects at risk</div>"
+                "<div style='font-size:12px;opacity:.7;margin-top:4px'>No Red/Amber RAG, no FF overruns, no burn ≥ 80%</div>"
+                "</div>", unsafe_allow_html=True
+            )
         else:
-            import pandas as _rpd
-            _risk_df = _rpd.DataFrame(_risk_rows)
+            def _pill_ar(val, level=None):
+                v = str(val or "").strip()
+                if not v or v in ("—","nan","None"): return "<span style='opacity:.45;font-size:11px'>—</span>"
+                if level == "red" or v.lower() in ("red","high","critical","overrun","at risk"):
+                    col="#b91c1c"; bg="rgba(239,68,68,.12)"
+                elif level == "amber" or v.lower() in ("yellow","amber","medium","concern","burn"):
+                    col="#b45309"; bg="rgba(245,158,11,.12)"
+                elif v.lower() in ("green","low","good","on track"):
+                    col="#15803d"; bg="rgba(34,197,94,.12)"
+                else: col="var(--color-text-secondary)"; bg="rgba(128,128,128,.1)"
+                return f"<span style='font-size:10px;padding:2px 7px;border-radius:20px;background:{bg};color:{col};font-weight:500;white-space:nowrap'>{v}</span>"
 
-            _mp_sort_opts = {
-                "Status, then overrun": ("_srank",      "overrun_hrs", "burn_pct"),
-                "Overrun (high → low)":  ("overrun_hrs",  "burn_pct",    None),
-                "Burn % (high → low)":   ("burn_pct",     "overrun_hrs", None),
-                "HTD (high → low)":      ("htd_hrs",      "overrun_hrs", None),
-                "Logged this period":   ("hours_logged", "overrun_hrs", None),
-                "Project (A → Z)": ("project_asc",  None,          None),
-            }
-            _mp_sc1, _ = st.columns([1.6, 4])
-            with _mp_sc1:
-                _mp_sc = st.selectbox("Sort by", list(_mp_sort_opts.keys()),
-                    key="mp_risk_sort", label_visibility="visible")
-            if _mp_sc == "Project (A → Z)":
-                _risk_df = _risk_df.sort_values("project", ascending=True, na_position="last")
-            else:
-                _mk = [k for k in _mp_sort_opts[_mp_sc] if k]
-                _ma = [True if k == "_srank" else False for k in _mk]
-                _risk_df = _risk_df.sort_values(_mk, ascending=_ma, na_position="last")
-            _risk_df = _risk_df.reset_index(drop=True)
-
-            def _mp_avatar(name):
-                parts = [p.strip() for p in str(name).replace(",", " ").split() if p.strip()]
-                ini = (parts[0][0]+parts[1][0]).upper() if len(parts)>=2 else (parts[0][:2].upper() if parts else "??")
-                pals = [("rgba(34,197,94,0.18)","#15803d"),("rgba(59,130,246,0.18)","#1d4ed8"),
-                        ("rgba(245,158,11,0.18)","#b45309"),("rgba(168,85,247,0.18)","#7c3aed"),
-                        ("rgba(236,72,153,0.18)","#be185d"),("rgba(20,184,166,0.18)","#0f766e")]
-                bg, fg = pals[hash(str(name)) % len(pals)]
-                return (f"<span style=\"display:inline-flex;align-items:center;justify-content:center;"
-                        f"width:24px;height:24px;border-radius:50%;font-size:10px;font-weight:600;"
-                        f"margin-right:8px;background:{bg};color:{fg}\">{ini}</span>")
-
-            def _mp_short(n):
-                p = str(n).split(",", 1)
-                if len(p) == 2:
-                    last = p[0].strip()
-                    first = p[1].strip().split()[0] if p[1].strip() else ""
-                    return f"{last}, {first[:1]}." if first else last
-                return n
-
-            _tbl_rows = []
-            for _, _row in _risk_df.iterrows():
-                _scls, _sl = _row["_stag"]
-                _sc_str  = f"{_row['scoped_hrs']:,.2f}" if _row["scoped_hrs"] is not None else "—"
-                _htd_str = f"{_row['htd_hrs']:,.2f}"    if _row["htd_hrs"]   else "—"
-                _log_str = f"{_row['hours_logged']:,.2f}" if _row["hours_logged"] else "—"
-                _bp = _row["burn_pct"]
-                if _bp is not None:
-                    _bpv  = min(_bp, 1.5)
-                    _bcol = "#ef4444" if _bpv > 1.0 else "#f59e0b" if _bpv >= 0.8 else "#22c55e"
-                    _bar = (f"<div style=\"display:inline-block;width:60px;height:6px;"
-                            f"background:rgba(128,128,128,.2);border-radius:3px;overflow:hidden;"
-                            f"vertical-align:middle;margin-right:6px\">"
-                            f"<div style=\"width:{min(_bpv*100/1.5,100):.0f}%;height:100%;"
-                            f"background:{_bcol}\"></div></div>")
-                    _bs = f"{int(_bp*100)}%"
+            _tbl_th = "font-size:10px;font-weight:500;color:var(--color-text-secondary);padding:7px 10px;border-bottom:0.5px solid rgba(128,128,128,.2);text-align:left;white-space:nowrap;background:rgba(128,128,128,.05)"
+            _rows_html = []
+            for _r, _cust, _ptype, _scope, _htd, _burn, (_slevel, _slabel) in _ar_rows:
+                _sc_str  = f"{_scope:.0f}" if _scope else "—"
+                _htd_str = f"{_htd:.2f}" if _htd else "—"
+                _burn_bar = ""
+                if _burn is not None:
+                    _bp  = min(_burn, 1.5)
+                    _bcol= "#ef4444" if _bp > 1.0 else "#f59e0b" if _bp >= 0.8 else "#22c55e"
+                    _bpct= min(_bp/1.5*100, 100)
+                    _burn_bar = (f"<div style='display:inline-block;width:48px;height:5px;"
+                                 f"background:rgba(128,128,128,.2);border-radius:3px;overflow:hidden;"
+                                 f"vertical-align:middle;margin-right:5px'>"
+                                 f"<div style='width:{_bpct:.0f}%;height:100%;background:{_bcol}'></div></div>")
+                    _burn_str = f"{int(_burn*100)}%"
                 else:
-                    _bar = ""; _bs = "—"
-                _cn = _row["consultant"]
-                _ch = (f"<span style=\"display:inline-flex;align-items:center\">"
-                       f"{_mp_avatar(_cn)}{_mp_short(_cn)}</span>") if _cn else "<span style=\"opacity:.4\">—</span>"
-                _pbg = ("rgba(239,68,68,.18)" if _scls=="red"
-                        else "rgba(245,158,11,.18)" if _scls=="amber"
-                        else "rgba(59,130,246,.18)")
-                _pfg = "#b91c1c" if _scls=="red" else "#b45309" if _scls=="amber" else "#1d4ed8"
-                _tbl_rows.append(
-                    f"<tr style=\"border-bottom:1px solid rgba(128,128,128,.15)\">"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle\">{_row['project']}</td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75\">{_row['project_type']}</td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle\">{_ch}</td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_sc_str}</td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_htd_str}</td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_log_str}</td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">"
-                    f"{_bar}<span style=\"vertical-align:middle\">{_bs}</span></td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">"
-                    f"{_row['overrun_hrs']:,.2f}</td>"
-                    f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:center\">"
-                    f"<span style=\"padding:3px 9px;border-radius:999px;font-size:12px;"
-                    f"font-weight:500;background:{_pbg};color:{_pfg}\">{_sl}</span></td>"
+                    _burn_str = "—"
+                _rag_v = str(_r.get("rag","") or "").strip().capitalize()
+                _rows_html.append(
+                    f"<tr style='border-bottom:0.5px solid rgba(128,128,128,.12)'>"
+                    f"<td style='padding:7px 10px;font-weight:500;font-size:12px'>{_cust}</td>"
+                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px'>{_ptype}</td>"
+                    f"<td style='padding:7px 10px'>{_pill_ar(_rag_v)}</td>"
+                    f"<td style='padding:7px 10px'>{_sc_str}</td>"
+                    f"<td style='padding:7px 10px'>{_htd_str}</td>"
+                    f"<td style='padding:7px 10px'>{_burn_bar}<span style='vertical-align:middle;font-size:11px'>{_burn_str}</span></td>"
+                    f"<td style='padding:7px 10px'>{_pill_ar(_slabel, _slevel)}</td>"
                     f"</tr>"
                 )
-
-            _n_risk = len(_risk_df)
+            _n_ar = len(_ar_rows)
             st.markdown(
-                f"<div style=\"border:1px solid rgba(128,128,128,.25);border-radius:8px 8px 0 0;"
-                f"padding:10px 14px;display:flex;justify-content:space-between;font-size:12px\">"
-                f"<span style=\"font-weight:600\">Projects requiring attention</span>"
-                f"<span style=\"opacity:.7\">{_n_risk} project{{'s' if _n_risk!=1 else ''}} · sorted by {_mp_sc.lower()}</span>"
-                f"</div>"
-                f"<div style=\"border:1px solid rgba(128,128,128,.25);border-top:none;"
-                f"border-radius:0 0 8px 8px;overflow:hidden\">"
-                f"<table style=\"width:100%;border-collapse:collapse;font-family:Manrope,sans-serif;"
-                f"font-size:13px;font-variant-numeric:tabular-nums;color:inherit\">"
-                f"<thead><tr style=\"background:rgba(128,128,128,.08);"
-                f"border-bottom:1px solid rgba(128,128,128,.25)\">"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Project</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Type</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Consultant</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Scoped</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">HTD</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Logged</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Burn</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Overrun</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:center;opacity:.75\">Status</th>"
+                f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;"
+                f"color:var(--color-text-secondary);margin-bottom:8px'>Projects at risk "
+                f"<span style='font-weight:400;opacity:.6'>· {_n_ar} project{'s' if _n_ar!=1 else ''}</span></div>",
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                f"<div style='overflow-x:auto;border:0.5px solid rgba(128,128,128,.2);border-radius:8px'>"
+                f"<table style='width:100%;border-collapse:collapse;font-size:12px'>"
+                f"<thead><tr>"
+                f"<th style='{_tbl_th}'>Project</th>"
+                f"<th style='{_tbl_th}'>Type</th>"
+                f"<th style='{_tbl_th}'>RAG</th>"
+                f"<th style='{_tbl_th}'>Scoped</th>"
+                f"<th style='{_tbl_th}'>HTD</th>"
+                f"<th style='{_tbl_th}'>Burn</th>"
+                f"<th style='{_tbl_th}'>Status</th>"
                 f"</tr></thead>"
-                f"<tbody>{''.join(_tbl_rows)}</tbody></table>"
-                f"<div style=\"padding:8px 14px;border-top:1px solid rgba(128,128,128,.15);"
-                f"display:flex;justify-content:space-between;font-size:11px;opacity:.6\">"
-                f"<span>Risk = overrun &gt; 0, burn ≥ 80% (HTD ÷ scope),"
-                f" Red/Amber RAG, or no scope record. HTD = hours-to-date all time.</span>"
-                f"<span>Source: NS + DRS · this session</span>"
-                f"</div></div>",
+                f"<tbody>{''.join(_rows_html)}</tbody></table>"
+                f"<div style='padding:6px 10px;font-size:11px;opacity:.6;border-top:0.5px solid rgba(128,128,128,.1)'>"
+                f"Risk = Red/Amber RAG, overrun &gt; 0, or burn ≥ 80% (HTD ÷ scope). HTD = hours-to-date all time.</div>"
+                f"</div>",
                 unsafe_allow_html=True
             )
 
+# ═══════════════════════════════════════════════════════════════════
 # TAB 2 — Open Projects
 # ═══════════════════════════════════════════════════════════════════
 with tab_open:
@@ -784,7 +718,7 @@ with tab_open:
     }
 
     st.caption("Columns with the edit icon sync back to Smartsheet — edit and export to CSV to update DRS. Greyed columns are derived or read-only.")
-    st.markdown('<span style="font-size:11.5px;opacity:.6"><svg xmlns="http://www.w3.org/2000/svg" height="14px" viewBox="0 -960 960 960" width="14px" style="vertical-align:middle;margin-right:3px;fill:currentColor"><path d="M508.5-291.5Q520-303 520-320t-11.5-28.5Q497-360 480-360t-28.5 11.5Q440-337 440-320t11.5 28.5Q463-280 480-280t28.5-11.5ZM440-440h80v-240h-80v240Zm40 360q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg> Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
+    st.markdown('<span style="font-size:11.5px;opacity:.6">⚠️ Flags indicate date issues, missing milestones, or phase gaps. For a deeper look at data quality issues, use the DRS Health Check page.</span>', unsafe_allow_html=True)
     _btn_col1, _btn_col2 = st.columns([1, 1])
     with _btn_col1:
         if False:  # removed
@@ -893,16 +827,17 @@ with tab_open:
                 _display_to_internal = {v: k for k, v in WRITEBACK_FIELDS.items()}
                 _editable_display_cols = list(WRITEBACK_FIELDS.values())
 
-                # Join edited table back to active df to recover _ss_row_id
-                # active has _ss_row_id; edited has display columns. Join on positional index.
-                _sync_rows = active[changed].copy()
-                _edited_changed = edited[changed].copy()
+                # Use positional indexing throughout — active.reset_index ensures
+                # active, edit_df, and edited all share a 0-based index.
+                _changed_positions  = [i for i, v in enumerate(changed) if v]
+                _sync_rows          = active.iloc[_changed_positions].copy()
+                _edited_changed     = edited.iloc[_changed_positions].copy()
+                _orig_changed       = edit_df.iloc[_changed_positions].copy()
 
                 updates = []
-                for idx in _sync_rows.index:
-                    _pos = list(_sync_rows.index).index(idx)
-                    row_id    = _sync_rows.at[idx, "_ss_row_id"]
-                    proj_name = _sync_rows.at[idx, "project_name"] if "project_name" in _sync_rows.columns else str(row_id)
+                for _ci in range(len(_sync_rows)):
+                    row_id    = _sync_rows.iloc[_ci]["_ss_row_id"]
+                    proj_name = _sync_rows.iloc[_ci].get("project_name", str(row_id))
 
                     changes = {}
                     for disp_col in _editable_display_cols:
@@ -911,9 +846,8 @@ with tab_open:
                         internal_key = _display_to_internal.get(disp_col)
                         if not internal_key:
                             continue
-                        new_val = _edited_changed.iloc[_pos][disp_col]
-                        # Only include fields that actually changed vs original
-                        orig_val = edit_df.iloc[_pos][disp_col] if disp_col in edit_df.columns else None
+                        new_val  = _edited_changed.iloc[_ci][disp_col]
+                        orig_val = _orig_changed.iloc[_ci][disp_col] if disp_col in _orig_changed.columns else None
                         if str(new_val) != str(orig_val):
                             changes[internal_key] = new_val
 
@@ -1311,36 +1245,67 @@ with tab_intake:
                     _row_id = _dr.get("_ss_row_id")
                     if _row_id and _ss_ready:
                         _changes = {}
-                        # Dates
-                        if _w_golive:   _changes["go_live_date"] = _w_golive.isoformat()
-                        if _w_finish:   _changes["finish_date"]  = _w_finish.isoformat()
-                        if _w_substart: _changes["start_date"]   = _w_substart.isoformat()
-                        # Health
-                        _changes.update({
-                            "status":               _w_status,
-                            "phase":                _w_phase,
-                            "overall_summary":      _w_summary,
-                            "schedule_health":      _w_sched,
-                            "resource_health":      _w_res,
-                            "scope_health":         _w_scope,
-                            "risk_level":           _w_risk,
-                            "risk_detail":          _w_riskd,
-                            "client_responsiveness":_w_cresp,
-                            "client_sentiment":     _w_csent,
-                        })
+
+                        # Helper: normalise a value to a comparable string
+                        def _norm(v):
+                            if v is None: return ""
+                            s = str(v).strip()
+                            return "" if s in ("nan","None","NaT","—") else s
+
+                        # Helper: get original DRS value as ISO date string
+                        def _orig_date(key):
+                            v = _dr.get(key)
+                            try: return pd.Timestamp(v).date().isoformat() if pd.notna(v) else ""
+                            except: return ""
+
+                        # Dates — only write if widget value differs from DRS original
+                        if _w_golive and _w_golive.isoformat() != _orig_date("go_live_date"):
+                            _changes["go_live_date"] = _w_golive.isoformat()
+                        if _w_finish and _w_finish.isoformat() != _orig_date("finish_date"):
+                            _changes["finish_date"] = _w_finish.isoformat()
+                        if _w_substart and _w_substart.isoformat() != _orig_date("start_date"):
+                            _changes["start_date"] = _w_substart.isoformat()
+
+                        # Health / status fields — only write if changed from DRS original
+                        _health_fields = {
+                            "status":                _w_status,
+                            "phase":                 _w_phase,
+                            "overall_summary":       _w_summary,
+                            "schedule_health":       _w_sched,
+                            "resource_health":       _w_res,
+                            "scope_health":          _w_scope,
+                            "risk_level":            _w_risk,
+                            "risk_detail":           _w_riskd,
+                            "client_responsiveness": _w_cresp,
+                            "client_sentiment":      _w_csent,
+                        }
+                        for _fk, _fv in _health_fields.items():
+                            if _norm(_fv) != _norm(_dv(_fk)):
+                                _changes[_fk] = _fv
+
+                        # On Hold fields
                         if _is_oh:
-                            _changes.update({
+                            _oh_fields = {
                                 "on_hold_reason":           _w_oh_reason,
                                 "on_hold_response":         _w_oh_resp,
                                 "support_transition_notes": _w_trans_notes,
-                            })
-                            if _w_resume: _changes["resume_date"] = _w_resume.isoformat()
-                        # Milestone dates
-                        for _mk,_ in _ms_write_cols:
+                            }
+                            for _fk, _fv in _oh_fields.items():
+                                if _norm(_fv) != _norm(_dv(_fk)):
+                                    _changes[_fk] = _fv
+                            if _w_resume and _w_resume.isoformat() != _orig_date("resume_date"):
+                                _changes["resume_date"] = _w_resume.isoformat()
+
+                        # Milestone dates — only write if widget value differs from DRS original
+                        for _mk, _ in _ms_write_cols:
                             _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
-                            if _mw: _changes[_mk] = _mw.isoformat()
-                        # Remove unchanged/empty
-                        _changes = {k:v for k,v in _changes.items() if v and str(v).strip() not in ("","None")}
+                            _orig_ms = _orig_date(_mk)
+                            if _mw and _mw.isoformat() != _orig_ms:
+                                _changes[_mk] = _mw.isoformat()
+
+                        # Drop any remaining empty/None values (defensive)
+                        _changes = {k: v for k, v in _changes.items()
+                                    if _norm(v) != ""}
                         if _changes:
                             with st.spinner("Saving to Smartsheet..."):
                                 _ok,_errs = write_row_updates([{
