@@ -258,16 +258,63 @@ else:
 _dn = ("Global Team" if _va_region == "__ALL__" else _va_region + " Team" if _va_region
        else view_as.split(",")[1].strip()+" "+view_as.split(",")[0] if "," in view_as
        else view_as)
+
+# ── Hero metrics ──────────────────────────────────────────────────────────────
+_gl14_count = 0; _gl_next_name = ""
+if not active.empty:
+    _gl_col = next((c for c in ["effective_go_live_date","go_live_date"] if c in active.columns), None)
+    if _gl_col:
+        _gl_dates = pd.to_datetime(active[_gl_col], errors="coerce")
+        _gl_mask  = (_gl_dates >= pd.Timestamp(today)) & (_gl_dates <= pd.Timestamp(today) + pd.Timedelta(days=14))
+        _gl14_count = int(_gl_mask.sum())
+        if _gl14_count > 0:
+            _next_gl = active[_gl_mask].copy(); _next_gl["_gldt"] = _gl_dates[_gl_mask]
+            _gl_next_name = _extract_customer_name(str(_next_gl.sort_values("_gldt").iloc[0].get("project_name","")))
+_rag_at_risk = int(active["rag"].fillna("").str.strip().str.lower().isin(["red","yellow"]).sum()) if not active.empty and "rag" in active.columns else 0
+
+_metric_tile = (
+    "<div style='display:flex;gap:24px;margin-top:20px;flex-wrap:wrap'>"
+    f"<div><div style='font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;"
+    f"color:rgba(255,255,255,.5);margin-bottom:4px'>Open Projects</div>"
+    f"<div style='font-size:24px;font-weight:700;color:#fff;line-height:1'>{_n_active_dc}</div></div>"
+    f"<div style='border-left:1px solid rgba(255,255,255,.12);padding-left:24px'>"
+    f"<div style='font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;"
+    f"color:rgba(255,255,255,.5);margin-bottom:4px'>On Hold</div>"
+    f"<div style='font-size:24px;font-weight:700;color:#fff;line-height:1'>{_n_onhold_dc}</div></div>"
+    f"<div style='border-left:1px solid rgba(255,255,255,.12);padding-left:24px'>"
+    f"<div style='font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;"
+    f"color:rgba(255,255,255,.5);margin-bottom:4px'>Go-Lives Next 14d</div>"
+    f"<div style='font-size:24px;font-weight:700;color:{'#4ade80' if _gl14_count > 0 else '#fff'};line-height:1'>{_gl14_count}</div>"
+    + (f"<div style='font-size:10px;color:rgba(255,255,255,.5);margin-top:2px'>Next: {_gl_next_name}</div>" if _gl_next_name else "") +
+    f"</div>"
+    f"<div style='border-left:1px solid rgba(255,255,255,.12);padding-left:24px'>"
+    f"<div style='font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;"
+    f"color:rgba(255,255,255,.5);margin-bottom:4px'>RAG at Risk</div>"
+    f"<div style='font-size:24px;font-weight:700;color:{'#f87171' if _rag_at_risk > 0 else '#fff'};line-height:1'>{_rag_at_risk}</div></div>"
+    f"<div style='border-left:1px solid rgba(255,255,255,.12);padding-left:24px;opacity:.45'>"
+    f"<div style='font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;"
+    f"color:rgba(255,255,255,.5);margin-bottom:4px'>Not Updated 14d</div>"
+    f"<div style='font-size:24px;font-weight:700;color:#fff;line-height:1'>—</div>"
+    f"<div style='font-size:10px;color:rgba(255,255,255,.4);margin-top:2px'>Requires hosting</div></div>"
+    "</div>"
+)
+
 _hero = st.empty()
 _hero.markdown(
-    f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'>"
-    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · My Work</div>"
-    f"<h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>My Projects — {_dn}</h1>"
-    f"<p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6'>{today.strftime('%A, %B %-d %Y')} · {_n_active_dc} active · {_n_onhold_dc} on hold</p>"
+    f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);"
+    f"padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
+    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+    f"color:#7dd3fc;margin-bottom:8px'>Professional Services · My Work</div>"
+    f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif'>"
+    f"My Projects — {{_dn}}</h1>"
+    f"<p style='color:rgba(255,255,255,.45);margin:6px 0 0;font-size:13px;font-family:Manrope,sans-serif'>"
+    f"{{today.strftime('%A, %B %-d %Y')}}</p>"
+    f"{{_metric_tile}}"
     "</div>",
     unsafe_allow_html=True,
 )
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 1 — Snapshot
@@ -643,11 +690,138 @@ _inactive_projs = active[active["days_inactive"].fillna(0)>=14].sort_values("day
 if not _inactive_projs.empty:
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ── On Hold field value maps ──────────────────────────────────────────────────
+# ── Project detail drawer ─────────────────────────────────────────────────────
+# Project selector drives drawer — rendered as a clean selectbox below the table
+if not active.empty:
+    _pid_col_d = "project_id" if "project_id" in active.columns else "project_name"
+    _all_pids  = [str(r.get(_pid_col_d,"")) for _,r in active.iterrows()]
+    _all_labels= {str(r.get(_pid_col_d,"")): _extract_customer_name(str(r.get("project_name","")))+" — "+str(r.get("project_type",""))
+                  for _,r in active.iterrows()}
+
+    st.markdown('<div class="section-label">Project detail</div>',unsafe_allow_html=True)
+    _sel_pid = st.selectbox(
+        "Select project to view details",
+        options=_all_pids,
+        format_func=lambda p: _all_labels.get(p,p),
+        key="_mp_proj_drawer",
+        label_visibility="collapsed",
+    )
+
+    if _sel_pid:
+        _drawer_matches = active[active[_pid_col_d].astype(str)==str(_sel_pid)]
+        if not _drawer_matches.empty:
+            _dr = _drawer_matches.iloc[0]
+            _dr_name  = str(_dr.get("project_name",""))
+            _dr_cust  = _extract_customer_name(_dr_name)
+            _dr_type  = str(_dr.get("project_type","—"))
+            _dr_pm    = str(_dr.get("project_manager","—"))
+            _dr_pid   = str(_dr.get("project_id","—"))
+
+            def _dv(key, fallback="—"):
+                v = _dr.get(key)
+                if v is None or str(v).strip() in ("","nan","None","NaT"): return fallback
+                return str(v).strip()
+
+            def _dfmt(key):
+                v = _dr.get(key)
+                try: return pd.Timestamp(v).strftime("%-d %b %Y")
+                except: return "—"
+
+            dcol_left, dcol_right = st.columns([1,1], gap="medium")
+
+            with dcol_left:
+                # ── Intake fields ─────────────────────────────────────────────
+                st.markdown(f"""
+<div style='border:0.5px solid rgba(128,128,128,.2);border-radius:10px;padding:16px 18px;'>
+  <div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--color-text-secondary);margin-bottom:12px'>Intake</div>
+  <table style='width:100%;border-collapse:collapse;font-size:12px'>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0;width:45%'>Customer ID</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("customer_id")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Program ID</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("program_id")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Program name</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("program_name")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Territory</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("territory")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Signed date</td><td style='text-align:right;color:var(--color-text-primary)'>{_dfmt("signed_date")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Implementer</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("implementer")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Sales rep</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("sales_rep")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>CSM</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("csm")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Account manager</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("account_manager")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Impl. contact</td>
+        <td style='text-align:right;color:var(--color-text-info);font-size:11px'>{_dv("implementation_contact_email")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>NS Account #</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("customer_netsuite_account")}</td></tr>
+    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Sandbox Account #</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("customer_sandbox_account")}</td></tr>
+  </table>
+</div>""", unsafe_allow_html=True)
+
+            with dcol_right:
+                # ── Weekly health fields (editable) ───────────────────────────
+                st.markdown('<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--color-text-secondary);margin-bottom:8px">Weekly health update <span style=\'font-size:9px;padding:1px 5px;border-radius:4px;background:var(--color-background-info);color:var(--color-text-info)\'>editable</span></div>', unsafe_allow_html=True)
+
+                _health_opts_sentiment   = ["","Good","Neutral","Concern","At Risk"]
+                _health_opts_health      = ["","Green","Amber","Red"]
+                _health_opts_risk        = ["","Low","Medium","High","Critical"]
+
+                _h_summary  = st.text_area("Overall summary",
+                    value=_dv("overall_summary",""),
+                    height=80, key=f"mp_h_summary_{_sel_pid}",
+                    placeholder="Brief project status update...")
+                _h_sentiment= st.selectbox("Client sentiment",
+                    _health_opts_sentiment,
+                    index=_health_opts_sentiment.index(_dv("client_sentiment","")) if _dv("client_sentiment","") in _health_opts_sentiment else 0,
+                    key=f"mp_h_sentiment_{_sel_pid}")
+                _hcols = st.columns(2)
+                with _hcols[0]:
+                    _h_sched = st.selectbox("Schedule",_health_opts_health,
+                        index=_health_opts_health.index(_dv("schedule_health","")) if _dv("schedule_health","") in _health_opts_health else 0,
+                        key=f"mp_h_sched_{_sel_pid}")
+                    _h_resource = st.selectbox("Resource",_health_opts_health,
+                        index=_health_opts_health.index(_dv("resource_health","")) if _dv("resource_health","") in _health_opts_health else 0,
+                        key=f"mp_h_resource_{_sel_pid}")
+                with _hcols[1]:
+                    _h_scope = st.selectbox("Scope",_health_opts_health,
+                        index=_health_opts_health.index(_dv("scope_health","")) if _dv("scope_health","") in _health_opts_health else 0,
+                        key=f"mp_h_scope_{_sel_pid}")
+                    _h_risk = st.selectbox("Risk level",_health_opts_risk,
+                        index=_health_opts_risk.index(_dv("risk_level","")) if _dv("risk_level","") in _health_opts_risk else 0,
+                        key=f"mp_h_risk_{_sel_pid}")
+                _h_risk_detail = st.text_area("Risk detail",
+                    value=_dv("risk_detail",""),
+                    height=60, key=f"mp_h_riskd_{_sel_pid}",
+                    placeholder="Describe risk or mitigation...")
+                _h_client_resp = st.selectbox("Client responsiveness",_health_opts_sentiment,
+                    index=_health_opts_sentiment.index(_dv("client_responsiveness","")) if _dv("client_responsiveness","") in _health_opts_sentiment else 0,
+                    key=f"mp_h_cresp_{_sel_pid}")
+
+                _health_fields_map = {
+                    "overall_summary":      _h_summary,
+                    "client_sentiment":     _h_sentiment,
+                    "schedule_health":      _h_sched,
+                    "resource_health":      _h_resource,
+                    "scope_health":         _h_scope,
+                    "risk_level":           _h_risk,
+                    "risk_detail":          _h_risk_detail,
+                    "client_responsiveness":_h_client_resp,
+                }
+
+                if st.button("Save weekly update to Smartsheet",
+                             key=f"mp_h_save_{_sel_pid}",
+                             type="primary", use_container_width=True):
+                    _row_id = _dr.get("_ss_row_id")
+                    if _row_id and _ss_ready:
+                        _changes = {k:v for k,v in _health_fields_map.items() if v and str(v).strip()}
+                        if _changes:
+                            _ok2,_errs2 = write_row_updates([{
+                                "_ss_row_id":   int(_row_id),
+                                "project_name": _dr_name,
+                                "changes":      _changes,
+                            }])
+                            if _ok2: st.success("✓ Weekly update saved to Smartsheet")
+                            for _e2 in (_errs2 or []): st.warning(f"⚠ {_e2}")
+                        else:
+                            st.info("No changes to save.")
+                    else:
+                        st.info("Sync DRS via API on Home page to enable Smartsheet writeback.")
+
 _OH_REASON_OPTS   = ["—","Zone Product Dependency","Zone Program Dependency",
                      "NetSuite Dependency","Client Requested","Client Unresponsive"]
 _OH_RESP_OPTS     = ["—","Highly Engaged","Neutral","Not Responsive"]
