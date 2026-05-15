@@ -185,8 +185,8 @@ if df_ns is not None:
     except Exception: pass
 
 _ioh   = my_drs.get("_on_hold",pd.Series(False,index=my_drs.index)).astype(bool)
-on_hold= my_drs[_ioh].copy().reset_index(drop=True)
-active = my_drs[~_ioh].copy().reset_index(drop=True)
+on_hold= my_drs[_ioh].copy()
+active = my_drs[~_ioh].copy()
 # ── Deduped project counts for metrics (avoids multi-row DRS inflation) ──
 _id_col_dc    = "project_id" if "project_id" in active.columns else "project_name"
 _n_active_dc  = int(active[_id_col_dc].nunique()) if not active.empty else 0
@@ -319,6 +319,66 @@ _hero.markdown(
     unsafe_allow_html=True,
 )
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+.mp-guide-wrap{padding:4px 0 16px}
+.mp-guide-rule{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.mp-guide-rule span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;opacity:.55;white-space:nowrap}
+.mp-guide-rule hr{flex:1;height:0;border:none;border-top:0.5px solid rgba(128,128,128,.2);margin:0}
+.mp-guide-grid{display:grid;grid-template-columns:1fr 0.5px 1fr;border:0.5px solid rgba(128,128,128,.2);border-radius:10px;overflow:hidden}
+.mp-guide-col{padding:18px 22px}
+.mp-guide-divider{background:rgba(128,128,128,.18)}
+.mp-guide-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.mp-guide-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px}
+.mp-guide-icon-blue{background:rgba(59,130,246,.15);color:#3b82f6}
+.mp-guide-icon-amber{background:rgba(245,158,11,.15);color:#d97706}
+.mp-guide-title{margin:0;font-size:14px;font-weight:600;font-family:Manrope,sans-serif}
+.mp-guide-sub{margin:0;font-size:12px;opacity:.55;font-family:Manrope,sans-serif}
+.mp-guide-body{margin:0 0 12px;font-size:13px;opacity:.75;line-height:1.6;font-family:Manrope,sans-serif}
+.mp-guide-bullets{display:flex;flex-direction:column;gap:6px}
+.mp-guide-bullet{display:flex;align-items:flex-start;gap:7px;font-size:12px;opacity:.7;font-family:Manrope,sans-serif;line-height:1.5}
+.mp-guide-check{color:#22c55e;flex-shrink:0;margin-top:1px;font-size:13px}
+.mp-guide-footer{margin:9px 0 0;font-size:12px;opacity:.45;text-align:center;font-family:Manrope,sans-serif}
+</style>
+<div class="mp-guide-wrap">
+  <div class="mp-guide-rule"><span>How to use this page</span><hr></div>
+  <div class="mp-guide-grid">
+    <div class="mp-guide-col">
+      <div class="mp-guide-head">
+        <div class="mp-guide-icon mp-guide-icon-blue">&#9776;</div>
+        <div>
+          <p class="mp-guide-title">Bulk updates</p>
+          <p class="mp-guide-sub">Open projects &amp; On hold tabs</p>
+        </div>
+      </div>
+      <p class="mp-guide-body">Edit phase, status, milestone dates, and on-hold fields directly in the table. Changes are highlighted as you go — sync the whole batch to Smartsheet in one click.</p>
+      <div class="mp-guide-bullets">
+        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Best for end-of-week updates across your full portfolio</span></div>
+        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Phase, status, and all milestone date columns are editable inline</span></div>
+        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Export to CSV or sync directly — both write back to Smartsheet DRS</span></div>
+      </div>
+    </div>
+    <div class="mp-guide-divider"></div>
+    <div class="mp-guide-col">
+      <div class="mp-guide-head">
+        <div class="mp-guide-icon mp-guide-icon-amber">&#9634;</div>
+        <div>
+          <p class="mp-guide-title">Project intake</p>
+          <p class="mp-guide-sub">Project intake tab</p>
+        </div>
+      </div>
+      <p class="mp-guide-body">Select any project to see its full record — all DRS fields on the left, editable fields on the right. Update health, dates, milestones, and on-hold details and save directly to Smartsheet.</p>
+      <div class="mp-guide-bullets">
+        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Best for a focused update before a customer call or go-live</span></div>
+        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Full field visibility — intake, team, dates, health, and on-hold status</span></div>
+        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Only changed fields are written — nothing is overwritten by accident</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="mp-guide-footer">Both methods sync directly to Smartsheet DRS — no manual exports needed.</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS — At a glance / Open Projects / On Hold / Project Detail
@@ -827,17 +887,16 @@ with tab_open:
                 _display_to_internal = {v: k for k, v in WRITEBACK_FIELDS.items()}
                 _editable_display_cols = list(WRITEBACK_FIELDS.values())
 
-                # Use positional indexing throughout — active.reset_index ensures
-                # active, edit_df, and edited all share a 0-based index.
-                _changed_positions  = [i for i, v in enumerate(changed) if v]
-                _sync_rows          = active.iloc[_changed_positions].copy()
-                _edited_changed     = edited.iloc[_changed_positions].copy()
-                _orig_changed       = edit_df.iloc[_changed_positions].copy()
+                # Join edited table back to active df to recover _ss_row_id
+                # active has _ss_row_id; edited has display columns. Join on positional index.
+                _sync_rows = active[changed].copy()
+                _edited_changed = edited[changed].copy()
 
                 updates = []
-                for _ci in range(len(_sync_rows)):
-                    row_id    = _sync_rows.iloc[_ci]["_ss_row_id"]
-                    proj_name = _sync_rows.iloc[_ci].get("project_name", str(row_id))
+                for idx in _sync_rows.index:
+                    _pos = list(_sync_rows.index).index(idx)
+                    row_id    = _sync_rows.at[idx, "_ss_row_id"]
+                    proj_name = _sync_rows.at[idx, "project_name"] if "project_name" in _sync_rows.columns else str(row_id)
 
                     changes = {}
                     for disp_col in _editable_display_cols:
@@ -846,8 +905,9 @@ with tab_open:
                         internal_key = _display_to_internal.get(disp_col)
                         if not internal_key:
                             continue
-                        new_val  = _edited_changed.iloc[_ci][disp_col]
-                        orig_val = _orig_changed.iloc[_ci][disp_col] if disp_col in _orig_changed.columns else None
+                        new_val = _edited_changed.iloc[_pos][disp_col]
+                        # Only include fields that actually changed vs original
+                        orig_val = edit_df.iloc[_pos][disp_col] if disp_col in edit_df.columns else None
                         if str(new_val) != str(orig_val):
                             changes[internal_key] = new_val
 
@@ -1245,67 +1305,36 @@ with tab_intake:
                     _row_id = _dr.get("_ss_row_id")
                     if _row_id and _ss_ready:
                         _changes = {}
-
-                        # Helper: normalise a value to a comparable string
-                        def _norm(v):
-                            if v is None: return ""
-                            s = str(v).strip()
-                            return "" if s in ("nan","None","NaT","—") else s
-
-                        # Helper: get original DRS value as ISO date string
-                        def _orig_date(key):
-                            v = _dr.get(key)
-                            try: return pd.Timestamp(v).date().isoformat() if pd.notna(v) else ""
-                            except: return ""
-
-                        # Dates — only write if widget value differs from DRS original
-                        if _w_golive and _w_golive.isoformat() != _orig_date("go_live_date"):
-                            _changes["go_live_date"] = _w_golive.isoformat()
-                        if _w_finish and _w_finish.isoformat() != _orig_date("finish_date"):
-                            _changes["finish_date"] = _w_finish.isoformat()
-                        if _w_substart and _w_substart.isoformat() != _orig_date("start_date"):
-                            _changes["start_date"] = _w_substart.isoformat()
-
-                        # Health / status fields — only write if changed from DRS original
-                        _health_fields = {
-                            "status":                _w_status,
-                            "phase":                 _w_phase,
-                            "overall_summary":       _w_summary,
-                            "schedule_health":       _w_sched,
-                            "resource_health":       _w_res,
-                            "scope_health":          _w_scope,
-                            "risk_level":            _w_risk,
-                            "risk_detail":           _w_riskd,
-                            "client_responsiveness": _w_cresp,
-                            "client_sentiment":      _w_csent,
-                        }
-                        for _fk, _fv in _health_fields.items():
-                            if _norm(_fv) != _norm(_dv(_fk)):
-                                _changes[_fk] = _fv
-
-                        # On Hold fields
+                        # Dates
+                        if _w_golive:   _changes["go_live_date"] = _w_golive.isoformat()
+                        if _w_finish:   _changes["finish_date"]  = _w_finish.isoformat()
+                        if _w_substart: _changes["start_date"]   = _w_substart.isoformat()
+                        # Health
+                        _changes.update({
+                            "status":               _w_status,
+                            "phase":                _w_phase,
+                            "overall_summary":      _w_summary,
+                            "schedule_health":      _w_sched,
+                            "resource_health":      _w_res,
+                            "scope_health":         _w_scope,
+                            "risk_level":           _w_risk,
+                            "risk_detail":          _w_riskd,
+                            "client_responsiveness":_w_cresp,
+                            "client_sentiment":     _w_csent,
+                        })
                         if _is_oh:
-                            _oh_fields = {
+                            _changes.update({
                                 "on_hold_reason":           _w_oh_reason,
                                 "on_hold_response":         _w_oh_resp,
                                 "support_transition_notes": _w_trans_notes,
-                            }
-                            for _fk, _fv in _oh_fields.items():
-                                if _norm(_fv) != _norm(_dv(_fk)):
-                                    _changes[_fk] = _fv
-                            if _w_resume and _w_resume.isoformat() != _orig_date("resume_date"):
-                                _changes["resume_date"] = _w_resume.isoformat()
-
-                        # Milestone dates — only write if widget value differs from DRS original
-                        for _mk, _ in _ms_write_cols:
+                            })
+                            if _w_resume: _changes["resume_date"] = _w_resume.isoformat()
+                        # Milestone dates
+                        for _mk,_ in _ms_write_cols:
                             _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
-                            _orig_ms = _orig_date(_mk)
-                            if _mw and _mw.isoformat() != _orig_ms:
-                                _changes[_mk] = _mw.isoformat()
-
-                        # Drop any remaining empty/None values (defensive)
-                        _changes = {k: v for k, v in _changes.items()
-                                    if _norm(v) != ""}
+                            if _mw: _changes[_mk] = _mw.isoformat()
+                        # Remove unchanged/empty
+                        _changes = {k:v for k,v in _changes.items() if v and str(v).strip() not in ("","None")}
                         if _changes:
                             with st.spinner("Saving to Smartsheet..."):
                                 _ok,_errs = write_row_updates([{
