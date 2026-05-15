@@ -324,11 +324,46 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 # TABS — At a glance / Open Projects / On Hold / Project Detail
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── NS lookups — must be defined before overrun metric ───────────────────────
+def _clean_pid(v):
+    try:
+        s = str(v).strip()
+        if s in ("", "nan", "None"): return ""
+        return str(int(float(s)))
+    except: return str(v).strip()
+
+_ns_htd: dict    = {}
+_ns_tm_hrs: dict = {}
+_ns_tm_pids: set = set()
+
+if df_ns is not None and not active.empty:
+    _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
+    if _ns_id_col and "hours_to_date" in df_ns.columns:
+        for _pid, _grp in df_ns.groupby(_ns_id_col):
+            _k = _clean_pid(_pid)
+            if _k:
+                try: _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
+                except: pass
+    if _ns_id_col and "tm_scope" in df_ns.columns:
+        for _pid, _grp in df_ns.groupby(_ns_id_col):
+            _k = _clean_pid(_pid)
+            if _k:
+                try:
+                    _v = _grp["tm_scope"].dropna().astype(float)
+                    if not _v.empty:
+                        _ns_tm_hrs[_k] = round(float(_v.max()), 2)
+                        _ns_tm_pids.add(_k)
+                except: pass
+    if _ns_id_col and "billing_type" in df_ns.columns:
+        _tm_ns = df_ns[df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"]
+        for _pid in _tm_ns[_ns_id_col].dropna().unique():
+            _k = _clean_pid(_pid)
+            if _k: _ns_tm_pids.add(_k)
+
 # ── At a glance metrics ───────────────────────────────────────────────────────
 _n_flagged   = int((active["_ne"] > 0).sum() | (active["_nw"] > 0).sum()) if not active.empty and "_ne" in active.columns else 0
 _n_flagged   = int(active["_flags"].apply(lambda f: bool(f)).sum()) if not active.empty and "_flags" in active.columns else 0
 
-# Over budget: balance < 0 for FF projects
 # FF overrun — count projects where NS hours-to-date exceed DEFAULT_SCOPE
 # Uses same logic as Utilization Report: substring match on project_type
 _n_overrun = 0
@@ -360,9 +395,6 @@ if not active.empty and "days_inactive" in active.columns:
     _n_no_time_30 = int((active["days_inactive"].fillna(-1) >= 30).sum())
 
 
-_ns_htd: dict    = {}
-_ns_tm_hrs: dict = {}
-_ns_tm_pids: set = set()
 
 
 tab_glance, tab_open, tab_hold, tab_intake = st.tabs([
@@ -525,38 +557,6 @@ with tab_open:
         st.info("No active projects found.")
     else:
         pass  # NS lookups now at module level above tabs
-def _clean_pid(v):
-    try:
-        s = str(v).strip()
-        if s in ("", "nan", "None"): return ""
-        return str(int(float(s)))
-    except: return str(v).strip()
-
-if df_ns is not None and not active.empty:
-    _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
-    if _ns_id_col and "hours_to_date" in df_ns.columns:
-        for _pid, _grp in df_ns.groupby(_ns_id_col):
-            _k = _clean_pid(_pid)
-            if _k:
-                try: _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
-                except: pass
-    if _ns_id_col and "tm_scope" in df_ns.columns:
-        for _pid, _grp in df_ns.groupby(_ns_id_col):
-            _k = _clean_pid(_pid)
-            if _k:
-                try:
-                    _v = _grp["tm_scope"].dropna().astype(float)
-                    if not _v.empty:
-                        _ns_tm_hrs[_k] = round(float(_v.max()), 2)
-                        _ns_tm_pids.add(_k)
-                except: pass
-    if _ns_id_col and "billing_type" in df_ns.columns:
-        _tm_ns = df_ns[df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"]
-        for _pid in _tm_ns[_ns_id_col].dropna().unique():
-            _k = _clean_pid(_pid)
-            if _k: _ns_tm_pids.add(_k)
-
-
         # ── Build editable dataframe ──────────────────────────────────────────────
     def _rag_emoji(val):
         v = str(val or "").strip().lower()
