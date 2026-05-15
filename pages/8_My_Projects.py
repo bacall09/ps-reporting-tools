@@ -700,13 +700,13 @@ if not active.empty:
     _all_labels= {str(r.get(_pid_col_d,"")): _extract_customer_name(str(r.get("project_name","")))+" — "+str(r.get("project_type",""))
                   for _,r in active.iterrows()}
 
-    st.markdown('<div class="section-label">Project detail</div>',unsafe_allow_html=True)
+    # ── Project detail card ─────────────────────────────────────────────────
+    # Selectbox label acts as section header — no separate st.markdown label
     _sel_pid = st.selectbox(
-        "Select project to view details",
+        "Project detail",
         options=_all_pids,
         format_func=lambda p: _all_labels.get(p,p),
         key="_mp_proj_drawer",
-        label_visibility="collapsed",
     )
 
     if _sel_pid:
@@ -718,6 +718,8 @@ if not active.empty:
             _dr_type  = str(_dr.get("project_type","—"))
             _dr_pm    = str(_dr.get("project_manager","—"))
             _dr_pid   = str(_dr.get("project_id","—"))
+            _dr_rag   = str(_dr.get("rag","") or "").strip().lower()
+            _rag_color= {"red":"#E24B4A","yellow":"#EF9F27","green":"#639922"}.get(_dr_rag,"rgba(128,128,128,.3)")
 
             def _dv(key, fallback="—"):
                 v = _dr.get(key)
@@ -729,29 +731,51 @@ if not active.empty:
                 try: return pd.Timestamp(v).strftime("%-d %b %Y")
                 except: return "—"
 
+            # Build intake rows — only show populated fields
+            _intake_fields = [
+                ("Customer ID",      _dv("customer_id")),
+                ("Program ID",       _dv("program_id")),
+                ("Program name",     _dv("program_name")),
+                ("Territory",        _dv("territory")),
+                ("Signed date",      _dfmt("signed_date")),
+                ("Implementer",      _dv("implementer")),
+                ("Sales rep",        _dv("sales_rep")),
+                ("CSM",              _dv("csm")),
+                ("Account manager",  _dv("account_manager")),
+                ("Impl. contact",    _dv("implementation_contact_email")),
+                ("NS Account #",     _dv("customer_netsuite_account")),
+                ("Sandbox Account #",_dv("customer_sandbox_account")),
+            ]
+            # Hide rows that are "—" to reduce noise (will populate after Friday's sheet)
+            _intake_populated = [(lbl,val) for lbl,val in _intake_fields if val != "—"]
+            _intake_empty_count = len(_intake_fields) - len(_intake_populated)
+
+            _intake_rows_html = "".join(
+                f"<tr><td style='color:var(--color-text-secondary);padding:5px 0;width:45%;font-size:12px'>{lbl}</td>"
+                f"<td style='text-align:right;color:{'var(--color-text-info)' if 'contact' in lbl.lower() else 'var(--color-text-primary)'};font-size:12px'>{val}</td></tr>"
+                for lbl,val in _intake_populated
+            )
+            _intake_empty_note = (
+                f"<div style='font-size:11px;color:var(--color-text-secondary);opacity:.5;margin-top:8px'>"
+                f"{_intake_empty_count} fields pending provisioned sheet</div>"
+                if _intake_empty_count > 0 else ""
+            )
+
             dcol_left, dcol_right = st.columns([1,1], gap="medium")
 
             with dcol_left:
-                # ── Intake fields ─────────────────────────────────────────────
-                st.markdown(f"""
-<div style='border:0.5px solid rgba(128,128,128,.2);border-radius:10px;padding:16px 18px;'>
-  <div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--color-text-secondary);margin-bottom:12px'>Intake</div>
-  <table style='width:100%;border-collapse:collapse;font-size:12px'>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0;width:45%'>Customer ID</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("customer_id")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Program ID</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("program_id")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Program name</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("program_name")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Territory</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("territory")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Signed date</td><td style='text-align:right;color:var(--color-text-primary)'>{_dfmt("signed_date")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Implementer</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("implementer")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Sales rep</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("sales_rep")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>CSM</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("csm")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Account manager</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("account_manager")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Impl. contact</td>
-        <td style='text-align:right;color:var(--color-text-info);font-size:11px'>{_dv("implementation_contact_email")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>NS Account #</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("customer_netsuite_account")}</td></tr>
-    <tr><td style='color:var(--color-text-secondary);padding:4px 0'>Sandbox Account #</td><td style='text-align:right;color:var(--color-text-primary)'>{_dv("customer_sandbox_account")}</td></tr>
-  </table>
-</div>""", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='border-left:3px solid {_rag_color};"
+                    f"border-radius:0 10px 10px 0;border-top:0.5px solid rgba(128,128,128,.15);"
+                    f"border-right:0.5px solid rgba(128,128,128,.15);border-bottom:0.5px solid rgba(128,128,128,.15);"
+                    f"padding:16px 18px;'>"
+                    f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;"
+                    f"color:var(--color-text-secondary);margin-bottom:12px'>Intake</div>"
+                    f"<table style='width:100%;border-collapse:collapse'>{_intake_rows_html}</table>"
+                    f"{_intake_empty_note}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
 
             with dcol_right:
                 # ── Weekly health fields (editable) ───────────────────────────
