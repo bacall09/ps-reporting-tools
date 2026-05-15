@@ -352,6 +352,12 @@ _n_no_time_30 = 0
 if not active.empty and "days_inactive" in active.columns:
     _n_no_time_30 = int((active["days_inactive"].fillna(-1) >= 30).sum())
 
+
+_ns_htd: dict    = {}
+_ns_tm_hrs: dict = {}
+_ns_tm_pids: set = set()
+
+
 tab_glance, tab_open, tab_hold, tab_detail = st.tabs([
     "At a glance",
     f"Open Projects · {_n_active_dc}",
@@ -363,35 +369,36 @@ tab_glance, tab_open, tab_hold, tab_detail = st.tabs([
 # TAB 1 — At a glance
 # ═══════════════════════════════════════════════════════════════════
 with tab_glance:
-    # ── WHERE TO LOOK — same pattern as Utilization Report ────────────────────
-    def _wtl_card(col, icon, label, val, sub, total, color):
-        """Colour logic: 0=green, >0 uses danger/warning based on pct of total."""
-        if val == 0:
-            bg = "rgba(34,197,94,.08)"; bc = "rgba(34,197,94,.3)"; vc = "#15803d"; ic = "#15803d"
-        elif color == "danger":
-            bg = "rgba(226,75,74,.08)"; bc = "rgba(226,75,74,.3)"; vc = "#dc2626"; ic = "#dc2626"
+    # ── WHERE TO LOOK — matches Utilization Report callout style ────────────
+    def _wtl_card(col, icon, title, num, body, is_red=False, is_amber=False):
+        if num == 0:
+            bc="#22c55e"; tc="#15803d"; ck="✓"
+        elif is_red:
+            bc="#ef4444"; tc="#b91c1c"; ck=icon
         else:
-            bg = "rgba(239,159,39,.08)"; bc = "rgba(239,159,39,.3)"; vc = "#92400e"; ic = "#d97706"
-        _pct = f" · {int(val/total*100)}% of total" if total and val > 0 else ""
+            bc="#f59e0b"; tc="#b45309"; ck=icon
         col.markdown(
-            f"<div style='background:{bg};border:0.5px solid {bc};border-radius:8px;padding:14px 16px'>"
-            f"<div style='font-size:11px;font-weight:500;color:{ic};margin-bottom:6px'>{icon} {label}</div>"
-            f"<div style='font-size:26px;font-weight:700;color:{vc};line-height:1'>{val}</div>"
-            f"<div style='font-size:11px;color:{ic};margin-top:4px;opacity:.8'>{sub}{_pct}</div>"
+            f"<div style='border:0.5px solid rgba(128,128,128,.15);border-radius:8px;"
+            f"border-left:3px solid {bc};padding:14px 16px'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
+            f"<span style='font-size:12px;font-weight:600;color:{tc}'>{ck} {title}</span>"
+            f"<span style='font-size:22px;font-weight:600;color:{tc};font-variant-numeric:tabular-nums'>{num}</span></div>"
+            f"<div style='font-size:12px;opacity:.75;line-height:1.4;color:var(--color-text-primary)'>{body}</div>"
             "</div>", unsafe_allow_html=True
         )
 
-    st.markdown('<div class="section-label">Where to look</div>',unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:4px;font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px'>Where to look</div>", unsafe_allow_html=True)
     _wtl1,_wtl2,_wtl3 = st.columns(3)
-    _wtl_color1 = "danger" if _n_flagged > 0 else "green"
-    _wtl_color2 = "danger" if _n_overrun > 0 else "green"
-    _wtl_color3 = "warning" if _n_no_time_30 > 0 else "green"
     _wtl_card(_wtl1,"⚠","Projects with flags",_n_flagged,
-              "Date issues · missing milestones · phase gaps",_n_active_dc,_wtl_color1)
+        f"Date issues · missing milestones · phase gaps{'  · '+str(int(_n_flagged/_n_active_dc*100))+'% of portfolio' if _n_active_dc else ''}",
+        is_red=_n_flagged>0)
     _wtl_card(_wtl2,"↑","FF overrun",_n_overrun,
-              "Hours exceed contracted scope",_n_active_dc,_wtl_color2)
+        "Hours exceed contracted scope." if _n_overrun==0 else f"{_n_overrun} project{'s' if _n_overrun>1 else ''} over scope — check Hours to Date",
+        is_amber=_n_overrun>0)
     _wtl_card(_wtl3,"○","No time entry 30d",_n_no_time_30,
-              "Requires NS Time Detail",_n_active_dc,_wtl_color3)
+        "All projects have recent time entries." if _n_no_time_30==0 else f"{_n_no_time_30} project{'s' if _n_no_time_30>1 else ''} with no NS time entry in 30 days",
+        is_amber=_n_no_time_30>0)
+
 
     st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
@@ -451,57 +458,38 @@ with tab_open:
     if active.empty:
         st.info("No active projects found.")
     else:
-        # ── Build NS lookups keyed by project_id ─────────────────────────────────
-        def _clean_pid(v):
-            try:
-                s = str(v).strip()
-                if s in ("", "nan", "None"): return ""
-                return str(int(float(s)))
-            except: return str(v).strip()
+        pass  # NS lookups now at module level above tabs
+def _clean_pid(v):
+    try:
+        s = str(v).strip()
+        if s in ("", "nan", "None"): return ""
+        return str(int(float(s)))
+    except: return str(v).strip()
 
-        _ns_htd: dict    = {}  # project_id → max hours_to_date
-        _ns_tm_hrs: dict = {}  # project_id → T&M scope hours
-        _ns_tm_pids: set = set()  # project_ids confirmed T&M from NS billing_type
+if df_ns is not None and not active.empty:
+    _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
+    if _ns_id_col and "hours_to_date" in df_ns.columns:
+        for _pid, _grp in df_ns.groupby(_ns_id_col):
+            _k = _clean_pid(_pid)
+            if _k:
+                try: _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
+                except: pass
+    if _ns_id_col and "tm_scope" in df_ns.columns:
+        for _pid, _grp in df_ns.groupby(_ns_id_col):
+            _k = _clean_pid(_pid)
+            if _k:
+                try:
+                    _v = _grp["tm_scope"].dropna().astype(float)
+                    if not _v.empty:
+                        _ns_tm_hrs[_k] = round(float(_v.max()), 2)
+                        _ns_tm_pids.add(_k)
+                except: pass
+    if _ns_id_col and "billing_type" in df_ns.columns:
+        _tm_ns = df_ns[df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"]
+        for _pid in _tm_ns[_ns_id_col].dropna().unique():
+            _k = _clean_pid(_pid)
+            if _k: _ns_tm_pids.add(_k)
 
-        if df_ns is not None:
-            _ns_id_col = "project_id" if "project_id" in df_ns.columns else None
-            if _ns_id_col and "hours_to_date" in df_ns.columns:
-                for _pid, _grp in df_ns.groupby(_ns_id_col):
-                    _k = _clean_pid(_pid)
-                    if _k:
-                        try:
-                            _ns_htd[_k] = round(float(_grp["hours_to_date"].dropna().astype(float).max() or 0), 2)
-                        except Exception:
-                            pass
-            # T&M scope — read directly from the "T&M Scope" column in NS Time Detail
-            # (only populated for T&M projects — replaces the hours-sum proxy)
-            if _ns_id_col and "tm_scope" in df_ns.columns:
-                for _pid, _grp in df_ns.groupby(_ns_id_col):
-                    _k = _clean_pid(_pid)
-                    if _k:
-                        try:
-                            _v = _grp["tm_scope"].dropna().astype(float)
-                            if not _v.empty:
-                                _ns_tm_hrs[_k] = round(float(_v.max()), 2)
-                                _ns_tm_pids.add(_k)
-                        except Exception:
-                            pass
-            # Also flag T&M by billing_type in NS (catches projects where tm_scope is present)
-            if _ns_id_col and "billing_type" in df_ns.columns:
-                _tm_ns = df_ns[df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"]
-                for _pid in _tm_ns[_ns_id_col].dropna().unique():
-                    _k = _clean_pid(_pid)
-                    if _k: _ns_tm_pids.add(_k)
-            elif _ns_id_col and "hours" in df_ns.columns and "billing_type" in df_ns.columns:
-                # Fallback: sum T&M hours if T&M Scope column not present
-                _tm_mask = df_ns["billing_type"].fillna("").str.strip().str.lower() == "t&m"
-                for _pid, _grp in df_ns[_tm_mask].groupby(_ns_id_col):
-                    _k = _clean_pid(_pid)
-                    if _k:
-                        try:
-                            _ns_tm_hrs[_k] = round(float(_grp["hours"].sum() or 0), 2)
-                        except Exception:
-                            pass
 
         # ── Build editable dataframe ──────────────────────────────────────────────
     def _rag_emoji(val):
