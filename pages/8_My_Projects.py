@@ -451,91 +451,113 @@ with tab_glance:
             f"<span style='font-weight:400;opacity:.6'>· {_n_at_risk} Red/Amber project{'s' if _n_at_risk!=1 else ''}</span></div>",
             unsafe_allow_html=True
         )
-        if _at_risk_rows.empty:
+        # Build scope lookup (same as Utilization Report)
+        try:
+            from shared.config import DEFAULT_SCOPE as _DS_ar
+            def _ar_scope(ptype):
+                _pt = str(ptype or "").strip().lower()
+                _best = None; _blen = 0
+                for k,v in _DS_ar.items():
+                    if k.strip().lower() in _pt and len(k) > _blen:
+                        _best = float(v); _blen = len(k)
+                return _best
+        except Exception:
+            def _ar_scope(ptype): return None
+
+        _ar_rows = []
+        for _, _r in active.iterrows():
+            _pid_k  = _clean_pid(str(_r.get("project_id","") or ""))
+            _scope  = _ar_scope(_r.get("project_type",""))
+            _htd_v  = float(_ns_htd.get(_pid_k, 0) or 0)
+            _burn   = (_htd_v / _scope) if (_scope and _scope > 0) else None
+            _rag_v  = str(_r.get("rag","") or "").strip().lower()
+            _is_red = _rag_v == "red"
+            _is_amb = _rag_v in ("yellow","amber")
+            _is_over= _scope and _htd_v > _scope
+            _is_burn= _burn is not None and _burn >= 0.80 and not _is_over
+            if not (_is_red or _is_amb or _is_over or _is_burn):
+                continue
+            _cust  = _extract_customer_name(str(_r.get("project_name","")))
+            _ptype = str(_r.get("project_type","") or "—")
+            if _is_over:  _status_tag = ("red","Overrun")
+            elif _is_burn:_status_tag = ("amber",f"Burn {int(_burn*100)}%")
+            elif _is_red: _status_tag = ("red","Red RAG")
+            else:         _status_tag = ("amber","Amber RAG")
+            _ar_rows.append((_r, _cust, _ptype, _scope, _htd_v, _burn, _status_tag))
+
+        if not _ar_rows:
             st.markdown(
-                "<div style='font-size:12px;color:var(--color-text-secondary);padding:12px 0'>"
-                "No Red or Amber RAG projects — all projects are Green or unrated.</div>",
-                unsafe_allow_html=True
+                "<div class='util-card' style='text-align:center;padding:24px'>"
+                "<div style='font-size:24px;margin-bottom:6px'>✓</div>"
+                "<div style='font-weight:500;font-size:13px'>No projects at risk</div>"
+                "<div style='font-size:12px;opacity:.7;margin-top:4px'>No Red/Amber RAG, no FF overruns, no burn ≥ 80%</div>"
+                "</div>", unsafe_allow_html=True
             )
         else:
-            def _pill(val, opts):
-                """Return a coloured pill span for a status value."""
+            def _pill_ar(val, level=None):
                 v = str(val or "").strip()
-                if not v or v in ("—","nan","None"): return "<span style='color:var(--color-text-secondary);font-size:11px'>—</span>"
-                if v.lower() in ("red","high","critical","at risk"): col="var(--color-text-danger)"; bg="var(--color-background-danger)"
-                elif v.lower() in ("yellow","amber","medium","concern","neutral"): col="var(--color-text-warning)"; bg="var(--color-background-warning)"
-                elif v.lower() in ("green","low","good"): col="var(--color-text-success)"; bg="var(--color-background-success)"
-                else: col="var(--color-text-secondary)"; bg="var(--color-background-secondary)"
+                if not v or v in ("—","nan","None"): return "<span style='opacity:.45;font-size:11px'>—</span>"
+                if level == "red" or v.lower() in ("red","high","critical","overrun","at risk"):
+                    col="#b91c1c"; bg="rgba(239,68,68,.12)"
+                elif level == "amber" or v.lower() in ("yellow","amber","medium","concern","burn"):
+                    col="#b45309"; bg="rgba(245,158,11,.12)"
+                elif v.lower() in ("green","low","good","on track"):
+                    col="#15803d"; bg="rgba(34,197,94,.12)"
+                else: col="var(--color-text-secondary)"; bg="rgba(128,128,128,.1)"
                 return f"<span style='font-size:10px;padding:2px 7px;border-radius:20px;background:{bg};color:{col};font-weight:500;white-space:nowrap'>{v}</span>"
 
-            def _dv2(r, key):
-                v = r.get(key)
-                if v is None or str(v).strip() in ("","nan","None","NaT"): return "—"
-                return str(v).strip()
-
+            _tbl_th = "font-size:10px;font-weight:500;color:var(--color-text-secondary);padding:7px 10px;border-bottom:0.5px solid rgba(128,128,128,.2);text-align:left;white-space:nowrap;background:rgba(128,128,128,.05)"
             _rows_html = []
-            for _, _r in _at_risk_rows.iterrows():
+            for _r, _cust, _ptype, _scope, _htd, _burn, (_slevel, _slabel) in _ar_rows:
+                _sc_str  = f"{_scope:.0f}" if _scope else "—"
+                _htd_str = f"{_htd:.2f}" if _htd else "—"
+                _burn_bar = ""
+                if _burn is not None:
+                    _bp  = min(_burn, 1.5)
+                    _bcol= "#ef4444" if _bp > 1.0 else "#f59e0b" if _bp >= 0.8 else "#22c55e"
+                    _bpct= min(_bp/1.5*100, 100)
+                    _burn_bar = (f"<div style='display:inline-block;width:48px;height:5px;"
+                                 f"background:rgba(128,128,128,.2);border-radius:3px;overflow:hidden;"
+                                 f"vertical-align:middle;margin-right:5px'>"
+                                 f"<div style='width:{_bpct:.0f}%;height:100%;background:{_bcol}'></div></div>")
+                    _burn_str = f"{int(_burn*100)}%"
+                else:
+                    _burn_str = "—"
                 _rag_v = str(_r.get("rag","") or "").strip().capitalize()
-                _cust  = _extract_customer_name(str(_r.get("project_name","")))
-                _ptype = _dv2(_r,"project_type")
-                _status= _dv2(_r,"status")
-                _sd    = pd.Timestamp(_r["start_date"]).strftime("%-d %b %y") if pd.notna(_r.get("start_date")) else "—"
-                _oh    = pd.Timestamp(_r["on_hold_date"]).strftime("%-d %b %y") if pd.notna(_r.get("on_hold_date")) else "—"
-                _rl    = _dv2(_r,"risk_level")
-                _rd    = _dv2(_r,"risk_detail")
-                if len(_rd) > 40: _rd = _rd[:38]+"…"
-                _sent  = _dv2(_r,"client_sentiment")
-                _resp  = _dv2(_r,"client_responsiveness")
-                _sch   = _dv2(_r,"schedule_health")
-                _res   = _dv2(_r,"resource_health")
-                _sco   = _dv2(_r,"scope_health")
                 _rows_html.append(
-                    f"<tr>"
-                    f"<td style='padding:7px 10px'>{_pill(_rag_v,None)}</td>"
+                    f"<tr style='border-bottom:0.5px solid rgba(128,128,128,.12)'>"
                     f"<td style='padding:7px 10px;font-weight:500;font-size:12px'>{_cust}</td>"
                     f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px'>{_ptype}</td>"
-                    f"<td style='padding:7px 10px;font-size:11px'>{_pill(_status,None)}</td>"
-                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px'>{_sd}</td>"
-                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px'>{_oh}</td>"
-                    f"<td style='padding:7px 10px'>{_pill(_rl,None)}</td>"
-                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px;max-width:140px'>{_rd}</td>"
-                    f"<td style='padding:7px 10px;border-left:0.5px solid rgba(128,128,128,.15)'>{_pill(_sent,None)}</td>"
-                    f"<td style='padding:7px 10px'>{_pill(_resp,None)}</td>"
-                    f"<td style='padding:7px 10px;border-left:0.5px solid rgba(128,128,128,.15)'>{_pill(_sch,None)}</td>"
-                    f"<td style='padding:7px 10px'>{_pill(_res,None)}</td>"
-                    f"<td style='padding:7px 10px'>{_pill(_sco,None)}</td>"
+                    f"<td style='padding:7px 10px'>{_pill_ar(_rag_v)}</td>"
+                    f"<td style='padding:7px 10px'>{_sc_str}</td>"
+                    f"<td style='padding:7px 10px'>{_htd_str}</td>"
+                    f"<td style='padding:7px 10px'>{_burn_bar}<span style='vertical-align:middle;font-size:11px'>{_burn_str}</span></td>"
+                    f"<td style='padding:7px 10px'>{_pill_ar(_slabel, _slevel)}</td>"
                     f"</tr>"
                 )
-            _grp_th = "font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;color:var(--color-text-secondary);padding:4px 10px 2px;text-align:center;border-bottom:0.5px solid rgba(128,128,128,.15)"
-            _col_th = "font-size:10px;font-weight:500;color:var(--color-text-secondary);padding:6px 10px;border-bottom:0.5px solid rgba(128,128,128,.15);text-align:left;white-space:nowrap"
+            _n_ar = len(_ar_rows)
+            st.markdown(
+                f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;"
+                f"color:var(--color-text-secondary);margin-bottom:8px'>Projects at risk "
+                f"<span style='font-weight:400;opacity:.6'>· {_n_ar} project{'s' if _n_ar!=1 else ''}</span></div>",
+                unsafe_allow_html=True
+            )
             st.markdown(
                 f"<div style='overflow-x:auto;border:0.5px solid rgba(128,128,128,.2);border-radius:8px'>"
                 f"<table style='width:100%;border-collapse:collapse;font-size:12px'>"
-                f"<thead>"
-                f"<tr>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>RAG</th>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Customer</th>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Type</th>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Status</th>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Start</th>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>On hold</th>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Risk level</th>"
-                f"<th rowspan='2' style='{_col_th};vertical-align:bottom;max-width:140px'>Risk detail</th>"
-                f"<th colspan='2' style='{_grp_th};border-left:0.5px solid rgba(128,128,128,.15)'>Client</th>"
-                f"<th colspan='3' style='{_grp_th};border-left:0.5px solid rgba(128,128,128,.15)'>Health</th>"
-                f"</tr>"
-                f"<tr>"
-                f"<th style='{_col_th};border-left:0.5px solid rgba(128,128,128,.15)'>Sentiment</th>"
-                f"<th style='{_col_th}'>Responsiveness</th>"
-                f"<th style='{_col_th};border-left:0.5px solid rgba(128,128,128,.15)'>Schedule</th>"
-                f"<th style='{_col_th}'>Resource</th>"
-                f"<th style='{_col_th}'>Scope</th>"
-                f"</tr>"
-                f"</thead>"
-                f"<tbody style='border-top:0.5px solid rgba(128,128,128,.15)'>"
-                + "".join(_rows_html) +
-                f"</tbody></table></div>"
-                f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:5px'>Red &amp; Amber RAG projects only · read-only</div>",
+                f"<thead><tr>"
+                f"<th style='{_tbl_th}'>Project</th>"
+                f"<th style='{_tbl_th}'>Type</th>"
+                f"<th style='{_tbl_th}'>RAG</th>"
+                f"<th style='{_tbl_th}'>Scoped</th>"
+                f"<th style='{_tbl_th}'>HTD</th>"
+                f"<th style='{_tbl_th}'>Burn</th>"
+                f"<th style='{_tbl_th}'>Status</th>"
+                f"</tr></thead>"
+                f"<tbody>{''.join(_rows_html)}</tbody></table>"
+                f"<div style='padding:6px 10px;font-size:11px;opacity:.6;border-top:0.5px solid rgba(128,128,128,.1)'>"
+                f"Risk = Red/Amber RAG, overrun &gt; 0, or burn ≥ 80% (HTD ÷ scope). HTD = hours-to-date all time.</div>"
+                f"</div>",
                 unsafe_allow_html=True
             )
 
@@ -1116,7 +1138,7 @@ with tab_intake:
                 _badge = lambda t: f"<span style='font-size:9px;padding:2px 6px;border-radius:4px;background:var(--color-background-info);color:var(--color-text-info);margin-left:6px'>{t}</span>"
 
                 # Project dates
-                st.markdown(f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--color-text-secondary);margin-bottom:10px'>Project dates{_badge('editable')}</div>",unsafe_allow_html=True)
+                st.markdown(f"<div class='section-label' style='margin-bottom:10px'>Project Dates {_badge('editable')}</div>",unsafe_allow_html=True)
                 _wc1,_wc2 = st.columns(2)
                 with _wc1:
                     _gl_cur = _dr.get("go_live_date")
@@ -1133,7 +1155,7 @@ with tab_intake:
                 st.markdown("<div style='height:10px'></div>",unsafe_allow_html=True)
 
                 # Weekly health
-                st.markdown(f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--color-text-secondary);margin-bottom:10px;padding-top:10px;border-top:0.5px solid rgba(128,128,128,.15)'>Weekly health{_badge('editable')}</div>",unsafe_allow_html=True)
+                st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>Weekly Health {_badge('editable')}</div>",unsafe_allow_html=True)
                 _opts_status    = ["In Progress","On Hold","Complete","Closed","Cancelled"]
                 _opts_phase     = PHASE_OPTIONS
                 _opts_sentiment = ["","Good","Neutral","Concern","At Risk"]
@@ -1151,22 +1173,20 @@ with tab_intake:
 
                 # ── Milestone dates — 5×2 grid ────────────────────────────────
                 st.markdown(
-                    "<div style='font-size:10px;font-weight:600;text-transform:uppercase;"
-                    "letter-spacing:.8px;color:var(--color-text-secondary);margin:12px 0 8px;"
-                    "padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>Milestone dates</div>",
+                    "<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>Milestones</div>",
                     unsafe_allow_html=True
                 )
                 _ms_write_cols = [
-                    ("ms_intro_email","Intro email sent"),
-                    ("ms_config_start","Standard config set up"),
-                    ("ms_enablement","Config enablement session"),
-                    ("ms_session1","Working session 1"),
-                    ("ms_session2","Working session 2"),
-                    ("ms_uat_signoff","UAT signoff"),
-                    ("ms_prod_cutover","Prod cutover"),
-                    ("ms_hypercare_start","Hypercare start"),
-                    ("ms_close_out","Close out tasks"),
-                    ("ms_transition","Transition to support"),
+                    ("ms_intro_email","Intro Email Sent"),
+                    ("ms_config_start","Config"),
+                    ("ms_enablement","Enablement Session"),
+                    ("ms_session1","Session #1"),
+                    ("ms_session2","Session #2"),
+                    ("ms_uat_signoff","UAT Signoff"),
+                    ("ms_prod_cutover","Prod Cutover"),
+                    ("ms_hypercare_start","Hypercare Start"),
+                    ("ms_close_out","Task Close Out"),
+                    ("ms_transition","Transition to Support"),
                 ]
                 _row1 = st.columns(5)
                 _row2 = st.columns(5)
@@ -1177,6 +1197,8 @@ with tab_intake:
                     with _target_col:
                         st.date_input(_ml, value=_mv_val, key=f"w_ms_{_mk}_{_sel_pid}")
 
+                st.markdown("<div style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.2)'></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='section-label' style='margin-bottom:8px'>Project Health {_badge('editable')}</div>", unsafe_allow_html=True)
                 _hc1,_hc2 = st.columns(2)
                 with _hc1:
                     _w_sched = st.selectbox("Schedule health",_opts_health,
@@ -1203,7 +1225,7 @@ with tab_intake:
 
                 # On Hold fields — conditional
                 if _is_oh:
-                    st.markdown(f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--color-text-secondary);margin-bottom:10px;padding-top:10px;border-top:0.5px solid rgba(128,128,128,.15)'>On hold{_badge('editable')}</div>",unsafe_allow_html=True)
+                    st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>On Hold {_badge('editable')}</div>",unsafe_allow_html=True)
                     _oh_reason_opts = ["None","Customer delay","Internal delay","Technical blocker","Commercial","Other"]
                     _w_oh_reason = st.selectbox("On Hold reason",_oh_reason_opts,
                         index=_oh_reason_opts.index(_dv("on_hold_reason","None")) if _dv("on_hold_reason","None") in _oh_reason_opts else 0,
