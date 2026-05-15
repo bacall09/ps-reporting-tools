@@ -321,23 +321,42 @@ _hero.markdown(
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 st.markdown("""
-<div style="background:#050D1F;border-radius:10px;padding:20px 24px;margin:0 0 4px;font-family:Manrope,sans-serif">
-  <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4472C4;margin:0 0 16px">How to update your projects</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0">
-    <div style="border-left:2px solid rgba(68,114,196,.4);padding-left:16px">
-      <div style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;border:1px solid rgba(68,114,196,.5);color:#4472C4;margin-bottom:10px">Option 1 &middot; Quick updates</div>
-      <p style="font-size:12px !important;color:rgba(255,255,255,.75) !important;line-height:1.55 !important;margin:0 !important"><b style="color:#fff;font-weight:600">Open projects &amp; On hold tabs</b> &mdash; edit phase, status, milestone dates, and on-hold fields directly in the table. Changes highlight as you go. Sync the whole batch to Smartsheet in one click.</p>
+<div style='background:var(--color-background-secondary, rgba(59,158,255,0.05));
+            border-left:4px solid #4472C4;border-radius:6px;
+            padding:16px 20px;margin:0 0 20px;font-family:Manrope,sans-serif'>
+    <div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+                color:#4472C4;margin-bottom:10px'>How to update your projects</div>
+    <div style='display:flex;gap:32px;flex-wrap:wrap'>
+        <div style='flex:1;min-width:220px;border-left:2px solid rgba(68,114,196,.4);padding-left:14px'>
+            <span style='background:#1E2C63;color:#fff;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>OPTION 1 &middot; QUICK UPDATES</span>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;line-height:1.6'>
+                <strong>Open projects &amp; On hold tabs</strong> &mdash; edit phase, status,
+                milestone dates, and on-hold fields directly in the table. Changes highlight
+                as you go. Sync the whole batch to Smartsheet in one click.
+            </p>
+        </div>
+        <div style='flex:1;min-width:220px;border-left:2px solid rgba(245,158,11,.4);padding-left:14px'>
+            <span style='background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px;
+                         border:1px solid rgba(245,158,11,0.4)'>OPTION 2 &middot; PROJECT INTAKE</span>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;opacity:0.85;line-height:1.6'>
+                <strong>Project intake tab</strong> &mdash; select any project to see its full
+                DRS record on the left and all editable fields on the right. Update health,
+                dates, milestones, and on-hold details, then save directly to Smartsheet.
+            </p>
+        </div>
+        <div style='flex:1;min-width:220px;border-left:2px solid rgba(34,197,94,.4);padding-left:14px'>
+            <span style='background:rgba(34,197,94,0.12);color:#22c55e;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:10px;letter-spacing:1px;
+                         border:1px solid rgba(34,197,94,0.35)'>BOTH OPTIONS</span>
+            <p style='margin:8px 0 0;font-size:13px;color:inherit;opacity:0.85;line-height:1.6'>
+                <strong>Sync directly to Smartsheet DRS</strong> &mdash; no manual exports
+                needed. Only the fields you change are written back, so nothing is overwritten
+                by accident.
+            </p>
+        </div>
     </div>
-    <div style="border-left:2px solid rgba(245,158,11,.4);padding-left:16px;margin-left:24px">
-      <div style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;border:1px solid rgba(245,158,11,.5);color:#f59e0b;margin-bottom:10px">Option 2 &middot; Project intake</div>
-      <p style="font-size:12px !important;color:rgba(255,255,255,.75) !important;line-height:1.55 !important;margin:0 !important"><b style="color:#fff;font-weight:600">Project intake tab</b> &mdash; select any project to see its full DRS record on the left and all editable fields on the right. Update health, dates, milestones, and on-hold details, then save directly to Smartsheet.</p>
-    </div>
-    <div style="border-left:2px solid rgba(34,197,94,.4);padding-left:16px;margin-left:24px">
-      <div style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;border:1px solid rgba(34,197,94,.4);color:#4ade80;margin-bottom:10px">Both options</div>
-      <p style="font-size:12px !important;color:rgba(255,255,255,.75) !important;line-height:1.55 !important;margin:0 !important"><b style="color:#fff;font-weight:600">Sync directly to Smartsheet DRS</b> &mdash; no manual exports needed. Only the fields you change are written back, so nothing is overwritten by accident.</p>
-    </div>
-  </div>
-  <div style="font-size:11px;color:rgba(255,255,255,.28);margin:14px 0 0;padding-top:12px;border-top:1px solid rgba(255,255,255,.07);text-align:center">Changes are session-scoped until you sync &mdash; refresh the page to pull the latest DRS data.</div>
 </div>
 """, unsafe_allow_html=True)
 
