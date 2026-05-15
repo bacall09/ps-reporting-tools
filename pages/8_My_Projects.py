@@ -322,63 +322,39 @@ st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
 st.markdown("""
 <style>
-.mp-guide-wrap{padding:4px 0 16px}
-.mp-guide-rule{display:flex;align-items:center;gap:8px;margin-bottom:14px}
-.mp-guide-rule span{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;opacity:.55;white-space:nowrap}
-.mp-guide-rule hr{flex:1;height:0;border:none;border-top:0.5px solid rgba(128,128,128,.2);margin:0}
-.mp-guide-grid{display:grid;grid-template-columns:1fr 0.5px 1fr;border:0.5px solid rgba(128,128,128,.2);border-radius:10px;overflow:hidden}
-.mp-guide-col{padding:18px 22px}
-.mp-guide-divider{background:rgba(128,128,128,.18)}
-.mp-guide-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.mp-guide-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px}
-.mp-guide-icon-blue{background:rgba(59,130,246,.15);color:#3b82f6}
-.mp-guide-icon-amber{background:rgba(245,158,11,.15);color:#d97706}
-.mp-guide-title{margin:0;font-size:14px;font-weight:600;font-family:Manrope,sans-serif}
-.mp-guide-sub{margin:0;font-size:12px;opacity:.55;font-family:Manrope,sans-serif}
-.mp-guide-body{margin:0 0 12px;font-size:13px;opacity:.75;line-height:1.6;font-family:Manrope,sans-serif}
-.mp-guide-bullets{display:flex;flex-direction:column;gap:6px}
-.mp-guide-bullet{display:flex;align-items:flex-start;gap:7px;font-size:12px;opacity:.7;font-family:Manrope,sans-serif;line-height:1.5}
-.mp-guide-check{color:#22c55e;flex-shrink:0;margin-top:1px;font-size:13px}
-.mp-guide-footer{margin:9px 0 0;font-size:12px;opacity:.45;text-align:center;font-family:Manrope,sans-serif}
+.mpg{background:#050D1F;border-radius:10px;padding:20px 24px;margin:0 0 4px;font-family:Manrope,sans-serif}
+.mpg-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#4472C4;margin:0 0 16px}
+.mpg-cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0}
+.mpg-col{padding:0 20px 0 0;border-left:2px solid rgba(68,114,196,.35);padding-left:16px;margin-left:4px}
+.mpg-col+.mpg-col{margin-left:28px}
+.mpg-badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;border:1px solid rgba(68,114,196,.5);color:#4472C4;margin-bottom:10px}
+.mpg-badge-amber{border-color:rgba(245,158,11,.5);color:#f59e0b}
+.mpg-badge-green{border-color:rgba(34,197,94,.5);color:#4ade80}
+.mpg-body{font-size:13px;color:rgba(255,255,255,.75);line-height:1.6;margin:0}
+.mpg-body b{color:#fff;font-weight:600}
+.mpg-foot{font-size:11px;color:rgba(255,255,255,.3);margin:16px 0 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);text-align:center}
 </style>
-<div class="mp-guide-wrap">
-  <div class="mp-guide-rule"><span>How to use this page</span><hr></div>
-  <div class="mp-guide-grid">
-    <div class="mp-guide-col">
-      <div class="mp-guide-head">
-        <div class="mp-guide-icon mp-guide-icon-blue">&#9776;</div>
-        <div>
-          <p class="mp-guide-title">Bulk updates</p>
-          <p class="mp-guide-sub">Open projects &amp; On hold tabs</p>
-        </div>
-      </div>
-      <p class="mp-guide-body">Edit phase, status, milestone dates, and on-hold fields directly in the table. Changes are highlighted as you go — sync the whole batch to Smartsheet in one click.</p>
-      <div class="mp-guide-bullets">
-        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Best for end-of-week updates across your full portfolio</span></div>
-        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Phase, status, and all milestone date columns are editable inline</span></div>
-        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Export to CSV or sync directly — both write back to Smartsheet DRS</span></div>
-      </div>
+<div class="mpg">
+  <div class="mpg-label">How to update your projects</div>
+  <div class="mpg-cols">
+    <div class="mpg-col">
+      <div class="mpg-badge">Option 1 &middot; Quick updates</div>
+      <p class="mpg-body"><b>Open projects &amp; On hold tabs</b> &mdash; edit phase, status, milestone dates, and on-hold fields directly in the table. Changes highlight as you go. Sync the whole batch to Smartsheet in one click.</p>
     </div>
-    <div class="mp-guide-divider"></div>
-    <div class="mp-guide-col">
-      <div class="mp-guide-head">
-        <div class="mp-guide-icon mp-guide-icon-amber">&#9634;</div>
-        <div>
-          <p class="mp-guide-title">Project intake</p>
-          <p class="mp-guide-sub">Project intake tab</p>
-        </div>
-      </div>
-      <p class="mp-guide-body">Select any project to see its full record — all DRS fields on the left, editable fields on the right. Update health, dates, milestones, and on-hold details and save directly to Smartsheet.</p>
-      <div class="mp-guide-bullets">
-        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Best for a focused update before a customer call or go-live</span></div>
-        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Full field visibility — intake, team, dates, health, and on-hold status</span></div>
-        <div class="mp-guide-bullet"><span class="mp-guide-check">✓</span><span>Only changed fields are written — nothing is overwritten by accident</span></div>
-      </div>
+    <div class="mpg-col">
+      <div class="mpg-badge mpg-badge-amber">Option 2 &middot; Project intake</div>
+      <p class="mpg-body"><b>Project intake tab</b> &mdash; select any project to see its full DRS record on the left and all editable fields on the right. Update health, dates, milestones, and on-hold details, then save directly to Smartsheet.</p>
+    </div>
+    <div class="mpg-col">
+      <div class="mpg-badge mpg-badge-green">Both options</div>
+      <p class="mpg-body"><b>Sync directly to Smartsheet DRS</b> &mdash; no manual exports needed. Only the fields you change are written back, so nothing is overwritten by accident.</p>
     </div>
   </div>
-  <p class="mp-guide-footer">Both methods sync directly to Smartsheet DRS — no manual exports needed.</p>
+  <div class="mpg-foot">Changes are session-scoped until you sync &mdash; refresh the page to pull the latest DRS data.</div>
 </div>
 """, unsafe_allow_html=True)
+
+# ══════════════════
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS — At a glance / Open Projects / On Hold / Project Detail
