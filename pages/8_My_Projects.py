@@ -329,19 +329,23 @@ _n_flagged   = int((active["_ne"] > 0).sum() | (active["_nw"] > 0).sum()) if not
 _n_flagged   = int(active["_flags"].apply(lambda f: bool(f)).sum()) if not active.empty and "_flags" in active.columns else 0
 
 # Over budget: balance < 0 for FF projects
-_n_over_budget = 0
-if not active.empty and "_ne" in active.columns:
-    # rebuild balance col inline for counting
+_n_overrun = 0
+if not active.empty:
     try:
-        _ob_mask = active.apply(lambda r: (
-            str(r.get("billing_type","")).lower() not in ("t&m","time and material") and
-            r.get("_htd_val",0) not in ("",None) and
-            r.get("scope_hrs","") not in ("",None) and
-            float(r.get("scope_hrs",0) or 0) > 0 and
-            float(r.get("_htd_val",0) or 0) > float(r.get("scope_hrs",0) or 0)
-        ), axis=1)
-        _n_over_budget = int(_ob_mask.sum())
-    except Exception: pass
+        from shared.config import DEFAULT_SCOPE as _DS
+        def _is_overrun(r):
+            _pt  = str(r.get("project_type","") or "")
+            _pn  = str(r.get("project_name","") or "")
+            _pid = str(r.get("project_id","") or "")
+            _bt  = str(r.get("billing_type","") or "").lower()
+            if "t&m" in _bt or "time" in _bt: return False
+            _scope = _DS.get(_pt) or _DS.get(_pn[:30])
+            if not _scope: return False
+            _htd = _ns_htd.get(_pid, 0) or 0
+            return float(_htd) > float(list(_scope.values())[0] if isinstance(_scope,dict) else _scope)
+        _n_overrun = int(active.apply(_is_overrun, axis=1).sum())
+    except Exception:
+        _n_overrun = 0
 
 # No time entry 30d: days_inactive >= 30
 _n_no_time_30 = 0
@@ -359,57 +363,76 @@ tab_glance, tab_open, tab_hold, tab_detail = st.tabs([
 # TAB 1 — At a glance
 # ═══════════════════════════════════════════════════════════════════
 with tab_glance:
-    def _kpi(col, label, val, sub=None, val_color=None):
+    # ── WHERE TO LOOK — same pattern as Utilization Report ────────────────────
+    def _wtl_card(col, icon, label, val, sub, total, color):
+        """Colour logic: 0=green, >0 uses danger/warning based on pct of total."""
+        if val == 0:
+            bg = "rgba(34,197,94,.08)"; bc = "rgba(34,197,94,.3)"; vc = "#15803d"; ic = "#15803d"
+        elif color == "danger":
+            bg = "rgba(226,75,74,.08)"; bc = "rgba(226,75,74,.3)"; vc = "#dc2626"; ic = "#dc2626"
+        else:
+            bg = "rgba(239,159,39,.08)"; bc = "rgba(239,159,39,.3)"; vc = "#92400e"; ic = "#d97706"
+        _pct = f" · {int(val/total*100)}% of total" if total and val > 0 else ""
         col.markdown(
-            f"<div style='padding:12px 14px;border:0.5px solid rgba(128,128,128,.2);border-radius:8px'>"
-            f"<div style='font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;"
-            f"letter-spacing:.6px;font-weight:500;margin-bottom:6px'>{label}</div>"
-            f"<div style='font-size:22px;font-weight:700;color:{val_color or 'var(--color-text-primary)'}'>{val}</div>"
-            + (f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>{sub}</div>" if sub else "") +
+            f"<div style='background:{bg};border:0.5px solid {bc};border-radius:8px;padding:14px 16px'>"
+            f"<div style='font-size:11px;font-weight:500;color:{ic};margin-bottom:6px'>{icon} {label}</div>"
+            f"<div style='font-size:26px;font-weight:700;color:{vc};line-height:1'>{val}</div>"
+            f"<div style='font-size:11px;color:{ic};margin-top:4px;opacity:.8'>{sub}{_pct}</div>"
             "</div>", unsafe_allow_html=True
         )
-    _k1,_k2,_k3 = st.columns(3)
-    _kpi(_k1,"Projects with flags",_n_flagged,
-         val_color="var(--color-text-danger)" if _n_flagged>0 else None)
-    _kpi(_k2,"Over budget",_n_over_budget,
-         sub="FF projects only",
-         val_color="var(--color-text-danger)" if _n_over_budget>0 else None)
-    _kpi(_k3,"No time entry 30d",_n_no_time_30,
-         sub="Requires NS Time Detail",
-         val_color="var(--color-text-warning)" if _n_no_time_30>0 else None)
+
+    st.markdown('<div class="section-label">Where to look</div>',unsafe_allow_html=True)
+    _wtl1,_wtl2,_wtl3 = st.columns(3)
+    _wtl_color1 = "danger" if _n_flagged > 0 else "green"
+    _wtl_color2 = "danger" if _n_overrun > 0 else "green"
+    _wtl_color3 = "warning" if _n_no_time_30 > 0 else "green"
+    _wtl_card(_wtl1,"⚠","Projects with flags",_n_flagged,
+              "Date issues · missing milestones · phase gaps",_n_active_dc,_wtl_color1)
+    _wtl_card(_wtl2,"↑","FF overrun",_n_overrun,
+              "Hours exceed contracted scope",_n_active_dc,_wtl_color2)
+    _wtl_card(_wtl3,"○","No time entry 30d",_n_no_time_30,
+              "Requires NS Time Detail",_n_active_dc,_wtl_color3)
 
     st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
-    # RAG breakdown
-    if not active.empty and "rag" in active.columns:
-        st.markdown('<div class="section-label">RAG distribution</div>',unsafe_allow_html=True)
-        _rc1,_rc2,_rc3,_rc4 = st.columns(4)
-        for _col,_rag,_dot in [(_rc1,"Green","#639922"),(_rc2,"Yellow","#EF9F27"),
-                                (_rc3,"Red","#E24B4A"),(_rc4,"Unrated","rgba(128,128,128,.4)")]:
-            _cnt = int((active["rag"].fillna("Unrated").str.capitalize()==_rag).sum())
-            _col.markdown(
-                f"<div style='display:flex;align-items:center;gap:10px;padding:10px 12px;"
-                f"border:0.5px solid rgba(128,128,128,.15);border-radius:8px'>"
-                f"<div style='width:9px;height:9px;border-radius:50%;background:{_dot};flex-shrink:0'></div>"
-                f"<div><div style='font-size:18px;font-weight:700;color:var(--color-text-primary)'>{_cnt}</div>"
-                f"<div style='font-size:11px;color:var(--color-text-secondary)'>{_rag}</div></div></div>",
-                unsafe_allow_html=True
-            )
-
-    # Phase breakdown
-    if not active.empty and "phase" in active.columns:
-        st.markdown('<div class="section-label" style="margin-top:16px">Phase distribution</div>',unsafe_allow_html=True)
-        _phase_counts = active["phase"].fillna("Unknown").value_counts().head(8)
-        for _ph,_cnt in _phase_counts.items():
-            _pct = int(_cnt/_n_active_dc*100) if _n_active_dc else 0
-            _bar = int(_pct*1.5)
-            st.markdown(
-                f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:5px'>"
-                f"<div style='width:160px;font-size:11px;color:var(--color-text-secondary);flex-shrink:0'>{_ph}</div>"
-                f"<div style='width:{_bar}px;height:6px;background:rgba(68,114,196,.4);border-radius:3px;flex-shrink:0'></div>"
-                f"<div style='font-size:11px;color:var(--color-text-secondary)'>{_cnt}</div></div>",
-                unsafe_allow_html=True
-            )
+    # ── RAG at a glance table ──────────────────────────────────────────────────
+    if not active.empty:
+        st.markdown('<div class="section-label">RAG at a glance</div>',unsafe_allow_html=True)
+        _rag_rows = []
+        for _, _r in active.iterrows():
+            _rag_v = str(_r.get("rag","") or "").strip().capitalize()
+            _dot   = {"Green":"#639922","Yellow":"#EF9F27","Red":"#E24B4A"}.get(_rag_v,"rgba(128,128,128,.3)")
+            _cust  = _extract_customer_name(str(_r.get("project_name","")))
+            _phase = str(_r.get("phase","—") or "—")
+            _htd_k = str(_r.get("project_id","") or "")
+            _htd_v = _ns_htd.get(_htd_k,0) or 0
+            _days  = int(_r.get("days_inactive",-1) or -1)
+            _gl    = _r.get("effective_go_live_date") or _r.get("go_live_date")
+            _gl_str= pd.Timestamp(_gl).strftime("%-d %b") if pd.notna(_gl) else "—"
+            _rag_rows.append({
+                " ":      f"<div style='width:9px;height:9px;border-radius:50%;background:{_dot};margin:auto'></div>",
+                "Customer":_cust,
+                "Phase":  _phase,
+                "Go-Live":_gl_str,
+                "Hours":  f"{_htd_v:.1f}h" if _htd_v else "—",
+                "Inactive":f"{_days}d" if _days>=0 else "—",
+                "RAG":    _rag_v or "—",
+            })
+        _rag_df = pd.DataFrame(_rag_rows)
+        st.dataframe(
+            _rag_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                " ":        st.column_config.TextColumn(" ", width="small"),
+                "Customer": st.column_config.TextColumn("Customer", width="medium"),
+                "Phase":    st.column_config.TextColumn("Phase", width="medium"),
+                "Go-Live":  st.column_config.TextColumn("Go-Live", width="small"),
+                "Hours":    st.column_config.TextColumn("Hours", width="small"),
+                "Inactive": st.column_config.TextColumn("Inactive", width="small"),
+                "RAG":      st.column_config.TextColumn("RAG", width="small"),
+            }
+        )
 
 # ═══════════════════════════════════════════════════════════════════
 # TAB 2 — Open Projects
@@ -583,7 +606,6 @@ with tab_open:
             "Hours to Date":        _htd,
             "Balance":              _bal,
             "_bal_flag":            _bal_flag,
-            "Engagement":           _engagement_flag({**dict(row), "_htd_val": _htd}),
             "Intro Email Sent":     _ms("ms_intro_email"),
             "Config Start":         _ms("ms_config_start"),
             "Enablement Session":   _ms("ms_enablement"),
@@ -610,8 +632,7 @@ with tab_open:
                 "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     col_cfg = {
         "Flags":                 st.column_config.TextColumn("Flags",             disabled=True, width="small"),
-        "RAG":                   st.column_config.TextColumn("RAG",               disabled=True, width="small"),
-        "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
+            "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
         "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
         "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
         "Status":                st.column_config.SelectboxColumn("Status", options=["In Progress","On Hold","Closed","Complete","Cancelled"], width="medium"),
@@ -621,8 +642,7 @@ with tab_open:
         "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
         "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
         "Balance":               st.column_config.TextColumn("Balance",            disabled=True, width="small"),
-        "Engagement":            st.column_config.TextColumn("Engagement",         disabled=True, width="medium"),
-        "_bal_flag":             None,
+            "_bal_flag":             None,
         **{c: st.column_config.DateColumn(c, min_value=date(2020,1,1), max_value=date(2030,12,31), width="small") for c in _ms_cols},
     }
 
@@ -791,6 +811,38 @@ with tab_open:
     if not _inactive_projs.empty:
         pass  # surfaced in At a glance tab
 
+# ── On Hold helpers (defined before tab_hold block) ──────────────────────────
+def _clean(val):
+    if val is None: return "—"
+    s = str(val).strip()
+    return s if s and s not in ("nan","None","NaT","") else "—"
+
+def _risk_emoji(val):
+    v = str(val or "").strip().lower()
+    if v in ("high","critical"): return "🔴 " + v.capitalize()
+    if v == "medium": return "🟡 Medium"
+    if v == "low":    return "🟢 Low"
+    return _clean(val)
+
+def _delay_summary_prompt(r):
+    reason = _clean(r.get("on_hold_reason"))
+    days   = int(r.get("days_inactive", 0) or 0)
+    phase  = _clean(r.get("phase"))
+    resp   = _clean(r.get("responsible_for_delay"))
+    parts  = []
+    if reason != "—": parts.append(f"Reason: {reason}")
+    if days > 0:      parts.append(f"{days}d inactive")
+    if phase != "—":  parts.append(f"Phase: {phase}")
+    if resp != "—":   parts.append(f"Responsible: {resp}")
+    return " · ".join(parts) if parts else "—"
+
+_OH_REASON_OPTS    = ["None","Customer delay","Internal delay","Technical blocker","Commercial","Other"]
+_OH_RESP_OPTS      = ["None","Customer","Internal","Shared"]
+_OH_SENTIMENT_OPTS = ["None","Good","Neutral","Concern","At Risk"]
+_OH_RISK_OPTS      = ["None","Low","Medium","High","Critical"]
+_OH_OWNER_OPTS     = ["None","Consultant","Customer","Management","Partner"]
+_OH_DELAY_OPTS     = ["None","Customer","Zone","Shared","Partner"]
+
 # ═══════════════════════════════════════════════════════════════
 # TAB 3 — On Hold
 # ═══════════════════════════════════════════════════════════════
@@ -807,8 +859,7 @@ with tab_hold:
             _ds = _ds_existing if _ds_existing and _ds_existing not in ("—","nan","None") else _delay_summary_prompt(r)
             _rag_v = _rag_emoji(r.get("rag"))
             _oh_row = {
-                "RAG":                   _rag_v if _rag_v != "—" else "⚠️ No RAG",
-                "Flags":                 ("⚠️" if any(s=="error" for s,*_ in (r.get("_flags") or []))
+                    "Flags":                 ("⚠️" if any(s=="error" for s,*_ in (r.get("_flags") or []))
                                       else ("⚠️" if (r.get("_flags") or []) else "")),
                 "Customer":              _extract_customer_name(str(r.get("project_name",""))),
                 "Project Type":          str(r.get("project_type","") or "—"),
@@ -836,12 +887,12 @@ with tab_hold:
 
         # Column order — insert Consultant after RAG if region view
         if "Consultant" in _oh_df.columns:
-            _col_order = ["Flags","RAG","Customer","Consultant","Project Type","Start Date","Est. Go-Live",
+            _col_order = ["Flags","Customer","Consultant","Project Type","Start Date","Est. Go-Live",
                            "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
                            "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
                            "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
         else:
-            _col_order = ["Flags","RAG","Customer","Project Type","Start Date","Est. Go-Live",
+            _col_order = ["Flags","Customer","Project Type","Start Date","Est. Go-Live",
                           "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
                           "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
                           "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
@@ -853,8 +904,7 @@ with tab_hold:
             _oh_df,
             column_config={
                 "Flags":                 st.column_config.TextColumn("Flags",                  disabled=True, width="small"),
-                "RAG":                   st.column_config.TextColumn("RAG",                    disabled=True, width="small"),
-                "Customer":              st.column_config.TextColumn("Customer",                disabled=True, width="medium"),
+                    "Customer":              st.column_config.TextColumn("Customer",                disabled=True, width="medium"),
                 "Project Type":          st.column_config.TextColumn("Project Type",            disabled=True, width="medium"),
                 "Start Date":            st.column_config.TextColumn("Start Date",              disabled=True, width="small"),
                 "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",            disabled=True, width="small"),
