@@ -330,7 +330,7 @@ st.markdown("""
 .mpg-badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:3px 10px;border-radius:20px;border:1px solid rgba(68,114,196,.5);color:#4472C4;margin-bottom:10px}
 .mpg-badge-amber{border-color:rgba(245,158,11,.5);color:#f59e0b}
 .mpg-badge-green{border-color:rgba(34,197,94,.5);color:#4ade80}
-.mpg-body{font-size:13px;color:rgba(255,255,255,.75);line-height:1.6;margin:0}
+.mpg-body{font-size:10px;color:rgba(255,255,255,.75);line-height:1.6;margin:0}
 .mpg-body b{color:#fff;font-weight:600}
 .mpg-foot{font-size:11px;color:rgba(255,255,255,.3);margin:16px 0 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);text-align:center}
 </style>
