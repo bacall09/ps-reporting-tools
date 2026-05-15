@@ -329,20 +329,27 @@ _n_flagged   = int((active["_ne"] > 0).sum() | (active["_nw"] > 0).sum()) if not
 _n_flagged   = int(active["_flags"].apply(lambda f: bool(f)).sum()) if not active.empty and "_flags" in active.columns else 0
 
 # Over budget: balance < 0 for FF projects
+# FF overrun — count projects where NS hours-to-date exceed DEFAULT_SCOPE
+# Uses same logic as Utilization Report: substring match on project_type
 _n_overrun = 0
-if not active.empty:
+if not active.empty and _ns_htd:
     try:
-        from shared.config import DEFAULT_SCOPE as _DS
+        from shared.config import DEFAULT_SCOPE as _DS_mp
+        def _scope_for(ptype):
+            _pt = str(ptype or "").strip().lower()
+            _best = None; _blen = 0
+            for k,v in _DS_mp.items():
+                if k.strip().lower() in _pt and len(k) > _blen:
+                    _best = float(v); _blen = len(k)
+            return _best
         def _is_overrun(r):
-            _pt  = str(r.get("project_type","") or "")
-            _pn  = str(r.get("project_name","") or "")
-            _pid = str(r.get("project_id","") or "")
-            _bt  = str(r.get("billing_type","") or "").lower()
-            if "t&m" in _bt or "time" in _bt: return False
-            _scope = _DS.get(_pt) or _DS.get(_pn[:30])
-            if not _scope: return False
+            _bt = str(r.get("billing_type","") or "").lower()
+            if "t&m" in _bt or "time and material" in _bt: return False
+            _pid = _clean_pid(str(r.get("project_id","") or ""))
+            _scope = _scope_for(r.get("project_type",""))
+            if _scope is None or _scope <= 0: return False
             _htd = _ns_htd.get(_pid, 0) or 0
-            return float(_htd) > float(list(_scope.values())[0] if isinstance(_scope,dict) else _scope)
+            return float(_htd) > float(_scope)
         _n_overrun = int(active.apply(_is_overrun, axis=1).sum())
     except Exception:
         _n_overrun = 0
@@ -358,11 +365,11 @@ _ns_tm_hrs: dict = {}
 _ns_tm_pids: set = set()
 
 
-tab_glance, tab_open, tab_hold, tab_detail = st.tabs([
+tab_glance, tab_open, tab_hold, tab_intake = st.tabs([
     "At a glance",
     f"Open Projects · {_n_active_dc}",
     f"On Hold · {_n_onhold_dc}",
-    "Project Detail",
+    "Project Intake",
 ])
 
 # ═══════════════════════════════════════════════════════════════════
@@ -402,44 +409,103 @@ with tab_glance:
 
     st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
-    # ── RAG at a glance table ──────────────────────────────────────────────────
-    if not active.empty:
-        st.markdown('<div class="section-label">RAG at a glance</div>',unsafe_allow_html=True)
-        _rag_rows = []
-        for _, _r in active.iterrows():
-            _rag_v = str(_r.get("rag","") or "").strip().capitalize()
-            _dot   = {"Green":"#639922","Yellow":"#EF9F27","Red":"#E24B4A"}.get(_rag_v,"rgba(128,128,128,.3)")
-            _cust  = _extract_customer_name(str(_r.get("project_name","")))
-            _phase = str(_r.get("phase","—") or "—")
-            _htd_k = str(_r.get("project_id","") or "")
-            _htd_v = _ns_htd.get(_htd_k,0) or 0
-            _days  = int(_r.get("days_inactive",-1) or -1)
-            _gl    = _r.get("effective_go_live_date") or _r.get("go_live_date")
-            _gl_str= pd.Timestamp(_gl).strftime("%-d %b") if pd.notna(_gl) else "—"
-            _rag_rows.append({
-                " ":      f"<div style='width:9px;height:9px;border-radius:50%;background:{_dot};margin:auto'></div>",
-                "Customer":_cust,
-                "Phase":  _phase,
-                "Go-Live":_gl_str,
-                "Hours":  f"{_htd_v:.1f}h" if _htd_v else "—",
-                "Inactive":f"{_days}d" if _days>=0 else "—",
-                "RAG":    _rag_v or "—",
-            })
-        _rag_df = pd.DataFrame(_rag_rows)
-        st.dataframe(
-            _rag_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                " ":        st.column_config.TextColumn(" ", width="small"),
-                "Customer": st.column_config.TextColumn("Customer", width="medium"),
-                "Phase":    st.column_config.TextColumn("Phase", width="medium"),
-                "Go-Live":  st.column_config.TextColumn("Go-Live", width="small"),
-                "Hours":    st.column_config.TextColumn("Hours", width="small"),
-                "Inactive": st.column_config.TextColumn("Inactive", width="small"),
-                "RAG":      st.column_config.TextColumn("RAG", width="small"),
-            }
+    # ── RAG at a glance — Red & Amber only, grouped headers, inline HTML ───────
+    if not active.empty and "rag" in active.columns:
+        _at_risk_rows = active[active["rag"].fillna("").str.strip().str.lower().isin(["red","yellow"])].copy()
+        _n_at_risk = len(_at_risk_rows)
+        st.markdown(
+            f"<div style='font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;"
+            f"color:var(--color-text-secondary);margin-bottom:8px'>RAG at a glance "
+            f"<span style='font-weight:400;opacity:.6'>· {_n_at_risk} Red/Amber project{'s' if _n_at_risk!=1 else ''}</span></div>",
+            unsafe_allow_html=True
         )
+        if _at_risk_rows.empty:
+            st.markdown(
+                "<div style='font-size:12px;color:var(--color-text-secondary);padding:12px 0'>"
+                "No Red or Amber RAG projects — all projects are Green or unrated.</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            def _pill(val, opts):
+                """Return a coloured pill span for a status value."""
+                v = str(val or "").strip()
+                if not v or v in ("—","nan","None"): return "<span style='color:var(--color-text-secondary);font-size:11px'>—</span>"
+                if v.lower() in ("red","high","critical","at risk"): col="var(--color-text-danger)"; bg="var(--color-background-danger)"
+                elif v.lower() in ("yellow","amber","medium","concern","neutral"): col="var(--color-text-warning)"; bg="var(--color-background-warning)"
+                elif v.lower() in ("green","low","good"): col="var(--color-text-success)"; bg="var(--color-background-success)"
+                else: col="var(--color-text-secondary)"; bg="var(--color-background-secondary)"
+                return f"<span style='font-size:10px;padding:2px 7px;border-radius:20px;background:{bg};color:{col};font-weight:500;white-space:nowrap'>{v}</span>"
+
+            def _dv2(r, key):
+                v = r.get(key)
+                if v is None or str(v).strip() in ("","nan","None","NaT"): return "—"
+                return str(v).strip()
+
+            _rows_html = []
+            for _, _r in _at_risk_rows.iterrows():
+                _rag_v = str(_r.get("rag","") or "").strip().capitalize()
+                _cust  = _extract_customer_name(str(_r.get("project_name","")))
+                _ptype = _dv2(_r,"project_type")
+                _status= _dv2(_r,"status")
+                _sd    = pd.Timestamp(_r["start_date"]).strftime("%-d %b %y") if pd.notna(_r.get("start_date")) else "—"
+                _oh    = pd.Timestamp(_r["on_hold_date"]).strftime("%-d %b %y") if pd.notna(_r.get("on_hold_date")) else "—"
+                _rl    = _dv2(_r,"risk_level")
+                _rd    = _dv2(_r,"risk_detail")
+                if len(_rd) > 40: _rd = _rd[:38]+"…"
+                _sent  = _dv2(_r,"client_sentiment")
+                _resp  = _dv2(_r,"client_responsiveness")
+                _sch   = _dv2(_r,"schedule_health")
+                _res   = _dv2(_r,"resource_health")
+                _sco   = _dv2(_r,"scope_health")
+                _rows_html.append(
+                    f"<tr>"
+                    f"<td style='padding:7px 10px'>{_pill(_rag_v,None)}</td>"
+                    f"<td style='padding:7px 10px;font-weight:500;font-size:12px'>{_cust}</td>"
+                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px'>{_ptype}</td>"
+                    f"<td style='padding:7px 10px;font-size:11px'>{_pill(_status,None)}</td>"
+                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px'>{_sd}</td>"
+                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px'>{_oh}</td>"
+                    f"<td style='padding:7px 10px'>{_pill(_rl,None)}</td>"
+                    f"<td style='padding:7px 10px;color:var(--color-text-secondary);font-size:11px;max-width:140px'>{_rd}</td>"
+                    f"<td style='padding:7px 10px;border-left:0.5px solid rgba(128,128,128,.15)'>{_pill(_sent,None)}</td>"
+                    f"<td style='padding:7px 10px'>{_pill(_resp,None)}</td>"
+                    f"<td style='padding:7px 10px;border-left:0.5px solid rgba(128,128,128,.15)'>{_pill(_sch,None)}</td>"
+                    f"<td style='padding:7px 10px'>{_pill(_res,None)}</td>"
+                    f"<td style='padding:7px 10px'>{_pill(_sco,None)}</td>"
+                    f"</tr>"
+                )
+            _grp_th = "font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;color:var(--color-text-secondary);padding:4px 10px 2px;text-align:center;border-bottom:0.5px solid rgba(128,128,128,.15)"
+            _col_th = "font-size:10px;font-weight:500;color:var(--color-text-secondary);padding:6px 10px;border-bottom:0.5px solid rgba(128,128,128,.15);text-align:left;white-space:nowrap"
+            st.markdown(
+                f"<div style='overflow-x:auto;border:0.5px solid rgba(128,128,128,.2);border-radius:8px'>"
+                f"<table style='width:100%;border-collapse:collapse;font-size:12px'>"
+                f"<thead>"
+                f"<tr>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>RAG</th>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Customer</th>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Type</th>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Status</th>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Start</th>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>On hold</th>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom'>Risk level</th>"
+                f"<th rowspan='2' style='{_col_th};vertical-align:bottom;max-width:140px'>Risk detail</th>"
+                f"<th colspan='2' style='{_grp_th};border-left:0.5px solid rgba(128,128,128,.15)'>Client</th>"
+                f"<th colspan='3' style='{_grp_th};border-left:0.5px solid rgba(128,128,128,.15)'>Health</th>"
+                f"</tr>"
+                f"<tr>"
+                f"<th style='{_col_th};border-left:0.5px solid rgba(128,128,128,.15)'>Sentiment</th>"
+                f"<th style='{_col_th}'>Responsiveness</th>"
+                f"<th style='{_col_th};border-left:0.5px solid rgba(128,128,128,.15)'>Schedule</th>"
+                f"<th style='{_col_th}'>Resource</th>"
+                f"<th style='{_col_th}'>Scope</th>"
+                f"</tr>"
+                f"</thead>"
+                f"<tbody style='border-top:0.5px solid rgba(128,128,128,.15)'>"
+                + "".join(_rows_html) +
+                f"</tbody></table></div>"
+                f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:5px'>Red &amp; Amber RAG projects only · read-only</div>",
+                unsafe_allow_html=True
+            )
 
 # ═══════════════════════════════════════════════════════════════════
 # TAB 2 — Open Projects
@@ -575,14 +641,9 @@ if df_ns is not None and not active.empty:
             elif _pct_remaining <= 0.10 and _phase_raw not in _late_phases and _phase_raw not in _closed_phases:
                 _bal_flag = "yellow"
 
-        # No RAG flag
-        _rag_val = _rag_emoji(row.get("rag"))
-        if _rag_val == "—":
-            _rag_val = "⚠️ No RAG"
 
         return {
             "Flags":                needs,
-            "RAG":                  _rag_val,
             "Customer":             _cust,
             "Consultant":           str(row.get("project_manager","") or ""),
             "Project Type":         str(row.get("project_type","") or ""),
@@ -940,9 +1001,9 @@ with tab_hold:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# TAB 4 — Project Detail
+# TAB 4 — Project Intake
 # ═══════════════════════════════════════════════════════════════════
-with tab_detail:
+with tab_intake:
     # Project picker — scoped to logged-in consultant / view-as
     _all_proj = pd.concat([active, on_hold], ignore_index=True) if not on_hold.empty else active.copy()
     _pid_col_d = "project_id" if "project_id" in _all_proj.columns else "project_name"
@@ -1088,6 +1149,34 @@ with tab_detail:
                 _w_summary = st.text_area("Overall summary",value=_dv("overall_summary",""),height=72,
                     placeholder="Brief project status update...",key=f"w_sum_{_sel_pid}")
 
+                # ── Milestone dates — 5×2 grid ────────────────────────────────
+                st.markdown(
+                    "<div style='font-size:10px;font-weight:600;text-transform:uppercase;"
+                    "letter-spacing:.8px;color:var(--color-text-secondary);margin:12px 0 8px;"
+                    "padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>Milestone dates</div>",
+                    unsafe_allow_html=True
+                )
+                _ms_write_cols = [
+                    ("ms_intro_email","Intro email sent"),
+                    ("ms_config_start","Standard config set up"),
+                    ("ms_enablement","Config enablement session"),
+                    ("ms_session1","Working session 1"),
+                    ("ms_session2","Working session 2"),
+                    ("ms_uat_signoff","UAT signoff"),
+                    ("ms_prod_cutover","Prod cutover"),
+                    ("ms_hypercare_start","Hypercare start"),
+                    ("ms_close_out","Close out tasks"),
+                    ("ms_transition","Transition to support"),
+                ]
+                _row1 = st.columns(5)
+                _row2 = st.columns(5)
+                for _i, (_mk, _ml) in enumerate(_ms_write_cols):
+                    _mv = _dr.get(_mk)
+                    _mv_val = pd.Timestamp(_mv).date() if pd.notna(_mv) else None
+                    _target_col = _row1[_i] if _i < 5 else _row2[_i - 5]
+                    with _target_col:
+                        st.date_input(_ml, value=_mv_val, key=f"w_ms_{_mk}_{_sel_pid}")
+
                 _hc1,_hc2 = st.columns(2)
                 with _hc1:
                     _w_sched = st.selectbox("Schedule health",_opts_health,
@@ -1128,24 +1217,6 @@ with tab_detail:
                         placeholder="Notes for support handoff...",key=f"w_trn_{_sel_pid}")
 
                 # Milestone dates
-                with st.expander("Milestone dates", expanded=False):
-                    _ms_write_cols = [
-                        ("ms_intro_email","Intro email sent"),
-                        ("ms_config_start","Standard config set up"),
-                        ("ms_enablement","Config enablement session"),
-                        ("ms_session1","Working session 1"),
-                        ("ms_session2","Working session 2"),
-                        ("ms_uat_signoff","UAT signoff"),
-                        ("ms_prod_cutover","Prod cutover"),
-                        ("ms_hypercare_start","Hypercare start"),
-                        ("ms_close_out","Close out tasks"),
-                        ("ms_transition","Transition to support"),
-                    ]
-                    for _mk,_ml in _ms_write_cols:
-                        _mv = _dr.get(_mk)
-                        _mv_val = pd.Timestamp(_mv).date() if pd.notna(_mv) else None
-                        st.date_input(_ml, value=_mv_val, key=f"w_ms_{_mk}_{_sel_pid}")
-
                 # Save button
                 if st.button("Save to Smartsheet", key=f"mp_det_save_{_sel_pid}",
                              type="primary", use_container_width=True):
