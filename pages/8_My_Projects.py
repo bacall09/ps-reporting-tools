@@ -492,43 +492,81 @@ with tab_glance:
         try:
             from shared.config import DEFAULT_SCOPE as _DS_at
             def _at_scope(ptype):
+                import re as _re_scope
                 _pt = str(ptype or "").strip().lower()
                 _best = None; _blen = 0
                 for k, v in _DS_at.items():
-                    if k.strip().lower() in _pt and len(k) > _blen:
+                    _kl = k.strip().lower()
+                    if _kl in _pt and len(k) > _blen:
                         _best = float(v); _blen = len(k)
+                        continue
+                    # Handle reversed order: "20 Premium" matches "Premium - 20"
+                    _km = _re_scope.match(r"premium\s*[-–]?\s*(\d+)", _kl)
+                    if _km:
+                        _hrs = _km.group(1)
+                        if (_re_scope.search(rf"{_hrs}.*premium|premium.*{_hrs}", _pt)
+                                and len(k) > _blen):
+                            _best = float(v); _blen = len(k)
                 return _best
         except Exception:
             def _at_scope(ptype): return None
 
         _risk_rows = []
+        # Project types without fixed scope by design — excluded from no-scope flagging
+        _NO_SCOPE_PTYPES = {"consulting", "professional services", "ps consulting"}
+
         for _, _r in active.iterrows():
-            _pid_k    = _clean_pid(str(_r.get("project_id", "") or ""))
-            _scope    = _at_scope(_r.get("project_type", ""))
+            _pid_k     = _clean_pid(str(_r.get("project_id", "") or ""))
+            _ptype_str = str(_r.get("project_type", "") or "").strip()
+            _pname_str = str(_r.get("project_name", "") or "").strip()
+            # Check project_type; fall back to project name (catches Premium - 10/20 variants)
+            _scope = _at_scope(_ptype_str)
+            if _scope is None:
+                _scope = _at_scope(_pname_str)
             _htd_v    = float(_ns_htd.get(_pid_k, 0) or 0)
             _logged   = float(_ns_period_hrs.get(_pid_k, 0) or 0)
             _burn     = (_htd_v / _scope) if (_scope and _scope > 0) else None
             _overrun  = max(0.0, round(_htd_v - _scope, 2)) if (_scope and _scope > 0) else 0.0
             _rag_v    = str(_r.get("rag", "") or "").strip().lower()
+            _bill_str = str(_r.get("billing_type", "") or "").strip().lower()
             _is_over  = _overrun > 0
-            _is_burn  = _burn is not None and _burn >= 0.80 and not _is_over
-            _is_noscope = (
+            _is_burn  = (_burn is not None and not (_burn != _burn)
+                         and _burn >= 0.80 and not _is_over)
+            _ptype_lower = _ptype_str.lower()
+            _is_excluded = any(ex in _ptype_lower for ex in _NO_SCOPE_PTYPES)
+            _is_noscope  = (
                 _scope is None and
-                str(_r.get("billing_type", "") or "").strip().lower()
-                not in ("t&m", "time and material", "internal")
+                _bill_str not in ("t&m", "time and material", "internal") and
+                not _is_excluded
             )
-            if not (_is_over or _is_burn or _is_noscope or _rag_v in ("red", "yellow")):
+            # Age: flag projects with start date older than 6 months
+            _is_old = False
+            _start_val  = _r.get("start_date")
+            _start_disp = "—"
+            try:
+                import pandas as _pd2
+                _sd = _pd2.to_datetime(_start_val)
+                if _pd2.notna(_sd):
+                    _is_old = (_pd2.Timestamp.today() - _sd).days > 180
+                    _start_disp = _sd.strftime("%-d %b %Y")
+            except Exception:
+                pass
+            _last_ms = str(_r.get("last_milestone", "") or "—").strip() or "—"
+            if not (_is_over or _is_burn or _is_noscope or _rag_v in ("red", "yellow") or _is_old):
                 continue
             if _is_noscope:         _stag = ("blue",  "No scope")
             elif _is_over:          _stag = ("red",   "Overrun")
             elif _is_burn:          _stag = ("amber", f"Burn {int(_burn*100)}%")
+            elif _is_old:           _stag = ("grey",  "6+ months")
             elif _rag_v == "red":   _stag = ("red",   "Red RAG")
             else:                   _stag = ("amber", "Amber RAG")
-            _srank = 1 if _stag[0] == "red" else 2 if _stag[0] == "amber" else 3
+            _srank = 1 if _stag[0]=="red" else 2 if _stag[0]=="amber" else 3 if _stag[0]=="grey" else 4
             _risk_rows.append({
-                "project":      _extract_customer_name(str(_r.get("project_name", ""))),
-                "project_type": str(_r.get("project_type", "") or ""),
+                "project":      _extract_customer_name(_pname_str),
+                "project_type": _ptype_str,
                 "consultant":   str(_r.get("project_manager", "") or ""),
+                "start_date":   _start_disp,
+                "last_ms":      _last_ms,
                 "scoped_hrs":   _scope,
                 "htd_hrs":      _htd_v,
                 "hours_logged": _logged,
@@ -613,15 +651,19 @@ with tab_glance:
                 _cn = _row["consultant"]
                 _ch = (f"<span style=\"display:inline-flex;align-items:center\">"
                        f"{_mp_avatar(_cn)}{_mp_short(_cn)}</span>") if _cn else "<span style=\"opacity:.4\">—</span>"
-                _pbg = ("rgba(239,68,68,.18)" if _scls=="red"
-                        else "rgba(245,158,11,.18)" if _scls=="amber"
-                        else "rgba(59,130,246,.18)")
-                _pfg = "#b91c1c" if _scls=="red" else "#b45309" if _scls=="amber" else "#1d4ed8"
+                if _scls == "red":    _pbg = "rgba(239,68,68,.18)";   _pfg = "#b91c1c"
+                elif _scls == "amber":_pbg = "rgba(245,158,11,.18)";  _pfg = "#b45309"
+                elif _scls == "grey": _pbg = "rgba(128,128,128,.15)"; _pfg = "inherit"
+                else:                 _pbg = "rgba(59,130,246,.18)";  _pfg = "#1d4ed8"
+                _start_str = str(_row.get("start_date", "—") or "—")
+                _lms_str   = str(_row.get("last_ms",    "—") or "—")
                 _tbl_rows.append(
                     f"<tr style=\"border-bottom:1px solid rgba(128,128,128,.15)\">"
                     f"<td style=\"padding:9px 12px;vertical-align:middle\">{_row['project']}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75\">{_row['project_type']}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle\">{_ch}</td>"
+                    f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75;font-size:12px\">{_start_str}</td>"
+                    f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75;font-size:12px\">{_lms_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_sc_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_htd_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_log_str}</td>"
@@ -651,6 +693,8 @@ with tab_glance:
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Project</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Type</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Consultant</th>"
+                f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Start date</th>"
+                f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Last milestone</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Scoped</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">HTD</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Logged</th>"
@@ -662,7 +706,7 @@ with tab_glance:
                 f"<div style=\"padding:8px 14px;border-top:1px solid rgba(128,128,128,.15);"
                 f"display:flex;justify-content:space-between;font-size:11px;opacity:.6\">"
                 f"<span>Risk = overrun &gt; 0, burn ≥ 80% (HTD ÷ scope),"
-                f" Red/Amber RAG, or no scope record. HTD = hours-to-date all time.</span>"
+                f" Red/Amber RAG, no scope record, or start date &gt; 6 months ago. HTD = hours-to-date all time.</span>"
                 f"<span>Source: NS + DRS · this session</span>"
                 f"</div></div>",
                 unsafe_allow_html=True
@@ -1319,53 +1363,68 @@ with tab_intake:
                             try: return pd.Timestamp(v).date().isoformat() if pd.notna(v) else ""
                             except: return ""
 
-                        # Dates — diff only
+                        # Dates — diff only, using exact SS column names
                         if _w_golive and _w_golive.isoformat() != _orig_date("go_live_date"):
-                            _changes["go_live_date"] = _w_golive.isoformat()
+                            _changes["Go-Live Date"] = _w_golive.isoformat()
                         if _w_finish and _w_finish.isoformat() != _orig_date("finish_date"):
-                            _changes["finish_date"] = _w_finish.isoformat()
+                            _changes["Finish Date"] = _w_finish.isoformat()
                         if _w_substart and _w_substart.isoformat() != _orig_date("start_date"):
-                            _changes["start_date"] = _w_substart.isoformat()
+                            _changes["Start Date"] = _w_substart.isoformat()
 
                         # Health fields — diff only
-                        _health_fields = {
-                            "status":                _w_status,
-                            "phase":                 _w_phase,
-                            "overall_summary":       _w_summary,
-                            "schedule_health":       _w_sched,
-                            "resource_health":       _w_res,
-                            "scope_health":          _w_scope,
-                            "risk_level":            _w_risk,
-                            "risk_detail":           _w_riskd,
-                            "client_responsiveness": _w_cresp,
-                            "client_sentiment":      _w_csent,
-                        }
-                        for _fk, _fv in _health_fields.items():
-                            if _norm(_fv) != _norm(_dv(_fk)):
-                                _changes[_fk] = _fv
+                        # Keys are exact Smartsheet column names (from SS_COL_MAP / data sheet)
+                        # _dv() uses internal DRS keys — map those separately for comparison
+                        _health_fields = [
+                            ("Status",                "status",                _w_status),
+                            ("Project Phase",         "phase",                 _w_phase),
+                            ("Overall Summary",       "overall_summary",       _w_summary),
+                            ("Schedule Health",       "schedule_health",       _w_sched),
+                            ("Resource Health",       "resource_health",       _w_res),
+                            ("Scope Health",          "scope_health",          _w_scope),
+                            ("Risk Level",            "risk_level",            _w_risk),
+                            ("Risk Detail",           "risk_detail",           _w_riskd),
+                            ("Client Responsiveness", "client_responsiveness", _w_cresp),
+                            ("Client Sentiment",      "client_sentiment",      _w_csent),
+                        ]
+                        for _ss_col, _drs_key, _fv in _health_fields:
+                            if _norm(_fv) != _norm(_dv(_drs_key)):
+                                _changes[_ss_col] = _fv
 
                         # On Hold fields — diff only
                         if _is_oh:
-                            for _fk, _fv in {
-                                "on_hold_reason":           _w_oh_reason,
-                                "on_hold_response":         _w_oh_resp,
-                                "support_transition_notes": _w_trans_notes,
-                                "delay_summary":            _w_delay_sum,
-                            }.items():
-                                if _norm(_fv) != _norm(_dv(_fk)):
-                                    _changes[_fk] = _fv
+                            for _ss_col, _drs_key, _fv in [
+                                ("On Hold Reason",          "on_hold_reason",           _w_oh_reason),
+                                ("On Hold Response",        "on_hold_response",         _w_oh_resp),
+                                ("Support Transition Notes","support_transition_notes", _w_trans_notes),
+                                ("Delay Summary",           "delay_summary",            _w_delay_sum),
+                            ]:
+                                if _norm(_fv) != _norm(_dv(_drs_key)):
+                                    _changes[_ss_col] = _fv
                             if _w_resume and _w_resume.isoformat() != _orig_date("resume_date"):
-                                _changes["resume_date"] = _w_resume.isoformat()
+                                _changes["Resume Date"] = _w_resume.isoformat()
 
                         # JIRA — diff only, all projects
                         if _norm(_w_jira) != _norm(_dv("jira_links")):
-                            _changes["jira_links"] = _w_jira
+                            _changes["Jira Project"] = _w_jira
 
-                        # Milestone dates — diff only
+                        # Milestone dates — diff only, using exact SS column names
+                        _ms_to_ss_det = {
+                            "ms_intro_email":    "Intro. Email Sent",
+                            "ms_config_start":   "Standard Configuration Set Up",
+                            "ms_enablement":     "Configuration Enablement Session",
+                            "ms_session1":       "Working Session 1 - Application Walkthrough",
+                            "ms_session2":       "Working Session 2 - Workshop / Q&A",
+                            "ms_uat_signoff":    "UAT Signoff",
+                            "ms_prod_cutover":   "Prod Cutover",
+                            "ms_hypercare_start":"Hypercare Start",
+                            "ms_close_out":      "Close Out Remaining Tasks",
+                            "ms_transition":     "Project Closure / Transition to Support",
+                        }
                         for _mk, _ in _ms_write_cols:
                             _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
                             if _mw and _mw.isoformat() != _orig_date(_mk):
-                                _changes[_mk] = _mw.isoformat()
+                                _ss_ms_col = _ms_to_ss_det.get(_mk, _mk)
+                                _changes[_ss_ms_col] = _mw.isoformat()
 
                         # Drop empty
                         _changes = {k: v for k, v in _changes.items() if _norm(v) != ""}
