@@ -881,6 +881,10 @@ with tab_open:
     _ss_ready       = ss_available()
     _loaded_via_api = st.session_state.get("_drs_source") == "api"
     _has_row_ids    = "_ss_row_id" in active.columns
+    # DEBUG — remove after confirming field mapping
+    with st.expander("🔍 DEBUG: WRITEBACK_FIELDS contents", expanded=False):
+        st.write("Keys (internal) -> Values (display/SS column):")
+        st.json(dict(WRITEBACK_FIELDS))
 
     # Status label
     ex1, ex2, ex3 = st.columns([3, 1, 1])
