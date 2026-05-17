@@ -597,7 +597,9 @@ with tab_glance:
                 _htd_str = f"{_row['htd_hrs']:,.2f}"    if _row["htd_hrs"]   else "—"
                 _log_str = f"{_row['hours_logged']:,.2f}" if _row["hours_logged"] else "—"
                 _bp = _row["burn_pct"]
-                if _bp is not None:
+                try: _bp = float(_bp) if _bp is not None else None
+                except: _bp = None
+                if _bp is not None and not (isinstance(_bp, float) and (_bp != _bp)):
                     _bpv  = min(_bp, 1.5)
                     _bcol = "#ef4444" if _bpv > 1.0 else "#f59e0b" if _bpv >= 0.8 else "#22c55e"
                     _bar = (f"<div style=\"display:inline-block;width:60px;height:6px;"
