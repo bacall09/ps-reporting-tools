@@ -320,48 +320,6 @@ _hero.markdown(
 )
 st.markdown('<hr class="divider">',unsafe_allow_html=True)
 
-st.markdown("""
-<div style='background:var(--color-background-secondary, rgba(59,158,255,0.05));
-            border-left:4px solid #4472C4;border-radius:6px;
-            padding:16px 20px;margin:0 0 20px;font-family:Manrope,sans-serif'>
-    <div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-                color:#4472C4;margin-bottom:10px'>How to update your projects</div>
-    <div style='display:flex;gap:32px;flex-wrap:wrap'>
-        <div style='flex:1;min-width:220px;border-left:2px solid rgba(68,114,196,.4);padding-left:14px'>
-            <span style='background:#1E2C63;color:#fff;font-size:10px;font-weight:700;
-                         padding:2px 8px;border-radius:10px;letter-spacing:1px'>OPTION 1 &middot; QUICK UPDATES</span>
-            <p style='margin:8px 0 0;font-size:13px;color:inherit;line-height:1.6'>
-                <strong>Open projects &amp; On hold tabs</strong> &mdash; edit phase, status,
-                milestone dates, and on-hold fields directly in the table. Changes highlight
-                as you go. Sync the whole batch to Smartsheet in one click.
-            </p>
-        </div>
-        <div style='flex:1;min-width:220px;border-left:2px solid rgba(245,158,11,.4);padding-left:14px'>
-            <span style='background:rgba(245,158,11,0.15);color:#f59e0b;font-size:10px;font-weight:700;
-                         padding:2px 8px;border-radius:10px;letter-spacing:1px;
-                         border:1px solid rgba(245,158,11,0.4)'>OPTION 2 &middot; PROJECT INTAKE</span>
-            <p style='margin:8px 0 0;font-size:13px;color:inherit;opacity:0.85;line-height:1.6'>
-                <strong>Project intake tab</strong> &mdash; select any project to see its full
-                DRS record on the left and all editable fields on the right. Update health,
-                dates, milestones, and on-hold details, then save directly to Smartsheet.
-            </p>
-        </div>
-        <div style='flex:1;min-width:220px;border-left:2px solid rgba(34,197,94,.4);padding-left:14px'>
-            <span style='background:rgba(34,197,94,0.12);color:#22c55e;font-size:10px;font-weight:700;
-                         padding:2px 8px;border-radius:10px;letter-spacing:1px;
-                         border:1px solid rgba(34,197,94,0.35)'>BOTH OPTIONS</span>
-            <p style='margin:8px 0 0;font-size:13px;color:inherit;opacity:0.85;line-height:1.6'>
-                <strong>Sync directly to Smartsheet DRS</strong> &mdash; no manual exports
-                needed. Only the fields you change are written back, so nothing is overwritten
-                by accident.
-            </p>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ══════════════════
-
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS — At a glance / Open Projects / On Hold / Project Detail
 # ══════════════════════════════════════════════════════════════════════════════
@@ -443,7 +401,7 @@ tab_glance, tab_open, tab_hold, tab_intake = st.tabs([
     "At a glance",
     f"Open Projects · {_n_active_dc}",
     f"On Hold · {_n_onhold_dc}",
-    "Project Intake",
+    "Project Detail",
 ])
 
 # ═══════════════════════════════════════════════════════════════════
@@ -685,27 +643,6 @@ with tab_open:
         else:
             _scope = ""
         _htd = round(_ns_htd.get(_pid_key, 0.0), 2) if _pid_key and _pid_key in _ns_htd else ""
-        # Balance: scope - htd. If no NS data yet (htd=""), show full scope as remaining
-        if _scope != "" and _htd != "":
-            _bal = round(float(_scope) - float(_htd), 2)
-        elif _scope != "":
-            _bal = float(_scope)  # no hours logged yet — full scope remaining
-            _htd = 0.0
-        else:
-            _bal = ""
-        # Balance cell flag logic
-        _phase_raw = str(row.get("phase","") or "").strip().lower()
-        _closed_phases = {"08. ready for support transition","09. phase 2 scoping","closed","complete"}
-        _late_phases   = {"05. prep for go-live","06. go-live (hypercare)","07. hypercare","08. ready for support transition"}
-        _bal_flag = ""
-        if _bal != "" and _scope not in ("", 0):
-            _pct_remaining = float(_bal) / float(_scope) if float(_scope) != 0 else 0
-            if float(_bal) < 0 and _phase_raw not in _closed_phases:
-                _bal_flag = "red"
-            elif _pct_remaining <= 0.10 and _phase_raw not in _late_phases and _phase_raw not in _closed_phases:
-                _bal_flag = "yellow"
-
-
         return {
             "Flags":                needs,
             "Customer":             _cust,
@@ -713,12 +650,8 @@ with tab_open:
             "Project Type":         str(row.get("project_type","") or ""),
             "Status":               str(row.get("status","") or ""),
             "Phase":                str(row.get("phase","") or ""),
-            "Start Date":           _dt("start_date"),
-            "Est. Go-Live":         _dt("go_live_date"),
-            "Scope Hrs":            _scope,
-            "Hours to Date":        _htd,
-            "Balance":              _bal,
-            "_bal_flag":            _bal_flag,
+            "Start Date":           _ms("start_date"),
+            "Go-Live Date":         _ms("go_live_date"),
             "Intro Email Sent":     _ms("ms_intro_email"),
             "Config Start":         _ms("ms_config_start"),
             "Enablement Session":   _ms("ms_enablement"),
@@ -745,17 +678,13 @@ with tab_open:
                 "UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     col_cfg = {
         "Flags":                 st.column_config.TextColumn("Flags",             disabled=True, width="small"),
-            "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
+        "Customer":              st.column_config.TextColumn("Customer",          disabled=True),
         "Consultant":            st.column_config.TextColumn("Consultant",        disabled=True),
         "Project Type":          st.column_config.TextColumn("Project Type",      disabled=True),
         "Status":                st.column_config.SelectboxColumn("Status", options=["In Progress","On Hold","Closed","Complete","Cancelled"], width="medium"),
         "Phase":                 st.column_config.SelectboxColumn("Phase",        options=PHASE_OPTIONS, width="medium"),
-        "Start Date":            st.column_config.TextColumn("Start Date",        disabled=True, width="small"),
-        "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",      disabled=True, width="small"),
-        "Scope Hrs":             st.column_config.NumberColumn("Scope Hrs",         disabled=True, width="small"),
-        "Hours to Date":         st.column_config.NumberColumn("Hours to Date",     disabled=True, width="small"),
-        "Balance":               st.column_config.TextColumn("Balance",            disabled=True, width="small"),
-            "_bal_flag":             None,
+        "Start Date":            st.column_config.DateColumn("Start Date",        min_value=date(2020,1,1), max_value=date(2030,12,31), width="small"),
+        "Go-Live Date":          st.column_config.DateColumn("Go-Live Date",      min_value=date(2020,1,1), max_value=date(2030,12,31), width="small"),
         **{c: st.column_config.DateColumn(c, min_value=date(2020,1,1), max_value=date(2030,12,31), width="small") for c in _ms_cols},
     }
 
@@ -779,36 +708,7 @@ with tab_open:
                 st.session_state["_browse_passthrough"] = view_as
             st.switch_page("pages/2_Customer_Reengagement.py")
 
-    # Apply Balance cell background styling
-    def _style_balance(df):
-        styles = pd.DataFrame("", index=df.index, columns=df.columns)
-        if "Balance" in df.columns and "_bal_flag" in df.columns:
-            for i, row in df.iterrows():
-                flag = str(row.get("_bal_flag",""))
-                if flag == "red":
-                    styles.at[i, "Balance"] = "background-color:#FDECED;color:#C0392B;font-weight:600"
-                elif flag == "yellow":
-                    styles.at[i, "Balance"] = "background-color:#FFF3CD;color:#B7770D;font-weight:600"
-        return styles
-
-    # st.data_editor doesn't support Styler — apply Balance colour as a display-only
-    # text prefix flag instead, keep _bal_flag hidden via col_cfg None
     _display_df = edit_df.copy()
-    # Inject colour signal into Balance value as a suffixed marker for display
-    if "Balance" in _display_df.columns and "_bal_flag" in _display_df.columns:
-        def _fmt_bal(row):
-            val = row["Balance"]
-            flag = str(row.get("_bal_flag","") or "")
-            if val == "" or val is None: return val
-            try:
-                fval = float(val)
-                if flag == "red":    return f"🔴 {fval:,.2f}"
-                if flag == "yellow": return f"🟡 {fval:,.2f}"
-                return round(fval, 2)
-            except Exception:
-                return val
-        _display_df["Balance"] = _display_df.apply(_fmt_bal, axis=1)
-    _display_df = _display_df.drop(columns=["_bal_flag"], errors="ignore")
     edited = st.data_editor(
         _display_df,
         column_config=col_cfg,
@@ -819,7 +719,7 @@ with tab_open:
     )
 
     # ── Detect changes vs original ────────────────────────────────────────────
-    editable_cols = ["Phase","Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2","UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
+    editable_cols = ["Start Date","Go-Live Date","Phase","Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2","UAT Signoff","Prod Cutover","Hypercare Start","Close Out Tasks","Transition to Support"]
     changed = edited[editable_cols].fillna("").ne(edit_df[editable_cols].fillna("")).any(axis=1)
     changed_df = edited[changed].copy() if changed.any() else pd.DataFrame()
 
@@ -980,17 +880,12 @@ with tab_hold:
                 "Est. Go-Live":          pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
                 "Phase":                 str(r.get("phase", "—")),
                 "On Hold Reason":        _clean(r.get("on_hold_reason")) if _clean(r.get("on_hold_reason")) != "—" else None,
-                "Days Inactive":         int(r.get("days_inactive", -1)) if r.get("days_inactive", -1) >= 0 else "—",
-                "Inactivity Source":     _clean(r.get("_inactivity_source")),
                 "Last Milestone":        _clean(r.get("last_milestone")),
                 "Client Responsiveness": _clean(r.get("client_responsiveness")) if _clean(r.get("client_responsiveness")) != "—" else None,
                 "Client Sentiment":      _clean(r.get("client_sentiment")) if _clean(r.get("client_sentiment")) != "—" else None,
                 "Risk Level":            _risk_emoji(r.get("risk_level")),
                 "Risk Owner":            _clean(r.get("risk_owner")) if _clean(r.get("risk_owner")) != "—" else None,
-                "Risk Detail":           _clean(r.get("risk_detail")),
                 "Responsible for Delay": _clean(r.get("responsible_for_delay")) if _clean(r.get("responsible_for_delay")) != "—" else None,
-                "Delay Summary":         _ds,
-                "JIRA Links":            _clean(r.get("jira_links")),
             }
             if _va_region:
                 _oh_row["Consultant"] = str(r.get("project_manager", "") or "")
@@ -1002,13 +897,11 @@ with tab_hold:
         if "Consultant" in _oh_df.columns:
             _col_order = ["Flags","Customer","Consultant","Project Type","Start Date","Est. Go-Live",
                            "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
-                           "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
-                           "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
+                           "Client Sentiment","Last Milestone","Risk Level","Risk Owner"]
         else:
             _col_order = ["Flags","Customer","Project Type","Start Date","Est. Go-Live",
                           "Phase","On Hold Reason","Responsible for Delay","Client Responsiveness",
-                          "Client Sentiment","Days Inactive","Inactivity Source","Last Milestone",
-                          "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
+                          "Client Sentiment","Last Milestone","Risk Level","Risk Owner"]
         _oh_df = _oh_df[[c for c in _col_order if c in _oh_df.columns]]
 
         # ✦ = SS syncable (editable) | no mark = derived/read-only
@@ -1023,18 +916,12 @@ with tab_hold:
                 "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",            disabled=True, width="small"),
                 "Phase":                 st.column_config.SelectboxColumn("Phase", options=PHASE_OPTIONS, width="medium"),
                 "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason",  options=_OH_REASON_OPTS,     width="medium"),
-                "Days Inactive":         st.column_config.NumberColumn("Days Inactive",         disabled=True, width="small"),
-                "Inactivity Source":     st.column_config.TextColumn("Inactivity Source",       disabled=True, width="small"),
                 "Last Milestone":        st.column_config.TextColumn("Last Milestone",          disabled=True, width="medium"),
                 "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness", options=_OH_RESP_OPTS, width="medium"),
                 "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment", options=_OH_SENTIMENT_OPTS, width="small"),
                 "Risk Level":            st.column_config.SelectboxColumn("Risk Level",       options=_OH_RISK_OPTS,       width="small"),
                 "Risk Owner":            st.column_config.SelectboxColumn("Risk Owner",       options=_OH_OWNER_OPTS,      width="small"),
-                "Risk Detail":           st.column_config.TextColumn("Risk Detail",           width="large"),
                 "Responsible for Delay": st.column_config.SelectboxColumn("Responsible for Delay", options=_OH_DELAY_OPTS, width="medium"),
-                "Delay Summary":         st.column_config.TextColumn("Delay Summary",         width="large"),
-                "JIRA Links":            st.column_config.TextColumn("JIRA Links",             width="medium",
-                                             help="Comma-separated JIRA ticket URLs, e.g. https://zone.atlassian.net/browse/ZPS-123"),
             },
             use_container_width=True,
             hide_index=True,
@@ -1043,8 +930,8 @@ with tab_hold:
         )
 
         # Export bar
-        _oh_sync_cols = ["Customer","Project Type","On Hold Reason","Responsible for Delay","Client Responsiveness","Client Sentiment",
-                         "Risk Level","Risk Owner","Risk Detail","Delay Summary","JIRA Links"]
+        _oh_sync_cols = ["Phase","On Hold Reason","Responsible for Delay","Client Responsiveness","Client Sentiment",
+                         "Risk Level","Risk Owner"]
         _oh_changed = _oh_edited[_oh_sync_cols].fillna("").ne(_oh_df[[c for c in _oh_sync_cols if c in _oh_df.columns]].fillna("")).any(axis=1) if not _oh_edited.empty else pd.Series(False, index=_oh_edited.index)
         _oh_ex1, _oh_ex2 = st.columns([3,1])
         with _oh_ex1:
@@ -1179,8 +1066,11 @@ with tab_intake:
                 # ── WRITE fields ──────────────────────────────────────────────
                 _badge = lambda t: f"<span style='font-size:9px;padding:2px 6px;border-radius:4px;background:var(--color-background-info);color:var(--color-text-info);margin-left:6px'>{t}</span>"
 
-                # Project dates
+                # Project dates — order: Start Date · Go-Live Date · End Date
                 st.markdown(f"<div class='section-label' style='margin-bottom:10px'>Project Dates {_badge('editable')}</div>",unsafe_allow_html=True)
+                _sd_cur = _dr.get("start_date")
+                _sd_val = pd.Timestamp(_sd_cur).date() if pd.notna(_sd_cur) else None
+                _w_substart = st.date_input("Start date", value=_sd_val, key=f"dp_sd_{_sel_pid}")
                 _wc1,_wc2 = st.columns(2)
                 with _wc1:
                     _gl_cur = _dr.get("go_live_date")
@@ -1189,10 +1079,7 @@ with tab_intake:
                 with _wc2:
                     _fd_cur = _dr.get("finish_date")
                     _fd_val = pd.Timestamp(_fd_cur).date() if pd.notna(_fd_cur) else None
-                    _w_finish = st.date_input("Finish date", value=_fd_val, key=f"dp_fd_{_sel_pid}")
-                _sd_cur = _dr.get("subscription_start_date") or _dr.get("start_date")
-                _sd_val = pd.Timestamp(_sd_cur).date() if pd.notna(_sd_cur) else None
-                _w_substart = st.date_input("Start date (subscription)", value=_sd_val, key=f"dp_sd_{_sel_pid}")
+                    _w_finish = st.date_input("End date", value=_fd_val, key=f"dp_fd_{_sel_pid}")
 
                 st.markdown("<div style='height:10px'></div>",unsafe_allow_html=True)
 
@@ -1279,8 +1166,18 @@ with tab_intake:
                         placeholder="Customer/internal response...",key=f"w_ohrs_{_sel_pid}")
                     _w_trans_notes = st.text_area("Support transition notes",value=_dv("support_transition_notes",""),height=56,
                         placeholder="Notes for support handoff...",key=f"w_trn_{_sel_pid}")
+                    _w_delay_sum = st.text_area("Delay summary",value=_dv("delay_summary",""),height=56,
+                        placeholder="Summary of delay cause and current status...",key=f"w_dsum_{_sel_pid}")
+                else:
+                    _w_delay_sum = ""
+                    _w_oh_reason = _w_oh_resp = _w_trans_notes = _w_resume = None
 
-                # Milestone dates
+                # JIRA Links — optional, shown at bottom for all projects
+                st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>JIRA {_badge('optional')}</div>",unsafe_allow_html=True)
+                _w_jira = st.text_input("JIRA links",value=_dv("jira_links",""),
+                    placeholder="e.g. https://zone.atlassian.net/browse/ZPS-123",
+                    key=f"w_jira_{_sel_pid}")
+
                 # Save button
                 if st.button("Save to Smartsheet", key=f"mp_det_save_{_sel_pid}",
                              type="primary", use_container_width=True):
@@ -1305,12 +1202,20 @@ with tab_intake:
                             "client_sentiment":     _w_csent,
                         })
                         if _is_oh:
-                            _changes.update({
+                            _oh_fields_save = {
                                 "on_hold_reason":           _w_oh_reason,
                                 "on_hold_response":         _w_oh_resp,
                                 "support_transition_notes": _w_trans_notes,
-                            })
-                            if _w_resume: _changes["resume_date"] = _w_resume.isoformat()
+                                "delay_summary":            _w_delay_sum,
+                            }
+                            for _fk, _fv in _oh_fields_save.items():
+                                if _norm(_fv) != _norm(_dv(_fk)):
+                                    _changes[_fk] = _fv
+                            if _w_resume and _w_resume.isoformat() != _orig_date("resume_date"):
+                                _changes["resume_date"] = _w_resume.isoformat()
+                        # JIRA (all projects)
+                        if _norm(_w_jira) != _norm(_dv("jira_links")):
+                            _changes["jira_links"] = _w_jira
                         # Milestone dates
                         for _mk,_ in _ms_write_cols:
                             _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
