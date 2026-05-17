@@ -1346,6 +1346,36 @@ with tab_intake:
                     placeholder="e.g. https://zone.atlassian.net/browse/ZPS-123",
                     key=f"w_jira_{_sel_pid}")
 
+                # Debug: show what will be sent before saving
+                with st.expander("🔍 Debug — fields queued for sync", expanded=False):
+                    _debug_changes = {}
+                    def _norm_dbg(v):
+                        if v is None: return ""
+                        s = str(v).strip()
+                        return "" if s in ("nan","None","NaT","—") else s
+                    def _orig_date_dbg(key):
+                        v = _dr.get(key)
+                        try: return pd.Timestamp(v).date().isoformat() if pd.notna(v) else ""
+                        except: return ""
+                    # Dates
+                    if _w_golive:   _debug_changes["Go-Live Date"]  = f"{_w_golive} (orig: {_orig_date_dbg('go_live_date')})"
+                    if _w_finish:   _debug_changes["Finish Date"]   = f"{_w_finish} (orig: {_orig_date_dbg('finish_date')})"
+                    if _w_substart: _debug_changes["Start Date"]    = f"{_w_substart} (orig: {_orig_date_dbg('start_date')})"
+                    # Health
+                    for _ss_col, _drs_key, _fv in [
+                        ("Status","status",_w_status),("Project Phase","phase",_w_phase),
+                        ("Overall Summary","overall_summary",_w_summary),
+                        ("Schedule Health","schedule_health",_w_sched),
+                        ("Resource Health","resource_health",_w_res),
+                        ("Scope Health","scope_health",_w_scope),
+                        ("Risk Level","risk_level",_w_risk),
+                        ("Risk Detail","risk_detail",_w_riskd),
+                        ("Client Responsiveness","client_responsiveness",_w_cresp),
+                        ("Client Sentiment","client_sentiment",_w_csent),
+                    ]:
+                        _debug_changes[_ss_col] = f"widget='{_norm_dbg(_fv)}' | drs='{_norm_dbg(_dv(_drs_key))}' | {'CHANGED ✓' if _norm_dbg(_fv) != _norm_dbg(_dv(_drs_key)) else 'same'}"
+                    st.json(_debug_changes)
+
                 # Save button
                 if st.button("Save to Smartsheet", key=f"mp_det_save_{_sel_pid}",
                              type="primary", use_container_width=True):
