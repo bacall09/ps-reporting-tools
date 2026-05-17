@@ -1466,8 +1466,10 @@ with tab_intake:
                                     "project_name": _dr_name,
                                     "changes":      _changes,
                                 }])
+                            st.write(f"DEBUG — _ok={_ok!r} | _errs={_errs!r} | _changes keys={list(_changes.keys())}")
                             if _ok: st.success(f"✓ Saved {len(_changes)} field(s) to Smartsheet")
                             for _e in (_errs or []): st.warning(f"⚠ {_e}")
+                            if not _ok and not _errs: st.error("write_row_updates returned 0 rows updated — check SS column names or row ID")
                         else:
                             st.info("No changes to save.")
                     else:
