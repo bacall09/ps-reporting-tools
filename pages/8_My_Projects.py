@@ -1237,17 +1237,24 @@ with tab_intake:
                 # Projected go-live — session-only consultant estimate
                 # Used by smart health suggestions when original_go_live_date may no longer be accurate
                 _proj_gl_key = f"proj_gl_{_sel_pid}"
-                _proj_gl_val = st.session_state.get(_proj_gl_key)
-                _proj_gl_new = st.date_input(
-                    "Projected go-live (your estimate)",
-                    value=_proj_gl_val,
-                    min_value=date(2020, 1, 1),
-                    max_value=date(2030, 12, 31),
-                    key=f"dp_proj_gl_{_sel_pid}",
-                    help="Session-only — your working estimate when the original go-live may slip. "
-                         "Used to improve health suggestions. Not saved to Smartsheet."
-                )
-                if _proj_gl_new != _proj_gl_val:
+                # date_input with value=None renders a blank picker in Streamlit ≥1.28
+                # For older versions, fall back to "today" and detect via comparison
+                _proj_gl_stored = st.session_state.get(_proj_gl_key)
+                _proj_gl_default = _proj_gl_stored if _proj_gl_stored else None
+                try:
+                    _proj_gl_new = st.date_input(
+                        "Projected go-live (your estimate)",
+                        value=_proj_gl_default,
+                        min_value=date(2020, 1, 1),
+                        max_value=date(2030, 12, 31),
+                        key=f"dp_proj_gl_{_sel_pid}",
+                        help="Your working estimate when the original go-live may slip. "
+                             "Session-only — not saved to Smartsheet.",
+                        format="YYYY-MM-DD",
+                    )
+                except Exception:
+                    _proj_gl_new = None
+                if _proj_gl_new and _proj_gl_new != _proj_gl_stored:
                     st.session_state[_proj_gl_key] = _proj_gl_new
                 _w_proj_golive = st.session_state.get(_proj_gl_key)
 
@@ -1267,13 +1274,20 @@ with tab_intake:
 
                     _today_sugg   = _dt_sugg.date.today()
                     _ptype_sugg   = str(_dr.get("project_type","") or "").strip()
-                    _phase_sugg   = str(_dr.get("phase","") or "").strip().lower()
-                    _status_sugg  = str(_dr.get("status","") or "").strip()
-                    _sched_sugg   = str(_dr.get("schedule_health","") or "").strip()
-                    _risk_sugg    = str(_dr.get("risk_level","") or "").strip()
-                    _scope_h_sugg = str(_dr.get("scope_health","") or "").strip()
-                    _cresp_sugg   = str(_dr.get("client_responsiveness","") or "").strip()
-                    _csent_sugg   = str(_dr.get("client_sentiment","") or "").strip()
+                    # For health fields: prefer current widget value (this render) over DRS
+                    # _w_status is defined before this block; other health widgets read from
+                    # session_state so changes persist across reruns even before saving
+                    def _widget_or_drs(ss_key, drs_key):
+                        v = st.session_state.get(ss_key)
+                        return str(v or "").strip() if v else str(_dr.get(drs_key,"") or "").strip()
+                    _phase_sugg   = _widget_or_drs(f"w_phase_{_sel_pid}",   "phase")
+                    _status_sugg  = str(_w_status or "").strip()  # already rendered
+                    _sched_sugg   = _widget_or_drs(f"w_sch_{_sel_pid}",    "schedule_health")
+                    _risk_sugg    = _widget_or_drs(f"w_rsk_{_sel_pid}",    "risk_level")
+                    _scope_h_sugg = _widget_or_drs(f"w_sco_{_sel_pid}",    "scope_health")
+                    _cresp_sugg   = _widget_or_drs(f"w_crsp_{_sel_pid}",   "client_responsiveness")
+                    _csent_sugg   = _widget_or_drs(f"w_csnt_{_sel_pid}",   "client_sentiment")
+                    _phase_sugg   = _phase_sugg.lower()
 
                     # Determine project track from project_type
                     _SHORT_TRACK = {"zonecapture","zoneapprovals","zone employee portal",
