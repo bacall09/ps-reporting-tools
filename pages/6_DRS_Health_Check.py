@@ -61,31 +61,6 @@ st.markdown("""
         .summary-val  { font-size:28px; font-weight:700; }
         .summary-lbl  { font-size:12px; opacity:0.6; margin-top:2px; }
         .divider { border:none; border-top:1px solid rgba(128,128,128,0.15); margin:16px 0; }
-        .rule-card { border:0.5px solid var(--color-border-tertiary); border-radius:10px; overflow:hidden; margin-bottom:12px; }
-        .rule-card-hdr { padding:14px 18px; display:flex; align-items:flex-start; gap:14px; }
-        .rule-card-body { padding:0 18px 14px; }
-        .rule-rail-red    { width:4px; flex-shrink:0; background:#E24B4A; border-radius:2px; min-height:40px; }
-        .rule-rail-amber  { width:4px; flex-shrink:0; background:#EF9F27; border-radius:2px; min-height:40px; }
-        .rule-rail-blue   { width:4px; flex-shrink:0; background:#4472C4; border-radius:2px; min-height:40px; }
-        .rule-title-lg { font-size:15px; font-weight:600; color:var(--color-text-primary); margin-bottom:4px; }
-        .rule-sub { font-size:12px; color:var(--color-text-secondary); line-height:1.5; }
-        .stat-num { font-size:28px; font-weight:600; line-height:1; }
-        .stat-sub { font-size:11px; color:var(--color-text-secondary); margin-top:2px; }
-        .prog-bar { height:4px; background:rgba(128,128,128,.15); border-radius:2px; margin-top:6px; overflow:hidden; }
-        .prog-fill-red   { height:100%; background:#E24B4A; border-radius:2px; }
-        .prog-fill-amber { height:100%; background:#EF9F27; border-radius:2px; }
-        .proj-row { display:flex; gap:10px; padding:8px 0; border-bottom:0.5px solid rgba(128,128,128,.1); align-items:flex-start; font-size:13px; }
-        .proj-row:last-child { border-bottom:none; }
-        .proj-name { font-weight:500; color:var(--color-text-primary); }
-        .proj-type { font-size:11px; color:var(--color-text-secondary); }
-        .proj-detail { font-size:12px; color:var(--color-text-secondary); }
-        .fix-pill { display:inline-block; font-size:11px; padding:2px 9px; border-radius:20px; border:0.5px solid var(--color-border-secondary); color:var(--color-text-secondary); background:var(--color-background-secondary); }
-        .status-fixed   { font-size:11px; font-weight:600; color:#27AE60; }
-        .status-snoozed { font-size:11px; font-weight:600; color:#f59e0b; }
-        .status-open    { font-size:11px; color:var(--color-text-secondary); }
-        .strip-bar { background:rgba(59,130,246,.08); border:0.5px solid rgba(59,130,246,.2); border-radius:8px; padding:10px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; font-size:12px; }
-        .cat-chip { display:inline-block; font-size:12px; padding:4px 12px; border-radius:20px; border:0.5px solid var(--color-border-tertiary); cursor:pointer; margin-right:6px; margin-bottom:6px; }
-        .cat-chip-active { background:var(--color-background-info); color:var(--color-text-info); border-color:var(--color-border-info); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -248,12 +223,17 @@ for _, row in df_drs.iterrows():
 
     def flag(severity, category, rule, description, expected=""):
         findings.append({
-            "project":     proj,
-            "severity":    severity,
-            "category":    category,
-            "rule":        rule,
-            "description": description,
-            "expected":    expected,
+            "project":          proj,
+            "project_id":       str(_get(row, "project_id", "") or ""),
+            "consultant":       str(pm or ""),
+            "phase":            str(phase or ""),
+            "go_live_disp":     pd.to_datetime(go_live).strftime("%-d %b %Y") if _is_date(go_live) else "",
+            "days_val":         abs(_days_until(go_live)) if (_is_date(go_live) and _days_until(go_live) is not None and _days_until(go_live) < 0) else (_days_since(start_dt) if _is_date(start_dt) else None),
+            "severity":         severity,
+            "category":         category,
+            "rule":             rule,
+            "description":      description,
+            "expected":         expected,
         })
 
     # ── Completeness ──────────────────────────────────────────────────────────
@@ -461,7 +441,7 @@ for _, row in df_drs.iterrows():
                              "Complete or back-date the milestone if it has been done.")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# RESULTS — v2: group by rule, session state, bulk fix surface
+# RESULTS — v3: sortable table + per-category tabs, read-only
 # ══════════════════════════════════════════════════════════════════════════════
 df_findings = pd.DataFrame(findings)
 
@@ -469,381 +449,294 @@ if df_findings.empty:
     st.success(f"✓ No issues found across {len(df_drs):,} projects — DRS data looks clean.")
     st.stop()
 
-n_error   = int((df_findings["severity"] == "Error").sum())
-n_warning = int((df_findings["severity"] == "Warning").sum())
-n_info    = int((df_findings["severity"] == "Info").sum())
+# ── Computed counts ───────────────────────────────────────────────────────────
+n_error    = int((df_findings["severity"] == "Error").sum())
+n_warning  = int((df_findings["severity"] == "Warning").sum())
+n_info     = int((df_findings["severity"] == "Info").sum())
 n_projects = int(df_findings["project"].nunique())
+n_total    = len(df_findings)
 
-# ── Session state helpers ─────────────────────────────────────────────────────
-# State key: "drs_state_{project}_{rule_key}" → "open" | "fixed" | "snoozed"
-# Snooze note: "drs_snooze_note_{project}_{rule_key}"
-def _state_key(proj, rule):
-    return f"drs_state_{proj}_{rule}".replace(" ", "_")[:120]
+# Oldest issue in days
+_days_col = df_findings["days_val"].dropna()
+oldest_d   = int(_days_col.max()) if len(_days_col) else 0
 
-def _snooze_key(proj, rule):
-    return f"drs_snooze_{proj}_{rule}".replace(" ", "_")[:120]
-
-def _get_state(proj, rule):
-    return st.session_state.get(_state_key(proj, rule), "open")
-
-def _set_state(proj, rule, val):
-    st.session_state[_state_key(proj, rule)] = val
-
-# Add state to findings
-df_findings["_state"] = df_findings.apply(
-    lambda r: _get_state(r["project"], r["rule"]), axis=1
-)
-
-# ── Compute action-oriented header counts ─────────────────────────────────────
-open_findings   = df_findings[df_findings["_state"] == "open"]
-fixed_count     = int((df_findings["_state"] == "fixed").sum())
-snoozed_count   = int((df_findings["_state"] == "snoozed").sum())
-
-# "Action required errors ≥30d old" — date logic errors that are overdue
-_date_err = open_findings[
-    (open_findings["severity"] == "Error") &
-    (open_findings["category"] == "Date Logic")
-]
-n_action_required = len(_date_err)
-
-# "1-click fixable" — projects where the fix is a phase advance
-_phase_fixable = open_findings[
-    open_findings["rule"] == "Go Live date passed but phase not updated"
-]
-n_fixable = len(_phase_fixable)
-
-# ── Strip header ──────────────────────────────────────────────────────────────
-_strip_parts = []
-if fixed_count:
-    _strip_parts.append(f"<b style='color:#27AE60'>{fixed_count} fixed</b> staged for sync")
-if snoozed_count:
-    _strip_parts.append(f"<b style='color:#f59e0b'>{snoozed_count} snoozed</b>")
-_strip_msg = " · ".join(_strip_parts) if _strip_parts else "No fixes staged yet this session"
-
-st.markdown(
-    f"<div class='strip-bar'>"
-    f"<span style='color:var(--color-text-secondary)'>{_strip_msg}</span>"
-    f"<span style='color:var(--color-text-secondary)'>Fixes staged locally — export CSV to apply in Smartsheet</span>"
-    f"</div>",
-    unsafe_allow_html=True
-)
-
-# ── Action metric strip (replaces 5-metric grid) ──────────────────────────────
+# ── 4 action metrics ──────────────────────────────────────────────────────────
 _m1, _m2, _m3, _m4 = st.columns(4)
 with _m1:
     st.markdown(
         f"<div style='border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:14px 16px'>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px'>Projects flagged</div>"
-        f"<div style='font-size:28px;font-weight:600;color:var(--color-text-primary);line-height:1'>{n_projects}</div>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>of {len(df_drs)} checked · "
-        f"{n_error} errors · {n_warning} warnings</div></div>",
-        unsafe_allow_html=True
-    )
+        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;"
+        f"letter-spacing:.5px;margin-bottom:4px'>Projects flagged</div>"
+        f"<div style='font-size:28px;font-weight:600;line-height:1'>{n_projects}</div>"
+        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>"
+        f"of {len(df_drs)} checked</div></div>", unsafe_allow_html=True)
 with _m2:
-    _col = "#E24B4A" if n_action_required > 0 else "var(--color-text-primary)"
+    _ec = "#E24B4A" if n_error > 0 else "var(--color-text-primary)"
     st.markdown(
         f"<div style='border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:14px 16px'>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px'>Action required</div>"
-        f"<div style='font-size:28px;font-weight:600;color:{_col};line-height:1'>{n_action_required}</div>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>date logic errors · open</div></div>",
-        unsafe_allow_html=True
-    )
+        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;"
+        f"letter-spacing:.5px;margin-bottom:4px'>Errors</div>"
+        f"<div style='font-size:28px;font-weight:600;color:{_ec};line-height:1'>{n_error}</div>"
+        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>"
+        f"{n_warning} warnings · {n_info} info</div></div>", unsafe_allow_html=True)
 with _m3:
-    _col3 = "#27AE60" if n_fixable > 0 else "var(--color-text-primary)"
+    _dc = "#E24B4A" if oldest_d > 90 else ("#EF9F27" if oldest_d > 30 else "var(--color-text-primary)")
     st.markdown(
         f"<div style='border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:14px 16px'>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px'>1-click fixable</div>"
-        f"<div style='font-size:28px;font-weight:600;color:{_col3};line-height:1'>{n_fixable}</div>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>phase advance · same fix</div></div>",
-        unsafe_allow_html=True
-    )
+        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;"
+        f"letter-spacing:.5px;margin-bottom:4px'>Oldest issue</div>"
+        f"<div style='font-size:28px;font-weight:600;color:{_dc};line-height:1'>{oldest_d}d</div>"
+        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>"
+        f"days since go-live / start</div></div>", unsafe_allow_html=True)
 with _m4:
     st.markdown(
         f"<div style='border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:14px 16px'>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px'>Fixed this session</div>"
-        f"<div style='font-size:28px;font-weight:600;color:#27AE60;line-height:1'>{fixed_count}</div>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>{snoozed_count} snoozed</div></div>",
-        unsafe_allow_html=True
-    )
+        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;"
+        f"letter-spacing:.5px;margin-bottom:4px'>Total findings</div>"
+        f"<div style='font-size:28px;font-weight:600;line-height:1'>{n_total}</div>"
+        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>"
+        f"across {df_findings['category'].nunique()} rule categories</div></div>",
+        unsafe_allow_html=True)
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-# ── Category filter chips ─────────────────────────────────────────────────────
-all_cats  = sorted(df_findings["category"].unique())
-_cat_key  = "drs_v2_cat"
-if _cat_key not in st.session_state:
-    st.session_state[_cat_key] = "All"
-
-_chip_html = ""
-for _c in ["All"] + all_cats:
-    _cnt = len(df_findings) if _c == "All" else int((df_findings["category"] == _c).sum())
-    _active = "cat-chip-active" if st.session_state[_cat_key] == _c else ""
-    _chip_html += f"<span class='cat-chip {_active}' onclick="">{_c} {_cnt}</span>"
-
-_cat_cols = st.columns(len(all_cats) + 2)
-for _ci, _c in enumerate(["All"] + all_cats):
-    with _cat_cols[_ci]:
-        _cnt = len(df_findings) if _c == "All" else int((df_findings["category"] == _c).sum())
-        _is_active = st.session_state[_cat_key] == _c
-        if st.button(
-            f"{_c} · {_cnt}",
-            key=f"drs_chip_{_c}",
-            type="primary" if _is_active else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state[_cat_key] = _c
-            st.rerun()
-
-_active_cat = st.session_state[_cat_key]
-_cat_findings = df_findings if _active_cat == "All" else df_findings[df_findings["category"] == _active_cat]
-
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
 # ══════════════════════════════════════════════════════════════════════════════
-# RULE CARDS — one card per unique (severity, category, rule) combination
+# TABS — Overview + one per category
 # ══════════════════════════════════════════════════════════════════════════════
 _SEV_RANK = {"Error": 0, "Warning": 1, "Info": 2}
-_SEV_RAIL = {"Error": "rule-rail-red", "Warning": "rule-rail-amber", "Info": "rule-rail-blue"}
-_SEV_COL  = {"Error": "#E24B4A", "Warning": "#EF9F27", "Info": "#4472C4"}
-_SEV_BG   = {"Error": "rgba(226,75,74,.08)", "Warning": "rgba(245,158,11,.08)", "Info": "rgba(68,114,196,.08)"}
+df_findings["_sev_rank"] = df_findings["severity"].map(_SEV_RANK).fillna(9)
 
-# Group by rule
-_rule_groups = (
-    _cat_findings
-    .groupby(["severity", "category", "rule"], sort=False)
-    .apply(lambda g: g)
-    .reset_index(drop=True)
-)
-_rules = (
-    _cat_findings[["severity", "category", "rule", "description", "expected"]]
-    .drop_duplicates(subset=["severity", "category", "rule"])
-    .assign(_rank=lambda d: d["severity"].map(_SEV_RANK))
-    .sort_values("_rank")
-    .reset_index(drop=True)
-)
+# Sort by severity then days desc for default view
+df_sorted = df_findings.sort_values(
+    ["_sev_rank", "days_val"], ascending=[True, False]
+).reset_index(drop=True)
 
-for _, rule_row in _rules.iterrows():
-    sev      = rule_row["severity"]
-    category = rule_row["category"]
-    rule     = rule_row["rule"]
-    desc     = rule_row["description"]
-    expected = rule_row["expected"]
+# Build tab labels
+_cats = sorted(df_findings["category"].unique(),
+               key=lambda c: -int((df_findings["category"] == c).sum()))
+_tab_labels = [f"Overview · {n_total}"] + [
+    f"{c} · {int((df_findings['category']==c).sum())}" for c in _cats
+]
+_tabs = st.tabs(_tab_labels)
 
-    _proj_group = _cat_findings[
-        (_cat_findings["severity"] == sev) &
-        (_cat_findings["rule"] == rule)
-    ].copy()
-    _proj_group["_state"] = _proj_group.apply(
-        lambda r: _get_state(r["project"], r["rule"]), axis=1
-    )
+# ── Helper: render a sortable st.dataframe ────────────────────────────────────
+def _sev_display(s):
+    """Map severity to short display string for column."""
+    return s
 
-    n_total   = len(_proj_group)
-    n_open    = int((_proj_group["_state"] == "open").sum())
-    n_fixed   = int((_proj_group["_state"] == "fixed").sum())
-    n_snoozed = int((_proj_group["_state"] == "snoozed").sum())
-    pct_done  = int((n_fixed + n_snoozed) / n_total * 100) if n_total else 0
+def _days_display(v):
+    if v is None or (hasattr(v, '__class__') and v.__class__.__name__ in ('float',)) and str(v) == 'nan':
+        return None
+    try:
+        return int(v)
+    except Exception:
+        return None
 
-    _rail  = _SEV_RAIL.get(sev, "rule-rail-blue")
-    _scol  = _SEV_COL.get(sev, "#4472C4")
-    _sbg   = _SEV_BG.get(sev, "rgba(68,114,196,.08)")
-
-    # Oldest project for this rule
-    _oldest_days = None
-    for _, _fr in _proj_group.iterrows():
-        _gl = _fr.get("description", "")
-        import re as _re_drs
-        _m = _re_drs.search(r"(\d+)d ago", str(_gl))
-        if _m:
-            _d = int(_m.group(1))
-            if _oldest_days is None or _d > _oldest_days:
-                _oldest_days = _d
-
-    _oldest_str = f" · oldest {_oldest_days}d" if _oldest_days else ""
-
-    # Build bulk fix hint
-    _BULK_HINTS = {
-        "Go Live date passed but phase not updated":
-            "Advance phase to 06. Go-Live / Hypercare, or push the go-live date out.",
-        "On Hold Reason not set":
-            "Set On Hold Reason + Responsible for Delay in My Projects → Project Detail.",
-        "Responsible for Delay not set":
-            "Set Responsible for Delay in My Projects → Project Detail.",
-        "Engagement rating inconsistent with On Hold status":
-            "Update Client Responsiveness to Not Responsive or Neutral.",
-        "Sentiment rating inconsistent with On Hold status":
-            "Update Client Sentiment to Neutral or Concerned.",
-        "Actual hours exceed budget — no Change Order flagged":
-            "Not bulk-fixable — each overrun needs a per-project judgment (log CO vs accept).",
-    }
-    _bulk_hint = _BULK_HINTS.get(rule, expected)
-
-    with st.expander(
-        f"{sev.upper()} · {category} — {rule}  ({n_total} project{'s' if n_total!=1 else ''}{_oldest_str})",
-        expanded=(sev == "Error" and n_open > 0)
-    ):
-        # Rule summary row
-        _hcol1, _hcol2 = st.columns([3, 1])
-        with _hcol1:
-            st.markdown(
-                f"<div style='background:{_sbg};border-left:3px solid {_scol};"
-                f"border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:12px'>"
-                f"<div style='font-size:12px;color:{_scol};font-weight:600;margin-bottom:3px'>"
-                f"{sev.upper()} · {category}</div>"
-                f"<div style='font-size:13px;color:var(--color-text-secondary);line-height:1.5'>{_bulk_hint}</div>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-        with _hcol2:
-            st.markdown(
-                f"<div style='text-align:right;padding:4px 0'>"
-                f"<div style='font-size:11px;color:var(--color-text-secondary)'>"
-                f"Open {n_open} · Fixed {n_fixed} · Snoozed {n_snoozed}</div>"
-                f"<div class='prog-bar' style='margin-top:6px'>"
-                f"<div class='{'prog-fill-red' if sev=='Error' else 'prog-fill-amber'}' "
-                f"style='width:{pct_done}%'></div></div>"
-                f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:4px'>"
-                f"{pct_done}% resolved this session</div>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-
-        # Bulk action bar — only for rules with a clear uniform fix
-        _BULK_FIXABLE = {
-            "Go Live date passed but phase not updated",
-            "On Hold Reason not set",
-            "Responsible for Delay not set",
-            "Engagement rating inconsistent with On Hold status",
-            "Sentiment rating inconsistent with On Hold status",
-        }
-        _open_projs = _proj_group[_proj_group["_state"] == "open"]["project"].tolist()
-
-        if rule in _BULK_FIXABLE and _open_projs:
-            _bulk_c1, _bulk_c2, _bulk_c3 = st.columns([2, 1, 1])
-            with _bulk_c1:
-                st.markdown(
-                    f"<div style='font-size:12px;color:var(--color-text-secondary);padding-top:6px'>"
-                    f"{len(_open_projs)} open project{'s' if len(_open_projs)!=1 else ''} — "
-                    f"mark all as fixed or snoozed</div>",
-                    unsafe_allow_html=True
-                )
-            with _bulk_c2:
-                if st.button(
-                    f"✓ Mark all {len(_open_projs)} fixed",
-                    key=f"drs_bulk_fix_{sev}_{rule[:30]}",
-                    use_container_width=True,
-                    type="primary",
-                ):
-                    for _p in _open_projs:
-                        _set_state(_p, rule, "fixed")
-                    st.rerun()
-            with _bulk_c3:
-                if st.button(
-                    f"⏸ Snooze all",
-                    key=f"drs_bulk_snooze_{sev}_{rule[:30]}",
-                    use_container_width=True,
-                ):
-                    for _p in _open_projs:
-                        _set_state(_p, rule, "snoozed")
-                    st.rerun()
-
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-
-        # Per-project rows — sorted by days overdue desc, then name
-        _proj_sorted = _proj_group.copy()
-        def _extract_days(desc_str):
-            import re as _re2
-            _m2 = _re2.search(r"(\d+)d ago", str(desc_str))
-            return int(_m2.group(1)) if _m2 else 0
-        _proj_sorted["_days"] = _proj_sorted["description"].apply(_extract_days)
-        _proj_sorted = _proj_sorted.sort_values(["_days", "project"], ascending=[False, True])
-
-        for _, finding in _proj_sorted.iterrows():
-            _proj   = finding["project"]
-            _desc   = finding["description"]
-            _state  = _get_state(_proj, rule)
-            _fkey   = f"drs_row_{_proj}_{rule}".replace(" ","_")[:100]
-
-            # Parse project name and type from combined string
-            _proj_parts = _proj.split(" — ") if " — " in _proj else [_proj]
-            _pname = _proj_parts[0].strip()[:35]
-            _ptype = " · ".join(_proj_parts[1:])[:40] if len(_proj_parts) > 1 else ""
-
-            # State badge
-            if _state == "fixed":
-                _sbadge = "<span class='status-fixed'>✓ Fixed · staged</span>"
-            elif _state == "snoozed":
-                _snote = st.session_state.get(_snooze_key(_proj, rule), "")
-                _sbadge = f"<span class='status-snoozed'>⏸ Snoozed{' · ' + _snote if _snote else ''}</span>"
-            else:
-                _sbadge = "<span class='status-open'>Open</span>"
-
-            # Extract days overdue for colour
-            import re as _re3
-            _dm = _re3.search(r"(\d+)d ago", str(_desc))
-            _days_str = _dm.group(0) if _dm else ""
-            _days_int = int(_dm.group(1)) if _dm else 0
-            _days_col = "#E24B4A" if _days_int > 90 else ("#EF9F27" if _days_int > 30 else "var(--color-text-secondary)")
-
-            st.markdown(
-                f"<div class='proj-row'>"
-                f"<div style='flex:1;min-width:0'>"
-                f"<div class='proj-name'>{_pname}</div>"
-                f"<div class='proj-type'>{_ptype}</div>"
-                f"<div class='proj-detail' style='margin-top:3px'>{_desc.replace(_days_str, f'<b style="color:{_days_col}">{_days_str}</b>', 1) if _days_str else _desc}</div>"
-                f"</div>"
-                f"<div style='flex-shrink:0;text-align:right;min-width:120px'>"
-                f"{_sbadge}</div>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-
-            # Inline Fix / Snooze buttons (shown only when Open)
-            if _state == "open":
-                _bc1, _bc2, _bc3 = st.columns([3, 1, 1])
-                with _bc2:
-                    if st.button("✓ Fixed", key=f"{_fkey}_fix", use_container_width=True, type="primary"):
-                        _set_state(_proj, rule, "fixed")
-                        st.rerun()
-                with _bc3:
-                    if st.button("⏸ Snooze", key=f"{_fkey}_snooze", use_container_width=True):
-                        _set_state(_proj, rule, "snoozed")
-                        st.rerun()
-            elif _state in ("fixed", "snoozed"):
-                _bc1, _bc2 = st.columns([5, 1])
-                with _bc2:
-                    if st.button("↩ Reopen", key=f"{_fkey}_reopen", use_container_width=True):
-                        _set_state(_proj, rule, "open")
-                        st.rerun()
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-# ── Export ────────────────────────────────────────────────────────────────────
-_ec1, _ec2 = st.columns([3, 1])
-with _ec1:
-    # Only export open findings (fixed/snoozed excluded)
-    _open_df = df_findings[df_findings.apply(
-        lambda r: _get_state(r["project"], r["rule"]) == "open", axis=1
-    )]
-    _n_staged = fixed_count
+# ── OVERVIEW TAB ──────────────────────────────────────────────────────────────
+with _tabs[0]:
     st.markdown(
-        f"<div style='font-size:12px;color:var(--color-text-secondary);padding-top:8px'>"
-        f"{len(_open_df)} open findings · "
-        f"{_n_staged} fixed/staged excluded from export · "
-        f"apply staged fixes directly in Smartsheet DRS or via My Projects</div>",
+        "<div style='font-size:12px;color:var(--color-text-secondary);"
+        "margin-bottom:10px'>All findings · sorted by severity then days overdue. "
+        "Click any column header to re-sort.</div>",
         unsafe_allow_html=True
     )
-with _ec2:
-    _pm_cols  = ["project_manager"] if "project_manager" in df_findings.columns else []
-    _exp_cols = ["project"] + _pm_cols + ["severity","category","rule","description","expected"]
-    _export   = _open_df[[c for c in _exp_cols if c in _open_df.columns]].rename(columns={
-        "project": "Project", "project_manager": "Consultant",
-        "severity": "Severity", "category": "Category",
-        "rule": "Rule", "description": "Description", "expected": "Expected State",
-    })
-    st.download_button(
-        label="⬇ Download findings as CSV",
-        data=_export.to_csv(index=False),
-        file_name=f"drs_health_check_{date.today().strftime('%Y%m%d')}.csv",
-        mime="text/csv",
+
+    _ov_df = df_sorted[[
+        "project", "consultant", "category", "severity", "rule",
+        "phase", "go_live_disp", "days_val", "description"
+    ]].copy()
+    _ov_df.columns = [
+        "Project", "Consultant", "Category", "Severity", "Rule",
+        "Phase", "Go live", "Days", "Description"
+    ]
+    _ov_df["Days"] = _ov_df["Days"].apply(_days_display)
+
+    st.dataframe(
+        _ov_df,
         use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Project":     st.column_config.TextColumn("Project",     width="medium"),
+            "Consultant":  st.column_config.TextColumn("Consultant",  width="small"),
+            "Category":    st.column_config.TextColumn("Category",    width="small"),
+            "Severity":    st.column_config.TextColumn("Severity",    width="small"),
+            "Rule":        st.column_config.TextColumn("Rule",        width="medium"),
+            "Phase":       st.column_config.TextColumn("Phase",       width="small"),
+            "Go live":     st.column_config.TextColumn("Go live",     width="small"),
+            "Days":        st.column_config.NumberColumn(
+                               "Days",
+                               help="Days since go-live passed (date logic) or since project start (hours/completeness)",
+                               width="small",
+                               format="%d",
+                           ),
+            "Description": st.column_config.TextColumn("Description", width="large"),
+        },
     )
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    # CSV export
+    _ec1, _ec2 = st.columns([4, 1])
+    with _ec1:
+        st.markdown(
+            f"<div style='font-size:12px;color:var(--color-text-secondary);padding-top:8px'>"
+            f"{n_total} findings across {n_projects} projects · "
+            f"fix issues in <b>My Projects → Project Detail</b> then re-sync DRS to clear flags</div>",
+            unsafe_allow_html=True
+        )
+    with _ec2:
+        _exp_cols = ["Project", "Consultant", "Category", "Severity", "Rule",
+                     "Phase", "Go live", "Days", "Description"]
+        st.download_button(
+            label="⬇ Download CSV",
+            data=_ov_df[_exp_cols].to_csv(index=False),
+            file_name=f"drs_health_check_{date.today().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+# ── CATEGORY TABS ─────────────────────────────────────────────────────────────
+# Column config per category — show the most relevant columns for each rule type
+_CAT_CONFIG = {
+    "Date Logic": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Go live", "Days", "Description"],
+        "note":  "Fix: update phase or go-live date in My Projects → Project Detail, then sync to Smartsheet.",
+        "sort":  "Days",
+    },
+    "On Hold Data Quality": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Days", "Description"],
+        "note":  "Fix: set On Hold Reason, Responsible for Delay, and client fields in My Projects → Project Detail.",
+        "sort":  "Days",
+    },
+    "Hours vs Scope": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Days", "Description"],
+        "note":  "Fix: log a Change Order in Smartsheet or review budget allocation. Each project needs individual judgment.",
+        "sort":  "Days",
+    },
+    "Completeness": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Description"],
+        "note":  "Fix: complete missing fields in Smartsheet DRS or My Projects → Project Detail.",
+        "sort":  None,
+    },
+    "Status Conflict": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Description"],
+        "note":  "Fix: align Status and RAG in My Projects → Project Detail.",
+        "sort":  None,
+    },
+    "Activity Conflict": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Days", "Description"],
+        "note":  "Fix: update client responsiveness or project status in My Projects → Project Detail.",
+        "sort":  "Days",
+    },
+    "Milestone Sequence": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Description"],
+        "note":  "Fix: correct milestone dates in My Projects → Project Detail, then sync to Smartsheet.",
+        "sort":  None,
+    },
+    "Phase vs Milestone": {
+        "cols":  ["Project", "Consultant", "Rule", "Phase", "Description"],
+        "note":  "Fix: advance phase or back-date milestone in My Projects → Project Detail.",
+        "sort":  None,
+    },
+}
+
+_SEV_COL = {"Error": "#E24B4A", "Warning": "#EF9F27", "Info": "#4472C4"}
+
+for _ti, _cat in enumerate(_cats):
+    with _tabs[_ti + 1]:
+        _cat_df = df_sorted[df_sorted["category"] == _cat].copy()
+        _n_cat  = len(_cat_df)
+        _n_err  = int((_cat_df["severity"] == "Error").sum())
+        _n_warn = int((_cat_df["severity"] == "Warning").sum())
+        _cfg    = _CAT_CONFIG.get(_cat, {
+            "cols": ["Project", "Consultant", "Rule", "Severity", "Phase", "Days", "Description"],
+            "note": "Fix issues in My Projects → Project Detail, then sync to Smartsheet.",
+            "sort": "Days",
+        })
+
+        # Severity breakdown line
+        _sev_parts = []
+        if _n_err:  _sev_parts.append(f"<span style='color:#E24B4A;font-weight:600'>{_n_err} error{'s' if _n_err!=1 else ''}</span>")
+        if _n_warn: _sev_parts.append(f"<span style='color:#EF9F27;font-weight:600'>{_n_warn} warning{'s' if _n_warn!=1 else ''}</span>")
+        _n_info_cat = int((_cat_df["severity"] == "Info").sum())
+        if _n_info_cat: _sev_parts.append(f"{_n_info_cat} info")
+
+        st.markdown(
+            f"<div style='display:flex;align-items:baseline;gap:12px;margin-bottom:8px'>"
+            f"<span style='font-size:13px;color:var(--color-text-secondary)'>"
+            f"{_n_cat} finding{'s' if _n_cat!=1 else ''} · "
+            f"{'  ·  '.join(_sev_parts)}</span></div>",
+            unsafe_allow_html=True
+        )
+
+        # Fix note
+        st.markdown(
+            f"<div style='font-size:12px;color:var(--color-text-secondary);"
+            f"background:var(--color-background-secondary);border-radius:6px;"
+            f"padding:8px 12px;margin-bottom:10px;border-left:3px solid var(--color-border-secondary);"
+            f"border-radius:0 6px 6px 0'>"
+            f"<b style='color:var(--color-text-primary)'>How to fix:</b> {_cfg['note']}</div>",
+            unsafe_allow_html=True
+        )
+
+        # Build display df — rename to match column config keys
+        _display = _cat_df[[
+            "project", "consultant", "severity", "rule",
+            "phase", "go_live_disp", "days_val", "description"
+        ]].copy()
+        _display.columns = [
+            "Project", "Consultant", "Severity", "Rule",
+            "Phase", "Go live", "Days", "Description"
+        ]
+        _display["Days"] = _display["Days"].apply(_days_display)
+
+        # Sort
+        if _cfg["sort"] == "Days" and "Days" in _display.columns:
+            _display = _display.sort_values("Days", ascending=False, na_position="last")
+
+        # Only keep relevant columns
+        _show_cols = [c for c in _cfg["cols"] if c in _display.columns]
+
+        # Column config for this tab
+        _col_cfg = {
+            "Project":     st.column_config.TextColumn("Project",     width="medium"),
+            "Consultant":  st.column_config.TextColumn("Consultant",  width="small"),
+            "Severity":    st.column_config.TextColumn("Severity",    width="small"),
+            "Rule":        st.column_config.TextColumn("Rule",        width="medium"),
+            "Phase":       st.column_config.TextColumn("Phase",       width="small"),
+            "Go live":     st.column_config.TextColumn("Go live",     width="small"),
+            "Days":        st.column_config.NumberColumn(
+                               "Days overdue",
+                               help="Days since go-live passed or since project started",
+                               width="small",
+                               format="%d",
+                           ),
+            "Description": st.column_config.TextColumn("Description", width="large"),
+        }
+
+        st.dataframe(
+            _display[_show_cols].reset_index(drop=True),
+            use_container_width=True,
+            hide_index=True,
+            column_config={k: v for k, v in _col_cfg.items() if k in _show_cols},
+        )
+
+        # Per-category CSV
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        _cc1, _cc2 = st.columns([4, 1])
+        with _cc1:
+            _n_proj_cat = int(_cat_df["project"].nunique())
+            st.markdown(
+                f"<div style='font-size:12px;color:var(--color-text-secondary);padding-top:8px'>"
+                f"{_n_cat} findings across {_n_proj_cat} project{'s' if _n_proj_cat!=1 else ''}</div>",
+                unsafe_allow_html=True
+            )
+        with _cc2:
+            st.download_button(
+                label="⬇ Download CSV",
+                data=_display[_show_cols].to_csv(index=False),
+                file_name=f"drs_{_cat.lower().replace(' ','_')}_{date.today().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"dl_{_cat}",
+            )
