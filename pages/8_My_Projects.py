@@ -574,6 +574,7 @@ with tab_glance:
                 "overrun_hrs":  _overrun,
                 "_stag":        _stag,
                 "_srank":       _srank,
+                "rag":          str(_r.get("rag", "") or "").strip().lower(),
             })
 
         if not _risk_rows:
@@ -657,6 +658,15 @@ with tab_glance:
                 else:                 _pbg = "rgba(59,130,246,.18)";  _pfg = "#1d4ed8"
                 _start_str = str(_row.get("start_date", "—") or "—")
                 _lms_str   = str(_row.get("last_ms",    "—") or "—")
+                _rag_raw   = str(_row.get("rag", "") or "").strip().lower()
+                if _rag_raw == "red":
+                    _rag_cell = "<span style=\"display:inline-block;width:10px;height:10px;border-radius:50%;background:#E24B4A\" title=\"Red RAG\"></span>"
+                elif _rag_raw in ("yellow", "amber"):
+                    _rag_cell = "<span style=\"display:inline-block;width:10px;height:10px;border-radius:50%;background:#EF9F27\" title=\"Amber RAG\"></span>"
+                elif _rag_raw == "green":
+                    _rag_cell = "<span style=\"display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e\" title=\"Green RAG\"></span>"
+                else:
+                    _rag_cell = "<span style=\"opacity:.3\">—</span>"
                 _tbl_rows.append(
                     f"<tr style=\"border-bottom:1px solid rgba(128,128,128,.15)\">"
                     f"<td style=\"padding:9px 12px;vertical-align:middle\">{_row['project']}</td>"
@@ -664,6 +674,7 @@ with tab_glance:
                     f"<td style=\"padding:9px 12px;vertical-align:middle\">{_ch}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75;font-size:12px\">{_start_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75;font-size:12px\">{_lms_str}</td>"
+                    f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:center\">{_rag_cell}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_sc_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_htd_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:right\">{_log_str}</td>"
@@ -695,12 +706,13 @@ with tab_glance:
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Consultant</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Start date</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Last milestone</th>"
+                f"<th style=\"padding:10px 12px;font-weight:600;text-align:center;opacity:.75\">RAG</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Scoped</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">HTD</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Logged</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Burn</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:right;opacity:.75\">Overrun</th>"
-                f"<th style=\"padding:10px 12px;font-weight:600;text-align:center;opacity:.75\">Status</th>"
+                f"<th style=\"padding:10px 12px;font-weight:600;text-align:center;opacity:.75\">Flag</th>"
                 f"</tr></thead>"
                 f"<tbody>{''.join(_tbl_rows)}</tbody></table>"
                 f"<div style=\"padding:8px 14px;border-top:1px solid rgba(128,128,128,.15);"
@@ -1445,12 +1457,16 @@ with tab_intake:
                     if _eff_gl and _is_active:
                         _days_gl = (_eff_gl - _today_sugg).days
                         if _days_gl < 0 and _cur_rank < 6:
+                            _days_overdue = (_today_sugg - _eff_gl).days
                             _suggestions.append(("schedule_health", _sched_sugg, "Significantly Behind",
-                                f"Go-live passed ({_eff_gl.strftime('%-d %b %Y')}) but phase is {_phase_sugg}.", "red"))
+                                f"Go-live {_eff_gl.strftime('%-d %b %Y')} was {_days_overdue}d ago "
+                                f"but phase is still {_phase_sugg}. "
+                                f"Advance phase to 06. Go-Live or update the go-live date.", "red"))
                         elif 0 <= _days_gl <= _warn_days and _cur_rank < 5:
                             _suggestions.append(("schedule_health", _sched_sugg, "Behind",
-                                f"Go-live in {_days_gl}d, phase still {_phase_sugg} "
-                                f"({'short' if _is_short else 'long'} track threshold: {_warn_days}d).", "amber"))
+                                f"Go-live is in {_days_gl} day(s) ({_eff_gl.strftime('%-d %b %Y')}) "
+                                f"but phase is still {_phase_sugg}. "
+                                f"Expected phase 05+ for a {'short' if _is_short else 'long'} track project.", "amber"))
 
                     # Rule 2: project age vs phase
                     if _start_d and _is_active:
@@ -1502,12 +1518,15 @@ with tab_intake:
                             if _scoped and _scoped > 0:
                                 _bp = _htd_s / _scoped
                                 if _bp > 1.0 and _risk_sugg in ("Low","Medium"):
+                                    _overage_h = round(_htd_s - _scoped, 1)
                                     _suggestions.append(("risk_level", _risk_sugg, "High",
-                                        f"HTD ({_htd_s:.0f}h) exceeds scope ({_scoped:.0f}h) — "
-                                        f"Risk of {_risk_sugg or 'blank'} is inconsistent.", "red"))
+                                        f"Actual hours ({_htd_s:.0f}h) exceed scope ({_scoped:.0f}h) — "
+                                        f"overage: {_overage_h}h. Log a Change Order or review budget. "
+                                        f"Risk level of {_risk_sugg or 'not set'} should reflect overrun.", "red"))
                                 elif _bp >= 0.80 and _scope_sugg in ("Unchanged",""):
                                     _suggestions.append(("scope_health", _scope_sugg, "Increased",
-                                        f"HTD is {_bp*100:.0f}% of scope — Scope health should reflect pressure.", "amber"))
+                                        f"Hours to date ({_htd_s:.0f}h) are {_bp*100:.0f}% of scope ({_scoped:.0f}h). "
+                                        f"Consider logging a Change Order if overrun is expected.", "amber"))
                         except Exception:
                             pass
 
