@@ -637,8 +637,8 @@ df_sorted = df_findings.sort_values(
 
 # ── Category legend box ──────────────────────────────────────────────────────
 st.markdown(
-    "<div style='background:var(--color-background-secondary);"
-    "border:0.5px solid var(--color-border-tertiary);border-radius:12px;"
+    "<div style='background:var(--color-background-secondary, rgba(59,158,255,0.05));"
+    "border-left:4px solid #4472C4;border-radius:6px;"
     "overflow:hidden;margin-bottom:16px'>"
     "<div style='background:var(--color-background-secondary);padding:9px 16px;"
     "border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px;font-weight:600;"
