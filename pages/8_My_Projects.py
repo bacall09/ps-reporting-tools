@@ -1250,6 +1250,10 @@ with tab_intake:
                 _w_status = st.selectbox("Status",_opts_status,
                     index=_opts_status.index(_dv("status","In Progress")) if _dv("status","In Progress") in _opts_status else 0,
                     key=f"w_status_{_sel_pid}")
+                # Smart trigger — computed immediately after status widget so it's
+                # available everywhere below (health prompt, on-hold section, save handler)
+                _show_oh       = _is_oh or _w_status == "On Hold"
+                _newly_on_hold = (not _is_oh) and (_w_status == "On Hold")
                 _w_phase  = st.selectbox("Phase",_opts_phase,
                     index=_opts_phase.index(_dv("phase")) if _dv("phase") in _opts_phase else 0,
                     key=f"w_phase_{_sel_pid}")
@@ -1322,10 +1326,6 @@ with tab_intake:
                     key=f"w_csnt_{_sel_pid}")
 
                 # On Hold fields — shown when status is On Hold OR consultant just set it to On Hold
-                # Smart trigger: if consultant changes _w_status to "On Hold", section appears immediately
-                _show_oh = _is_oh or _w_status == "On Hold"
-                _newly_on_hold = (not _is_oh) and (_w_status == "On Hold")
-
                 if _show_oh:
                     _oh_label_color = "#f59e0b" if _newly_on_hold else "inherit"
                     _oh_prompt = ""
