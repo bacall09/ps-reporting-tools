@@ -1474,6 +1474,63 @@ with tab_intake:
                         _suggestions.append(("risk_level", _risk_sugg, "Medium",
                             "Client is Not Responsive — Risk level of Low is inconsistent.", "amber"))
 
+                    # Rule 7: missing milestone dates for current phase
+                    # Each milestone has a minimum phase rank at which it should already be set.
+                    # Session #2 is only flagged at phase 08 (your instruction).
+                    # Phase thresholds sourced from ZoneApps Milestone Project Tracker.
+                    # Value = min phase rank at which this milestone should already be set.
+                    # Delivered in phase 02 → flag from phase 03 (rank 3) onwards
+                    # Delivered in phase 03 → flag from phase 04 (rank 4) onwards
+                    # UAT Signoff implied at end of phase 04 → flag from phase 05 (rank 5)
+                    # Session #2 omitted until phase 08 per product team guidance
+                    _MS_PHASE_MIN = {
+                        "ms_intro_email":     3,  # delivered phase 02
+                        "ms_config_start":    3,  # delivered phase 02
+                        "ms_enablement":      4,  # delivered phase 03
+                        "ms_session1":        4,  # delivered phase 03
+                        "ms_session2":        8,  # phase 04 UAT — only flag at phase 08
+                        "ms_uat_signoff":     5,  # must be complete before 05. Prep for Go-Live
+                        "ms_prod_cutover":    6,  # delivered phase 05
+                        "ms_hypercare_start": 7,  # delivered phase 06
+                        "ms_close_out":       8,  # delivered phase 08
+                        "ms_transition":      8,  # delivered phase 08
+                    }
+                    _MS_LABELS = {
+                        "ms_intro_email":     "Intro Email Sent",
+                        "ms_config_start":    "Config Start",
+                        "ms_enablement":      "Enablement Session",
+                        "ms_session1":        "Session #1",
+                        "ms_session2":        "Session #2",
+                        "ms_uat_signoff":     "UAT Signoff",
+                        "ms_prod_cutover":    "Prod Cutover",
+                        "ms_hypercare_start": "Hypercare Start",
+                        "ms_close_out":       "Close Out Tasks",
+                        "ms_transition":      "Transition to Support",
+                    }
+                    if _cur_rank >= 3:  # only from phase 03 onwards (nothing expected before)
+                        _missing_ms = []
+                        for _ms_key, _ms_min_rank in _MS_PHASE_MIN.items():
+                            if _ms_min_rank > _cur_rank:
+                                continue  # not expected yet
+                            # Check if this milestone date is set — read from _dr
+                            _ms_val = _dr.get(_ms_key)
+                            _ms_empty = True
+                            try:
+                                if _ms_val is not None and str(_ms_val).strip() not in ("","nan","None","NaT"):
+                                    _ms_empty = not _pd_sugg.isna(_pd_sugg.Timestamp(_ms_val))
+                            except Exception:
+                                _ms_empty = True
+                            if _ms_empty:
+                                _missing_ms.append(_MS_LABELS[_ms_key])
+                        if _missing_ms:
+                            _ms_list = ", ".join(_missing_ms)
+                            _suggestions.append((
+                                "milestones", "", "Set dates",
+                                f"Phase is {_phase_sugg} but the following milestone dates are not set: "
+                                f"{_ms_list}.",
+                                "amber"
+                            ))
+
                 except Exception:
                     pass
 
@@ -1498,9 +1555,10 @@ with tab_intake:
                             f"padding:2px 7px;border-radius:20px;margin-top:1px;"
                             f"background:{'rgba(239,68,68,.18)' if sev=='red' else 'rgba(245,158,11,.18)'};"
                             f"color:{'#b91c1c' if sev=='red' else '#b45309'}'>"
-                            f"{fld.replace('_',' ').title()}</span>"
+                            f"{'Milestones' if fld=='milestones' else fld.replace('_',' ').title()}"
+                            f"</span>"
                             f"<span style='flex:1;color:var(--color-text-secondary)'>{why} "
-                            f"<b style='color:var(--color-text-primary)'>Suggest: {sug}</b></span>"
+                            f"<b style='color:var(--color-text-primary)'>{'Action needed' if fld=='milestones' else f'Suggest: {sug}'}</b></span>"
                             f"</div>"
                             for fld,_cur,sug,why,sev in _suggestions
                         ])
