@@ -883,26 +883,12 @@ with tab_open:
     _has_row_ids    = "_ss_row_id" in active.columns
 
     # Status label
-    ex1, ex2, ex3 = st.columns([3, 1, 1])
+    ex1, ex3 = st.columns([3, 1])
     with ex1:
         if changed.any():
             st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {changed.sum()} project(s) edited — ready to export</span>', unsafe_allow_html=True)
         else:
             st.markdown('<span style="font-size:12px;opacity:.5">No edits yet — edit cells above then export or sync</span>', unsafe_allow_html=True)
-
-    # CSV export (always available)
-    with ex2:
-        _export_df = changed_df if not changed_df.empty else edited
-        _buf = io.BytesIO()
-        _export_df.to_csv(_buf, index=False)
-        st.download_button(
-            label="⬇ Export to CSV" if not changed_df.empty else "⬇ Export all",
-            data=_buf.getvalue(),
-            file_name=f"drs_updates_{date.today().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-            type="primary" if (not changed_df.empty and not (_ss_ready and _has_row_ids)) else "secondary",
-            use_container_width=True,
-        )
 
     # Smartsheet sync (only when DRS loaded via API — row IDs available)
     with ex3:
@@ -1033,6 +1019,7 @@ with tab_hold:
                 "Est. Go-Live":          pd.Timestamp(r["go_live_date"]).strftime("%Y-%m-%d") if pd.notna(r.get("go_live_date")) else "—",
                 "Phase":                 str(r.get("phase", "—")),
                 "On Hold Reason":        _clean(r.get("on_hold_reason")) if _clean(r.get("on_hold_reason")) != "—" else None,
+                "Status":                str(r.get("status","") or ""),
                 "Last Milestone":        _clean(r.get("last_milestone")),
                 "Client Responsiveness": _clean(r.get("client_responsiveness")) if _clean(r.get("client_responsiveness")) != "—" else None,
                 "Client Sentiment":      _clean(r.get("client_sentiment")) if _clean(r.get("client_sentiment")) != "—" else None,
@@ -1049,11 +1036,11 @@ with tab_hold:
         # Column order — insert Consultant after RAG if region view
         if "Consultant" in _oh_df.columns:
             _col_order = ["Flags","Customer","Consultant","Project Type","Start Date","Est. Go-Live",
-                           "Phase","Last Milestone","On Hold Reason","Responsible for Delay",
+                           "Phase","Status","Last Milestone","On Hold Reason","Responsible for Delay",
                            "Client Responsiveness","Client Sentiment","Risk Level","Risk Owner"]
         else:
             _col_order = ["Flags","Customer","Project Type","Start Date","Est. Go-Live",
-                          "Phase","Last Milestone","On Hold Reason","Responsible for Delay",
+                          "Phase","Status","Last Milestone","On Hold Reason","Responsible for Delay",
                           "Client Responsiveness","Client Sentiment","Risk Level","Risk Owner"]
         _oh_df = _oh_df[[c for c in _col_order if c in _oh_df.columns]]
 
@@ -1069,6 +1056,7 @@ with tab_hold:
                 "Est. Go-Live":          st.column_config.TextColumn("Est. Go-Live",            disabled=True, width="small"),
                 "Phase":                 st.column_config.SelectboxColumn("Phase", options=PHASE_OPTIONS, width="medium"),
                 "On Hold Reason":        st.column_config.SelectboxColumn("On Hold Reason",  options=_OH_REASON_OPTS,     width="medium"),
+                "Status":                st.column_config.SelectboxColumn("Status", options=["In Progress","On Hold","Closed","Complete","Cancelled"]),
                 "Last Milestone":        st.column_config.TextColumn("Last Milestone",          disabled=True),
                 "Client Responsiveness": st.column_config.SelectboxColumn("Client Responsiveness", options=_OH_RESP_OPTS, width="medium"),
                 "Client Sentiment":      st.column_config.SelectboxColumn("Client Sentiment", options=_OH_SENTIMENT_OPTS, width="small"),
@@ -1083,25 +1071,63 @@ with tab_hold:
         )
 
         # Export bar
-        _oh_sync_cols = ["Phase","Last Milestone","On Hold Reason","Responsible for Delay","Client Responsiveness","Client Sentiment",
+        _oh_sync_cols = ["Phase","Status","Last Milestone","On Hold Reason","Responsible for Delay","Client Responsiveness","Client Sentiment",
                          "Risk Level","Risk Owner"]
         _oh_changed = _oh_edited[_oh_sync_cols].fillna("").ne(_oh_df[[c for c in _oh_sync_cols if c in _oh_df.columns]].fillna("")).any(axis=1) if not _oh_edited.empty else pd.Series(False, index=_oh_edited.index)
-        _oh_ex1, _oh_ex2 = st.columns([3,1])
+        _oh_ex1, _oh_ex2 = st.columns([3, 1])
         with _oh_ex1:
             if _oh_changed.any():
-                st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {_oh_changed.sum()} on-hold project(s) edited — ready to export</span>', unsafe_allow_html=True)
+                st.markdown(f'<span style="font-size:13px;color:#27AE60;font-weight:600">✓ {_oh_changed.sum()} on-hold project(s) edited — ready to sync</span>', unsafe_allow_html=True)
             else:
-                st.markdown('<span style="font-size:12px;opacity:.5">Edit ✦ columns above then export to sync with DRS</span>', unsafe_allow_html=True)
+                st.markdown('<span style="font-size:12px;opacity:.5">Edit columns above then sync to Smartsheet</span>', unsafe_allow_html=True)
         with _oh_ex2:
-            _oh_buf = __import__("io").BytesIO()
-            _oh_edited[_oh_sync_cols].to_csv(_oh_buf, index=False)
-            st.download_button(
-                label="⬇ Export to CSV",
-                data=_oh_buf.getvalue(),
-                file_name=f"on_hold_updates_{__import__('datetime').date.today().isoformat()}.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
+            _oh_sync_disabled = not (_oh_changed.any() and _ss_ready and _loaded_via_api
+                                     and "_ss_row_id" in on_hold.columns)
+            if st.button("↑ Sync to Smartsheet", key="mp_oh_ss_sync",
+                         disabled=_oh_sync_disabled, use_container_width=True,
+                         type="primary" if _oh_changed.any() else "secondary"):
+                _oh_updates = []
+                _oh_changed_pos = [i for i, v in enumerate(_oh_changed) if v]
+                _oh_d2i = {
+                    "Status":               "status",
+                    "Phase":                "phase",
+                    "On Hold Reason":       "on_hold_reason",
+                    "Responsible for Delay":"responsible_for_delay",
+                    "Client Responsiveness":"client_responsiveness",
+                    "Client Sentiment":     "client_sentiment",
+                    "Risk Level":           "risk_level",
+                    "Risk Owner":           "risk_owner",
+                }
+                for _ci in _oh_changed_pos:
+                    _oh_rid = on_hold.iloc[_ci].get("_ss_row_id") if "_ss_row_id" in on_hold.columns else None
+                    if not _oh_rid:
+                        continue
+                    _oh_ch = {}
+                    for _dc, _ik in _oh_d2i.items():
+                        if _dc not in _oh_edited.columns:
+                            continue
+                        _nv = _oh_edited.iloc[_ci][_dc]
+                        _ov = _oh_df.iloc[_ci][_dc] if _dc in _oh_df.columns else None
+                        if str(_nv) != str(_ov):
+                            import datetime as _dt_oh
+                            if isinstance(_nv, (_dt_oh.date, _dt_oh.datetime)):
+                                _nv = _nv.isoformat()
+                            _oh_ch[_ik] = _nv
+                    if _oh_ch:
+                        _oh_updates.append({
+                            "_ss_row_id":   int(_oh_rid),
+                            "project_name": on_hold.iloc[_ci].get("project_name", str(_oh_rid)),
+                            "changes":      _oh_ch,
+                        })
+                if _oh_updates:
+                    with st.spinner("Syncing to Smartsheet..."):
+                        _oh_ok, _oh_errs = write_row_updates(_oh_updates)
+                    if _oh_ok:
+                        st.success(f"✓ Synced {_oh_ok} on-hold project(s) to Smartsheet")
+                    for _e in (_oh_errs or []):
+                        st.warning(f"⚠ {_e}")
+                else:
+                    st.info("No changes to sync.")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1685,10 +1711,13 @@ with tab_intake:
                         if _norm(_w_jira) != _norm(_dv("jira_links")):
                             _changes["jira_links"] = _w_jira
 
-                        # Milestone dates — diff only
+                        # Milestone dates — diff only; None clears the cell in SS
                         for _mk, _ in _ms_write_cols:
                             _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
-                            if _mw and _mw.isoformat() != _orig_date(_mk):
+                            _orig = _orig_date(_mk)
+                            if _mw is None and _orig:
+                                _changes[_mk] = None
+                            elif _mw and _mw.isoformat() != _orig:
                                 _changes[_mk] = _mw.isoformat()
 
                         # Drop empty
