@@ -871,7 +871,7 @@ with tab_open:
     )
 
     # ── Detect changes vs original ────────────────────────────────────────────
-    editable_cols = ["Start Date","Go-Live Date","Phase","Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2","UAT Signoff","Prod Cutover","Go-Live (Actual)","Hypercare Start","Close Out Tasks","Transition to Support"]
+    editable_cols = ["Status","Phase","Start Date","Go-Live Date","Intro Email Sent","Config Start","Enablement Session","Session #1","Session #2","UAT Signoff","Prod Cutover","Go-Live (Actual)","Hypercare Start","Close Out Tasks","Transition to Support"]
     changed = edited[editable_cols].fillna("").ne(edit_df[editable_cols].fillna("")).any(axis=1)
     changed_df = edited[changed].copy() if changed.any() else pd.DataFrame()
 
