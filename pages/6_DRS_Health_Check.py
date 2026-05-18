@@ -240,7 +240,9 @@ for _, row in df_drs.iterrows():
             "project":      proj,
             "project_id":   str(_get(row, "project_id", "") or ""),
             "consultant":   str(pm or ""),
+            "status":       str(_get(row, "status", "") or "").strip().title(),
             "phase":        str(phase or ""),
+            "start_disp":   pd.to_datetime(start_dt).strftime("%-d %b %Y") if _is_date(start_dt) else "",
             "go_live_disp": pd.to_datetime(go_live).strftime("%-d %b %Y") if _is_date(go_live) else "",
             "days_val":     (abs(_days_until(go_live))
                              if (_is_date(go_live) and _days_until(go_live) is not None
@@ -518,7 +520,7 @@ def _short_name(n):
 def _sev_pill(sev):
     _sev_styles = {
         "Error":   "background:rgba(226,75,74,.15);color:#A32D2D",
-        "Warning": "background:rgba(234,179,8,.25);color:#713f12",
+        "Warning": "background:rgba(202,138,4,.2);color:#92400e",
         "Info":    "background:rgba(59,130,246,.13);color:#1d4ed8",
     }
     _sty = _sev_styles.get(sev, "background:rgba(128,128,128,.12);color:inherit")
@@ -670,43 +672,43 @@ with _tabs[0]:
 # ── Category tabs ─────────────────────────────────────────────────────────────
 _CAT_CFG = {
     "Date Logic": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: update phase or go-live date in My Projects → Project Detail, then sync to Smartsheet.",
     },
     "On Hold": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: set On Hold reason, Responsible for delay and client fields in My Projects → Project Detail.",
     },
     "Hours vs Scope": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: log a Change Order in Smartsheet or review budget allocation. Each project needs individual judgment.",
     },
     "Completeness": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: complete missing fields in My Projects → Project Detail.",
     },
     "Status Conflict": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: align Status and RAG in My Projects → Project Detail.",
     },
     "Activity Conflict": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: update client responsiveness or project status in My Projects → Project Detail.",
     },
     "Milestone Sequence": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: correct milestone dates in My Projects → Project Detail, then sync to Smartsheet.",
     },
     "Phase vs Milestone": {
-        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: advance phase or back-date milestone in My Projects → Project Detail.",
     },
 }
