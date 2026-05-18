@@ -1263,226 +1263,8 @@ with tab_intake:
                 # Weekly health
                 st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>Weekly Health {_badge('editable')}</div>",unsafe_allow_html=True)
 
-                # ── Smart health suggestion engine ────────────────────────────
-                # Computes advisory suggestions from project state.
-                # All suggestions are informational only — consultant can ignore.
-                _suggestions = []  # list of (field_key, current_val, suggested_val, reason, severity)
-
-                try:
-                    import datetime as _dt_sugg
-                    import pandas as _pd_sugg
-
-                    _today_sugg   = _dt_sugg.date.today()
-                    _ptype_sugg   = str(_dr.get("project_type","") or "").strip()
-                    # For health fields: prefer current widget value (this render) over DRS
-                    # _w_status is defined before this block; other health widgets read from
-                    # session_state so changes persist across reruns even before saving
-                    def _widget_or_drs(ss_key, drs_key):
-                        v = st.session_state.get(ss_key)
-                        return str(v or "").strip() if v else str(_dr.get(drs_key,"") or "").strip()
-                    _phase_sugg   = _widget_or_drs(f"w_phase_{_sel_pid}",   "phase")
-                    _status_sugg  = str(_w_status or "").strip()  # already rendered
-                    _sched_sugg   = _widget_or_drs(f"w_sch_{_sel_pid}",    "schedule_health")
-                    _risk_sugg    = _widget_or_drs(f"w_rsk_{_sel_pid}",    "risk_level")
-                    _scope_h_sugg = _widget_or_drs(f"w_sco_{_sel_pid}",    "scope_health")
-                    _cresp_sugg   = _widget_or_drs(f"w_crsp_{_sel_pid}",   "client_responsiveness")
-                    _csent_sugg   = _widget_or_drs(f"w_csnt_{_sel_pid}",   "client_sentiment")
-                    _phase_sugg   = _phase_sugg.lower()
-
-                    # Determine project track from project_type
-                    _SHORT_TRACK = {"zonecapture","zoneapprovals","zone employee portal",
-                                    "zoneapp: capture","zoneapp: approvals"}
-                    _pt_lower    = _ptype_sugg.lower()
-                    _is_short    = any(s in _pt_lower for s in _SHORT_TRACK)
-                    _warn_days   = 14 if _is_short else 21  # days-to-golive threshold
-
-                    # Resolve effective go-live date:
-                    # consultant projection > confirmed go-live > original go-live
-                    def _to_date(v):
-                        try:
-                            ts = _pd_sugg.Timestamp(v)
-                            return ts.date() if _pd_sugg.notna(ts) else None
-                        except Exception:
-                            return None
-
-                    _eff_gl = (_w_proj_golive or
-                               _to_date(_dr.get("go_live_date")) or
-                               _to_date(_dr.get("original_go_live_date")))
-
-                    # Phase rank helpers
-                    _PHASE_RANK = {
-                        "00": 0,"01": 1,"02": 2,"03": 3,"04": 4,
-                        "05": 5,"06": 6,"07": 7,"08": 8,"09": 9,"10": 10,
-                    }
-                    def _phase_rank(p):
-                        prefix = str(p or "").strip()[:2]
-                        return _PHASE_RANK.get(prefix, -1)
-
-                    _cur_rank  = _phase_rank(_phase_sugg)
-                    _is_active = _cur_rank >= 0 and _cur_rank < 8  # before 08
-
-                    # ── Rule 1: go-live proximity vs current phase ────────────
-                    if _eff_gl and _is_active:
-                        _days_to_gl = (_eff_gl - _today_sugg).days
-                        if _days_to_gl < 0 and _cur_rank < 6:
-                            _suggestions.append((
-                                "schedule_health", _sched_sugg, "Significantly Behind",
-                                f"Go-live date has passed ({_eff_gl.strftime('%-d %b %Y')}) "
-                                f"but phase is still {_phase_sugg}.",
-                                "red"
-                            ))
-                        elif 0 <= _days_to_gl <= _warn_days and _cur_rank < 5:
-                            _suggestions.append((
-                                "schedule_health", _sched_sugg, "Behind",
-                                f"Go-live is in {_days_to_gl} days "
-                                f"but phase is still {_phase_sugg} "
-                                f"({'short' if _is_short else 'long'} track threshold: {_warn_days} days).",
-                                "amber"
-                            ))
-
-                    # ── Rule 2: project age vs phase (short: >6wks in 01-02; long: >8wks in 01-03) ──
-                    _start_sugg = _to_date(_dr.get("start_date"))
-                    if _start_sugg and _is_active:
-                        _age_weeks = (_today_sugg - _start_sugg).days / 7
-                        if _is_short and _age_weeks > 6 and _cur_rank <= 2:
-                            _suggestions.append((
-                                "schedule_health", _sched_sugg, "Behind",
-                                f"Project started {int(_age_weeks)} weeks ago "
-                                f"but is still in {_phase_sugg} (short track expects phase 03+ by week 6).",
-                                "amber"
-                            ))
-                        elif not _is_short and _age_weeks > 8 and _cur_rank <= 3:
-                            _suggestions.append((
-                                "schedule_health", _sched_sugg, "Behind",
-                                f"Project started {int(_age_weeks)} weeks ago "
-                                f"but is still in {_phase_sugg} (long track expects phase 04+ by week 8).",
-                                "amber"
-                            ))
-
-                    # ── Rule 3: schedule health vs risk level conflict ─────────
-                    if _sched_sugg == "Behind" and _risk_sugg == "Low":
-                        _suggestions.append((
-                            "risk_level", _risk_sugg, "Medium",
-                            "Schedule health is Behind — risk level of Low is inconsistent.",
-                            "amber"
-                        ))
-                    if _sched_sugg == "Significantly Behind" and _risk_sugg in ("Low","Medium"):
-                        _suggestions.append((
-                            "risk_level", _risk_sugg, "High",
-                            "Schedule health is Significantly Behind — risk level should be High or Escalated.",
-                            "red"
-                        ))
-
-                    # ── Rule 4: on-hold inconsistencies ───────────────────────
-                    _is_oh_sugg = _status_sugg.lower() in ("on hold","onhold") or _w_status == "On Hold"
-                    if _is_oh_sugg:
-                        if _sched_sugg in ("Ahead","On Track",""):
-                            _suggestions.append((
-                                "schedule_health", _sched_sugg, "Behind",
-                                "Project is On Hold — schedule health of Ahead/On Track is inconsistent.",
-                                "amber"
-                            ))
-                        if _risk_sugg == "Low":
-                            _suggestions.append((
-                                "risk_level", _risk_sugg, "Medium",
-                                "Project is On Hold — risk level of Low is inconsistent.",
-                                "amber"
-                            ))
-                        if _cresp_sugg == "Highly Engaged":
-                            _suggestions.append((
-                                "client_responsiveness", _cresp_sugg, "Neutral",
-                                "Project is On Hold but client responsiveness is Highly Engaged — review.",
-                                "amber"
-                            ))
-                        if _csent_sugg == "Positive":
-                            _suggestions.append((
-                                "client_sentiment", _csent_sugg, "Neutral",
-                                "Project is On Hold but client sentiment is Positive — review.",
-                                "amber"
-                            ))
-
-                    # ── Rule 5: scope burn ─────────────────────────────────────
-                    if _is_active:
-                        _pid_sugg  = _clean_pid(str(_dr.get("project_id","") or ""))
-                        _htd_sugg  = float(_ns_htd.get(_pid_sugg, 0) or 0)
-                        try:
-                            from shared.config import DEFAULT_SCOPE as _DS_sugg
-                            def _sugg_scope(pt):
-                                _ptl = str(pt or "").strip().lower()
-                                _b = None; _bl = 0
-                                for k,v in _DS_sugg.items():
-                                    if k.strip().lower() in _ptl and len(k)>_bl:
-                                        _b=float(v); _bl=len(k)
-                                return _b
-                            _scope_sugg = _sugg_scope(_ptype_sugg) or _sugg_scope(str(_dr.get("project_name","") or ""))
-                            if _scope_sugg and _scope_sugg > 0:
-                                _burn_pct_sugg = _htd_sugg / _scope_sugg
-                                if _burn_pct_sugg > 1.0 and _risk_sugg in ("Low","Medium"):
-                                    _suggestions.append((
-                                        "risk_level", _risk_sugg, "High",
-                                        f"Hours to date ({_htd_sugg:.0f}h) exceed scope ({_scope_sugg:.0f}h) — "
-                                        f"risk level of {_risk_sugg or 'blank'} is inconsistent with overrun.",
-                                        "red"
-                                    ))
-                                elif _burn_pct_sugg >= 0.80 and _scope_h_sugg in ("Unchanged",""):
-                                    _suggestions.append((
-                                        "scope_health", _scope_h_sugg, "Increased",
-                                        f"Hours to date are {_burn_pct_sugg*100:.0f}% of scope — "
-                                        f"scope health should reflect increased pressure.",
-                                        "amber"
-                                    ))
-                        except Exception:
-                            pass
-
-                    # ── Rule 6: client signal consistency ─────────────────────
-                    if _csent_sugg == "Concerned" and _cresp_sugg == "Highly Engaged":
-                        _suggestions.append((
-                            "client_responsiveness", _cresp_sugg, "Neutral",
-                            "Client sentiment is Concerned but responsiveness is Highly Engaged — "
-                            "concern often signals reduced engagement.",
-                            "amber"
-                        ))
-                    if _cresp_sugg == "Not Responsive" and _risk_sugg == "Low":
-                        _suggestions.append((
-                            "risk_level", _risk_sugg, "Medium",
-                            "Client is Not Responsive — risk level of Low is inconsistent.",
-                            "amber"
-                        ))
-
-                except Exception:
-                    pass  # Never block the UI on suggestion errors
-
-                # ── Render suggestions ────────────────────────────────────────
-                if _suggestions:
-                    _has_proj_gl = bool(_w_proj_golive)
-                    _sched_suggs = [s for s in _suggestions if s[0] == "schedule_health"]
-                    _show_gl_nudge = bool(_sched_suggs) and not _has_proj_gl
-
-                    st.markdown(
-                        "<div style='background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);"
-                        "border-radius:8px;padding:10px 14px;margin-bottom:10px'>"
-                        "<div style='font-size:11px;font-weight:600;text-transform:uppercase;"
-                        "letter-spacing:.8px;color:#b45309;margin-bottom:8px'>"
-                        f"⚠ {len(_suggestions)} smart suggestion{'s' if len(_suggestions)!=1 else ''}</div>"
-                        + ("".join([
-                            f"<div style='display:flex;align-items:flex-start;gap:8px;padding:5px 0;"
-                            f"border-bottom:0.5px solid rgba(128,128,128,.12);font-size:12px'>"
-                            f"<span style='flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;"
-                            f"border-radius:20px;margin-top:1px;"
-                            f"background:{"rgba(239,68,68,.18)" if sev=="red" else "rgba(245,158,11,.18)"};"
-                            f"color:{"#b91c1c" if sev=="red" else "#b45309"}'>"
-                            f"{field.replace('_',' ').title()}</span>"
-                            f"<span style='flex:1;color:var(--color-text-secondary)'>{reason} "
-                            f"<b style='color:var(--color-text-primary)'>Suggest: {suggested}</b></span>"
-                            f"</div>"
-                            for field, current, suggested, reason, sev in _suggestions
-                        ]))
-                        + ("" if not _show_gl_nudge else
-                           "<div style='font-size:11px;color:rgba(245,158,11,.8);margin-top:6px'>"
-                           "↑ Add your projected go-live above to refine schedule suggestions.</div>")
-                        + "</div>",
-                        unsafe_allow_html=True
-                    )
+                # Placeholder filled by suggestion engine after all health widgets render
+                _sugg_placeholder = st.empty()
 
                 _opts_status        = ["In Progress","On Hold","Complete","Closed","Cancelled"]
                 _opts_phase         = PHASE_OPTIONS
@@ -1570,6 +1352,167 @@ with tab_intake:
                 _w_csent = st.selectbox("Client sentiment",_opts_sentiment,
                     index=_opts_sentiment.index(_dv("client_sentiment","")) if _dv("client_sentiment","") in _opts_sentiment else 0,
                     key=f"w_csnt_{_sel_pid}")
+
+                # ── Smart suggestion engine — runs after ALL health widgets are rendered ──
+                _suggestions = []
+                try:
+                    import datetime as _dt_sugg
+                    import pandas as _pd_sugg
+
+                    _today_sugg  = _dt_sugg.date.today()
+                    _ptype_sugg  = str(_dr.get("project_type","") or "").strip()
+
+                    def _wv(ss_key, drs_key):
+                        v = st.session_state.get(ss_key)
+                        return str(v or "").strip() if v else str(_dr.get(drs_key,"") or "").strip()
+
+                    _phase_sugg  = _wv(f"w_phase_{_sel_pid}", "phase").lower()
+                    _status_sugg = str(_w_status or "").strip()
+                    _sched_sugg  = _wv(f"w_sch_{_sel_pid}",  "schedule_health")
+                    _risk_sugg   = _wv(f"w_rsk_{_sel_pid}",  "risk_level")
+                    _scope_sugg  = _wv(f"w_sco_{_sel_pid}",  "scope_health")
+                    _cresp_sugg  = _wv(f"w_crsp_{_sel_pid}", "client_responsiveness")
+                    _csent_sugg  = _wv(f"w_csnt_{_sel_pid}", "client_sentiment")
+
+                    _SHORT_TYPES = {"zonecapture","zoneapprovals","zone employee portal",
+                                    "zoneapp: capture","zoneapp: approvals"}
+                    _is_short    = any(s in _ptype_sugg.lower() for s in _SHORT_TYPES)
+                    _warn_days   = 14 if _is_short else 21
+
+                    def _to_d(v):
+                        try:
+                            ts = _pd_sugg.Timestamp(v)
+                            return ts.date() if _pd_sugg.notna(ts) else None
+                        except Exception:
+                            return None
+
+                    _eff_gl  = (_w_proj_golive or
+                                _to_d(_dr.get("go_live_date")) or
+                                _to_d(_dr.get("original_go_live_date")))
+                    _start_d = _to_d(_dr.get("start_date"))
+
+                    _PRANK = {"00":0,"01":1,"02":2,"03":3,"04":4,
+                              "05":5,"06":6,"07":7,"08":8,"09":9,"10":10}
+                    _cur_rank  = _PRANK.get(str(_phase_sugg or "").strip()[:2], -1)
+                    _is_active = 0 <= _cur_rank < 8
+
+                    # Rule 1: go-live proximity
+                    if _eff_gl and _is_active:
+                        _days_gl = (_eff_gl - _today_sugg).days
+                        if _days_gl < 0 and _cur_rank < 6:
+                            _suggestions.append(("schedule_health", _sched_sugg, "Significantly Behind",
+                                f"Go-live passed ({_eff_gl.strftime('%-d %b %Y')}) but phase is {_phase_sugg}.", "red"))
+                        elif 0 <= _days_gl <= _warn_days and _cur_rank < 5:
+                            _suggestions.append(("schedule_health", _sched_sugg, "Behind",
+                                f"Go-live in {_days_gl}d, phase still {_phase_sugg} "
+                                f"({'short' if _is_short else 'long'} track threshold: {_warn_days}d).", "amber"))
+
+                    # Rule 2: project age vs phase
+                    if _start_d and _is_active:
+                        _age_wk = (_today_sugg - _start_d).days / 7
+                        if _is_short and _age_wk > 6 and _cur_rank <= 2:
+                            _suggestions.append(("schedule_health", _sched_sugg, "Behind",
+                                f"Started {int(_age_wk)} weeks ago, still in {_phase_sugg} "
+                                f"(short track: expect phase 03+ by week 6).", "amber"))
+                        elif not _is_short and _age_wk > 8 and _cur_rank <= 3:
+                            _suggestions.append(("schedule_health", _sched_sugg, "Behind",
+                                f"Started {int(_age_wk)} weeks ago, still in {_phase_sugg} "
+                                f"(long track: expect phase 04+ by week 8).", "amber"))
+
+                    # Rule 3: schedule/risk conflict
+                    if _sched_sugg == "Behind" and _risk_sugg == "Low":
+                        _suggestions.append(("risk_level", _risk_sugg, "Medium",
+                            "Schedule health is Behind — Risk level of Low is inconsistent.", "amber"))
+                    if _sched_sugg == "Significantly Behind" and _risk_sugg in ("Low","Medium"):
+                        _suggestions.append(("risk_level", _risk_sugg, "High",
+                            "Schedule health is Significantly Behind — Risk should be High or Escalated.", "red"))
+
+                    # Rule 4: on-hold inconsistencies
+                    if _show_oh:
+                        if _sched_sugg in ("Ahead","On Track",""):
+                            _suggestions.append(("schedule_health", _sched_sugg, "Behind",
+                                "Project is On Hold — Schedule health of Ahead/On Track is inconsistent.", "amber"))
+                        if _risk_sugg == "Low":
+                            _suggestions.append(("risk_level", _risk_sugg, "Medium",
+                                "Project is On Hold — Risk level of Low is inconsistent.", "amber"))
+                        if _cresp_sugg == "Highly Engaged":
+                            _suggestions.append(("client_responsiveness", _cresp_sugg, "Neutral",
+                                "Project is On Hold but Client responsiveness is Highly Engaged.", "amber"))
+                        if _csent_sugg == "Positive":
+                            _suggestions.append(("client_sentiment", _csent_sugg, "Neutral",
+                                "Project is On Hold but Client sentiment is Positive.", "amber"))
+
+                    # Rule 5: scope burn
+                    if _is_active:
+                        _pid_s  = _clean_pid(str(_dr.get("project_id","") or ""))
+                        _htd_s  = float(_ns_htd.get(_pid_s, 0) or 0)
+                        try:
+                            from shared.config import DEFAULT_SCOPE as _DS_s
+                            def _sc(pt):
+                                _ptl = str(pt or "").lower(); _b=None; _bl=0
+                                for k,v in _DS_s.items():
+                                    if k.strip().lower() in _ptl and len(k)>_bl: _b=float(v); _bl=len(k)
+                                return _b
+                            _scoped = _sc(_ptype_sugg) or _sc(str(_dr.get("project_name","") or ""))
+                            if _scoped and _scoped > 0:
+                                _bp = _htd_s / _scoped
+                                if _bp > 1.0 and _risk_sugg in ("Low","Medium"):
+                                    _suggestions.append(("risk_level", _risk_sugg, "High",
+                                        f"HTD ({_htd_s:.0f}h) exceeds scope ({_scoped:.0f}h) — "
+                                        f"Risk of {_risk_sugg or 'blank'} is inconsistent.", "red"))
+                                elif _bp >= 0.80 and _scope_sugg in ("Unchanged",""):
+                                    _suggestions.append(("scope_health", _scope_sugg, "Increased",
+                                        f"HTD is {_bp*100:.0f}% of scope — Scope health should reflect pressure.", "amber"))
+                        except Exception:
+                            pass
+
+                    # Rule 6: client signal consistency
+                    if _csent_sugg == "Concerned" and _cresp_sugg == "Highly Engaged":
+                        _suggestions.append(("client_responsiveness", _cresp_sugg, "Neutral",
+                            "Client sentiment Concerned but responsiveness Highly Engaged.", "amber"))
+                    if _cresp_sugg == "Not Responsive" and _risk_sugg == "Low":
+                        _suggestions.append(("risk_level", _risk_sugg, "Medium",
+                            "Client is Not Responsive — Risk level of Low is inconsistent.", "amber"))
+
+                except Exception:
+                    pass
+
+                # Fill placeholder with results
+                if _suggestions:
+                    _show_gl_nudge = (
+                        any(s[0]=="schedule_health" for s in _suggestions) and not _w_proj_golive
+                    )
+                    _sugg_placeholder.markdown(
+                        "<div style='background:rgba(245,158,11,.07);"
+                        "border:1px solid rgba(245,158,11,.25);"
+                        "border-radius:8px;padding:10px 14px;margin-bottom:4px'>"
+                        "<div style='font-size:11px;font-weight:600;text-transform:uppercase;"
+                        "letter-spacing:.8px;color:#b45309;margin-bottom:8px'>"
+                        f"⚠️ {len(_suggestions)} smart suggestion"
+                        f"{'s' if len(_suggestions)!=1 else ''}</div>"
+                        + "".join([
+                            f"<div style='display:flex;align-items:flex-start;gap:8px;"
+                            f"padding:5px 0;border-bottom:0.5px solid rgba(128,128,128,.12);"
+                            f"font-size:12px'>"
+                            f"<span style='flex-shrink:0;font-size:10px;font-weight:600;"
+                            f"padding:2px 7px;border-radius:20px;margin-top:1px;"
+                            f"background:{'rgba(239,68,68,.18)' if sev=='red' else 'rgba(245,158,11,.18)'};"
+                            f"color:{'#b91c1c' if sev=='red' else '#b45309'}'>"
+                            f"{fld.replace('_',' ').title()}</span>"
+                            f"<span style='flex:1;color:var(--color-text-secondary)'>{why} "
+                            f"<b style='color:var(--color-text-primary)'>Suggest: {sug}</b></span>"
+                            f"</div>"
+                            for fld,_cur,sug,why,sev in _suggestions
+                        ])
+                        + ("" if not _show_gl_nudge else
+                           "<div style='font-size:11px;color:rgba(245,158,11,.8);margin-top:6px'>"
+                           "↑ Add your projected go-live above to refine these suggestions."
+                           "</div>")
+                        + "</div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    _sugg_placeholder.empty()
 
                 # On Hold fields — shown when status is On Hold OR consultant just set it to On Hold
                 if _show_oh:
