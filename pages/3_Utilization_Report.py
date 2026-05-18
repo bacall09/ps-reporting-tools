@@ -561,6 +561,46 @@ def main():
         "Custom":        (None, None),
     }
 
+    # ── Credit tags legend ──────────────────────────────────────────────────────
+    st.markdown(
+        "<div style='background:var(--color-background-secondary,rgba(59,158,255,0.05));"
+        "border-left:4px solid #4472C4;border-radius:6px;"
+        "padding:14px 18px;margin-bottom:14px;font-family:Manrope,sans-serif'>"
+        "<div style='font-size:13px;font-weight:700;text-transform:uppercase;"
+        "letter-spacing:.8px;color:#4472C4;margin-bottom:12px'>Credit tags</div>"
+        "<div style='display:flex;gap:20px;flex-wrap:wrap'>"
+        "<div style='flex:1;min-width:130px;padding-left:12px'>"
+        "<span style='background:rgba(34,197,94,.15);color:#15803d;font-size:11px;"
+        "font-weight:600;padding:2px 9px;border-radius:20px;"
+        "border:1px solid rgba(34,197,94,.35);display:inline-block;margin-bottom:6px'>"
+        "&#9679; Credited</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+        "Fixed Fee hours within contracted scope and T&M — fully counted toward utilization.</p></div>"
+        "<div style='flex:1;min-width:130px;border-left:2px solid rgba(245,158,11,.4);padding-left:12px'>"
+        "<span style='background:rgba(245,158,11,.15);color:#b45309;font-size:11px;"
+        "font-weight:600;padding:2px 9px;border-radius:20px;"
+        "border:1px solid rgba(245,158,11,.4);display:inline-block;margin-bottom:6px'>"
+        "&#9679; Partial</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+        "Fixed Fee hours credited up to remaining scope only — approaching its limit.</p></div>"
+        "<div style='flex:1;min-width:130px;border-left:2px solid rgba(226,75,74,.4);padding-left:12px'>"
+        "<span style='background:rgba(226,75,74,.15);color:#A32D2D;font-size:11px;"
+        "font-weight:600;padding:2px 9px;border-radius:20px;"
+        "border:1px solid rgba(226,75,74,.4);display:inline-block;margin-bottom:6px'>"
+        "&#9679; Overrun</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+        "Hours logged beyond contracted scope — not credited toward utilization.</p></div>"
+        "<div style='flex:1;min-width:130px;border-left:2px solid rgba(128,128,128,.3);padding-left:12px'>"
+        "<span style='background:rgba(128,128,128,.12);color:var(--color-text-secondary);font-size:11px;"
+        "font-weight:600;padding:2px 9px;border-radius:20px;"
+        "border:1px solid rgba(128,128,128,.3);display:inline-block;margin-bottom:6px'>"
+        "&#9679; Non-billable</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+        "Internal, admin or PTO time — excluded from billable utilization.</p></div>"
+        "</div></div>",
+        unsafe_allow_html=True
+    )
+
     c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 1.2, 1.0, 1.0])
     with c1:
         preset = st.selectbox("Period", list(period_options.keys()),
@@ -861,6 +901,7 @@ def main():
     # ─────────────────────────────────────────────────────
     # Tabs
     # ─────────────────────────────────────────────────────
+    _is_partial_emp = period_end < date.today()
     overrun_badge = f" · <span style='color:#b91c1c'>{overrun_count}</span>" if overrun_count > 0 else ""
     tab_at_glance, tab_consult, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
         "At a glance",
@@ -875,29 +916,7 @@ def main():
     # TAB 1 — At a glance
     # ═══════════════════════════════════════════════════════════════════
     with tab_at_glance:
-        # KPI strip
-        m1, m2, m3, m4, m5 = st.columns(5)
-        def _kpi_card(label, value, sub=None, sub_pill_class=None):
-            sub_html = ""
-            if sub:
-                if sub_pill_class:
-                    sub_html = f"<div style='display:inline-block;margin-top:4px;padding:2px 9px;border-radius:999px;font-size:11px' class='util-pill {sub_pill_class}'>{sub}</div>"
-                else:
-                    sub_html = f"<div style='font-size:11px;opacity:0.65;margin-top:4px'>{sub}</div>"
-            return (f"<div class='util-kpi'>"
-                    f"<div style='font-size:11px;opacity:0.75;margin-bottom:4px;"
-                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{label}</div>"
-                    f"<div style='font-size:24px;font-weight:600;line-height:1.1;"
-                    f"font-variant-numeric:tabular-nums'>{value}</div>"
-                    f"{sub_html}</div>")
-
-        with m1: st.markdown(_kpi_card("Billable projects", f"{billable_proj_count:,}", f"across {consultant_count} consultants"), unsafe_allow_html=True)
-        with m2: st.markdown(_kpi_card("Hours logged", fmt_hrs(hours_this_period), f"of {_avail_total:,.0f} capacity ({capacity_pct:.1%})" if _avail_total else None), unsafe_allow_html=True)
-
-        _credit_cls = "util-pill-green" if credit_pct >= 0.70 else "util-pill-amber" if credit_pct >= 0.60 else "util-pill-red"
-        with m3: st.markdown(_kpi_card("Util credits", fmt_hrs(total_credit), f"{credit_pct:.1%} · {credit_label}", _credit_cls), unsafe_allow_html=True)
-        with m4: st.markdown(_kpi_card("FF overrun", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "util-pill-amber" if total_proj_overrun > 0 else None), unsafe_allow_html=True)
-        with m5: st.markdown(_kpi_card("Admin hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs"), unsafe_allow_html=True)
+        # KPI metrics now in hero banner — rendered by _util_hero.markdown() below
 
         # ── Re-render hero with live metrics ────────────────────────────────────
         _cred_bg = "rgba(226,75,74,.35)" if credit_pct < 0.60 else "rgba(245,158,11,.35)" if credit_pct < 0.70 else "rgba(34,197,94,.25)"
@@ -971,46 +990,6 @@ def main():
             _c3 = _callout("#22c55e", "#15803d", "✓", "FF: no scope defined", 0, "All FF time logged against scoped projects.")
         with callout_cols[2]: st.markdown(_c3, unsafe_allow_html=True)
 
-        # ── Credit tags legend box ─────────────────────────────────────────────
-        st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
-        st.markdown(
-            "<div style='background:var(--color-background-secondary,rgba(59,158,255,0.05));"
-            "border-left:4px solid #4472C4;border-radius:6px;"
-            "padding:14px 18px;margin-bottom:4px;font-family:Manrope,sans-serif'>"
-            "<div style='font-size:13px;font-weight:700;text-transform:uppercase;"
-            "letter-spacing:.8px;color:#4472C4;margin-bottom:12px'>Credit tags</div>"
-            "<div style='display:flex;gap:20px;flex-wrap:wrap'>"
-            "<div style='flex:1;min-width:130px;padding-left:12px'>"
-            "<span style='background:rgba(34,197,94,.15);color:#15803d;font-size:11px;"
-            "font-weight:600;padding:2px 9px;border-radius:20px;"
-            "border:1px solid rgba(34,197,94,.35);display:inline-block;margin-bottom:6px'>"
-            "&#9679; Credited</span>"
-            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-            "Billable hours within contracted scope — fully counted toward utilisation.</p></div>"
-            "<div style='flex:1;min-width:130px;border-left:2px solid rgba(245,158,11,.4);padding-left:12px'>"
-            "<span style='background:rgba(245,158,11,.15);color:#b45309;font-size:11px;"
-            "font-weight:600;padding:2px 9px;border-radius:20px;"
-            "border:1px solid rgba(245,158,11,.4);display:inline-block;margin-bottom:6px'>"
-            "&#9679; Partial</span>"
-            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-            "Fixed Fee hours credited up to remaining scope only — approaching its limit.</p></div>"
-            "<div style='flex:1;min-width:130px;border-left:2px solid rgba(226,75,74,.4);padding-left:12px'>"
-            "<span style='background:rgba(226,75,74,.15);color:#A32D2D;font-size:11px;"
-            "font-weight:600;padding:2px 9px;border-radius:20px;"
-            "border:1px solid rgba(226,75,74,.4);display:inline-block;margin-bottom:6px'>"
-            "&#9679; Overrun</span>"
-            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-            "Hours logged beyond contracted scope — not credited toward utilisation.</p></div>"
-            "<div style='flex:1;min-width:130px;border-left:2px solid rgba(128,128,128,.3);padding-left:12px'>"
-            "<span style='background:rgba(128,128,128,.12);color:var(--color-text-secondary);font-size:11px;"
-            "font-weight:600;padding:2px 9px;border-radius:20px;"
-            "border:1px solid rgba(128,128,128,.3);display:inline-block;margin-bottom:6px'>"
-            "&#9679; Non-billable</span>"
-            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-            "Internal, admin or PTO time — excluded from billable utilisation.</p></div>"
-            "</div></div>",
-            unsafe_allow_html=True
-        )
         st.markdown(
             f"<div class='util-table-header'>"
             f"<span style='font-weight:600'>By consultant{' · projected to full month' if _is_partial_emp else ''}</span>"
