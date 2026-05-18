@@ -472,13 +472,14 @@ def main():
             _vd_p = _hero_browse.split(",") if "," in _hero_browse else [_hero_browse]
             _vd_nm = f"{_vd_p[1].strip()} {_vd_p[0].strip()}" if len(_vd_p)==2 else _hero_browse
             _hero_va_line = f" · Viewing: {_vd_nm}"
-    st.markdown(
+    _util_hero = st.empty()
+    _util_hero.markdown(
         "<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 36px 24px;border-radius:10px;"
         "margin-bottom:14px;font-family:Manrope,sans-serif;'>"
         "<div style='font-size:10px;font-weight:700;letter-spacing:2.5px;"
         "text-transform:uppercase;color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"
         "<h1 style='color:white;margin:0;font-size:26px;'>Utilization Report</h1>"
-        "<p style='color:#aac4d0;margin:6px 0 0 0;font-size:13px;'>"
+        "<p style='color:rgba(255,255,255,.5);margin:6px 0 0;font-size:13px;'>"
         f"Live utilization credits and capacity from NetSuite. Adjust the period — everything below recomputes automatically.{_hero_va_line}</p>"
         "</div>", unsafe_allow_html=True)
 
@@ -864,7 +865,7 @@ def main():
     tab_at_glance, tab_consult, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
         "At a glance",
         f"Consultants · {consultant_count}",
-        f"Projects overrun{' · ' + str(overrun_count) if overrun_count > 0 else ''}",
+        f"Projects at risk{' · ' + str(overrun_count + noscope_proj_count) if (overrun_count + noscope_proj_count) > 0 else ''}",
         "Trend",
         "Task analysis",
         f"Detail · {len(df):,}",
@@ -897,6 +898,42 @@ def main():
         with m3: st.markdown(_kpi_card("Util credits", fmt_hrs(total_credit), f"{credit_pct:.1%} · {credit_label}", _credit_cls), unsafe_allow_html=True)
         with m4: st.markdown(_kpi_card("FF overrun", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "util-pill-amber" if total_proj_overrun > 0 else None), unsafe_allow_html=True)
         with m5: st.markdown(_kpi_card("Admin hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs"), unsafe_allow_html=True)
+
+        # ── Re-render hero with live metrics ────────────────────────────────────
+        _cred_bg = "rgba(226,75,74,.35)" if credit_pct < 0.60 else "rgba(245,158,11,.35)" if credit_pct < 0.70 else "rgba(34,197,94,.25)"
+        _cred_fg = "#fca5a5" if credit_pct < 0.60 else "#fcd34d" if credit_pct < 0.70 else "#86efac"
+        _ovr_col = "#fca5a5" if total_proj_overrun > 0 else "#fff"
+        _cap_sub = f"of {_avail_total:,.0f} capacity ({capacity_pct:.1%})" if _avail_total else ""
+        _util_hero.markdown(
+            f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);"
+            f"padding:28px 36px 24px;border-radius:10px;margin-bottom:14px;font-family:Manrope,sans-serif'>"
+            f"<div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;"
+            f"color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"
+            f"<h1 style='color:white;margin:0;font-size:26px'>Utilization Report{_hero_va_line}</h1>"
+            f"<p style='color:rgba(255,255,255,.5);margin:6px 0 0;font-size:13px'>"
+            f"Live utilization credits and capacity from NetSuite. "
+            f"Adjust the period — everything below recomputes automatically.</p>"
+            f"<div style='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));"
+            f"gap:12px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,.1)'>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Billable projects</div>"
+            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{billable_proj_count:,}</div>"
+            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>across {consultant_count} consultant{'s' if consultant_count!=1 else ''}</div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Hours logged</div>"
+            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(hours_this_period)}</div>"
+            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{_cap_sub}</div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Util credits</div>"
+            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(total_credit)}</div>"
+            f"<div style='font-size:12px;margin-top:3px'><span style='padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600;"
+            f"background:{_cred_bg};color:{_cred_fg}'>{credit_pct:.1%} · {credit_label}</span></div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>FF overrun</div>"
+            f"<div style='font-size:22px;font-weight:600;color:{_ovr_col};line-height:1.1'>{fmt_hrs(total_proj_overrun)}</div>"
+            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{overrun_pct:.1%} of hrs</div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Admin hrs</div>"
+            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(total_admin)}</div>"
+            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{admin_pct:.1%} of hrs</div></div>"
+            f"</div></div>",
+            unsafe_allow_html=True
+        )
 
         # Where to look — three callouts, always shown, green when clean
         st.markdown("<div style='margin-top:18px;font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px'>Where to look</div>", unsafe_allow_html=True)
@@ -934,137 +971,46 @@ def main():
             _c3 = _callout("#22c55e", "#15803d", "✓", "FF: no scope defined", 0, "All FF time logged against scoped projects.")
         with callout_cols[2]: st.markdown(_c3, unsafe_allow_html=True)
 
-        # Inline legend + popover
-        st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
-        legend_col, ref_col = st.columns([8, 1])
-        with legend_col:
-            st.markdown(
-                "<div class='util-legend'>"
-                "<span class='util-legend-label'>Credit tags</span>"
-                "<span class='util-pill util-pill-green'>● Credited</span>"
-                "<span class='util-pill util-pill-amber'>● Partial</span>"
-                "<span class='util-pill util-pill-red'>● Overrun</span>"
-                "<span class='util-pill util-pill-grey'>● Non-billable</span>"
-                "<span class='util-pill util-pill-blue'>● FF: no scope</span>"
-                "<span class='util-legend-label' style='margin-left:12px'>RAG</span>"
-                "<span class='util-pill util-pill-green'>● ≥70%</span>"
-                "<span class='util-pill util-pill-amber'>● 60–69%</span>"
-                "<span class='util-pill util-pill-red'>● &lt;60%</span>"
-                "</div>", unsafe_allow_html=True)
-        with ref_col:
-            _popover_fn = getattr(st, "popover", None)
-            _ref_ctx = _popover_fn("ⓘ How?", help="How are these calculated?") if _popover_fn else st.expander("ⓘ How?", expanded=False)
-            with _ref_ctx:
-                st.markdown("""
-                <div class='util-ref-grid'>
-                  <div class='util-ref-section'>
-                    <h4>Credit tags</h4>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-green'>Credited</span>
-                      <span class='util-ref-desc'>T&amp;M: full hours credited, no cap. Fixed Fee: hours credited up to scoped amount.</span>
-                    </div>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-amber'>Partial</span>
-                      <span class='util-ref-desc'>Fixed Fee: hours credited up to remaining scope only.</span>
-                    </div>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-red'>Overrun</span>
-                      <span class='util-ref-desc'>Fixed Fee: hours beyond contracted scope. Not credited.</span>
-                    </div>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-grey'>Non-billable</span>
-                      <span class='util-ref-desc'>Internal time. Excluded from utilization, tracked as Admin Hours.</span>
-                    </div>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-blue'>FF: no scope</span>
-                      <span class='util-ref-desc'>No matching scope entry. Flagged for finance follow-up.</span>
-                    </div>
-                  </div>
-                  <div class='util-ref-section'>
-                    <h4>RAG status</h4>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-green'>Green ≥ 70%</span>
-                      <span class='util-ref-desc'>At or above target utilization.</span>
-                    </div>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-amber'>Amber 60–69%</span>
-                      <span class='util-ref-desc'>Below target. Monitor and assess project mix.</span>
-                    </div>
-                    <div class='util-ref-row'>
-                      <span class='util-ref-tag util-pill-red'>Red &lt; 60%</span>
-                      <span class='util-ref-desc'>Significantly below target. Action required.</span>
-                    </div>
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-    # ═══════════════════════════════════════════════════════════════════
-    # TAB 2 — Consultants
-    # ═══════════════════════════════════════════════════════════════════
-    with tab_consult:
-        # Projection
-        _period_bdays = {}
-        if "date" in df.columns:
-            for _per, _grp in df.groupby("period"):
-                _dates = _grp["date"].dropna()
-                if len(_dates) == 0: continue
-                _days_in = len(pd.bdate_range(_dates.min(), _dates.max()))
-                _yr3, _mo3 = _dates.min().year, _dates.min().month
-                _ms3 = pd.Timestamp(_yr3, _mo3, 1)
-                _me3 = pd.Timestamp(_yr3, _mo3, _cal.monthrange(_yr3, _mo3)[1])
-                _total = len(pd.bdate_range(_ms3, _me3))
-                _period_bdays[str(_per)] = (_days_in, _total)
-
-        def _proj_util(row):
-            per = str(row["period"])
-            if per not in _period_bdays: return None
-            days_in, total = _period_bdays[per]
-            if days_in >= total: return None
-            avail = row["avail_hrs"]
-            if not avail or avail <= 0 or days_in <= 0: return None
-            return (row['credit_hrs'] / days_in * total) / avail
-
-        emp_sum["proj_full_month"] = emp_sum.apply(_proj_util, axis=1)
-        _is_partial_emp = emp_sum["proj_full_month"].notna().any()
-
-        _consult_sort_opts = {
-            "Util % capacity (low → high)":  ("util_vs_capacity", True),
-            "Util % capacity (high → low)":  ("util_vs_capacity", False),
-            "Util % logged (low → high)":    ("util_vs_logged", True),
-            "Util % logged (high → low)":    ("util_vs_logged", False),
-            "Hours logged (high → low)":     ("hours_this_period", False),
-            "FF overrun (high → low)":       ("ff_overrun_hrs", False),
-            "Consultant (A → Z)":            ("employee", True),
-        }
-        cs_col, _ = st.columns([1.6, 4])
-        with cs_col:
-            consult_sort = st.selectbox("Sort by", list(_consult_sort_opts.keys()),
-                                        index=1, key="util_consult_sort")
-        _csk, _csa = _consult_sort_opts[consult_sort]
-        emp_sum_sorted = emp_sum.sort_values(_csk, ascending=_csa, na_position="last").reset_index(drop=True)
-
-        rows_html = []
-        for _, r in emp_sum_sorted.iterrows():
-            emp = r["employee"]; ex = bool(r["exempt"])
-            avail_str = f"{r['avail_hrs']:,.1f}" if r["avail_hrs"] else "—"
-            pj = r["proj_full_month"]
-            pj_str = f"{pj*100:.1f}%" if pj is not None else "—"
-            rows_html.append(
-                f"<tr>"
-                f"<td><span class='util-emp-name'>{avatar_html(emp)}{short_name(emp)}</span></td>"
-                f"<td class='muted'>{r['location'] or '—'}</td>"
-                f"<td class='muted'>{r['period']}</td>"
-                f"<td class='num'>{avail_str}</td>"
-                f"<td class='num'>{r['hours_this_period']:,.2f}</td>"
-                f"<td class='num'>{r['credit_hrs']:,.2f}</td>"
-                f"<td class='num'>{r['ff_overrun_hrs']:,.2f}</td>"
-                f"<td class='center'>{rag_pill_html(r['util_vs_logged'], ex)}</td>"
-                f"<td class='center'>{rag_pill_html(r['util_vs_capacity'], ex)}</td>"
-                + (f"<td class='num muted'>{pj_str}</td>" if _is_partial_emp else "")
-                + "</tr>"
-            )
-
-        proj_th = "<th class='num'>Proj full mo</th>" if _is_partial_emp else ""
+        # ── Credit tags legend box ─────────────────────────────────────────────
+        st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='background:var(--color-background-secondary,rgba(59,158,255,0.05));"
+            "border-left:4px solid #4472C4;border-radius:6px;"
+            "padding:14px 18px;margin-bottom:4px;font-family:Manrope,sans-serif'>"
+            "<div style='font-size:13px;font-weight:700;text-transform:uppercase;"
+            "letter-spacing:.8px;color:#4472C4;margin-bottom:12px'>Credit tags</div>"
+            "<div style='display:flex;gap:20px;flex-wrap:wrap'>"
+            "<div style='flex:1;min-width:130px;padding-left:12px'>"
+            "<span style='background:rgba(34,197,94,.15);color:#15803d;font-size:11px;"
+            "font-weight:600;padding:2px 9px;border-radius:20px;"
+            "border:1px solid rgba(34,197,94,.35);display:inline-block;margin-bottom:6px'>"
+            "&#9679; Credited</span>"
+            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+            "Billable hours within contracted scope — fully counted toward utilisation.</p></div>"
+            "<div style='flex:1;min-width:130px;border-left:2px solid rgba(245,158,11,.4);padding-left:12px'>"
+            "<span style='background:rgba(245,158,11,.15);color:#b45309;font-size:11px;"
+            "font-weight:600;padding:2px 9px;border-radius:20px;"
+            "border:1px solid rgba(245,158,11,.4);display:inline-block;margin-bottom:6px'>"
+            "&#9679; Partial</span>"
+            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+            "Fixed Fee hours credited up to remaining scope only — approaching its limit.</p></div>"
+            "<div style='flex:1;min-width:130px;border-left:2px solid rgba(226,75,74,.4);padding-left:12px'>"
+            "<span style='background:rgba(226,75,74,.15);color:#A32D2D;font-size:11px;"
+            "font-weight:600;padding:2px 9px;border-radius:20px;"
+            "border:1px solid rgba(226,75,74,.4);display:inline-block;margin-bottom:6px'>"
+            "&#9679; Overrun</span>"
+            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+            "Hours logged beyond contracted scope — not credited toward utilisation.</p></div>"
+            "<div style='flex:1;min-width:130px;border-left:2px solid rgba(128,128,128,.3);padding-left:12px'>"
+            "<span style='background:rgba(128,128,128,.12);color:var(--color-text-secondary);font-size:11px;"
+            "font-weight:600;padding:2px 9px;border-radius:20px;"
+            "border:1px solid rgba(128,128,128,.3);display:inline-block;margin-bottom:6px'>"
+            "&#9679; Non-billable</span>"
+            "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
+            "Internal, admin or PTO time — excluded from billable utilisation.</p></div>"
+            "</div></div>",
+            unsafe_allow_html=True
+        )
         st.markdown(
             f"<div class='util-table-header'>"
             f"<span style='font-weight:600'>By consultant{' · projected to full month' if _is_partial_emp else ''}</span>"
@@ -1089,7 +1035,7 @@ def main():
         )
 
     # ═══════════════════════════════════════════════════════════════════
-    # TAB 3 — Projects overrun
+    # TAB 3 — Projects at risk
     # ═══════════════════════════════════════════════════════════════════
     with tab_risk:
         # Build full project summary
@@ -1141,6 +1087,7 @@ def main():
 
             # Status pill
             def _status(r):
+                if r["is_noscope"]:                                                         return ("blue",  "No scope")
                 if r["overrun_hrs"] > 0:                                                    return ("red",   "Overrun")
                 if r.get("burn_pct") is not None and r["burn_pct"] >= 0.80:                 return ("amber", f"Burn {r['burn_pct']*100:.0f}%")
                 return None
@@ -1152,8 +1099,8 @@ def main():
                 st.markdown(
                     "<div class='util-card' style='text-align:center;padding:32px'>"
                     "<div style='font-size:32px;margin-bottom:8px'>✓</div>"
-                    "<div style='font-weight:600;margin-bottom:4px'>No projects in overrun</div>"
-                    "<div style='opacity:0.7;font-size:13px'>No FF projects have exceeded scope or reached 80%+ burn this period.</div>"
+                    "<div style='font-weight:600;margin-bottom:4px'>No projects at risk</div>"
+                    "<div style='opacity:0.7;font-size:13px'>No FF overruns, no scope burn over 80%, no missing scope records.</div>"
                     "</div>", unsafe_allow_html=True)
             else:
                 # Sort dropdown
@@ -1241,7 +1188,7 @@ def main():
                     f"<th class='center'>Status</th>"
                     f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
                     f"<div class='util-table-foot'>"
-                    f"<span>Risk = overrun &gt; 0, burn ≥ 80% (HTD ÷ scope). HTD = hours-to-date all time. No scope projects shown in DRS Health Check.</span>"
+                    f"<span>Risk = overrun &gt; 0, burn ≥ 80% (HTD ÷ scope), or no scope record. HTD = hours-to-date all time.</span>"
                     f"<span>Last refresh: {_ago_str}</span>"
                     f"</div></div>",
                     unsafe_allow_html=True)
