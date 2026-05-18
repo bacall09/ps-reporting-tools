@@ -1397,68 +1397,54 @@ with tab_intake:
                             try: return pd.Timestamp(v).date().isoformat() if pd.notna(v) else ""
                             except: return ""
 
-                        # Dates — diff only, using exact SS column names
+                        # Dates — diff only
                         if _w_golive and _w_golive.isoformat() != _orig_date("go_live_date"):
-                            _changes["Go-Live Date"] = _w_golive.isoformat()
+                            _changes["go_live_date"] = _w_golive.isoformat()
                         if _w_finish and _w_finish.isoformat() != _orig_date("finish_date"):
-                            _changes["Finish Date"] = _w_finish.isoformat()
+                            _changes["finish_date"] = _w_finish.isoformat()
                         if _w_substart and _w_substart.isoformat() != _orig_date("start_date"):
-                            _changes["Start Date"] = _w_substart.isoformat()
+                            _changes["start_date"] = _w_substart.isoformat()
 
                         # Health fields — diff only
-                        # Keys are exact Smartsheet column names (from SS_COL_MAP / data sheet)
-                        # _dv() uses internal DRS keys — map those separately for comparison
-                        _health_fields = [
-                            ("Status",                "status",                _w_status),
-                            ("Project Phase",         "phase",                 _w_phase),
-                            ("Overall Summary",       "overall_summary",       _w_summary),
-                            ("Schedule Health",       "schedule_health",       _w_sched),
-                            ("Resource Health",       "resource_health",       _w_res),
-                            ("Scope Health",          "scope_health",          _w_scope),
-                            ("Risk Level",            "risk_level",            _w_risk),
-                            ("Risk Detail",           "risk_detail",           _w_riskd),
-                            ("Client Responsiveness", "client_responsiveness", _w_cresp),
-                            ("Client Sentiment",      "client_sentiment",      _w_csent),
-                        ]
-                        for _ss_col, _drs_key, _fv in _health_fields:
-                            if _norm(_fv) != _norm(_dv(_drs_key)):
-                                _changes[_ss_col] = _fv
+                        # Using internal keys — write_row_updates maps these to SS columns
+                        _health_fields = {
+                            "status":                _w_status,
+                            "phase":                 _w_phase,
+                            "overall_summary":       _w_summary,
+                            "schedule_health":       _w_sched,
+                            "resource_health":       _w_res,
+                            "scope_health":          _w_scope,
+                            "risk_level":            _w_risk,
+                            "risk_detail":           _w_riskd,
+                            "client_responsiveness": _w_cresp,
+                            "client_sentiment":      _w_csent,
+                        }
+                        for _fk, _fv in _health_fields.items():
+                            if _norm(_fv) != _norm(_dv(_fk)):
+                                _changes[_fk] = _fv
 
                         # On Hold fields — diff only
                         if _is_oh:
-                            for _ss_col, _drs_key, _fv in [
-                                ("On Hold Reason",          "on_hold_reason",           _w_oh_reason),
-                                ("On Hold Response",        "on_hold_response",         _w_oh_resp),
-                                ("Support Transition Notes","support_transition_notes", _w_trans_notes),
-                                ("Delay Summary",           "delay_summary",            _w_delay_sum),
-                            ]:
-                                if _norm(_fv) != _norm(_dv(_drs_key)):
-                                    _changes[_ss_col] = _fv
+                            for _fk, _fv in {
+                                "on_hold_reason":           _w_oh_reason,
+                                "on_hold_response":         _w_oh_resp,
+                                "support_transition_notes": _w_trans_notes,
+                                "delay_summary":            _w_delay_sum,
+                            }.items():
+                                if _norm(_fv) != _norm(_dv(_fk)):
+                                    _changes[_fk] = _fv
                             if _w_resume and _w_resume.isoformat() != _orig_date("resume_date"):
-                                _changes["Resume Date"] = _w_resume.isoformat()
+                                _changes["resume_date"] = _w_resume.isoformat()
 
                         # JIRA — diff only, all projects
                         if _norm(_w_jira) != _norm(_dv("jira_links")):
-                            _changes["Jira Project"] = _w_jira
+                            _changes["jira_links"] = _w_jira
 
-                        # Milestone dates — diff only, using exact SS column names
-                        _ms_to_ss_det = {
-                            "ms_intro_email":    "Intro. Email Sent",
-                            "ms_config_start":   "Standard Configuration Set Up",
-                            "ms_enablement":     "Configuration Enablement Session",
-                            "ms_session1":       "Working Session 1 - Application Walkthrough",
-                            "ms_session2":       "Working Session 2 - Workshop / Q&A",
-                            "ms_uat_signoff":    "UAT Signoff",
-                            "ms_prod_cutover":   "Prod Cutover",
-                            "ms_hypercare_start":"Hypercare Start",
-                            "ms_close_out":      "Close Out Remaining Tasks",
-                            "ms_transition":     "Project Closure / Transition to Support",
-                        }
+                        # Milestone dates — diff only
                         for _mk, _ in _ms_write_cols:
                             _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
                             if _mw and _mw.isoformat() != _orig_date(_mk):
-                                _ss_ms_col = _ms_to_ss_det.get(_mk, _mk)
-                                _changes[_ss_ms_col] = _mw.isoformat()
+                                _changes[_mk] = _mw.isoformat()
 
                         # Drop empty
                         _changes = {k: v for k, v in _changes.items() if _norm(v) != ""}
