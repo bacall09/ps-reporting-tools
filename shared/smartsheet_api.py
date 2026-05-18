@@ -331,19 +331,50 @@ def write_row_updates(updates: list[dict]) -> tuple[int, list[str]]:
                     errors.append(f"{proj} / {internal_key}: column not found in sheet — skipped")
                     continue
                 formatted = _format_cell_value(internal_key, new_val)
-                cell_payload = {"columnId": col_id, "value": formatted}
+                cell_payload = {"columnId": int(col_id), "value": formatted}
                 cells.append(cell_payload)
 
             if cells:
-                rows_payload.append({"id": row_id, "cells": cells})
+                rows_payload.append({"id": int(row_id), "cells": cells})
 
         if not rows_payload:
             continue
 
+        # Final serialisation safety — convert any numpy/pandas types to plain Python
+        import json as _json
+        def _to_plain(obj):
+            if isinstance(obj, dict):
+                return {k: _to_plain(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_to_plain(i) for i in obj]
+            # numpy int/float (int64, float64, etc.)
+            try:
+                import numpy as _np
+                if isinstance(obj, _np.integer): return int(obj)
+                if isinstance(obj, _np.floating): return None if _np.isnan(obj) else float(obj)
+                if isinstance(obj, _np.ndarray): return obj.tolist()
+            except ImportError:
+                pass
+            # pandas Timestamp / NaT
+            try:
+                import pandas as _pd2
+                if isinstance(obj, _pd2.Timestamp): return obj.strftime("%Y-%m-%d") if not _pd2.isna(obj) else None
+                if obj is _pd2.NaT: return None
+            except ImportError:
+                pass
+            # datetime.date / datetime.datetime
+            import datetime as _dt2
+            if isinstance(obj, (_dt2.date, _dt2.datetime)): return obj.isoformat()
+            # float NaN
+            if isinstance(obj, float) and (obj != obj): return None
+            return obj
+
+        rows_safe = _to_plain(rows_payload)
+
         resp = requests.put(
             f"{_SS_BASE}/sheets/{sheet_id}/rows",
             headers=headers,
-            json=rows_payload,
+            json=rows_safe,
             timeout=30,
         )
 
