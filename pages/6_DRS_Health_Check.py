@@ -70,11 +70,6 @@ st.markdown("""
                         border-bottom:0.5px solid rgba(128,128,128,.12); }
         .drs-table tr:last-child td { border-bottom:none; }
         .drs-wrap { border:1px solid rgba(128,128,128,.2); border-radius:8px; overflow:hidden; }
-        .drs-pill { display:inline-block; padding:2px 9px; border-radius:20px;
-                    font-size:11px; font-weight:600; }
-        .pill-error   { background:rgba(226,75,74,.13);  color:#A32D2D; }
-        .pill-warning { background:rgba(239,159,39,.13); color:#854F0B; }
-        .pill-info    { background:rgba(68,114,196,.13); color:#1d4ed8; }
         .proj-name  { font-weight:500; color:inherit; }
         .proj-type  { font-size:11px; opacity:.6; margin-top:1px; }
         .days-red   { color:#A32D2D; font-weight:600; }
@@ -306,7 +301,7 @@ for _, row in df_drs.iterrows():
                 str(phase).strip().lower().startswith(lp[:6]) for lp in late_phases
             ):
                 flag("Error", "Date Logic",
-                     "Go Live date passed but phase not updated",
+                     "Go Live date passed",
                      f"Go Live was {abs(days_to_gl)}d ago but phase is still '{phase}'.",
                      "Advance phase to Go-Live / Hypercare or update the Go Live date.")
 
@@ -523,8 +518,14 @@ def _short_name(n):
     return n
 
 def _sev_pill(sev):
-    cls = {"Error": "pill-error", "Warning": "pill-warning", "Info": "pill-info"}.get(sev, "pill-info")
-    return f"<span class='drs-pill {cls}'>{sev}</span>"
+    # Warning = yellow (not amber-brown); Error = red; Info = blue
+    _sev_styles = {
+        "Error":   "background:rgba(226,75,74,.15);color:#A32D2D",
+        "Warning": "background:rgba(250,210,0,.2);color:#7a5f00",
+        "Info":    "background:rgba(59,130,246,.13);color:#1d4ed8",
+    }
+    _sty = _sev_styles.get(sev, "background:rgba(128,128,128,.12);color:inherit")
+    return f"<span style='display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;{_sty}'>{sev}</span>"
 
 def _days_cell(v):
     if v is None: return "<span class='days-ok'>—</span>"
@@ -566,34 +567,25 @@ def _render_table(df_tab, cols, header_labels=None):
                 cells.append(f"<td>{_sev_pill(str(r.get('severity','') or ''))}</td>")
             elif c == "category":
                 _catv = str(r.get('category','') or '')
+                # Category pill colours — distinct from Type (Error/Warning/Info) pills
+                # On Hold: teal (not amber — avoids clash with Warning amber)
+                # Milestone: purple, Activity: pink
                 _cat_colors = {
-                    "Date Logic":            ("rgba(226,75,74,.13)",  "#A32D2D"),
-                    "On Hold Data Quality":  ("rgba(245,158,11,.13)", "#854F0B"),
-                    "Hours vs Scope":        ("rgba(168,85,247,.13)", "#7c3aed"),
-                    "Completeness":          ("rgba(59,130,246,.13)", "#1d4ed8"),
-                    "Status Conflict":       ("rgba(236,72,153,.13)", "#be185d"),
-                    "Activity Conflict":     ("rgba(20,184,166,.13)", "#0f766e"),
-                    "Milestone Sequence":    ("rgba(245,158,11,.13)", "#854F0B"),
-                    "Phase vs Milestone":    ("rgba(59,130,246,.13)", "#1d4ed8"),
+                    "Date Logic":            ("rgba(226,75,74,.13)",   "#A32D2D"),
+                    "On Hold Data Quality":  ("rgba(20,184,166,.15)",  "#0f766e"),
+                    "Hours vs Scope":        ("rgba(168,85,247,.15)",  "#7c3aed"),
+                    "Completeness":          ("rgba(59,130,246,.13)",  "#1d4ed8"),
+                    "Status Conflict":       ("rgba(236,72,153,.15)",  "#be185d"),
+                    "Activity Conflict":     ("rgba(236,72,153,.15)",  "#be185d"),
+                    "Milestone Sequence":    ("rgba(168,85,247,.15)",  "#7c3aed"),
+                    "Phase vs Milestone":    ("rgba(168,85,247,.15)",  "#7c3aed"),
                 }
                 _cbg, _cfg_ = _cat_colors.get(_catv, ("rgba(128,128,128,.12)", "inherit"))
                 cells.append(f"<td><span style='display:inline-block;padding:2px 8px;border-radius:20px;"
                               f"font-size:11px;font-weight:600;background:{_cbg};color:{_cfg_}'>{_catv}</span></td>")
             elif c == "status":
                 _stv = str(r.get('status','') or '').strip().title()
-                _st_colors = {
-                    "In Progress": ("rgba(59,130,246,.1)",  "#1d4ed8"),
-                    "On Hold":     ("rgba(245,158,11,.13)", "#854F0B"),
-                    "Complete":    ("rgba(34,197,94,.13)",  "#15803d"),
-                    "Closed":      ("rgba(128,128,128,.12)","inherit"),
-                    "Cancelled":   ("rgba(128,128,128,.12)","inherit"),
-                }
-                _sbg, _sfg = _st_colors.get(_stv, ("rgba(128,128,128,.1)", "inherit"))
-                if _stv:
-                    cells.append(f"<td><span style='display:inline-block;padding:2px 8px;border-radius:20px;"
-                                  f"font-size:11px;font-weight:600;background:{_sbg};color:{_sfg}'>{_stv}</span></td>")
-                else:
-                    cells.append("<td><span style='opacity:.35'>—</span></td>")
+                cells.append(f"<td style='font-size:12px;opacity:.75'>{_stv if _stv else '—'}</td>")
             elif c == "start_disp":
                 v = str(r.get('start_disp','') or '')
                 cells.append(f"<td style='font-size:12px;opacity:.7'>{v if v else '—'}</td>")
@@ -650,22 +642,21 @@ with _tabs[0]:
         unsafe_allow_html=True
     )
     _sort_opts = {
-        "Severity then days (default)": ("_sev_rank", "days_val", True,  False),
-        "Days overdue (highest first)": ("days_val",  "_sev_rank",False, True),
-        "Project name (A–Z)":           ("project",   "_sev_rank",True,  True),
-        "Category":                     ("category",  "_sev_rank",True,  True),
+        "Severity then days (default)": ("_sev_rank", "days_val",  True,  False),
+        "Days overdue (highest first)": ("days_val",  "_sev_rank", False, True),
+        "Days overdue (lowest first)":  ("days_val",  "_sev_rank", True,  True),
+        "Project name (A–Z)":           ("project",   "_sev_rank", True,  True),
+        "Project name (Z–A)":           ("project",   "_sev_rank", False, True),
+        "Category":                     ("category",  "_sev_rank", True,  True),
+        "Rule":                         ("rule",      "days_val",  True,  False),
+        "Phase":                        ("phase",     "days_val",  True,  False),
+        "Consultant":                   ("consultant","days_val",  True,  False),
     }
-    _sc1, _sc2 = st.columns([1, 3])
+    _sc1, _ = st.columns([1.6, 4])
     with _sc1:
-        st.markdown(
-            "<div style='font-size:13px;font-weight:600;color:var(--color-text-secondary);"
-            "text-transform:uppercase;letter-spacing:.5px;padding-top:8px'>Sort by</div>",
-            unsafe_allow_html=True
-        )
-    with _sc2:
         _sort_choice = st.selectbox(
             "Sort by", list(_sort_opts.keys()),
-            key="drs_ov_sort", label_visibility="collapsed"
+            key="drs_ov_sort", label_visibility="visible"
         )
     _sk1, _sk2, _asc1, _asc2 = _sort_opts[_sort_choice]
     _df_ov = df_findings.copy()
@@ -763,21 +754,19 @@ for _ti, _cat in enumerate(_cats):
 
         _cat_sort_opts = {
             "Days overdue (highest first)": ("days_val",  "_sev_rank", False, True),
+            "Days overdue (lowest first)":  ("days_val",  "_sev_rank", True,  True),
             "Severity then days":           ("_sev_rank", "days_val",  True,  False),
             "Project name (A–Z)":           ("project",   "_sev_rank", True,  True),
+            "Project name (Z–A)":           ("project",   "_sev_rank", False, True),
             "Rule":                         ("rule",      "days_val",  True,  False),
+            "Phase":                        ("phase",     "days_val",  True,  False),
+            "Consultant":                   ("consultant","days_val",  True,  False),
         }
-        _csc1, _csc2 = st.columns([1, 3])
+        _csc1, _ = st.columns([1.6, 4])
         with _csc1:
-            st.markdown(
-                "<div style='font-size:13px;font-weight:600;color:var(--color-text-secondary);"
-                "text-transform:uppercase;letter-spacing:.5px;padding-top:8px'>Sort by</div>",
-                unsafe_allow_html=True
-            )
-        with _csc2:
             _cat_sort = st.selectbox(
-                "Sort", list(_cat_sort_opts.keys()),
-                key=f"drs_sort_{_cat}", label_visibility="collapsed"
+                "Sort by", list(_cat_sort_opts.keys()),
+                key=f"drs_sort_{_cat}", label_visibility="visible"
             )
         _csk1, _csk2, _casc1, _casc2 = _cat_sort_opts[_cat_sort]
         _cat_df["_sev_rank"] = _cat_df["severity"].map({"Error":0,"Warning":1,"Info":2}).fillna(9)
