@@ -327,7 +327,7 @@ st.markdown("""
     <div style='font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
                 color:#4472C4;margin-bottom:10px'>How to update your projects</div>
     <div style='display:flex;gap:32px;flex-wrap:wrap'>
-        <div style='flex:1;min-width:220px;border-left:2px solid rgba(68,114,196,.4);padding-left:14px'>
+        <div style='flex:1;min-width:220px;padding-left:14px'>
             <span style='background:#1E2C63;color:#fff;font-size:10px;font-weight:700;
                          padding:2px 8px;border-radius:10px;letter-spacing:1px'>OPTION 1 &middot; QUICK UPDATES</span>
             <p style='margin:8px 0 0;font-size:13px;color:inherit;line-height:1.6'>
@@ -466,7 +466,7 @@ with tab_glance:
             f"<div style='border:0.5px solid rgba(128,128,128,.15);border-radius:8px;"
             f"border-left:3px solid {bc};padding:14px 16px'>"
             f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px'>"
-            f"<span style='font-size:12px;font-weight:600;color:{tc}'>{ck} {title}</span>"
+            f"<span style='font-size:14px;font-weight:600;color:{tc}'>{ck} {title}</span>"
             f"<span style='font-size:22px;font-weight:600;color:{tc};font-variant-numeric:tabular-nums'>{num}</span></div>"
             f"<div style='font-size:12px;opacity:.75;line-height:1.4;color:var(--color-text-primary)'>{body}</div>"
             "</div>", unsafe_allow_html=True
@@ -1540,8 +1540,8 @@ with tab_intake:
                         any(s[0]=="schedule_health" for s in _suggestions) and not _w_proj_golive
                     )
                     _sugg_placeholder.markdown(
-                        "<div style='background:rgba(245,158,11,.07);"
-                        "border:1px solid rgba(245,158,11,.25);"
+                        "<div style='background:rgba(245,158,11,.13);"
+                        "border:1px solid rgba(245,158,11,.45);"
                         "border-radius:8px;padding:10px 14px;margin-bottom:4px'>"
                         "<div style='font-size:11px;font-weight:600;text-transform:uppercase;"
                         "letter-spacing:.8px;color:#b45309;margin-bottom:8px'>"
