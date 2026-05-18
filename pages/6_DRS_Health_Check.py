@@ -240,9 +240,7 @@ for _, row in df_drs.iterrows():
             "project":      proj,
             "project_id":   str(_get(row, "project_id", "") or ""),
             "consultant":   str(pm or ""),
-            "status":       str(_get(row, "status", "") or "").strip(),
             "phase":        str(phase or ""),
-            "start_disp":   pd.to_datetime(start_dt).strftime("%-d %b %Y") if _is_date(start_dt) else "",
             "go_live_disp": pd.to_datetime(go_live).strftime("%-d %b %Y") if _is_date(go_live) else "",
             "days_val":     (abs(_days_until(go_live))
                              if (_is_date(go_live) and _days_until(go_live) is not None
@@ -258,19 +256,19 @@ for _, row in df_drs.iterrows():
     # ── Completeness ──────────────────────────────────────────────────────────
     if not pm:
         flag("Warning", "Completeness",
-             "No Project Manager assigned",
+             "No project manager assigned",
              "Project Manager / Consultant field is blank.",
              "Every active project should have a named consultant.")
 
     if not phase:
         flag("Error", "Completeness",
-             "Phase is blank",
+             "Phase not set",
              "Project phase is missing — cannot assess progress or flag milestones.",
              "Set the current phase in SS DRS.")
 
     if not go_live and phase_idx >= 0 and phase_idx < 7:
         flag("Warning", "Completeness",
-             "No Go Live date set",
+             "No go-live date set",
              "Project has no Go Live date and is not yet in hypercare or later.",
              "Set a target Go Live date so timelines and inactivity signals work correctly.")
 
@@ -278,7 +276,7 @@ for _, row in df_drs.iterrows():
     if _is_date(start_dt) and _is_date(go_live):
         if pd.to_datetime(go_live) < pd.to_datetime(start_dt):
             flag("Error", "Date Logic",
-                 "Go Live date is before Start date",
+                 "Go live before start date",
                  f"Start: {pd.to_datetime(start_dt).strftime('%d %b %Y')} · "
                  f"Go Live: {pd.to_datetime(go_live).strftime('%d %b %Y')}",
                  "Go Live date must be after Start date.")
@@ -287,7 +285,7 @@ for _, row in df_drs.iterrows():
         days_open = _days_since(start_dt)
         if days_open is not None and days_open > 180 and not _is_date(go_live):
             flag("Warning", "Date Logic",
-                 "Open > 180 days with no Go Live date",
+                 "Open 180+ days without go-live date",
                  f"Project has been open {days_open} days with no Go Live date set.",
                  "Set a Go Live date or close the project if complete.")
 
@@ -311,20 +309,20 @@ for _, row in df_drs.iterrows():
                 str(phase).strip().lower().startswith(ep[:6]) for ep in early_phases
             ):
                 flag("Warning", "Date Logic",
-                     "Go Live within 14 days but phase is UAT or earlier",
+                     "Go Live within 14 days — phase mismatch",
                      f"Go Live is in {days_to_gl}d but phase is '{phase}'.",
                      "Confirm go-live is still on track or update the date.")
 
     # ── Status vs RAG ─────────────────────────────────────────────────────────
     if status in ("on track", "green") and rag == "R":
         flag("Error", "Status Conflict",
-             "Status is On Track but RAG is Red",
+             "Status / RAG conflict",
              f"Status shows '{_get(row,'status','')}' but Overall RAG is Red.",
              "Align status and RAG — one of them needs to be updated.")
 
     if status in ("on track", "green") and rag == "A":
         flag("Warning", "Status Conflict",
-             "Status is On Track but RAG is Amber",
+             "Status / RAG conflict",
              f"Status shows '{_get(row,'status','')}' but Overall RAG is Amber.",
              "Consider whether status should reflect the amber RAG signal.")
 
@@ -337,7 +335,7 @@ for _, row in df_drs.iterrows():
 
     if resp in ("responsive", "highly responsive") and days_inac is not None and days_inac > 30:
         flag("Warning", "Activity Conflict",
-             "Client marked Responsive but project is stale",
+             "Client responsiveness inconsistent with activity",
              f"Client Responsiveness is '{_get(row,'client_responsiveness','')}' "
              f"but project has been inactive {days_inac}d.",
              "Update Client Responsiveness to reflect actual recent engagement.")
@@ -349,28 +347,28 @@ for _, row in df_drs.iterrows():
 
     if "hold" in status:
         if not oh_reason or oh_reason in ("—", "nan", "None"):
-            flag("Warning", "On Hold Data Quality",
-                 "On Hold Reason not set",
+            flag("Warning", "On Hold",
+                 "On Hold reason not set",
                  "Project is On Hold but no On Hold Reason has been recorded.",
                  "Set On Hold Reason in the DRS — required for all on-hold projects.")
         if not oh_delay or oh_delay in ("—", "nan", "None"):
-            flag("Warning", "On Hold Data Quality",
-                 "Responsible for Delay not set",
+            flag("Warning", "On Hold",
+                 "Responsible for delay not set",
                  "Project is On Hold but Responsible for Delay has not been recorded.",
                  "Set Responsible for Delay in the DRS — required for all on-hold projects.")
 
     if "hold" in status and days_inac is not None and days_inac >= 14:
         if resp in ("highly engaged", "highly responsive", "responsive"):
-            flag("Warning", "On Hold Data Quality",
-                 "Engagement rating inconsistent with On Hold status",
+            flag("Warning", "On Hold",
+                 "Engagement rating mismatch",
                  f"Client Responsiveness is '{_get(row,'client_responsiveness','')}' "
                  f"but project has been On Hold for {days_inac}d. "
                  f"This rating should reflect current engagement, not historical.",
                  "Review and update Client Responsiveness — consider 'Neutral' or 'Not Responsive'.")
 
         if sentiment in ("positive",):
-            flag("Warning", "On Hold Data Quality",
-                 "Sentiment rating inconsistent with On Hold status",
+            flag("Warning", "On Hold",
+                 "Sentiment rating inconsistent with status",
                  f"Client Sentiment is '{_get(row,'client_sentiment','')}' "
                  f"but project has been On Hold for {days_inac}d. "
                  f"Positive sentiment is unlikely for a stalled project.",
@@ -385,7 +383,7 @@ for _, row in df_drs.iterrows():
                 co = str(change_ord or "").strip().lower()
                 if not co or co in ("no", "false", "0", "none", "nan", ""):
                     flag("Warning", "Hours vs Scope",
-                         "Actual hours exceed budget — no Change Order flagged",
+                         "Actual hours exceed budget",
                          f"Actual: {a}h · Budget: {b}h · Overage: {overage}h. "
                          f"No Change Order recorded.",
                          "Log a Change Order or review budget allocation.")
@@ -426,7 +424,7 @@ for _, row in df_drs.iterrows():
             dt = ms_dates[ms_col]
             if prev_date is not None and dt < prev_date:
                 flag("Error", "Milestone Sequence",
-                     f"Milestone out of sequence: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
+                     "Milestone out of sequence",
                      f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' ({dt.strftime('%d %b %Y')}) "
                      f"is dated before '{MILESTONE_COLS_MAP.get(prev_col, prev_col)}' "
                      f"({prev_date.strftime('%d %b %Y')}).",
@@ -440,7 +438,7 @@ for _, row in df_drs.iterrows():
                 exp_idx = _phase_idx(expected_phase)
                 if ms_col in ms_dates and exp_idx > phase_idx + 1:
                     flag("Warning", "Phase vs Milestone",
-                         f"Milestone ahead of current phase: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
+                         "Milestone ahead of current phase",
                          f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' is completed but "
                          f"current phase is '{phase}' — this milestone is expected in a later phase.",
                          "Check whether phase needs to be advanced.")
@@ -454,7 +452,7 @@ for _, row in df_drs.iterrows():
                     critical = {"ms_intro_email", "ms_uat_signoff", "ms_prod_cutover"}
                     if ms_col in critical:
                         flag("Warning", "Phase vs Milestone",
-                             f"Expected milestone missing: {MILESTONE_COLS_MAP.get(ms_col, ms_col)}",
+                             "Expected milestone missing",
                              f"Phase is '{phase}' but '{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' "
                              f"has no completion date recorded.",
                              "Complete or back-date the milestone if it has been done.")
@@ -518,14 +516,14 @@ def _short_name(n):
     return n
 
 def _sev_pill(sev):
-    # Warning = yellow (not amber-brown); Error = red; Info = blue
     _sev_styles = {
         "Error":   "background:rgba(226,75,74,.15);color:#A32D2D",
-        "Warning": "background:rgba(250,210,0,.2);color:#7a5f00",
+        "Warning": "background:rgba(234,179,8,.25);color:#713f12",
         "Info":    "background:rgba(59,130,246,.13);color:#1d4ed8",
     }
     _sty = _sev_styles.get(sev, "background:rgba(128,128,128,.12);color:inherit")
-    return f"<span style='display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;{_sty}'>{sev}</span>"
+    return (f"<span style='display:inline-block;padding:2px 8px;border-radius:20px;"
+            f"font-size:11px;font-weight:600;{_sty}'>{sev}</span>")
 
 def _days_cell(v):
     if v is None: return "<span class='days-ok'>—</span>"
@@ -567,28 +565,25 @@ def _render_table(df_tab, cols, header_labels=None):
                 cells.append(f"<td>{_sev_pill(str(r.get('severity','') or ''))}</td>")
             elif c == "category":
                 _catv = str(r.get('category','') or '')
-                # Category pill colours — distinct from Type (Error/Warning/Info) pills
-                # On Hold: teal (not amber — avoids clash with Warning amber)
-                # Milestone: purple, Activity: pink
-                _cat_colors = {
-                    "Date Logic":            ("rgba(226,75,74,.13)",   "#A32D2D"),
-                    "On Hold Data Quality":  ("rgba(20,184,166,.15)",  "#0f766e"),
-                    "Hours vs Scope":        ("rgba(168,85,247,.15)",  "#7c3aed"),
-                    "Completeness":          ("rgba(59,130,246,.13)",  "#1d4ed8"),
-                    "Status Conflict":       ("rgba(236,72,153,.15)",  "#be185d"),
-                    "Activity Conflict":     ("rgba(236,72,153,.15)",  "#be185d"),
-                    "Milestone Sequence":    ("rgba(168,85,247,.15)",  "#7c3aed"),
-                    "Phase vs Milestone":    ("rgba(168,85,247,.15)",  "#7c3aed"),
+                _cmap = {
+                    'Date Logic':('rgba(59,130,246,.15)','#1d4ed8'),
+                    'On Hold':('rgba(20,184,166,.15)','#0f766e'),
+                    'Hours vs Scope':('rgba(168,85,247,.15)','#7c3aed'),
+                    'Completeness':('rgba(59,130,246,.13)','#1d4ed8'),
+                    'Status Conflict':('rgba(236,72,153,.15)','#be185d'),
+                    'Activity Conflict':('rgba(236,72,153,.15)','#be185d'),
+                    'Milestone Sequence':('rgba(168,85,247,.15)','#7c3aed'),
+                    'Phase vs Milestone':('rgba(168,85,247,.15)','#7c3aed'),
                 }
-                _cbg, _cfg_ = _cat_colors.get(_catv, ("rgba(128,128,128,.12)", "inherit"))
-                cells.append(f"<td><span style='display:inline-block;padding:2px 8px;border-radius:20px;"
+                _cbg,_cfg_=_cmap.get(_catv,('rgba(128,128,128,.12)','inherit'))
+                cells.append(f"<td><span style='padding:2px 8px;border-radius:20px;"
                               f"font-size:11px;font-weight:600;background:{_cbg};color:{_cfg_}'>{_catv}</span></td>")
             elif c == "status":
                 _stv = str(r.get('status','') or '').strip().title()
-                cells.append(f"<td style='font-size:12px;opacity:.75'>{_stv if _stv else '—'}</td>")
+                cells.append(f"<td style='font-size:12px;opacity:.75'>{_stv or '—'}</td>")
             elif c == "start_disp":
                 v = str(r.get('start_disp','') or '')
-                cells.append(f"<td style='font-size:12px;opacity:.7'>{v if v else '—'}</td>")
+                cells.append(f"<td style='font-size:12px;opacity:.7'>{v or '—'}</td>")
             elif c == "days_val":
                 cells.append(f"<td>{_days_cell(r.get('days_val'))}</td>")
             elif c == "go_live_disp":
@@ -641,33 +636,31 @@ with _tabs[0]:
         "Fix issues in <b>My Projects → Project Detail</b> then re-sync DRS to clear flags.</div>",
         unsafe_allow_html=True
     )
-    _sort_opts = {
-        "Severity then days (default)": ("_sev_rank", "days_val",  True,  False),
-        "Days overdue (highest first)": ("days_val",  "_sev_rank", False, True),
-        "Days overdue (lowest first)":  ("days_val",  "_sev_rank", True,  True),
-        "Project name (A–Z)":           ("project",   "_sev_rank", True,  True),
-        "Project name (Z–A)":           ("project",   "_sev_rank", False, True),
-        "Category":                     ("category",  "_sev_rank", True,  True),
-        "Rule":                         ("rule",      "days_val",  True,  False),
-        "Phase":                        ("phase",     "days_val",  True,  False),
-        "Consultant":                   ("consultant","days_val",  True,  False),
-    }
     _sc1, _ = st.columns([1.6, 4])
     with _sc1:
         _sort_choice = st.selectbox(
-            "Sort by", list(_sort_opts.keys()),
+            "Sort by",
+            ["Severity then days (default)","Days overdue (highest first)",
+             "Days overdue (lowest first)","Project name (A–Z)","Project name (Z–A)",
+             "Category","Rule","Phase","Consultant"],
             key="drs_ov_sort", label_visibility="visible"
         )
-    _sk1, _sk2, _asc1, _asc2 = _sort_opts[_sort_choice]
+    _smap = {
+        "Severity then days (default)":("_sev_rank","days_val",True,False),
+        "Days overdue (highest first)":("days_val","_sev_rank",False,True),
+        "Days overdue (lowest first)":("days_val","_sev_rank",True,True),
+        "Project name (A–Z)":("project","_sev_rank",True,True),
+        "Project name (Z–A)":("project","_sev_rank",False,True),
+        "Category":("category","_sev_rank",True,True),
+        "Rule":("rule","days_val",True,False),
+        "Phase":("phase","days_val",True,False),
+        "Consultant":("consultant","days_val",True,False),
+    }
+    _sk1,_sk2,_asc1,_asc2 = _smap.get(_sort_choice,("_sev_rank","days_val",True,False))
     _df_ov = df_findings.copy()
     _df_ov["_sev_rank"] = _df_ov["severity"].map({"Error":0,"Warning":1,"Info":2}).fillna(9)
-    _df_ov = _df_ov.sort_values([_sk1, _sk2], ascending=[_asc1, _asc2], na_position="last")
-
-    _render_table(
-        _df_ov,
-        cols=["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        header_labels=["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"]
-    )
+    _df_ov = _df_ov.sort_values([_sk1,_sk2],ascending=[_asc1,_asc2],na_position="last")
+    _render_table(_df_ov, cols=["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"], header_labels=["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"])
     st.markdown(
         f"<div style='font-size:12px;color:var(--color-text-secondary);margin-top:8px'>"
         f"{n_total} findings across {n_projects} projects</div>",
@@ -681,10 +674,10 @@ _CAT_CFG = {
         "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
         "note": "Fix: update phase or go-live date in My Projects → Project Detail, then sync to Smartsheet.",
     },
-    "On Hold Data Quality": {
+    "On Hold": {
         "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
         "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: set On Hold Reason, Responsible for Delay and client fields in My Projects → Project Detail.",
+        "note": "Fix: set On Hold reason, Responsible for delay and client fields in My Projects → Project Detail.",
     },
     "Hours vs Scope": {
         "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
@@ -752,28 +745,31 @@ for _ti, _cat in enumerate(_cats):
             unsafe_allow_html=True
         )
 
-        _cat_sort_opts = {
-            "Days overdue (highest first)": ("days_val",  "_sev_rank", False, True),
-            "Days overdue (lowest first)":  ("days_val",  "_sev_rank", True,  True),
-            "Severity then days":           ("_sev_rank", "days_val",  True,  False),
-            "Project name (A–Z)":           ("project",   "_sev_rank", True,  True),
-            "Project name (Z–A)":           ("project",   "_sev_rank", False, True),
-            "Rule":                         ("rule",      "days_val",  True,  False),
-            "Phase":                        ("phase",     "days_val",  True,  False),
-            "Consultant":                   ("consultant","days_val",  True,  False),
-        }
         _csc1, _ = st.columns([1.6, 4])
         with _csc1:
             _cat_sort = st.selectbox(
-                "Sort by", list(_cat_sort_opts.keys()),
+                "Sort by",
+                ["Days overdue (highest first)","Days overdue (lowest first)",
+                 "Severity then days","Project name (A–Z)","Project name (Z–A)",
+                 "Rule","Phase","Consultant"],
                 key=f"drs_sort_{_cat}", label_visibility="visible"
             )
-        _csk1, _csk2, _casc1, _casc2 = _cat_sort_opts[_cat_sort]
+        _cmap2 = {
+            "Days overdue (highest first)":("days_val","_sev_rank",False,True),
+            "Days overdue (lowest first)":("days_val","_sev_rank",True,True),
+            "Severity then days":("_sev_rank","days_val",True,False),
+            "Project name (A–Z)":("project","_sev_rank",True,True),
+            "Project name (Z–A)":("project","_sev_rank",False,True),
+            "Rule":("rule","days_val",True,False),
+            "Phase":("phase","days_val",True,False),
+            "Consultant":("consultant","days_val",True,False),
+        }
+        _csk1,_csk2,_casc1,_casc2 = _cmap2.get(_cat_sort,("days_val","_sev_rank",False,True))
         _cat_df["_sev_rank"] = _cat_df["severity"].map({"Error":0,"Warning":1,"Info":2}).fillna(9)
-        _cat_sorted = _cat_df.sort_values([_csk1, _csk2], ascending=[_casc1, _casc2], na_position="last")
+        _cat_s = _cat_df.sort_values([_csk1,_csk2],ascending=[_casc1,_casc2],na_position="last")
+        _render_table(_cat_s, cols=_cfg["cols"], header_labels=_cfg["hdrs"])
 
-        _render_table(_cat_sorted, cols=_cfg["cols"], header_labels=_cfg["hdrs"])
-
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         _n_proj_c = int(_cat_df["project"].nunique())
         st.markdown(
             f"<div style='font-size:12px;color:var(--color-text-secondary);margin-top:8px'>"
