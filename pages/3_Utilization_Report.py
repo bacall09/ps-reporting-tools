@@ -864,7 +864,7 @@ def main():
     tab_at_glance, tab_consult, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
         "At a glance",
         f"Consultants · {consultant_count}",
-        f"Projects at risk{' · ' + str(overrun_count + noscope_proj_count) if (overrun_count + noscope_proj_count) > 0 else ''}",
+        f"Projects overrun{' · ' + str(overrun_count) if overrun_count > 0 else ''}",
         "Trend",
         "Task analysis",
         f"Detail · {len(df):,}",
@@ -1089,7 +1089,7 @@ def main():
         )
 
     # ═══════════════════════════════════════════════════════════════════
-    # TAB 3 — Projects at risk
+    # TAB 3 — Projects overrun
     # ═══════════════════════════════════════════════════════════════════
     with tab_risk:
         # Build full project summary
@@ -1141,7 +1141,6 @@ def main():
 
             # Status pill
             def _status(r):
-                if r["is_noscope"]:                                                         return ("blue",  "No scope")
                 if r["overrun_hrs"] > 0:                                                    return ("red",   "Overrun")
                 if r.get("burn_pct") is not None and r["burn_pct"] >= 0.80:                 return ("amber", f"Burn {r['burn_pct']*100:.0f}%")
                 return None
@@ -1153,8 +1152,8 @@ def main():
                 st.markdown(
                     "<div class='util-card' style='text-align:center;padding:32px'>"
                     "<div style='font-size:32px;margin-bottom:8px'>✓</div>"
-                    "<div style='font-weight:600;margin-bottom:4px'>No projects at risk</div>"
-                    "<div style='opacity:0.7;font-size:13px'>No FF overruns, no scope burn over 80%, no missing scope records.</div>"
+                    "<div style='font-weight:600;margin-bottom:4px'>No projects in overrun</div>"
+                    "<div style='opacity:0.7;font-size:13px'>No FF projects have exceeded scope or reached 80%+ burn this period.</div>"
                     "</div>", unsafe_allow_html=True)
             else:
                 # Sort dropdown
@@ -1242,7 +1241,7 @@ def main():
                     f"<th class='center'>Status</th>"
                     f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
                     f"<div class='util-table-foot'>"
-                    f"<span>Risk = overrun &gt; 0, burn ≥ 80% (HTD ÷ scope), or no scope record. HTD = hours-to-date all time.</span>"
+                    f"<span>Risk = overrun &gt; 0, burn ≥ 80% (HTD ÷ scope). HTD = hours-to-date all time. No scope projects shown in DRS Health Check.</span>"
                     f"<span>Last refresh: {_ago_str}</span>"
                     f"</div></div>",
                     unsafe_allow_html=True)
