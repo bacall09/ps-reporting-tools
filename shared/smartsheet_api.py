@@ -28,26 +28,92 @@ _SS_BASE = "https://api.smartsheet.com/2.0"
 # Where multiple SS headers map to the same internal key, we use the canonical one.
 _INTERNAL_TO_SS = {}
 for _ss_header, _internal in SS_COL_MAP_OUT.items():
-    # Prefer the longer/more-specific header as canonical (e.g. "project name" over "name")
+    # Prefer the longer/more-specific header as canonical
     if _internal not in _INTERNAL_TO_SS or len(_ss_header) > len(_INTERNAL_TO_SS[_internal]):
         _INTERNAL_TO_SS[_internal] = _ss_header
 
 # ── Fields that are writable back to Smartsheet ───────────────────────────────
 # Internal key → display column name shown in My Projects editor
+# The display name is used for editor column headers only.
+# The actual SS column title is resolved via _INTERNAL_TO_SS → col_map.
 WRITEBACK_FIELDS = {
-    "phase":               "Phase",
-    "status":              "Status",
-    # rag is intentionally excluded — calculated field in Smartsheet, not writable
-    "ms_intro_email":      "Intro Email Sent",
-    "ms_config_start":     "Config Start",
-    "ms_enablement":       "Enablement Session",
-    "ms_session1":         "Session #1",
-    "ms_session2":         "Session #2",
-    "ms_uat_signoff":      "UAT Signoff",
-    "ms_prod_cutover":     "Prod Cutover",
-    "ms_hypercare_start":  "Hypercare Start",
-    "ms_close_out":        "Close Out Tasks",
-    "ms_transition":       "Transition to Support",
+    # ── Core project fields ───────────────────────────────────────────────────
+    "phase":                    "Phase",
+    "status":                   "Status",
+    # rag intentionally excluded — calculated field, not writable
+
+    # ── Weekly update / health fields ─────────────────────────────────────────
+    "overall_summary":          "Overall Summary",
+    "schedule_health":          "Schedule Health",
+    "resource_health":          "Resource Health",
+    "scope_health":             "Scope Health",
+    "risk_level":               "Risk Level",
+    "risk_detail":              "Risk Detail",
+    "client_sentiment":         "Client Sentiment",
+    "client_responsiveness":    "Client Responsiveness",
+
+    # ── Project dates ─────────────────────────────────────────────────────────
+    "go_live_date":             "Go-Live Date",
+    "start_date":               "Start Date",
+    "finish_date":              "Finish Date",
+
+    # ── On hold fields ────────────────────────────────────────────────────────
+    "on_hold_reason":           "On Hold Reason",
+    "on_hold_response":         "On Hold Response",
+    "support_transition_notes": "Support Transition Notes",
+    "resume_date":              "Resume Date",
+    "delay_summary":            "Delay Summary",
+
+    # ── Other ─────────────────────────────────────────────────────────────────
+    "jira_links":               "Jira Project",
+
+    # ── Milestone dates ───────────────────────────────────────────────────────
+    "ms_intro_email":           "Intro Email Sent",
+    "ms_config_start":          "Config Start",
+    "ms_enablement":            "Enablement Session",
+    "ms_session1":              "Session #1",
+    "ms_session2":              "Session #2",
+    "ms_uat_signoff":           "UAT Signoff",
+    "ms_prod_cutover":          "Prod Cutover",
+    "ms_hypercare_start":       "Hypercare Start",
+    "ms_close_out":             "Close Out Tasks",
+    "ms_transition":            "Transition to Support",
+}
+
+# ── Explicit SS column title overrides ────────────────────────────────────────
+# For fields where _INTERNAL_TO_SS (built from SS_COL_MAP_OUT) may not have
+# the correct SS column title, we override here with the exact title from the
+# DRS Blueprint data sheet.
+_SS_TITLE_OVERRIDE = {
+    "phase":                    "Project Phase",
+    "overall_summary":          "Overall Summary",
+    "schedule_health":          "Schedule Health",
+    "resource_health":          "Resource Health",
+    "scope_health":             "Scope Health",
+    "risk_level":               "Risk Level",
+    "risk_detail":              "Risk Detail",
+    "client_sentiment":         "Client Sentiment",
+    "client_responsiveness":    "Client Responsiveness",
+    "go_live_date":             "Go-Live Date",
+    "start_date":               "Start Date",
+    "finish_date":              "Finish Date",
+    "on_hold_reason":           "On Hold Reason",
+    "on_hold_response":         "On Hold Response",
+    "support_transition_notes": "Support Transition Notes",
+    "resume_date":              "Resume Date",
+    "delay_summary":            "Delay Summary",
+    "jira_links":               "Jira Project",
+    # Milestone SS column titles (exact from Blueprint)
+    "ms_intro_email":           "Intro. Email Sent",
+    "ms_config_start":          "Standard Configuration Set Up",
+    "ms_enablement":            "Configuration Enablement Session",
+    "ms_session1":              "Working Session 1 - Application Walkthrough",
+    "ms_session2":              "Working Session 2 - Workshop / Q&A",
+    "ms_uat_signoff":           "UAT Signoff",
+    "ms_prod_cutover":          "Prod Cutover",
+    "ms_hypercare_start":       "Hypercare Start",
+    "ms_close_out":             "Close Out Remaining Tasks",
+    "ms_transition":            "Project Closure / Transition to Support",
 }
 
 
@@ -81,10 +147,7 @@ def ss_available() -> bool:
 # ── READ ──────────────────────────────────────────────────────────────────────
 
 def list_accessible_sheets() -> list[dict]:
-    """
-    Return a list of sheets the token can access: [{id, name, permalink}]
-    Useful for diagnosing permission issues — call from st.write() in Home.py temporarily.
-    """
+    """Return a list of sheets the token can access."""
     headers = _get_headers()
     resp = requests.get(f"{_SS_BASE}/sheets", headers=headers, timeout=15)
     resp.raise_for_status()
@@ -97,9 +160,7 @@ def list_accessible_sheets() -> list[dict]:
 def fetch_sheet_as_df() -> pd.DataFrame:
     """
     Fetch the full DRS Smartsheet and return as a raw DataFrame.
-    Column headers come from the sheet's column definitions.
     Each row gets a `_ss_row_id` column with the Smartsheet internal rowId.
-    Raises on HTTP error or auth failure.
     """
     sheet_id = _get_sheet_id()
     headers  = _get_headers()
@@ -122,17 +183,14 @@ def fetch_sheet_as_df() -> pd.DataFrame:
     columns_def = data.get("columns", [])
     rows        = data.get("rows", [])
 
-    # Build column index: columnId → column title
     col_id_to_title = {c["id"]: c["title"] for c in columns_def}
 
-    # Build rows as dicts
     records = []
     for row in rows:
         record = {"_ss_row_id": row["id"]}
         for cell in row.get("cells", []):
             col_title = col_id_to_title.get(cell.get("columnId"), "")
             if col_title:
-                # displayValue preferred (formatted text); fall back to value
                 record[col_title] = cell.get("displayValue", cell.get("value", None))
         records.append(record)
 
@@ -145,10 +203,7 @@ def fetch_sheet_as_df() -> pd.DataFrame:
 
 
 def load_sheet_as_df() -> pd.DataFrame:
-    """
-    Fetch DRS from Smartsheet API and run through identical normalisation
-    as load_drs() in loaders.py. Returns ready-to-use df with _ss_row_id intact.
-    """
+    """Fetch DRS and normalise through identical pipeline as load_drs()."""
     from shared.loaders import _normalise_drs_df
     raw = fetch_sheet_as_df()
     if raw.empty:
@@ -160,10 +215,7 @@ def load_sheet_as_df() -> pd.DataFrame:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _get_column_map(sheet_id: str, token: str) -> dict:
-    """
-    Return dict: lowercase column title → columnId.
-    Cached for 1 hour — column structure rarely changes.
-    """
+    """Return dict: lowercase column title → columnId. Cached 1 hour."""
     resp = requests.get(
         f"{_SS_BASE}/sheets/{sheet_id}/columns",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -176,22 +228,16 @@ def _get_column_map(sheet_id: str, token: str) -> dict:
 # ── WRITE ──────────────────────────────────────────────────────────────────────
 
 def _format_cell_value(internal_key: str, value) -> object:
-    """
-    Convert a Python/pandas value to the format Smartsheet expects.
-    Dates → ISO string. None/NaT → None (clears cell). Everything else → str/num.
-    """
+    """Convert Python/pandas value to Smartsheet API format."""
     if value is None:
         return None
-    # Pandas NaT
     if pd.isna(value) if not isinstance(value, (str, bool)) else False:
         return None
-    # date / datetime → ISO 8601 string
     if isinstance(value, (pd.Timestamp, date)):
         try:
             return pd.Timestamp(value).strftime("%Y-%m-%d")
         except Exception:
             return None
-    # Empty string → clear cell
     if isinstance(value, str) and value.strip() in ("", "—", "nan", "None", "NaT"):
         return None
     return value
@@ -201,14 +247,14 @@ def write_row_updates(updates: list[dict]) -> tuple[int, list[str]]:
     """
     Write edited rows back to Smartsheet.
 
-    `updates` is a list of dicts, one per changed project row:
+    `updates` is a list of dicts:
         {
-            "_ss_row_id":   int,          # Smartsheet internal rowId
-            "project_name": str,          # for logging/error messages
+            "_ss_row_id":   int,
+            "project_name": str,
             "changes": {
                 "phase": "03. Configuration",
-                "ms_session1": pd.Timestamp("2026-05-01"),
-                ...                       # any WRITEBACK_FIELDS keys
+                "schedule_health": "Green",
+                ...
             }
         }
 
@@ -217,30 +263,34 @@ def write_row_updates(updates: list[dict]) -> tuple[int, list[str]]:
     if not updates:
         return 0, []
 
-    sheet_id   = _get_sheet_id()
-    token      = st.secrets.get("SMARTSHEET_TOKEN", "")
-    headers    = _get_headers()
-    col_map    = _get_column_map(sheet_id, token)  # lowercase title → columnId
+    sheet_id = _get_sheet_id()
+    token    = st.secrets.get("SMARTSHEET_TOKEN", "")
+    headers  = _get_headers()
+    col_map  = _get_column_map(sheet_id, token)  # lowercase title → columnId
 
-    # Build reverse lookup: internal key → SS column title (lowercase)
-    # We match against the col_map using the canonical SS header name.
     def _col_id_for(internal_key: str) -> int | None:
-        canonical = _INTERNAL_TO_SS.get(internal_key, "").lower()
-        if canonical in col_map:
+        # 1. Check explicit override first (exact SS column title from Blueprint)
+        override = _SS_TITLE_OVERRIDE.get(internal_key, "").lower().strip()
+        if override and override in col_map:
+            return col_map[override]
+        # 2. Fall back to _INTERNAL_TO_SS (built from SS_COL_MAP_OUT)
+        canonical = _INTERNAL_TO_SS.get(internal_key, "").lower().strip()
+        if canonical and canonical in col_map:
             return col_map[canonical]
-        # Fallback: try partial match
-        for title, cid in col_map.items():
-            if canonical and canonical in title:
-                return cid
+        # 3. Partial match on either
+        for search in (override, canonical):
+            if search:
+                for title, cid in col_map.items():
+                    if search in title:
+                        return cid
         return None
 
     success_count = 0
     errors        = []
 
-    # Smartsheet accepts up to 100 rows per request — batch if needed
     BATCH_SIZE = 100
     for batch_start in range(0, len(updates), BATCH_SIZE):
-        batch       = updates[batch_start : batch_start + BATCH_SIZE]
+        batch        = updates[batch_start : batch_start + BATCH_SIZE]
         rows_payload = []
 
         for upd in batch:
@@ -255,7 +305,7 @@ def write_row_updates(updates: list[dict]) -> tuple[int, list[str]]:
             cells = []
             for internal_key, new_val in changes.items():
                 if internal_key not in WRITEBACK_FIELDS:
-                    continue  # not a writeback field — skip silently
+                    continue  # not a writable field — skip silently
                 col_id = _col_id_for(internal_key)
                 if col_id is None:
                     errors.append(f"{proj} / {internal_key}: column not found in sheet — skipped")
