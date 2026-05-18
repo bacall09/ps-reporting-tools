@@ -58,8 +58,10 @@ WRITEBACK_FIELDS = {
     "finish_date":              "Finish Date",
 
     # ── On hold fields ────────────────────────────────────────────────────────
+    # NOTE: These fields do not yet exist in SS DRS — pending confirmation from
+    # Trevor that columns will be added. Writeback will silently fail (column not
+    # found) until columns exist in the sheet. Jira Project also TBC.
     "on_hold_reason":           "On Hold Reason",
-    "responsible_for_delay":    "Responsible for Delay",
     "responsible_for_delay":    "Responsible for Delay",
     "on_hold_response":         "On Hold Response",
     "support_transition_notes": "Support Transition Notes",
@@ -67,7 +69,7 @@ WRITEBACK_FIELDS = {
     "delay_summary":            "Delay Summary",
 
     # ── Other ─────────────────────────────────────────────────────────────────
-    "jira_links":               "Jira Project",
+    # "jira_links": "Jira Project",  # omitted — SS column name/structure TBC with Trevor
 
     # ── Milestone dates ───────────────────────────────────────────────────────
     "ms_intro_email":           "Intro Email Sent",
@@ -78,8 +80,8 @@ WRITEBACK_FIELDS = {
     "ms_uat_signoff":           "UAT Signoff",
     "ms_prod_cutover":          "Prod Cutover",
     "ms_hypercare_start":       "Hypercare Start",
-    "ms_close_out":             "Close Out Tasks",
-    "ms_transition":            "Transition to Support",
+    "ms_close_out":             "Close Out Remaining Tasks",
+    "ms_transition":            "Project Closure / Transition to Support",
 }
 
 # ── Explicit SS column title overrides ────────────────────────────────────────
@@ -99,12 +101,13 @@ _SS_TITLE_OVERRIDE = {
     "go_live_date":             "Go-Live Date",
     "start_date":               "Start Date",
     "finish_date":              "Finish Date",
+    # Pending SS column creation — confirmed with Trevor before activating
     "on_hold_reason":           "On Hold Reason",
     "on_hold_response":         "On Hold Response",
     "support_transition_notes": "Support Transition Notes",
     "resume_date":              "Resume Date",
     "delay_summary":            "Delay Summary",
-    "jira_links":               "Jira Project",
+    # "jira_links": "Jira Project",  # omitted — SS column name/structure TBC with Trevor
     # Milestone SS column titles (exact from Blueprint)
     "ms_intro_email":           "Intro. Email Sent",
     "ms_config_start":          "Standard Configuration Set Up",
