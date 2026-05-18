@@ -275,7 +275,9 @@ if not active.empty:
         if _gl14_count > 0:
             _next_gl = active[_gl_mask].copy(); _next_gl["_gldt"] = _gl_dates[_gl_mask]
             _gl_next_name = _extract_customer_name(str(_next_gl.sort_values("_gldt").iloc[0].get("project_name","")))
-_rag_at_risk = int(active["rag"].fillna("").str.strip().str.lower().isin(["red","yellow"]).sum()) if not active.empty and "rag" in active.columns else 0
+# RAG at risk includes on-hold projects — a red on-hold is still at risk (matches Daily Briefing)
+_all_for_rag  = pd.concat([active, on_hold], ignore_index=True) if not on_hold.empty else active.copy()
+_rag_at_risk  = int(_all_for_rag["rag"].fillna("").str.strip().str.lower().isin(["red","yellow"]).sum()) if not _all_for_rag.empty and "rag" in _all_for_rag.columns else 0
 
 _metric_tile = (
     "<div style='display:flex;gap:24px;margin-top:20px;flex-wrap:wrap'>"
