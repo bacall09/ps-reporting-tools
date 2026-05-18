@@ -59,6 +59,8 @@ WRITEBACK_FIELDS = {
 
     # ── On hold fields ────────────────────────────────────────────────────────
     "on_hold_reason":           "On Hold Reason",
+    "responsible_for_delay":    "Responsible for Delay",
+    "responsible_for_delay":    "Responsible for Delay",
     "on_hold_response":         "On Hold Response",
     "support_transition_notes": "Support Transition Notes",
     "resume_date":              "Resume Date",
