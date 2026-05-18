@@ -928,8 +928,18 @@ with tab_open:
                         orig_val = _orig_changed.iloc[_ci][disp_col] if disp_col in _orig_changed.columns else None
                         if str(new_val) != str(orig_val):
                             import datetime as _dt_mod
+                            import pandas as _pd_sync
+                            # Convert date objects to ISO string; NaT/None → None (clears SS cell)
                             if isinstance(new_val, (_dt_mod.date, _dt_mod.datetime)):
                                 new_val = new_val.isoformat()
+                            elif new_val is None:
+                                new_val = None  # explicit clear
+                            else:
+                                try:
+                                    if _pd_sync.isna(new_val):
+                                        new_val = None  # NaT from data_editor clear
+                                except (TypeError, ValueError):
+                                    pass
                             changes[internal_key] = new_val
 
                     if changes:
@@ -1338,7 +1348,16 @@ with tab_intake:
                     _mv_val = pd.Timestamp(_mv).date() if pd.notna(_mv) else None
                     _target_col = _row1[_i] if _i < 5 else _row2[_i - 5]
                     with _target_col:
-                        st.date_input(_ml, value=_mv_val, key=f"w_ms_{_mk}_{_sel_pid}")
+                        st.date_input(_ml, value=_mv_val, key=f"w_ms_{_mk}_{_sel_pid}",
+                                      format="YYYY-MM-DD")
+                        # Clear checkbox — only shown when a date is currently set
+                        if _mv_val is not None:
+                            _clr_key = f"w_ms_clr_{_mk}_{_sel_pid}"
+                            _clr = st.checkbox("Clear", key=_clr_key,
+                                               value=st.session_state.get(_clr_key, False),
+                                               label_visibility="visible")
+                            if _clr:
+                                st.session_state[f"w_ms_{_mk}_{_sel_pid}"] = None
 
                 st.markdown("<div style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.2)'></div>", unsafe_allow_html=True)
                 # Smart prompt: when project is on hold, flag health fields for review
@@ -1711,14 +1730,18 @@ with tab_intake:
                         if _norm(_w_jira) != _norm(_dv("jira_links")):
                             _changes["jira_links"] = _w_jira
 
-                        # Milestone dates — diff only; None clears the cell in SS
+                        # Milestone dates — diff only
+                        # Clear checkbox takes priority: if ticked, write None to clear SS cell
                         for _mk, _ in _ms_write_cols:
-                            _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
+                            _clr = st.session_state.get(f"w_ms_clr_{_mk}_{_sel_pid}", False)
                             _orig = _orig_date(_mk)
-                            if _mw is None and _orig:
+                            if _clr and _orig:
+                                # Consultant explicitly cleared this date
                                 _changes[_mk] = None
-                            elif _mw and _mw.isoformat() != _orig:
-                                _changes[_mk] = _mw.isoformat()
+                            else:
+                                _mw = st.session_state.get(f"w_ms_{_mk}_{_sel_pid}")
+                                if _mw and _mw.isoformat() != _orig:
+                                    _changes[_mk] = _mw.isoformat()
 
                         # Drop empty
                         _changes = {k: v for k, v in _changes.items() if _norm(v) != ""}
