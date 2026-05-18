@@ -18,15 +18,31 @@ st.session_state["current_page"] = "Customer Engagement"
 
 st.markdown(
     "<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);"
-    "padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;"
-    "font-family:Manrope,sans-serif'>"
+    "padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
     "<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
     "color:#7dd3fc;margin-bottom:8px'>Professional Services · Customer Engagement</div>"
     "<h1 style='color:#fff;margin:0 0 6px;font-size:26px;font-weight:700;"
     "font-family:Manrope,sans-serif'>Customer Engagement</h1>"
-    "<p style='color:rgba(255,255,255,.45);margin:0;font-size:13px;"
-    "font-family:Manrope,sans-serif'>Compose and track customer lifecycle communications</p>"
-    "</div>",
+    "<p style='color:rgba(255,255,255,.5);margin:0 0 18px;font-size:13px'>Select a customer and project "
+    "to view the delivery journey, draft lifecycle communications, and track engagement status.</p>"
+    "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;"
+    "padding-top:16px;border-top:0.5px solid rgba(255,255,255,.1)'>"
+    "<div style='padding-right:20px'>"
+    "<div style='font-size:10px;text-transform:uppercase;letter-spacing:.5px;"
+    "color:rgba(255,255,255,.4);margin-bottom:5px'>How to use</div>"
+    "<div style='font-size:12px;color:rgba(255,255,255,.75);line-height:1.55'>"
+    "Pick a customer → pick a project → select a communication type → review and send.</div></div>"
+    "<div style='padding:0 20px;border-left:1px solid rgba(255,255,255,.1)'>"
+    "<div style='font-size:10px;text-transform:uppercase;letter-spacing:.5px;"
+    "color:rgba(255,255,255,.4);margin-bottom:5px'>What it does</div>"
+    "<div style='font-size:12px;color:rgba(255,255,255,.75);line-height:1.55'>"
+    "Surfaces project contacts, milestone status, and recommended comms templates for any active project.</div></div>"
+    "<div style='padding-left:20px;border-left:1px solid rgba(255,255,255,.1)'>"
+    "<div style='font-size:10px;text-transform:uppercase;letter-spacing:.5px;"
+    "color:rgba(255,255,255,.4);margin-bottom:5px'>Data sources</div>"
+    "<div style='font-size:12px;color:rgba(255,255,255,.75);line-height:1.55'>"
+    "SS DRS for project data · SFDC contacts for recipients · Gmail API for sending.</div></div>"
+    "</div></div>",
     unsafe_allow_html=True,
 )
 
@@ -37,6 +53,7 @@ html,body,[class*="css"]{font-family:'Manrope',sans-serif!important}
 .ce-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:#4472C4;margin:0 0 5px}
 .ce-card{border:1px solid rgba(128,128,128,.22);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:inherit}
 .ce-tip{border-left:3px solid #4472C4;border-radius:0;padding:7px 12px;font-size:12px;margin-bottom:8px;color:inherit}
+.divider{border:none;border-top:1px solid rgba(128,128,128,.2);margin:16px 0}
 
 /* Project cards — no background, inherits theme */
 .proj-card{border:0.5px solid rgba(128,128,128,.25);border-radius:8px;padding:10px 12px;margin-bottom:6px;color:inherit;cursor:pointer}
@@ -1082,6 +1099,7 @@ _cards_html=(
     "</div>"
 )
 
+st.markdown('<hr style="border:none;border-top:1px solid rgba(128,128,128,.2);margin:14px 0 12px">', unsafe_allow_html=True)
 st.markdown('<p class="ce-label" style="margin-bottom:6px">Select project</p>',unsafe_allow_html=True)
 st.markdown(_cards_html,unsafe_allow_html=True)
 
@@ -1116,6 +1134,7 @@ if "_ss_row_id" not in sel and project_id in _ss_row_id_map:
 # other-consultant cards rendered inline in card row above
 
 # ── Row 2: Journey rail ───────────────────────────────────────────────────────
+st.markdown('<hr style="border:none;border-top:1px solid rgba(128,128,128,.2);margin:14px 0 12px">', unsafe_allow_html=True)
 st.markdown(_build_journey(sel),unsafe_allow_html=True)
 
 # ── Row 3: Compose (left) | Preview (right) ───────────────────────────────────
