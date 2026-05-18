@@ -75,8 +75,6 @@ st.markdown("""
         .pill-error   { background:rgba(226,75,74,.13);  color:#A32D2D; }
         .pill-warning { background:rgba(239,159,39,.13); color:#854F0B; }
         .pill-info    { background:rgba(68,114,196,.13); color:#1d4ed8; }
-        .pill-date    { background:rgba(68,114,196,.1);  color:#1d4ed8; font-size:11px;
-                        padding:2px 7px; border-radius:20px; }
         .proj-name  { font-weight:500; color:inherit; }
         .proj-type  { font-size:11px; opacity:.6; margin-top:1px; }
         .days-red   { color:#A32D2D; font-weight:600; }
@@ -247,7 +245,9 @@ for _, row in df_drs.iterrows():
             "project":      proj,
             "project_id":   str(_get(row, "project_id", "") or ""),
             "consultant":   str(pm or ""),
+            "status":       str(_get(row, "status", "") or "").strip(),
             "phase":        str(phase or ""),
+            "start_disp":   pd.to_datetime(start_dt).strftime("%-d %b %Y") if _is_date(start_dt) else "",
             "go_live_disp": pd.to_datetime(go_live).strftime("%-d %b %Y") if _is_date(go_live) else "",
             "days_val":     (abs(_days_until(go_live))
                              if (_is_date(go_live) and _days_until(go_live) is not None
@@ -564,11 +564,44 @@ def _render_table(df_tab, cols, header_labels=None):
                 cells.append(f"<td>{_consultant_cell(str(r.get('consultant','') or ''))}</td>")
             elif c == "severity":
                 cells.append(f"<td>{_sev_pill(str(r.get('severity','') or ''))}</td>")
+            elif c == "category":
+                _catv = str(r.get('category','') or '')
+                _cat_colors = {
+                    "Date Logic":            ("rgba(226,75,74,.13)",  "#A32D2D"),
+                    "On Hold Data Quality":  ("rgba(245,158,11,.13)", "#854F0B"),
+                    "Hours vs Scope":        ("rgba(168,85,247,.13)", "#7c3aed"),
+                    "Completeness":          ("rgba(59,130,246,.13)", "#1d4ed8"),
+                    "Status Conflict":       ("rgba(236,72,153,.13)", "#be185d"),
+                    "Activity Conflict":     ("rgba(20,184,166,.13)", "#0f766e"),
+                    "Milestone Sequence":    ("rgba(245,158,11,.13)", "#854F0B"),
+                    "Phase vs Milestone":    ("rgba(59,130,246,.13)", "#1d4ed8"),
+                }
+                _cbg, _cfg_ = _cat_colors.get(_catv, ("rgba(128,128,128,.12)", "inherit"))
+                cells.append(f"<td><span style='display:inline-block;padding:2px 8px;border-radius:20px;"
+                              f"font-size:11px;font-weight:600;background:{_cbg};color:{_cfg_}'>{_catv}</span></td>")
+            elif c == "status":
+                _stv = str(r.get('status','') or '').strip().title()
+                _st_colors = {
+                    "In Progress": ("rgba(59,130,246,.1)",  "#1d4ed8"),
+                    "On Hold":     ("rgba(245,158,11,.13)", "#854F0B"),
+                    "Complete":    ("rgba(34,197,94,.13)",  "#15803d"),
+                    "Closed":      ("rgba(128,128,128,.12)","inherit"),
+                    "Cancelled":   ("rgba(128,128,128,.12)","inherit"),
+                }
+                _sbg, _sfg = _st_colors.get(_stv, ("rgba(128,128,128,.1)", "inherit"))
+                if _stv:
+                    cells.append(f"<td><span style='display:inline-block;padding:2px 8px;border-radius:20px;"
+                                  f"font-size:11px;font-weight:600;background:{_sbg};color:{_sfg}'>{_stv}</span></td>")
+                else:
+                    cells.append("<td><span style='opacity:.35'>—</span></td>")
+            elif c == "start_disp":
+                v = str(r.get('start_disp','') or '')
+                cells.append(f"<td style='font-size:12px;opacity:.7'>{v if v else '—'}</td>")
             elif c == "days_val":
                 cells.append(f"<td>{_days_cell(r.get('days_val'))}</td>")
             elif c == "go_live_disp":
                 v = str(r.get('go_live_disp','') or '')
-                cells.append(f"<td><span class='pill-date'>{v}</span></td>" if v else "<td><span style='opacity:.35'>—</span></td>")
+                cells.append(f"<td style='font-size:12px;opacity:.7'>{v if v else '—'}</td>")
             elif c == "phase":
                 v = str(r.get('phase','') or '')
                 cells.append(f"<td style='font-size:12px;opacity:.75'>{v or '—'}</td>")
@@ -622,16 +655,17 @@ with _tabs[0]:
         "Project name (A–Z)":           ("project",   "_sev_rank",True,  True),
         "Category":                     ("category",  "_sev_rank",True,  True),
     }
-    _sc1, _sc2 = st.columns([3, 1])
+    _sc1, _sc2 = st.columns([1, 3])
+    with _sc1:
+        st.markdown(
+            "<div style='font-size:13px;font-weight:600;color:var(--color-text-secondary);"
+            "text-transform:uppercase;letter-spacing:.5px;padding-top:8px'>Sort by</div>",
+            unsafe_allow_html=True
+        )
     with _sc2:
         _sort_choice = st.selectbox(
             "Sort by", list(_sort_opts.keys()),
             key="drs_ov_sort", label_visibility="collapsed"
-        )
-    with _sc1:
-        st.markdown(
-            "<div style='font-size:12px;color:var(--color-text-secondary);padding-top:8px'>"
-            "Sort by:</div>", unsafe_allow_html=True
         )
     _sk1, _sk2, _asc1, _asc2 = _sort_opts[_sort_choice]
     _df_ov = df_findings.copy()
@@ -640,8 +674,8 @@ with _tabs[0]:
 
     _render_table(
         _df_ov,
-        cols=["project", "consultant", "category", "severity", "rule", "phase", "go_live_disp", "days_val"],
-        header_labels=["Project", "Consultant", "Category", "Severity", "Rule", "Phase", "Go live", "Days"]
+        cols=["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        header_labels=["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"]
     )
     st.markdown(
         f"<div style='font-size:12px;color:var(--color-text-secondary);margin-top:8px'>"
@@ -652,44 +686,44 @@ with _tabs[0]:
 # ── Category tabs ─────────────────────────────────────────────────────────────
 _CAT_CFG = {
     "Date Logic": {
-        "cols":   ["project","consultant","severity","rule","phase","go_live_disp","days_val","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Go live","Days","Description"],
-        "note":   "Fix: update phase or go-live date in My Projects → Project Detail, then sync to Smartsheet.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: update phase or go-live date in My Projects → Project Detail, then sync to Smartsheet.",
     },
     "On Hold Data Quality": {
-        "cols":   ["project","consultant","severity","rule","phase","days_val","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Days","Description"],
-        "note":   "Fix: set On Hold Reason, Responsible for Delay and client fields in My Projects → Project Detail.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: set On Hold Reason, Responsible for Delay and client fields in My Projects → Project Detail.",
     },
     "Hours vs Scope": {
-        "cols":   ["project","consultant","severity","rule","phase","days_val","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Days","Description"],
-        "note":   "Fix: log a Change Order in Smartsheet or review budget allocation. Each project needs individual judgment.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: log a Change Order in Smartsheet or review budget allocation. Each project needs individual judgment.",
     },
     "Completeness": {
-        "cols":   ["project","consultant","severity","rule","phase","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Description"],
-        "note":   "Fix: complete missing fields in My Projects → Project Detail.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: complete missing fields in My Projects → Project Detail.",
     },
     "Status Conflict": {
-        "cols":   ["project","consultant","severity","rule","phase","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Description"],
-        "note":   "Fix: align Status and RAG in My Projects → Project Detail.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: align Status and RAG in My Projects → Project Detail.",
     },
     "Activity Conflict": {
-        "cols":   ["project","consultant","severity","rule","phase","days_val","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Days","Description"],
-        "note":   "Fix: update client responsiveness or project status in My Projects → Project Detail.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: update client responsiveness or project status in My Projects → Project Detail.",
     },
     "Milestone Sequence": {
-        "cols":   ["project","consultant","severity","rule","phase","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Description"],
-        "note":   "Fix: correct milestone dates in My Projects → Project Detail, then sync to Smartsheet.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: correct milestone dates in My Projects → Project Detail, then sync to Smartsheet.",
     },
     "Phase vs Milestone": {
-        "cols":   ["project","consultant","severity","rule","phase","description"],
-        "hdrs":   ["Project","Consultant","Severity","Rule","Phase","Description"],
-        "note":   "Fix: advance phase or back-date milestone in My Projects → Project Detail.",
+        "cols": ["project","consultant","category","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
+        "hdrs": ["Project","Consultant","Category","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
+        "note": "Fix: advance phase or back-date milestone in My Projects → Project Detail.",
     },
 }
 
@@ -733,16 +767,17 @@ for _ti, _cat in enumerate(_cats):
             "Project name (A–Z)":           ("project",   "_sev_rank", True,  True),
             "Rule":                         ("rule",      "days_val",  True,  False),
         }
-        _csc1, _csc2 = st.columns([3, 1])
+        _csc1, _csc2 = st.columns([1, 3])
+        with _csc1:
+            st.markdown(
+                "<div style='font-size:13px;font-weight:600;color:var(--color-text-secondary);"
+                "text-transform:uppercase;letter-spacing:.5px;padding-top:8px'>Sort by</div>",
+                unsafe_allow_html=True
+            )
         with _csc2:
             _cat_sort = st.selectbox(
                 "Sort", list(_cat_sort_opts.keys()),
                 key=f"drs_sort_{_cat}", label_visibility="collapsed"
-            )
-        with _csc1:
-            st.markdown(
-                "<div style='font-size:12px;color:var(--color-text-secondary);padding-top:8px'>"
-                "Sort by:</div>", unsafe_allow_html=True
             )
         _csk1, _csk2, _casc1, _casc2 = _cat_sort_opts[_cat_sort]
         _cat_df["_sev_rank"] = _cat_df["severity"].map({"Error":0,"Warning":1,"Info":2}).fillna(9)
