@@ -1003,9 +1003,9 @@ def _delay_summary_prompt(r):
     return " · ".join(parts) if parts else "—"
 
 _OH_REASON_OPTS    = ["None","Customer delay","Internal delay","Technical blocker","Commercial","Other"]
-_OH_RESP_OPTS      = ["None","Customer","Internal","Shared"]
-_OH_SENTIMENT_OPTS = ["None","Good","Neutral","Concern","At Risk"]
-_OH_RISK_OPTS      = ["None","Low","Medium","High","Critical"]
+_OH_RESP_OPTS      = ["None","Not Responsive","Neutral","Highly Engaged"]
+_OH_SENTIMENT_OPTS = ["None","Positive","Neutral","Concerned"]
+_OH_RISK_OPTS      = ["None","Low","Medium","High","Escalated"]
 _OH_OWNER_OPTS     = ["None","Consultant","Customer","Management","Partner"]
 _OH_DELAY_OPTS     = ["None","Customer","Zone","Shared","Partner"]
 
@@ -1238,11 +1238,14 @@ with tab_intake:
 
                 # Weekly health
                 st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>Weekly Health {_badge('editable')}</div>",unsafe_allow_html=True)
-                _opts_status    = ["In Progress","On Hold","Complete","Closed","Cancelled"]
-                _opts_phase     = PHASE_OPTIONS
-                _opts_sentiment = ["","Good","Neutral","Concern","At Risk"]
-                _opts_health    = ["","Green","Amber","Red"]
-                _opts_risk      = ["","Low","Medium","High","Critical"]
+                _opts_status        = ["In Progress","On Hold","Complete","Closed","Cancelled"]
+                _opts_phase         = PHASE_OPTIONS
+                _opts_responsiveness = ["","Not Responsive","Neutral","Highly Engaged"]
+                _opts_sentiment     = ["","Positive","Neutral","Concerned"]
+                _opts_health_sched  = ["","Ahead","On Track","Behind","Significantly Behind"]
+                _opts_health_res    = ["","Under Capacity","At Capacity","Over Capacity"]
+                _opts_health_scope  = ["","Reduced","Unchanged","Increased"]
+                _opts_risk          = ["","Low","Medium","High","Escalated"]
 
                 _w_status = st.selectbox("Status",_opts_status,
                     index=_opts_status.index(_dv("status","In Progress")) if _dv("status","In Progress") in _opts_status else 0,
@@ -1280,26 +1283,39 @@ with tab_intake:
                         st.date_input(_ml, value=_mv_val, key=f"w_ms_{_mk}_{_sel_pid}")
 
                 st.markdown("<div style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.2)'></div>", unsafe_allow_html=True)
-                st.markdown(f"<div class='section-label' style='margin-bottom:8px'>Project Health {_badge('editable')}</div>", unsafe_allow_html=True)
+                # Smart prompt: when project is on hold, flag health fields for review
+                if _show_oh:
+                    st.markdown(
+                        "<div style='background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);"
+                        "border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:8px'>"
+                        "<b style='color:#f59e0b'>⚠ Project is On Hold</b> — review and update the "
+                        "health fields below to reflect the current hold status.</div>",
+                        unsafe_allow_html=True
+                    )
+                st.markdown(
+                    f"<div class='section-label' style='margin-bottom:8px;"
+                    f"color:{'#f59e0b' if _show_oh else 'inherit'}'>Project Health {_badge('editable')}</div>",
+                    unsafe_allow_html=True
+                )
                 _hc1,_hc2 = st.columns(2)
                 with _hc1:
-                    _w_sched = st.selectbox("Schedule health",_opts_health,
-                        index=_opts_health.index(_dv("schedule_health","")) if _dv("schedule_health","") in _opts_health else 0,
+                    _w_sched = st.selectbox("Schedule health",_opts_health_sched,
+                        index=_opts_health_sched.index(_dv("schedule_health","")) if _dv("schedule_health","") in _opts_health_sched else 0,
                         key=f"w_sch_{_sel_pid}")
-                    _w_res   = st.selectbox("Resource health",_opts_health,
-                        index=_opts_health.index(_dv("resource_health","")) if _dv("resource_health","") in _opts_health else 0,
+                    _w_res   = st.selectbox("Resource health",_opts_health_res,
+                        index=_opts_health_res.index(_dv("resource_health","")) if _dv("resource_health","") in _opts_health_res else 0,
                         key=f"w_res_{_sel_pid}")
                 with _hc2:
-                    _w_scope = st.selectbox("Scope health",_opts_health,
-                        index=_opts_health.index(_dv("scope_health","")) if _dv("scope_health","") in _opts_health else 0,
+                    _w_scope = st.selectbox("Scope health",_opts_health_scope,
+                        index=_opts_health_scope.index(_dv("scope_health","")) if _dv("scope_health","") in _opts_health_scope else 0,
                         key=f"w_sco_{_sel_pid}")
                     _w_risk  = st.selectbox("Risk level",_opts_risk,
                         index=_opts_risk.index(_dv("risk_level","")) if _dv("risk_level","") in _opts_risk else 0,
                         key=f"w_rsk_{_sel_pid}")
                 _w_riskd = st.text_area("Risk detail",value=_dv("risk_detail",""),height=56,
                     placeholder="Describe risk or mitigation...",key=f"w_rkd_{_sel_pid}")
-                _w_cresp = st.selectbox("Client responsiveness",_opts_sentiment,
-                    index=_opts_sentiment.index(_dv("client_responsiveness","")) if _dv("client_responsiveness","") in _opts_sentiment else 0,
+                _w_cresp = st.selectbox("Client responsiveness",_opts_responsiveness,
+                    index=_opts_responsiveness.index(_dv("client_responsiveness","")) if _dv("client_responsiveness","") in _opts_responsiveness else 0,
                     key=f"w_crsp_{_sel_pid}")
                 _w_csent = st.selectbox("Client sentiment",_opts_sentiment,
                     index=_opts_sentiment.index(_dv("client_sentiment","")) if _dv("client_sentiment","") in _opts_sentiment else 0,
