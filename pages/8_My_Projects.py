@@ -1305,31 +1305,45 @@ with tab_intake:
                     index=_opts_sentiment.index(_dv("client_sentiment","")) if _dv("client_sentiment","") in _opts_sentiment else 0,
                     key=f"w_csnt_{_sel_pid}")
 
-                # On Hold fields — conditional
-                if _is_oh:
-                    st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>On Hold {_badge('editable')}</div>",unsafe_allow_html=True)
-                    _oh_reason_opts = ["None","Customer delay","Internal delay","Technical blocker","Commercial","Other"]
-                    _w_oh_reason = st.selectbox("On Hold reason",_oh_reason_opts,
-                        index=_oh_reason_opts.index(_dv("on_hold_reason","None")) if _dv("on_hold_reason","None") in _oh_reason_opts else 0,
-                        key=f"w_ohr_{_sel_pid}")
-                    _oh_resume = _dr.get("resume_date")
-                    _oh_resume_val = pd.Timestamp(_oh_resume).date() if pd.notna(_oh_resume) else None
-                    _w_resume = st.date_input("Resume date",value=_oh_resume_val,key=f"w_ohrd_{_sel_pid}")
-                    _w_oh_resp = st.text_area("On Hold response",value=_dv("on_hold_response",""),height=56,
-                        placeholder="Customer/internal response...",key=f"w_ohrs_{_sel_pid}")
-                    _w_trans_notes = st.text_area("Support transition notes",value=_dv("support_transition_notes",""),height=56,
-                        placeholder="Notes for support handoff...",key=f"w_trn_{_sel_pid}")
+                # On Hold fields — shown when status is On Hold OR consultant just set it to On Hold
+                # Smart trigger: if consultant changes _w_status to "On Hold", section appears immediately
+                _show_oh = _is_oh or _w_status == "On Hold"
+                _newly_on_hold = (not _is_oh) and (_w_status == "On Hold")
 
-                # On Hold fields — conditional
-                if _is_oh:
-                    st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>On Hold {_badge('editable')}</div>",unsafe_allow_html=True)
-                    _oh_reason_opts = ["None","Customer delay","Internal delay","Technical blocker","Commercial","Other"]
-                    _w_oh_reason = st.selectbox("On Hold reason",_oh_reason_opts,
-                        index=_oh_reason_opts.index(_dv("on_hold_reason","None")) if _dv("on_hold_reason","None") in _oh_reason_opts else 0,
-                        key=f"w_ohr_{_sel_pid}")
+                if _show_oh:
+                    _oh_label_color = "#f59e0b" if _newly_on_hold else "inherit"
+                    _oh_prompt = ""
+                    if _newly_on_hold:
+                        _oh_prompt = (
+                            "<div style='background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.3);"
+                            "border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:10px'>"
+                            "<b style='color:#f59e0b'>Project set to On Hold</b> — please complete the fields "
+                            "below before saving.</div>"
+                        )
+                    st.markdown(
+                        f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;"
+                        f"border-top:0.5px solid rgba(128,128,128,.15);color:{_oh_label_color}'>"
+                        f"On Hold {_badge('editable')}</div>"
+                        + (_oh_prompt if _oh_prompt else ""),
+                        unsafe_allow_html=True
+                    )
+                    # Row 1: On Hold Reason + Responsible for Delay
+                    _oh_c1, _oh_c2 = st.columns(2)
+                    with _oh_c1:
+                        _oh_reason_opts = ["None","Customer delay","Internal delay","Technical blocker","Commercial","Other"]
+                        _w_oh_reason = st.selectbox("On Hold reason",_oh_reason_opts,
+                            index=_oh_reason_opts.index(_dv("on_hold_reason","None")) if _dv("on_hold_reason","None") in _oh_reason_opts else 0,
+                            key=f"w_ohr_{_sel_pid}")
+                    with _oh_c2:
+                        _oh_resp_delay_opts = ["None","Customer","Zone","Shared","Partner"]
+                        _w_resp_delay = st.selectbox("Responsible for delay",_oh_resp_delay_opts,
+                            index=_oh_resp_delay_opts.index(_dv("responsible_for_delay","None")) if _dv("responsible_for_delay","None") in _oh_resp_delay_opts else 0,
+                            key=f"w_rfd_{_sel_pid}")
+                    # Resume Date (re-start date)
                     _oh_resume = _dr.get("resume_date")
                     _oh_resume_val = pd.Timestamp(_oh_resume).date() if pd.notna(_oh_resume) else None
-                    _w_resume = st.date_input("Resume date",value=_oh_resume_val,key=f"w_ohrd_{_sel_pid}")
+                    _w_resume = st.date_input("Resume date (re-start)",value=_oh_resume_val,key=f"w_ohrd_{_sel_pid}")
+                    # Response + transition notes
                     _w_oh_resp = st.text_area("On Hold response",value=_dv("on_hold_response",""),height=56,
                         placeholder="Customer/internal response...",key=f"w_ohrs_{_sel_pid}")
                     _w_trans_notes = st.text_area("Support transition notes",value=_dv("support_transition_notes",""),height=56,
@@ -1339,6 +1353,7 @@ with tab_intake:
                 else:
                     _w_oh_reason = _w_oh_resp = _w_trans_notes = _w_resume = None
                     _w_delay_sum = ""
+                    _w_resp_delay = None
 
                 # JIRA Links — optional, shown at bottom for all projects
                 st.markdown(f"<div class='section-label' style='margin:14px 0 8px;padding-top:12px;border-top:0.5px solid rgba(128,128,128,.15)'>JIRA <span style='font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(128,128,128,.12);color:rgba(128,128,128,.7);margin-left:6px'>optional</span></div>",unsafe_allow_html=True)
@@ -1390,9 +1405,10 @@ with tab_intake:
                                 _changes[_fk] = _fv
 
                         # On Hold fields — diff only
-                        if _is_oh:
+                        if _show_oh:
                             for _fk, _fv in {
                                 "on_hold_reason":           _w_oh_reason,
+                                "responsible_for_delay":    _w_resp_delay,
                                 "on_hold_response":         _w_oh_resp,
                                 "support_transition_notes": _w_trans_notes,
                                 "delay_summary":            _w_delay_sum,
