@@ -277,7 +277,7 @@ for _, row in df_drs.iterrows():
     # ── Date logic ────────────────────────────────────────────────────────────
     if _is_date(start_dt) and _is_date(go_live):
         if pd.to_datetime(go_live) < pd.to_datetime(start_dt):
-            flag("Error", "Date Logic",
+            flag("Error", "Data conflicts",
                  "Go live before start date",
                  f"Start: {pd.to_datetime(start_dt).strftime('%d %b %Y')} · "
                  f"Go Live: {pd.to_datetime(go_live).strftime('%d %b %Y')}",
@@ -286,7 +286,7 @@ for _, row in df_drs.iterrows():
     if _is_date(start_dt):
         days_open = _days_since(start_dt)
         if days_open is not None and days_open > 180 and not _is_date(go_live):
-            flag("Warning", "Date Logic",
+            flag("Warning", "Data conflicts",
                  "Open 180+ days without go-live date",
                  f"Project has been open {days_open} days with no Go Live date set.",
                  "Set a Go Live date or close the project if complete.")
@@ -300,7 +300,7 @@ for _, row in df_drs.iterrows():
             if phase_idx >= 0 and not any(
                 str(phase).strip().lower().startswith(lp[:6]) for lp in late_phases
             ):
-                flag("Error", "Date Logic",
+                flag("Error", "Data conflicts",
                      "Go Live date passed",
                      f"Go Live was {abs(days_to_gl)}d ago but phase is still '{phase}'.",
                      "Advance phase to Go-Live / Hypercare or update the Go Live date.")
@@ -310,33 +310,33 @@ for _, row in df_drs.iterrows():
             if phase_idx >= 0 and any(
                 str(phase).strip().lower().startswith(ep[:6]) for ep in early_phases
             ):
-                flag("Warning", "Date Logic",
+                flag("Warning", "Data conflicts",
                      "Go Live within 14 days — phase mismatch",
                      f"Go Live is in {days_to_gl}d but phase is '{phase}'.",
                      "Confirm go-live is still on track or update the date.")
 
     # ── Status vs RAG ─────────────────────────────────────────────────────────
     if status in ("on track", "green") and rag == "R":
-        flag("Error", "Status Conflict",
+        flag("Error", "Data conflicts",
              "Status / RAG conflict",
              f"Status shows '{_get(row,'status','')}' but Overall RAG is Red.",
              "Align status and RAG — one of them needs to be updated.")
 
     if status in ("on track", "green") and rag == "A":
-        flag("Warning", "Status Conflict",
+        flag("Warning", "Data conflicts",
              "Status / RAG conflict",
              f"Status shows '{_get(row,'status','')}' but Overall RAG is Amber.",
              "Consider whether status should reflect the amber RAG signal.")
 
     # ── Activity vs status ────────────────────────────────────────────────────
     if "hold" in status and days_inac is not None and days_inac >= 0 and days_inac < 14:
-        flag("Warning", "Activity Conflict",
+        flag("Warning", "Data conflicts",
              "On Hold but recently active",
              f"Status is On Hold but project has NS time entries within the last {days_inac}d.",
              "If work has resumed, update the status from On Hold.")
 
     if resp in ("responsive", "highly responsive") and days_inac is not None and days_inac > 30:
-        flag("Warning", "Activity Conflict",
+        flag("Warning", "Data conflicts",
              "Client responsiveness inconsistent with activity",
              f"Client Responsiveness is '{_get(row,'client_responsiveness','')}' "
              f"but project has been inactive {days_inac}d.",
@@ -349,19 +349,19 @@ for _, row in df_drs.iterrows():
 
     if "hold" in status:
         if not oh_reason or oh_reason in ("—", "nan", "None"):
-            flag("Warning", "On Hold",
+            flag("Warning", "Completeness",
                  "On Hold reason not set",
                  "Project is On Hold but no On Hold Reason has been recorded.",
                  "Set On Hold Reason in the DRS — required for all on-hold projects.")
         if not oh_delay or oh_delay in ("—", "nan", "None"):
-            flag("Warning", "On Hold",
+            flag("Warning", "Completeness",
                  "Responsible for delay not set",
                  "Project is On Hold but Responsible for Delay has not been recorded.",
                  "Set Responsible for Delay in the DRS — required for all on-hold projects.")
 
     if "hold" in status and days_inac is not None and days_inac >= 14:
         if resp in ("highly engaged", "highly responsive", "responsive"):
-            flag("Warning", "On Hold",
+            flag("Warning", "Completeness",
                  "Engagement rating mismatch",
                  f"Client Responsiveness is '{_get(row,'client_responsiveness','')}' "
                  f"but project has been On Hold for {days_inac}d. "
@@ -369,7 +369,7 @@ for _, row in df_drs.iterrows():
                  "Review and update Client Responsiveness — consider 'Neutral' or 'Not Responsive'.")
 
         if sentiment in ("positive",):
-            flag("Warning", "On Hold",
+            flag("Warning", "Completeness",
                  "Sentiment rating inconsistent with status",
                  f"Client Sentiment is '{_get(row,'client_sentiment','')}' "
                  f"but project has been On Hold for {days_inac}d. "
@@ -384,7 +384,7 @@ for _, row in df_drs.iterrows():
                 overage = round(a - b, 2)
                 co = str(change_ord or "").strip().lower()
                 if not co or co in ("no", "false", "0", "none", "nan", ""):
-                    flag("Warning", "Hours vs Scope",
+                    flag("Warning", "Project sequence",
                          "Actual hours exceed budget",
                          f"Actual: {a}h · Budget: {b}h · Overage: {overage}h. "
                          f"No Change Order recorded.",
@@ -398,7 +398,7 @@ for _, row in df_drs.iterrows():
             try:
                 a = float(actual_h or 0)
                 if a == 0:
-                    flag("Info", "Hours vs Scope",
+                    flag("Info", "Project sequence",
                          "No hours logged after 30+ days",
                          f"Project started {days_open}d ago but has 0 actual hours recorded.",
                          "Confirm project is active and NS time is being logged.")
@@ -425,7 +425,7 @@ for _, row in df_drs.iterrows():
                 continue
             dt = ms_dates[ms_col]
             if prev_date is not None and dt < prev_date:
-                flag("Error", "Milestone Sequence",
+                flag("Error", "Project sequence",
                      "Milestone out of sequence",
                      f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' ({dt.strftime('%d %b %Y')}) "
                      f"is dated before '{MILESTONE_COLS_MAP.get(prev_col, prev_col)}' "
@@ -439,7 +439,7 @@ for _, row in df_drs.iterrows():
             for ms_col, expected_phase in MS_EXPECTED_BY_PHASE.items():
                 exp_idx = _phase_idx(expected_phase)
                 if ms_col in ms_dates and exp_idx > phase_idx + 1:
-                    flag("Warning", "Phase vs Milestone",
+                    flag("Warning", "Project sequence",
                          "Milestone ahead of current phase",
                          f"'{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' is completed but "
                          f"current phase is '{phase}' — this milestone is expected in a later phase.",
@@ -453,7 +453,7 @@ for _, row in df_drs.iterrows():
                     # Only flag the most critical ones to avoid noise
                     critical = {"ms_intro_email", "ms_uat_signoff", "ms_prod_cutover"}
                     if ms_col in critical:
-                        flag("Warning", "Phase vs Milestone",
+                        flag("Warning", "Project sequence",
                              "Expected milestone missing",
                              f"Phase is '{phase}' but '{MILESTONE_COLS_MAP.get(ms_col, ms_col)}' "
                              f"has no completion date recorded.",
@@ -568,14 +568,9 @@ def _render_table(df_tab, cols, header_labels=None):
             elif c == "category":
                 _catv = str(r.get('category','') or '')
                 _cmap = {
-                    'Date Logic':('rgba(59,130,246,.15)','#1d4ed8'),
-                    'On Hold':('rgba(20,184,166,.15)','#0f766e'),
-                    'Hours vs Scope':('rgba(168,85,247,.15)','#7c3aed'),
-                    'Completeness':('rgba(59,130,246,.13)','#1d4ed8'),
-                    'Status Conflict':('rgba(236,72,153,.15)','#be185d'),
-                    'Activity Conflict':('rgba(236,72,153,.15)','#be185d'),
-                    'Milestone Sequence':('rgba(168,85,247,.15)','#7c3aed'),
-                    'Phase vs Milestone':('rgba(168,85,247,.15)','#7c3aed'),
+                    'Data conflicts':    ('rgba(216,90,48,.15)',  '#993C1D'),
+                    'Completeness':      ('rgba(59,130,246,.15)', '#1d4ed8'),
+                    'Project sequence':  ('rgba(168,85,247,.15)', '#7c3aed'),
                 }
                 _cbg,_cfg_=_cmap.get(_catv,('rgba(128,128,128,.12)','inherit'))
                 cells.append(f"<td><span style='padding:2px 8px;border-radius:20px;"
@@ -619,6 +614,45 @@ df_findings["_sev_rank"] = df_findings["severity"].map(_SEV_RANK).fillna(9)
 df_sorted = df_findings.sort_values(
     ["_sev_rank", "days_val"], ascending=[True, False], na_position="last"
 ).reset_index(drop=True)
+
+# ── Category legend box ──────────────────────────────────────────────────────
+st.markdown(
+    "<div style='border:0.5px solid var(--color-border-tertiary);border-radius:12px;"
+    "overflow:hidden;margin-bottom:16px'>"
+    "<div style='background:var(--color-background-secondary);padding:9px 16px;"
+    "border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px;font-weight:600;"
+    "text-transform:uppercase;letter-spacing:.7px;color:var(--color-text-secondary)'>"
+    "Understanding flag categories</div>"
+    "<div style='display:grid;grid-template-columns:repeat(3,1fr)'>"
+    # Data conflicts
+    "<div style='padding:14px 16px;border-right:0.5px solid var(--color-border-tertiary)'>"
+    "<span style='display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;"
+    "font-weight:600;background:rgba(216,90,48,.15);color:#993C1D;margin-bottom:8px'>"
+    "Data conflicts</span>"
+    "<div style='font-size:12px;color:var(--color-text-secondary);line-height:1.6'>"
+    "Dates, statuses or client signals that contradict each other — go-live passed "
+    "without a phase advance, RAG doesn’t match status, or responsiveness doesn’t "
+    "reflect recent activity.</div></div>"
+    # Completeness
+    "<div style='padding:14px 16px;border-right:0.5px solid var(--color-border-tertiary)'>"
+    "<span style='display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;"
+    "font-weight:600;background:rgba(59,130,246,.15);color:#1d4ed8;margin-bottom:8px'>"
+    "Completeness</span>"
+    "<div style='font-size:12px;color:var(--color-text-secondary);line-height:1.6'>"
+    "Required fields are missing — no phase, no go-live date, no PM assigned, or an "
+    "on-hold project hasn’t recorded its reason, responsible party or client "
+    "sentiment.</div></div>"
+    # Project sequence
+    "<div style='padding:14px 16px'>"
+    "<span style='display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;"
+    "font-weight:600;background:rgba(168,85,247,.15);color:#7c3aed;margin-bottom:8px'>"
+    "Project sequence</span>"
+    "<div style='font-size:12px;color:var(--color-text-secondary);line-height:1.6'>"
+    "Delivery progression is out of order or over budget — milestones out of sequence, "
+    "phase and milestones don’t align, or hours exceed contracted scope.</div></div>"
+    "</div></div>",
+    unsafe_allow_html=True
+)
 
 # ── Build tab labels ──────────────────────────────────────────────────────────
 _cats = sorted(
@@ -671,45 +705,20 @@ with _tabs[0]:
 
 # ── Category tabs ─────────────────────────────────────────────────────────────
 _CAT_CFG = {
-    "Date Logic": {
+    "Data conflicts": {
         "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
         "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: update phase or go-live date in My Projects → Project Detail, then sync to Smartsheet.",
-    },
-    "On Hold": {
-        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: set On Hold reason, Responsible for delay and client fields in My Projects → Project Detail.",
-    },
-    "Hours vs Scope": {
-        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: log a Change Order in Smartsheet or review budget allocation. Each project needs individual judgment.",
+        "note": "Fix: update phase, go-live date, or client signals in My Projects → Project Detail, then sync to Smartsheet.",
     },
     "Completeness": {
         "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
         "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: complete missing fields in My Projects → Project Detail.",
+        "note": "Fix: complete missing fields — phase, go-live date, PM, or on-hold metadata — in My Projects → Project Detail.",
     },
-    "Status Conflict": {
+    "Project sequence": {
         "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
         "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: align Status and RAG in My Projects → Project Detail.",
-    },
-    "Activity Conflict": {
-        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: update client responsiveness or project status in My Projects → Project Detail.",
-    },
-    "Milestone Sequence": {
-        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: correct milestone dates in My Projects → Project Detail, then sync to Smartsheet.",
-    },
-    "Phase vs Milestone": {
-        "cols": ["project","consultant","severity","status","phase","start_disp","go_live_disp","days_val","rule","description"],
-        "hdrs": ["Project","Consultant","Type","Status","Phase","Start date","Go live","Days","Rule","Description"],
-        "note": "Fix: advance phase or back-date milestone in My Projects → Project Detail.",
+        "note": "Fix: correct milestone dates, advance phase, or log a Change Order in My Projects → Project Detail.",
     },
 }
 
