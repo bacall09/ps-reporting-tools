@@ -637,43 +637,49 @@ df_sorted = df_findings.sort_values(
 
 # ── Category legend box ──────────────────────────────────────────────────────
 st.markdown(
-    "<div style='background:var(--color-background-secondary, rgba(59,158,255,0.05));"
+    "<div style='background:var(--color-background-secondary,rgba(59,158,255,0.05));"
     "border-left:4px solid #4472C4;border-radius:6px;"
-    "overflow:hidden;margin-bottom:16px'>"
-    "<div style='background:var(--color-background-secondary);padding:9px 16px;"
-    "border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px;font-weight:600;"
-    "text-transform:uppercase;letter-spacing:.7px;color:var(--color-text-secondary)'>"
-    "Understanding flag categories</div>"
-    "<div style='display:grid;grid-template-columns:repeat(3,1fr)'>"
-    # Data conflicts
-    "<div style='padding:14px 16px;border-right:0.5px solid var(--color-border-tertiary)'>"
-    "<span style='display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;"
-    "font-weight:600;background:rgba(216,90,48,.15);color:#993C1D;margin-bottom:8px'>"
-    "Data conflicts</span>"
-    "<div style='font-size:12px;color:var(--color-text-secondary);line-height:1.6'>"
+    "padding:16px 20px;margin-bottom:20px;font-family:Manrope,sans-serif'>"
+
+    # Header label — matches section-label from runbook
+    "<div style='font-size:13px;font-weight:700;text-transform:uppercase;"
+    "letter-spacing:.8px;color:#4472C4;margin-bottom:14px'>Understanding flag categories</div>"
+
+    "<div style='display:flex;gap:24px;flex-wrap:wrap'>"
+
+    # Data conflicts — coral border + pill with coral border
+    "<div style='flex:1;min-width:180px;border-left:2px solid rgba(216,90,48,.45);padding-left:14px'>"
+    "<span style='background:rgba(216,90,48,.15);color:#993C1D;font-size:11px;font-weight:600;"
+    "padding:2px 9px;border-radius:20px;border:1px solid rgba(216,90,48,.4);"
+    "display:inline-block;margin-bottom:8px'>Data conflicts</span>"
+    "<p style='margin:0;font-size:13px;color:inherit;line-height:1.6;opacity:.85'>"
     "Dates, statuses or client signals that contradict each other — go-live passed "
     "without a phase advance, RAG doesn’t match status, or responsiveness doesn’t "
-    "reflect recent activity.</div></div>"
-    # Completeness
-    "<div style='padding:14px 16px;border-right:0.5px solid var(--color-border-tertiary)'>"
-    "<span style='display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;"
-    "font-weight:600;background:rgba(59,130,246,.15);color:#1d4ed8;margin-bottom:8px'>"
-    "Completeness</span>"
-    "<div style='font-size:12px;color:var(--color-text-secondary);line-height:1.6'>"
+    "reflect recent activity.</p></div>"
+
+    # Completeness — blue border + pill with blue border
+    "<div style='flex:1;min-width:180px;border-left:2px solid rgba(59,130,246,.45);padding-left:14px'>"
+    "<span style='background:rgba(59,130,246,.15);color:#1d4ed8;font-size:11px;font-weight:600;"
+    "padding:2px 9px;border-radius:20px;border:1px solid rgba(59,130,246,.4);"
+    "display:inline-block;margin-bottom:8px'>Completeness</span>"
+    "<p style='margin:0;font-size:13px;color:inherit;line-height:1.6;opacity:.85'>"
     "Required fields are missing — no phase, no go-live date, no PM assigned, or an "
     "on-hold project hasn’t recorded its reason, responsible party or client "
-    "sentiment.</div></div>"
-    # Project sequence
-    "<div style='padding:14px 16px'>"
-    "<span style='display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;"
-    "font-weight:600;background:rgba(168,85,247,.15);color:#7c3aed;margin-bottom:8px'>"
-    "Project sequence</span>"
-    "<div style='font-size:12px;color:var(--color-text-secondary);line-height:1.6'>"
+    "sentiment.</p></div>"
+
+    # Project sequence — purple border + pill with purple border
+    "<div style='flex:1;min-width:180px;border-left:2px solid rgba(168,85,247,.45);padding-left:14px'>"
+    "<span style='background:rgba(168,85,247,.15);color:#7c3aed;font-size:11px;font-weight:600;"
+    "padding:2px 9px;border-radius:20px;border:1px solid rgba(168,85,247,.4);"
+    "display:inline-block;margin-bottom:8px'>Project sequence</span>"
+    "<p style='margin:0;font-size:13px;color:inherit;line-height:1.6;opacity:.85'>"
     "Delivery progression is out of order or over budget — milestones out of sequence, "
-    "phase and milestones don’t align, or hours exceed contracted scope.</div></div>"
+    "phase and milestones don’t align, or hours exceed contracted scope.</p></div>"
+
     "</div></div>",
     unsafe_allow_html=True
 )
+
 
 # ── Build tab labels ──────────────────────────────────────────────────────────
 _cats = sorted(
