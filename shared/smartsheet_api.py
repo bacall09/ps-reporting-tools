@@ -230,19 +230,37 @@ def _get_column_map(sheet_id: str, token: str) -> dict:
 # ── WRITE ──────────────────────────────────────────────────────────────────────
 
 def _format_cell_value(internal_key: str, value) -> object:
-    """Convert Python/pandas value to Smartsheet API format."""
+    """Convert Python/pandas value to Smartsheet API format.
+    Ensures all values are JSON-serialisable (no datetime objects, no NaN/NaT).
+    """
+    import datetime as _dt_mod
     if value is None:
         return None
-    if pd.isna(value) if not isinstance(value, (str, bool)) else False:
-        return None
-    if isinstance(value, (pd.Timestamp, date)):
+    # Catch pandas NA/NaT/NaN
+    try:
+        if not isinstance(value, (str, bool, int, float)) and pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    # date / datetime / Timestamp → ISO string
+    if isinstance(value, (_dt_mod.date, _dt_mod.datetime, pd.Timestamp)):
         try:
             return pd.Timestamp(value).strftime("%Y-%m-%d")
         except Exception:
             return None
+    # Empty / sentinel strings
     if isinstance(value, str) and value.strip() in ("", "—", "nan", "None", "NaT"):
         return None
-    return value
+    # Float NaN
+    if isinstance(value, float) and (value != value):
+        return None
+    # Ensure the result is JSON-serialisable — convert anything unexpected to str
+    try:
+        import json as _json
+        _json.dumps(value, allow_nan=False)
+        return value
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def write_row_updates(updates: list[dict]) -> tuple[int, list[str]]:
