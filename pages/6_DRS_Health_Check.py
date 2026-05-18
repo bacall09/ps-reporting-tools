@@ -92,7 +92,12 @@ else:
     _drs_title_sfx = ""
 
 _hero = st.empty()
-_hero.markdown(f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:32px 40px 28px;border-radius:10px;margin-bottom:24px;font-family:Manrope,sans-serif;position:relative;overflow:hidden'> <div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:10px;font-family:Manrope,sans-serif'>Professional Services · Reporting</div> <h1 style='color:#fff;margin:0;font-size:28px;font-weight:800;font-family:Manrope,sans-serif;line-height:1.15'>DRS Health Check{_drs_title_sfx}</h1> <p style='color:rgba(255,255,255,0.6);margin:8px 0 0;font-size:14px;font-family:Manrope,sans-serif;line-height:1.6;max-width:520px'>Logical consistency validator for Smartsheet DRS data — flags fields and combinations that don't align with expected project state.</p> </div>", unsafe_allow_html=True)
+_hero.markdown(f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
+    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px'>Professional Services · Reporting</div>"
+    f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;font-family:Manrope,sans-serif'>DRS Health Check{_drs_title_sfx}</h1>"
+    f"<p style='color:rgba(255,255,255,.55);margin:6px 0 0;font-size:13px;line-height:1.6;max-width:520px'>Logical consistency validator for Smartsheet DRS data.</p>"
+    "</div>",
+    unsafe_allow_html=True)
 
 # ── Data source ───────────────────────────────────────────────────────────────
 df_drs = st.session_state.get("df_drs")
@@ -128,8 +133,6 @@ if _session_name:
         if "project_manager" in df_drs.columns:
             _filtered = df_drs[df_drs["project_manager"].apply(lambda v: name_matches(v, _target))]
             if not _filtered.empty: df_drs = _filtered
-
-st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RULE ENGINE
@@ -477,23 +480,40 @@ n_total    = len(df_findings)
 _days_vals = df_findings["days_val"].dropna()
 oldest_d   = int(_days_vals.max()) if len(_days_vals) else 0
 
-# ── 4 metric tiles ────────────────────────────────────────────────────────────
-_m1, _m2, _m3, _m4 = st.columns(4)
-def _metric_tile(col, label, val, val_color, sublabel):
-    col.markdown(
-        f"<div style='border:0.5px solid var(--color-border-tertiary);border-radius:8px;"
-        f"padding:14px 16px'>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;"
-        f"letter-spacing:.5px;margin-bottom:4px'>{label}</div>"
-        f"<div style='font-size:28px;font-weight:600;color:{val_color};line-height:1'>{val}</div>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);margin-top:3px'>{sublabel}</div>"
-        f"</div>", unsafe_allow_html=True)
-
-_metric_tile(_m1, "Projects flagged",  n_projects, "var(--color-text-primary)", f"of {len(df_drs)} checked")
-_metric_tile(_m2, "Errors",            n_error,    "#E24B4A" if n_error else "var(--color-text-primary)", f"{n_warning} warnings · {n_info} info")
-_metric_tile(_m3, "Oldest issue",      f"{oldest_d}d", "#E24B4A" if oldest_d>90 else "#EF9F27" if oldest_d>30 else "var(--color-text-primary)", "days since go-live / start")
-_metric_tile(_m4, "Total findings",    n_total,    "var(--color-text-primary)", f"across {df_findings['category'].nunique()} rule categories")
-
+# ── Re-render hero with metrics embedded ────────────────────────────────────
+_ec = '#E24B4A' if n_error > 0 else '#fff'
+_dc = '#E24B4A' if oldest_d>90 else '#EF9F27' if oldest_d>30 else '#fff'
+_hero.markdown(
+    f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);"
+    f"padding:28px 32px 24px;border-radius:10px;margin-bottom:16px;font-family:Manrope,sans-serif'>"
+    f"<div style='font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;"
+    f"color:#3B9EFF;margin-bottom:8px'>Professional Services · Reporting</div>"
+    f"<h1 style='color:#fff;margin:0;font-size:26px;font-weight:700;"
+    f"font-family:Manrope,sans-serif'>DRS Health Check{_drs_title_sfx}</h1>"
+    f"<p style='color:rgba(255,255,255,.55);margin:6px 0 0;font-size:13px;line-height:1.6'>"
+    f"Logical consistency validator for Smartsheet DRS data.</p>"
+    f"<div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;"
+    f"margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,.1)'>"
+    f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;"
+    f"color:rgba(255,255,255,.4);margin-bottom:4px'>Projects flagged</div>"
+    f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1'>{n_projects}</div>"
+    f"<div style='font-size:12px;color:rgba(255,255,255,.45);margin-top:3px'>of {len(df_drs)} checked</div></div>"
+    f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;"
+    f"color:rgba(255,255,255,.4);margin-bottom:4px'>Errors</div>"
+    f"<div style='font-size:26px;font-weight:600;color:{_ec};line-height:1.1'>{n_error}</div>"
+    f"<div style='font-size:12px;color:rgba(255,255,255,.45);margin-top:3px'>{n_warning} warnings · {n_info} info</div></div>"
+    f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;"
+    f"color:rgba(255,255,255,.4);margin-bottom:4px'>Oldest issue</div>"
+    f"<div style='font-size:26px;font-weight:600;color:{_dc};line-height:1.1'>{oldest_d}d</div>"
+    f"<div style='font-size:12px;color:rgba(255,255,255,.45);margin-top:3px'>days since go-live / start</div></div>"
+    f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;"
+    f"color:rgba(255,255,255,.4);margin-bottom:4px'>Total findings</div>"
+    f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1'>{n_total}</div>"
+    f"<div style='font-size:12px;color:rgba(255,255,255,.45);margin-top:3px'>"
+    f"across {df_findings['category'].nunique()} rule categories</div></div>"
+    f"</div></div>",
+    unsafe_allow_html=True
+)
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -617,7 +637,8 @@ df_sorted = df_findings.sort_values(
 
 # ── Category legend box ──────────────────────────────────────────────────────
 st.markdown(
-    "<div style='border:0.5px solid var(--color-border-tertiary);border-radius:12px;"
+    "<div style='background:var(--color-background-secondary);"
+    "border:0.5px solid var(--color-border-tertiary);border-radius:12px;"
     "overflow:hidden;margin-bottom:16px'>"
     "<div style='background:var(--color-background-secondary);padding:9px 16px;"
     "border-bottom:0.5px solid var(--color-border-tertiary);font-size:11px;font-weight:600;"
