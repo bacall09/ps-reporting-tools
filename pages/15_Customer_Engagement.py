@@ -1101,9 +1101,7 @@ _cards_html=(
 
 st.markdown('<hr style="border:none;border-top:1px solid rgba(128,128,128,.2);margin:14px 0 12px">', unsafe_allow_html=True)
 st.markdown('<p class="ce-label" style="margin-bottom:6px">Select project</p>',unsafe_allow_html=True)
-st.markdown(_cards_html,unsafe_allow_html=True)
-
-# Project selection via selectbox (invisible — cards are visual, this drives state)
+# Project selectbox — above the cards so it acts as the primary selector
 _mine_labels={_mine_sids[i]:_proj_title(_row_dict(_mine_proj.iloc[i])) for i in range(len(_mine_sids))}
 selected_sid=st.selectbox(
     "Select project",options=_mine_sids,
@@ -1111,6 +1109,9 @@ selected_sid=st.selectbox(
     index=_def_idx,key="ce_proj_select",
     label_visibility="collapsed",
 )
+
+# Project cards — visual overview of all projects for this customer
+st.markdown(_cards_html,unsafe_allow_html=True)
 
 st.session_state["_ce_proj_sid"]=selected_sid
 
