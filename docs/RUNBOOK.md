@@ -221,6 +221,36 @@ Use the same blue uppercase label across pages. CSS:
 
 Reference: `pages/1_Daily_Briefing.py` line 54.
 
+### Hero → divider → legend box pattern
+
+Pages with a hero banner and an explanatory legend box below it follow this three-part structure:
+
+1. **Hero banner** — dark navy gradient (`linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%)`), rendered via `st.empty()` so metrics can be injected after data loads.
+2. **Divider** — `<hr style="border:none;border-top:1px solid rgba(128,128,128,0.2);margin:20px 0">` (or the `.divider` CSS class where defined) separating the hero from page controls.
+3. **Legend / how-to box** — shaded background with blue left border, matching pattern:
+
+```python
+st.markdown(
+    "<div style='background:var(--color-background-secondary,rgba(59,158,255,0.05));"
+    "border-left:4px solid #4472C4;border-radius:6px;"
+    "padding:14px 18px;margin-bottom:14px;font-family:Manrope,sans-serif'>"
+    "<div style='font-size:13px;font-weight:700;text-transform:uppercase;"
+    "letter-spacing:.8px;color:#4472C4;margin-bottom:12px'>Legend title</div>"
+    "<div style='display:flex;gap:20px;flex-wrap:wrap'>"
+    # First column — no left border
+    "<div style='flex:1;min-width:130px;padding-left:12px'>...</div>"
+    # Subsequent columns — coloured left border matching pill colour
+    "<div style='flex:1;min-width:130px;border-left:2px solid rgba(R,G,B,.4);padding-left:12px'>...</div>"
+    "</div></div>",
+    unsafe_allow_html=True
+)
+```
+
+Pills inside legend boxes use `font-size:12px`, `padding:3px 10px`, `border-radius:20px`, and a `border:1px solid` matching the pill background colour (at `.4` alpha). Background opacity is `0.18`.
+
+**Pages using this pattern:** Daily Briefing (how-to box), My Projects (how-to box), Utilization Report (credit tags legend), DRS Health Check (flag categories legend).
+
+
 ### Pills (status indicators)
 
 Use translucent backgrounds so they work on either page bg. Color flips via `prefers-color-scheme: dark` and `[data-theme="dark"]` selectors:
