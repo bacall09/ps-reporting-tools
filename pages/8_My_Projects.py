@@ -517,7 +517,9 @@ with tab_glance:
         # Project types without fixed scope by design — excluded from no-scope flagging
         _NO_SCOPE_PTYPES = {"consulting", "professional services", "ps consulting"}
 
-        for _, _r in active.iterrows():
+        # Risk table includes on-hold projects with red/amber RAG — matches Daily Briefing
+        _risk_source = pd.concat([active, on_hold], ignore_index=True) if not on_hold.empty else active.copy()
+        for _, _r in _risk_source.iterrows():
             _pid_k     = _clean_pid(str(_r.get("project_id", "") or ""))
             _ptype_str = str(_r.get("project_type", "") or "").strip()
             _pname_str = str(_r.get("project_name", "") or "").strip()
@@ -560,13 +562,14 @@ with tab_glance:
             elif _is_over:          _stag = ("red",   "Overrun")
             elif _is_burn:          _stag = ("amber", f"Burn {int(_burn*100)}%")
             elif _is_old:           _stag = ("grey",  "6+ months")
-            elif _rag_v == "red":   _stag = ("red",   "Red RAG")
-            else:                   _stag = ("amber", "Amber RAG")
+            elif _rag_v == "red":   _stag = ("red",   "On Hold · Red" if str(_r.get("status","") or "").strip().lower() in ("on hold","onhold") else "Red RAG")
+            else:                   _stag = ("amber", "On Hold · Amber" if str(_r.get("status","") or "").strip().lower() in ("on hold","onhold") else "Amber RAG")
             _srank = 1 if _stag[0]=="red" else 2 if _stag[0]=="amber" else 3 if _stag[0]=="grey" else 4
             _risk_rows.append({
                 "project":      _extract_customer_name(_pname_str),
                 "project_type": _ptype_str,
                 "consultant":   str(_r.get("project_manager", "") or ""),
+                "status":       str(_r.get("status", "") or "").strip().title(),
                 "start_date":   _start_disp,
                 "last_ms":      _last_ms,
                 "scoped_hrs":   _scope,
@@ -674,6 +677,7 @@ with tab_glance:
                     f"<td style=\"padding:9px 12px;vertical-align:middle\">{_row['project']}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75\">{_row['project_type']}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle\">{_ch}</td>"
+                    f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75;font-size:12px\">{_row['status']}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75;font-size:12px\">{_start_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;opacity:.75;font-size:12px\">{_lms_str}</td>"
                     f"<td style=\"padding:9px 12px;vertical-align:middle;text-align:center\">{_rag_cell}</td>"
@@ -706,6 +710,7 @@ with tab_glance:
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Project</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Type</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Consultant</th>"
+                f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Status</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Start date</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:left;opacity:.75\">Last milestone</th>"
                 f"<th style=\"padding:10px 12px;font-weight:600;text-align:center;opacity:.75\">RAG</th>"
