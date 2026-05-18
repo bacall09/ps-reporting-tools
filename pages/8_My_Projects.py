@@ -1241,8 +1241,8 @@ with tab_intake:
                 _proj_gl_new = st.date_input(
                     "Projected go-live (your estimate)",
                     value=_proj_gl_val,
-                    min_value=__import__('datetime').date(2020,1,1),
-                    max_value=__import__('datetime').date(2030,12,31),
+                    min_value=date(2020, 1, 1),
+                    max_value=date(2030, 12, 31),
                     key=f"dp_proj_gl_{_sel_pid}",
                     help="Session-only — your working estimate when the original go-live may slip. "
                          "Used to improve health suggestions. Not saved to Smartsheet."
