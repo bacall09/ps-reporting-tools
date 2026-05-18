@@ -561,7 +561,7 @@ def main():
         "Custom":        (None, None),
     }
 
-    # ── Credit tags legend ──────────────────────────────────────────────────────
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown(
         "<div style='background:var(--color-background-secondary,rgba(59,158,255,0.05));"
         "border-left:4px solid #4472C4;border-radius:6px;"
@@ -570,33 +570,17 @@ def main():
         "letter-spacing:.8px;color:#4472C4;margin-bottom:12px'>Credit tags</div>"
         "<div style='display:flex;gap:20px;flex-wrap:wrap'>"
         "<div style='flex:1;min-width:130px;padding-left:12px'>"
-        "<span style='background:rgba(34,197,94,.15);color:#15803d;font-size:11px;"
-        "font-weight:600;padding:2px 9px;border-radius:20px;"
-        "border:1px solid rgba(34,197,94,.35);display:inline-block;margin-bottom:6px'>"
-        "&#9679; Credited</span>"
-        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-        "Fixed Fee hours within contracted scope and T&M — fully counted toward utilization.</p></div>"
+        "<span style='background:rgba(34,197,94,0.18);color:#15803d;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid rgba(34,197,94,.4);display:inline-block;margin-bottom:6px'>&#9679; Credited</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>Fixed Fee hours within contracted scope and T&amp;M — fully counted toward utilization.</p></div>"
         "<div style='flex:1;min-width:130px;border-left:2px solid rgba(245,158,11,.4);padding-left:12px'>"
-        "<span style='background:rgba(245,158,11,.15);color:#b45309;font-size:11px;"
-        "font-weight:600;padding:2px 9px;border-radius:20px;"
-        "border:1px solid rgba(245,158,11,.4);display:inline-block;margin-bottom:6px'>"
-        "&#9679; Partial</span>"
-        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-        "Fixed Fee hours credited up to remaining scope only — approaching its limit.</p></div>"
+        "<span style='background:rgba(245,158,11,0.18);color:#b45309;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid rgba(245,158,11,.4);display:inline-block;margin-bottom:6px'>&#9679; Partial</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>Fixed Fee hours credited up to remaining scope only — approaching its limit.</p></div>"
         "<div style='flex:1;min-width:130px;border-left:2px solid rgba(226,75,74,.4);padding-left:12px'>"
-        "<span style='background:rgba(226,75,74,.15);color:#A32D2D;font-size:11px;"
-        "font-weight:600;padding:2px 9px;border-radius:20px;"
-        "border:1px solid rgba(226,75,74,.4);display:inline-block;margin-bottom:6px'>"
-        "&#9679; Overrun</span>"
-        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-        "Hours logged beyond contracted scope — not credited toward utilization.</p></div>"
+        "<span style='background:rgba(226,75,74,0.18);color:#A32D2D;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid rgba(226,75,74,.4);display:inline-block;margin-bottom:6px'>&#9679; Overrun</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>Hours logged beyond contracted scope — not credited toward utilization.</p></div>"
         "<div style='flex:1;min-width:130px;border-left:2px solid rgba(128,128,128,.3);padding-left:12px'>"
-        "<span style='background:rgba(128,128,128,.12);color:var(--color-text-secondary);font-size:11px;"
-        "font-weight:600;padding:2px 9px;border-radius:20px;"
-        "border:1px solid rgba(128,128,128,.3);display:inline-block;margin-bottom:6px'>"
-        "&#9679; Non-billable</span>"
-        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>"
-        "Internal, admin or PTO time — excluded from billable utilization.</p></div>"
+        "<span style='background:rgba(128,128,128,0.18);color:var(--color-text-secondary);font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid rgba(128,128,128,.35);display:inline-block;margin-bottom:6px'>&#9679; Non-billable</span>"
+        "<p style='margin:0;font-size:13px;color:inherit;line-height:1.5;opacity:.85'>Internal, admin or PTO time — excluded from billable utilization.</p></div>"
         "</div></div>",
         unsafe_allow_html=True
     )
@@ -901,7 +885,6 @@ def main():
     # ─────────────────────────────────────────────────────
     # Tabs
     # ─────────────────────────────────────────────────────
-    _is_partial_emp = period_end < date.today()
     overrun_badge = f" · <span style='color:#b91c1c'>{overrun_count}</span>" if overrun_count > 0 else ""
     tab_at_glance, tab_consult, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
         "At a glance",
@@ -916,7 +899,29 @@ def main():
     # TAB 1 — At a glance
     # ═══════════════════════════════════════════════════════════════════
     with tab_at_glance:
-        # KPI metrics now in hero banner — rendered by _util_hero.markdown() below
+        # KPI strip
+        m1, m2, m3, m4, m5 = st.columns(5)
+        def _kpi_card(label, value, sub=None, sub_pill_class=None):
+            sub_html = ""
+            if sub:
+                if sub_pill_class:
+                    sub_html = f"<div style='display:inline-block;margin-top:4px;padding:2px 9px;border-radius:999px;font-size:11px' class='util-pill {sub_pill_class}'>{sub}</div>"
+                else:
+                    sub_html = f"<div style='font-size:11px;opacity:0.65;margin-top:4px'>{sub}</div>"
+            return (f"<div class='util-kpi'>"
+                    f"<div style='font-size:11px;opacity:0.75;margin-bottom:4px;"
+                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{label}</div>"
+                    f"<div style='font-size:24px;font-weight:600;line-height:1.1;"
+                    f"font-variant-numeric:tabular-nums'>{value}</div>"
+                    f"{sub_html}</div>")
+
+        with m1: st.markdown(_kpi_card("Billable projects", f"{billable_proj_count:,}", f"across {consultant_count} consultants"), unsafe_allow_html=True)
+        with m2: st.markdown(_kpi_card("Hours logged", fmt_hrs(hours_this_period), f"of {_avail_total:,.0f} capacity ({capacity_pct:.1%})" if _avail_total else None), unsafe_allow_html=True)
+
+        _credit_cls = "util-pill-green" if credit_pct >= 0.70 else "util-pill-amber" if credit_pct >= 0.60 else "util-pill-red"
+        with m3: st.markdown(_kpi_card("Util credits", fmt_hrs(total_credit), f"{credit_pct:.1%} · {credit_label}", _credit_cls), unsafe_allow_html=True)
+        with m4: st.markdown(_kpi_card("FF overrun", fmt_hrs(total_proj_overrun), f"{overrun_pct:.1%} of hrs", "util-pill-amber" if total_proj_overrun > 0 else None), unsafe_allow_html=True)
+        with m5: st.markdown(_kpi_card("Admin hrs", fmt_hrs(total_admin), f"{admin_pct:.1%} of hrs"), unsafe_allow_html=True)
 
         # ── Re-render hero with live metrics ────────────────────────────────────
         _cred_bg = "rgba(226,75,74,.35)" if credit_pct < 0.60 else "rgba(245,158,11,.35)" if credit_pct < 0.70 else "rgba(34,197,94,.25)"
@@ -924,32 +929,16 @@ def main():
         _ovr_col = "#fca5a5" if total_proj_overrun > 0 else "#fff"
         _cap_sub = f"of {_avail_total:,.0f} capacity ({capacity_pct:.1%})" if _avail_total else ""
         _util_hero.markdown(
-            f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);"
-            f"padding:28px 36px 24px;border-radius:10px;margin-bottom:14px;font-family:Manrope,sans-serif'>"
-            f"<div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;"
-            f"color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"
+            f"<div style='background:linear-gradient(135deg,#1a56db 0%,#050D1F 55%,#050D1F 100%);padding:28px 36px 24px;border-radius:10px;margin-bottom:14px;font-family:Manrope,sans-serif'>"
+            f"<div style='font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#3B9EFF;margin-bottom:8px'>Professional Services · Tools</div>"
             f"<h1 style='color:white;margin:0;font-size:26px'>Utilization Report{_hero_va_line}</h1>"
-            f"<p style='color:rgba(255,255,255,.5);margin:6px 0 0;font-size:13px'>"
-            f"Live utilization credits and capacity from NetSuite. "
-            f"Adjust the period — everything below recomputes automatically.</p>"
-            f"<div style='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));"
-            f"gap:12px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,.1)'>"
-            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Billable projects</div>"
-            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{billable_proj_count:,}</div>"
-            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>across {consultant_count} consultant{'s' if consultant_count!=1 else ''}</div></div>"
-            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Hours logged</div>"
-            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(hours_this_period)}</div>"
-            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{_cap_sub}</div></div>"
-            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Util credits</div>"
-            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(total_credit)}</div>"
-            f"<div style='font-size:12px;margin-top:3px'><span style='padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600;"
-            f"background:{_cred_bg};color:{_cred_fg}'>{credit_pct:.1%} · {credit_label}</span></div></div>"
-            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>FF overrun</div>"
-            f"<div style='font-size:22px;font-weight:600;color:{_ovr_col};line-height:1.1'>{fmt_hrs(total_proj_overrun)}</div>"
-            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{overrun_pct:.1%} of hrs</div></div>"
-            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Admin hrs</div>"
-            f"<div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(total_admin)}</div>"
-            f"<div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{admin_pct:.1%} of hrs</div></div>"
+            f"<p style='color:rgba(255,255,255,.5);margin:6px 0 0;font-size:13px'>Live utilization credits and capacity from NetSuite. Adjust the period — everything below recomputes automatically.</p>"
+            f"<div style='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:18px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,.1)'>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Billable projects</div><div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{billable_proj_count:,}</div><div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>across {consultant_count} consultant{'s' if consultant_count!=1 else ''}</div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Hours logged</div><div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(hours_this_period)}</div><div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{_cap_sub}</div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Util credits</div><div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(total_credit)}</div><div style='font-size:12px;margin-top:3px'><span style='padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600;background:{_cred_bg};color:{_cred_fg}'>{credit_pct:.1%} · {credit_label}</span></div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>FF overrun</div><div style='font-size:22px;font-weight:600;color:{_ovr_col};line-height:1.1'>{fmt_hrs(total_proj_overrun)}</div><div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{overrun_pct:.1%} of hrs</div></div>"
+            f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.4);margin-bottom:4px'>Admin hrs</div><div style='font-size:22px;font-weight:600;color:#fff;line-height:1.1'>{fmt_hrs(total_admin)}</div><div style='font-size:12px;color:rgba(255,255,255,.4);margin-top:3px'>{admin_pct:.1%} of hrs</div></div>"
             f"</div></div>",
             unsafe_allow_html=True
         )
@@ -990,6 +979,73 @@ def main():
             _c3 = _callout("#22c55e", "#15803d", "✓", "FF: no scope defined", 0, "All FF time logged against scoped projects.")
         with callout_cols[2]: st.markdown(_c3, unsafe_allow_html=True)
 
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB 2 — Consultants
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_consult:
+        # Projection
+        _period_bdays = {}
+        if "date" in df.columns:
+            for _per, _grp in df.groupby("period"):
+                _dates = _grp["date"].dropna()
+                if len(_dates) == 0: continue
+                _days_in = len(pd.bdate_range(_dates.min(), _dates.max()))
+                _yr3, _mo3 = _dates.min().year, _dates.min().month
+                _ms3 = pd.Timestamp(_yr3, _mo3, 1)
+                _me3 = pd.Timestamp(_yr3, _mo3, _cal.monthrange(_yr3, _mo3)[1])
+                _total = len(pd.bdate_range(_ms3, _me3))
+                _period_bdays[str(_per)] = (_days_in, _total)
+
+        def _proj_util(row):
+            per = str(row["period"])
+            if per not in _period_bdays: return None
+            days_in, total = _period_bdays[per]
+            if days_in >= total: return None
+            avail = row["avail_hrs"]
+            if not avail or avail <= 0 or days_in <= 0: return None
+            return (row['credit_hrs'] / days_in * total) / avail
+
+        emp_sum["proj_full_month"] = emp_sum.apply(_proj_util, axis=1)
+        _is_partial_emp = emp_sum["proj_full_month"].notna().any()
+
+        _consult_sort_opts = {
+            "Util % capacity (low → high)":  ("util_vs_capacity", True),
+            "Util % capacity (high → low)":  ("util_vs_capacity", False),
+            "Util % logged (low → high)":    ("util_vs_logged", True),
+            "Util % logged (high → low)":    ("util_vs_logged", False),
+            "Hours logged (high → low)":     ("hours_this_period", False),
+            "FF overrun (high → low)":       ("ff_overrun_hrs", False),
+            "Consultant (A → Z)":            ("employee", True),
+        }
+        cs_col, _ = st.columns([1.6, 4])
+        with cs_col:
+            consult_sort = st.selectbox("Sort by", list(_consult_sort_opts.keys()),
+                                        index=1, key="util_consult_sort")
+        _csk, _csa = _consult_sort_opts[consult_sort]
+        emp_sum_sorted = emp_sum.sort_values(_csk, ascending=_csa, na_position="last").reset_index(drop=True)
+
+        rows_html = []
+        for _, r in emp_sum_sorted.iterrows():
+            emp = r["employee"]; ex = bool(r["exempt"])
+            avail_str = f"{r['avail_hrs']:,.1f}" if r["avail_hrs"] else "—"
+            pj = r["proj_full_month"]
+            pj_str = f"{pj*100:.1f}%" if pj is not None else "—"
+            rows_html.append(
+                f"<tr>"
+                f"<td><span class='util-emp-name'>{avatar_html(emp)}{short_name(emp)}</span></td>"
+                f"<td class='muted'>{r['location'] or '—'}</td>"
+                f"<td class='muted'>{r['period']}</td>"
+                f"<td class='num'>{avail_str}</td>"
+                f"<td class='num'>{r['hours_this_period']:,.2f}</td>"
+                f"<td class='num'>{r['credit_hrs']:,.2f}</td>"
+                f"<td class='num'>{r['ff_overrun_hrs']:,.2f}</td>"
+                f"<td class='center'>{rag_pill_html(r['util_vs_logged'], ex)}</td>"
+                f"<td class='center'>{rag_pill_html(r['util_vs_capacity'], ex)}</td>"
+                + (f"<td class='num muted'>{pj_str}</td>" if _is_partial_emp else "")
+                + "</tr>"
+            )
+
+        proj_th = "<th class='num'>Proj full mo</th>" if _is_partial_emp else ""
         st.markdown(
             f"<div class='util-table-header'>"
             f"<span style='font-weight:600'>By consultant{' · projected to full month' if _is_partial_emp else ''}</span>"

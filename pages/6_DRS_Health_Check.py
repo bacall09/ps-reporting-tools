@@ -636,6 +636,7 @@ df_sorted = df_findings.sort_values(
 ).reset_index(drop=True)
 
 # ── Category legend box ──────────────────────────────────────────────────────
+st.markdown('<hr style="border:none;border-top:1px solid rgba(128,128,128,0.2);margin:20px 0">', unsafe_allow_html=True)
 st.markdown(
     "<div style='background:var(--color-background-secondary,rgba(59,158,255,0.05));"
     "border-left:4px solid #4472C4;border-radius:6px;"
