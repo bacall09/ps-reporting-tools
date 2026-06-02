@@ -926,22 +926,20 @@ st.markdown("""
 <hr class='divider' style='margin:12px 0 16px'>
 """, unsafe_allow_html=True)
 
-_badge_html = (
-    f'<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:8px;'
-    f'background:{_source_badge_color}22;color:{_source_badge_color};'
-    f'border:1px solid {_source_badge_color}44;margin-left:8px;vertical-align:middle;'
-    f'letter-spacing:.4px">{_source_label}</span>'
+st.markdown(
+    f"<div style='margin-bottom:4px'>"
+    f"<span style='font-size:22px;font-weight:700'>{selected_customer}</span>"
+    f"{opp_link_html}"
+    f"<span style='font-size:9px;font-weight:700;padding:1px 7px;border-radius:8px;"
+    f"background:{_source_badge_color}22;color:{_source_badge_color};"
+    f"border:1px solid {_source_badge_color}44;margin-left:8px;vertical-align:middle;"
+    f"letter-spacing:.4px'>{_source_label}</span>"
+    f"</div>"
+    f"{_opp_chips_html}"
+    f"<div style='margin-bottom:8px;font-size:13px;color:rgba(128,128,128,.7)'>{_meta_str}</div>"
+    f"<div style='margin-bottom:20px'>{product_pills}</div>",
+    unsafe_allow_html=True
 )
-st.markdown(f"""
-<div style='margin-bottom:4px'>
-    <span style='font-size:22px;font-weight:700'>{selected_customer}</span>
-    {opp_link_html}
-    {_badge_html}
-</div>
-{_opp_chips_html}
-<div style='margin-bottom:8px;font-size:13px;color:rgba(128,128,128,.7)'>{_meta_str}</div>
-<div style='margin-bottom:20px'>{product_pills}</div>
-""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
