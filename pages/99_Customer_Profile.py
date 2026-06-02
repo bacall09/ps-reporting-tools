@@ -789,7 +789,7 @@ for opp in _selected_opps:
     with st.spinner(f"Loading handover for {opp.get('opp_name', oid)}…"):
         html_content, err = _fetch_handover(oid)
 
-    if err and ("403" in err or "Host not in allowlist" in html_content if html_content else False):
+    if err and ("403" in err or "Host not in allowlist" in err or (html_content and "Host not in allowlist" in html_content)):
         # Blocked — flag for upload fallback, don't show as error
         st.session_state["cp_upload_fallback"][oid] = True
         _blocked_opps.append(opp)
@@ -936,7 +936,7 @@ st.markdown(f"""
 <div style='margin-bottom:4px'>
     <span style='font-size:22px;font-weight:700'>{selected_customer}</span>
     {opp_link_html}
-    {{_badge_html}}
+    {_badge_html}
 </div>
 {_opp_chips_html}
 <div style='margin-bottom:8px;font-size:13px;color:rgba(128,128,128,.7)'>{_meta_str}</div>
