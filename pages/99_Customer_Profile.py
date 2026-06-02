@@ -761,45 +761,125 @@ _selected_opps = [_sfdc_opps[_opp_labels.index(lbl)] for lbl in _selected_labels
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 5 — FETCH + PARSE (with caching)
+# SECTION 5 — FETCH + PARSE (with 403-aware upload fallback)
 # ══════════════════════════════════════════════════════════════════════════════
 
-_fetch_errors = []
-_fetched_docs = []
+# Track which opps need a manual upload because server-side fetch was blocked
+if "cp_upload_fallback" not in st.session_state:
+    st.session_state["cp_upload_fallback"] = {}  # {opp_id: True}
+
+_fetch_errors   = []
+_fetched_docs   = []
+_blocked_opps   = []  # opps that got 403 and need upload
 
 for opp in _selected_opps:
     oid = opp['opp_id']
-    if oid not in _customer_cache:
-        with st.spinner(f"Loading handover for {opp.get('opp_name', oid)}…"):
-            html_content, err = _fetch_handover(oid)
-            if err:
-                _fetch_errors.append(f"**{opp.get('opp_name', oid)}**: {err}")
-            else:
-                parsed = parse_handover_html(html_content, selected_customer)
-                _customer_cache[oid] = parsed
-                st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
 
+    # Already cached — use it
     if oid in _customer_cache:
         _fetched_docs.append(_customer_cache[oid])
+        continue
+
+    # Already known-blocked — skip fetch, go straight to upload
+    if st.session_state["cp_upload_fallback"].get(oid):
+        _blocked_opps.append(opp)
+        continue
+
+    # Attempt live fetch
+    with st.spinner(f"Loading handover for {opp.get('opp_name', oid)}…"):
+        html_content, err = _fetch_handover(oid)
+
+    if err and ("403" in err or "Host not in allowlist" in html_content if html_content else False):
+        # Blocked — flag for upload fallback, don't show as error
+        st.session_state["cp_upload_fallback"][oid] = True
+        _blocked_opps.append(opp)
+    elif err:
+        _fetch_errors.append(f"**{opp.get('opp_name', oid)}**: {err}")
+    else:
+        parsed = parse_handover_html(html_content, selected_customer)
+        _customer_cache[oid] = parsed
+        st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
+        _fetched_docs.append(parsed)
+
+# ── Show upload fallback for any blocked opps ─────────────────────────────────
+if _blocked_opps:
+    _is_first_block = len(_fetched_docs) == 0 and not _fetch_errors
+
+    st.info(
+        "**RevOps site not yet reachable from Streamlit Cloud** — "
+        "direct fetch is blocked until the IP is whitelisted. "
+        "In the meantime, download the HTML from RevOps and upload it below. "
+        "This step goes away once whitelisting is done.",
+        icon="ℹ️"
+    )
+
+    for opp in _blocked_opps:
+        oid = opp['opp_id']
+        opp_label = opp.get('opp_name', oid) or oid
+
+        # Build a RevOps direct link the user can click to open the report
+        revops_url = f"{HANDOVER_BASE_URL}/?opp_id={oid}"
+
+        st.markdown(
+            f'<div style="font-size:13px;margin-bottom:6px">'
+            f'<strong>{opp_label}</strong> &nbsp;·&nbsp; '
+            f'<a href="{revops_url}" target="_blank" '
+            f'style="color:#3B9EFF;font-size:12px">Open in RevOps ↗</a>'
+            f' &nbsp;<span style="font-size:11px;opacity:.5">'
+            f'(File → Save Page As → Webpage, HTML Only)</span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+        uploaded = st.file_uploader(
+            f"Upload HTML for {opp_label}",
+            type=["html", "htm"],
+            key=f"cp_upload_{oid}",
+            label_visibility="collapsed",
+        )
+
+        if uploaded:
+            try:
+                html_content = uploaded.read().decode("utf-8", errors="replace")
+                parsed = parse_handover_html(html_content, selected_customer)
+                # Tag as upload source so refresh knows not to auto-fetch
+                parsed['source'] = 'upload'
+                _customer_cache[oid] = parsed
+                st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
+                _fetched_docs.append(parsed)
+                st.success(f"✓ Loaded from upload: {uploaded.name}")
+            except Exception as e:
+                st.error(f"Could not read uploaded file: {e}")
 
 if _fetch_errors:
     for err in _fetch_errors:
         st.error(err)
 
 if not _fetched_docs:
-    st.markdown('<div class="no-data-msg">Could not load handover data. Check errors above.</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="no-data-msg">No handover data loaded yet.<br>'
+        '<span style="font-size:12px;opacity:.6">Upload the HTML file above to continue.</span></div>',
+        unsafe_allow_html=True
+    )
     st.stop()
 
 # Merge if multiple
 d = _merge_docs(_fetched_docs)
 
-# ── Refresh button ────────────────────────────────────────────────────────────
+# ── Source badge text: live fetch vs upload ───────────────────────────────────
+_all_sources = [doc.get('source','') for doc in _fetched_docs]
+_source_label = "upload" if all(s == 'upload' for s in _all_sources) else (
+                "RevOps live" if all(s == 'revops_fetch' for s in _all_sources) else
+                "RevOps · partial upload")
+_source_badge_color = "#27AE60" if _source_label == "RevOps live" else "#D68910"
+
+# ── Refresh / clear uploads button ───────────────────────────────────────────
 _rcol, _spacer = st.columns([1, 5])
 with _rcol:
-    if st.button("↺ Refresh", help="Re-fetch from RevOps site", type="secondary"):
+    if st.button("↺ Refresh", help="Clear cache and re-fetch (or re-upload)", type="secondary"):
         for opp in _selected_opps:
             _customer_cache.pop(opp['opp_id'], None)
+            st.session_state["cp_upload_fallback"].pop(opp['opp_id'], None)
         st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
         st.rerun()
 
@@ -846,11 +926,17 @@ st.markdown("""
 <hr class='divider' style='margin:12px 0 16px'>
 """, unsafe_allow_html=True)
 
+_badge_html = (
+    f'<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:8px;'
+    f'background:{_source_badge_color}22;color:{_source_badge_color};'
+    f'border:1px solid {_source_badge_color}44;margin-left:8px;vertical-align:middle;'
+    f'letter-spacing:.4px">{_source_label}</span>'
+)
 st.markdown(f"""
 <div style='margin-bottom:4px'>
     <span style='font-size:22px;font-weight:700'>{selected_customer}</span>
     {opp_link_html}
-    <span class="opp-source-badge">RevOps live</span>
+    {{_badge_html}}
 </div>
 {_opp_chips_html}
 <div style='margin-bottom:8px;font-size:13px;color:rgba(128,128,128,.7)'>{_meta_str}</div>
