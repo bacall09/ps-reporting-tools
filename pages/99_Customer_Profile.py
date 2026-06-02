@@ -802,7 +802,14 @@ for opp in _selected_opps:
     with st.spinner(f"Loading handover for {opp.get('opp_name', oid)}…"):
         html_content, err = _fetch_handover(oid)
 
-    if err and ("403" in err or "Host not in allowlist" in err or (html_content and "Host not in allowlist" in html_content)):
+    # Debug info — remove once fetch behaviour is confirmed
+    _is_blocked = (
+        bool(err) and ("403" in err or "Host not in allowlist" in err)
+    ) or (
+        bool(html_content) and ("Host not in allowlist" in html_content or len(html_content) < 100)
+    )
+
+    if _is_blocked:
         # Blocked — flag for upload fallback, don't show as error
         st.session_state["cp_upload_fallback"][oid] = True
         _blocked_opps.append(opp)
@@ -810,9 +817,18 @@ for opp in _selected_opps:
         _fetch_errors.append(f"**{opp.get('opp_name', oid)}**: {err}")
     else:
         parsed = parse_handover_html(html_content, selected_customer)
-        _customer_cache[oid] = parsed
-        st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
-        _fetched_docs.append(parsed)
+        _has_content = bool(
+            parsed.get('summary') or parsed.get('pain_points') or
+            parsed.get('requirements', {}).get('must') or parsed.get('risks')
+        )
+        if not _has_content:
+            # Fetched successfully but got an empty/default page — treat as blocked
+            st.session_state["cp_upload_fallback"][oid] = True
+            _blocked_opps.append(opp)
+        else:
+            _customer_cache[oid] = parsed
+            st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
+            _fetched_docs.append(parsed)
 
 # ── Show upload fallback for any blocked opps ─────────────────────────────────
 if _blocked_opps:
