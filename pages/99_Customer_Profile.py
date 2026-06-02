@@ -761,16 +761,17 @@ _selected_opps = [_sfdc_opps[_opp_labels.index(lbl)] for lbl in _selected_labels
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 5 — FETCH + PARSE (with 403-aware upload fallback)
+# SECTION 5 — FETCH + PARSE (with upload fallback)
 # ══════════════════════════════════════════════════════════════════════════════
+# Attempts a live server-side fetch from the RevOps PS HandOver site.
+# Currently blocked (RevOps Cloud Run IP allowlist not yet configured) so
+# falls back to HTML upload. Once RevOps whitelists Streamlit Cloud egress
+# IPs, the fetch will work end-to-end with no user action needed.
+# See PSPT backlog item 11.
 
-# Track which opps need a manual upload because server-side fetch was blocked
-if "cp_upload_fallback" not in st.session_state:
-    st.session_state["cp_upload_fallback"] = {}  # {opp_id: True}
-
-_fetch_errors   = []
-_fetched_docs   = []
-_blocked_opps   = []  # opps that got 403 and need upload
+_fetch_errors = []
+_fetched_docs = []
+_blocked_opps = []
 
 for opp in _selected_opps:
     oid = opp['opp_id']
@@ -789,28 +790,21 @@ for opp in _selected_opps:
             _fetched_docs.append(_cached)
             continue
         else:
-            # Stale/empty cache entry — clear it and re-fetch
             del _customer_cache[oid]
-            st.session_state["cp_upload_fallback"].pop(oid, None)
-
-    # Already known-blocked — skip fetch, go straight to upload
-    if st.session_state["cp_upload_fallback"].get(oid):
-        _blocked_opps.append(opp)
-        continue
+            st.session_state.get("cp_upload_fallback", {}).pop(oid, None)
 
     # Attempt live fetch
     with st.spinner(f"Loading handover for {opp.get('opp_name', oid)}…"):
         html_content, err = _fetch_handover(oid)
 
-    # Debug info — remove once fetch behaviour is confirmed
     _is_blocked = (
-        bool(err) and ("403" in err or "Host not in allowlist" in err)
-    ) or (
-        bool(html_content) and ("Host not in allowlist" in html_content or len(html_content) < 100)
+        (bool(err) and ("403" in err or "Host not in allowlist" in err)) or
+        (bool(html_content) and ("Host not in allowlist" in html_content or len(html_content) < 200))
     )
 
     if _is_blocked:
-        # Blocked — flag for upload fallback, don't show as error
+        if "cp_upload_fallback" not in st.session_state:
+            st.session_state["cp_upload_fallback"] = {}
         st.session_state["cp_upload_fallback"][oid] = True
         _blocked_opps.append(opp)
     elif err:
@@ -822,7 +816,8 @@ for opp in _selected_opps:
             parsed.get('requirements', {}).get('must') or parsed.get('risks')
         )
         if not _has_content:
-            # Fetched successfully but got an empty/default page — treat as blocked
+            if "cp_upload_fallback" not in st.session_state:
+                st.session_state["cp_upload_fallback"] = {}
             st.session_state["cp_upload_fallback"][oid] = True
             _blocked_opps.append(opp)
         else:
@@ -830,55 +825,43 @@ for opp in _selected_opps:
             st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
             _fetched_docs.append(parsed)
 
-# ── Show upload fallback for any blocked opps ─────────────────────────────────
+# ── Upload fallback for blocked opps ──────────────────────────────────────────
 if _blocked_opps:
-    _is_first_block = len(_fetched_docs) == 0 and not _fetch_errors
-
     st.info(
-        "**RevOps site not yet reachable from Streamlit Cloud** — "
-        "direct fetch is blocked until the IP is whitelisted. "
-        "In the meantime, download the HTML from RevOps and upload it below. "
-        "This step goes away once whitelisting is done.",
-        icon="ℹ️"
+        "RevOps site not yet reachable from Streamlit Cloud — "
+        "in the meantime, download the HTML from RevOps and upload it below."
     )
-
     for opp in _blocked_opps:
         oid = opp['opp_id']
         opp_label = opp.get('opp_name', oid) or oid
-
-        # Build a RevOps direct link the user can click to open the report
         revops_url = f"{HANDOVER_BASE_URL}/?opp_id={oid}"
-
         st.markdown(
             f'<div style="font-size:13px;margin-bottom:6px">'
             f'<strong>{opp_label}</strong> &nbsp;·&nbsp; '
             f'<a href="{revops_url}" target="_blank" '
             f'style="color:#3B9EFF;font-size:12px">Open in RevOps ↗</a>'
-            f' &nbsp;<span style="font-size:11px;opacity:.5">'
-            f'(File → Save Page As → Webpage, HTML Only)</span>'
+            f'&nbsp; <span style="font-size:11px;opacity:.45">'
+            f'Select the opp → Download HTML → upload below</span>'
             f'</div>',
             unsafe_allow_html=True
         )
-
         uploaded = st.file_uploader(
             f"Upload HTML for {opp_label}",
             type=["html", "htm"],
             key=f"cp_upload_{oid}",
             label_visibility="collapsed",
         )
-
         if uploaded:
             try:
-                html_content = uploaded.read().decode("utf-8", errors="replace")
-                parsed = parse_handover_html(html_content, selected_customer)
-                # Tag as upload source so refresh knows not to auto-fetch
+                html_bytes = uploaded.read().decode("utf-8", errors="replace")
+                parsed = parse_handover_html(html_bytes, selected_customer)
                 parsed['source'] = 'upload'
                 _customer_cache[oid] = parsed
                 st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
                 _fetched_docs.append(parsed)
-                st.success(f"✓ Loaded from upload: {uploaded.name}")
+                st.success(f"✓ Loaded: {uploaded.name}")
             except Exception as e:
-                st.error(f"Could not read uploaded file: {e}")
+                st.error(f"Could not read file: {e}")
 
 if _fetch_errors:
     for err in _fetch_errors:
@@ -886,29 +869,31 @@ if _fetch_errors:
 
 if not _fetched_docs:
     st.markdown(
-        '<div class="no-data-msg">No handover data loaded yet.<br>'
-        '<span style="font-size:12px;opacity:.6">Upload the HTML file above to continue.</span></div>',
+        '<div class="no-data-msg" style="margin-top:8px">'
+        'Upload a handover HTML above to populate intelligence.<br>'
+        '<span style="font-size:12px;opacity:.6">'
+        'Open RevOps → find the opportunity → Download HTML → upload here.</span></div>',
         unsafe_allow_html=True
     )
     st.stop()
 
-# Merge if multiple
 d = _merge_docs(_fetched_docs)
 
-# ── Source badge text: live fetch vs upload ───────────────────────────────────
-_all_sources = [doc.get('source','') for doc in _fetched_docs]
+# ── Source badge ──────────────────────────────────────────────────────────────
+_all_sources = [doc.get('source', '') for doc in _fetched_docs]
 _source_label = "upload" if all(s == 'upload' for s in _all_sources) else (
                 "RevOps live" if all(s == 'revops_fetch' for s in _all_sources) else
                 "RevOps · partial upload")
 _source_badge_color = "#27AE60" if _source_label == "RevOps live" else "#D68910"
 
-# ── Refresh / clear uploads button ───────────────────────────────────────────
+# ── Refresh / clear button ────────────────────────────────────────────────────
 _rcol, _spacer = st.columns([1, 5])
 with _rcol:
     if st.button("↺ Refresh", help="Clear cache and re-fetch (or re-upload)", type="secondary"):
         for opp in _selected_opps:
             _customer_cache.pop(opp['opp_id'], None)
-            st.session_state["cp_upload_fallback"].pop(opp['opp_id'], None)
+            if "cp_upload_fallback" in st.session_state:
+                st.session_state["cp_upload_fallback"].pop(opp['opp_id'], None)
         st.session_state["cp_handover_cache"][_cache_key] = _customer_cache
         st.rerun()
 
