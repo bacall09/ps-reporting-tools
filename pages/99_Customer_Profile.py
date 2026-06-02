@@ -775,10 +775,23 @@ _blocked_opps   = []  # opps that got 403 and need upload
 for opp in _selected_opps:
     oid = opp['opp_id']
 
-    # Already cached — use it
+    # Already cached — validate it has real content before using
     if oid in _customer_cache:
-        _fetched_docs.append(_customer_cache[oid])
-        continue
+        _cached = _customer_cache[oid]
+        _has_content = bool(
+            _cached.get('summary') or
+            _cached.get('pain_points') or
+            _cached.get('requirements', {}).get('must') or
+            _cached.get('risks') or
+            _cached.get('stakeholders')
+        )
+        if _has_content:
+            _fetched_docs.append(_cached)
+            continue
+        else:
+            # Stale/empty cache entry — clear it and re-fetch
+            del _customer_cache[oid]
+            st.session_state["cp_upload_fallback"].pop(oid, None)
 
     # Already known-blocked — skip fetch, go straight to upload
     if st.session_state["cp_upload_fallback"].get(oid):
@@ -1044,6 +1057,7 @@ def _project_status(phase_str):
 def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=None, ns_last_entry=None):
     import pandas as _pd
     phase     = str(row.get("phase","") or "").strip()
+    if phase.lower() == "nan": phase = ""
     proj_name = str(row.get(proj_col,"") or "").strip()
     cons      = str(row.get("project_manager","—") or "—").strip()
     proj_type = str(row.get("project_type","—") or "—").strip()
@@ -1089,12 +1103,14 @@ def _build_project_card(row, proj_col, lbl_s, val_s, ns_htd=None, ns_tm_pids=Non
 
     _start_val = row.get("start_date", None)
     start_str = "—"
-    if _start_val is not None:
+    if _start_val is not None and str(_start_val) not in ("NaT", "nan", "None", ""):
         try:
             import pandas as _pd2
-            start_str = _pd2.to_datetime(_start_val).strftime("%b %d, %Y")
+            _sd = _pd2.to_datetime(_start_val)
+            if not _pd2.isnull(_sd):
+                start_str = _sd.strftime("%b %d, %Y")
         except Exception:
-            start_str = str(_start_val)[:10]
+            pass
 
     _pid_key   = str(row.get("project_id","") or "").strip().lower()
     _bill_raw  = str(row.get("billing_type","") or "").lower()
