@@ -17,6 +17,7 @@ from shared.config import (
     EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP,
     AVAIL_HOURS, DEFAULT_SCOPE,
 )
+from shared.constants import CONTRACTOR_EMPLOYEES
 
 
 def match_ff_task(task_val):
@@ -1234,7 +1235,6 @@ def get_avail_hours(region, period, employee=None):
     (raw Mon-Fri hours, no public holiday deductions) regardless of their
     location-based region.
     """
-    from shared.constants import CONTRACTOR_EMPLOYEES
     if employee and employee in CONTRACTOR_EMPLOYEES:
         region_clean = "Contractor"
     else:
