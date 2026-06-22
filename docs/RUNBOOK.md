@@ -440,6 +440,12 @@ The page has six tabs: At a glance, Consultants, Projects at risk, Trend, Task a
 
 **Engine** (`_run_utilization_engine`): pure function decorated with `@st.cache_data(ttl=300)`. Takes `df_raw, period_start, period_end, df_drs` and returns `{df, consumed, empty}`. The output `df` has credit_tag assigned per row; `consumed` is a `{project_id: hours_consumed}` dict.
 
+**Available hours helpers** (both defined locally in the page, not imported from `utils.py`):
+- `get_avail_hours(region, period, employee=None)` — looks up `AVAIL_HOURS[region][period]`. If `employee` is in `CONTRACTOR_EMPLOYEES`, routes to the `"Contractor"` region regardless of the `region` arg.
+- `_prorated_avail(region, period, employee=None)` — calls `get_avail_hours` then applies a working-day proration if `employee` has an exit date in `LEAVER_EXIT_DATES` that falls within `period`. Example: Arestarkhov exited June 9 → June avail = 176 × 7/22 bdays = 56hrs.
+
+These helpers exist in both `3_Utilization_Report.py` (for the Streamlit display path) and `shared/utils.py` (for the Excel build path). Keep them in sync if the logic changes.
+
 **Tab-level result objects**:
 - Main `result` — engine called with the user's selected period
 - `_trend_result` — engine called with a wider window for the Trend + Task tabs (lazy-loaded; only computed after user opens one of those tabs)
@@ -471,6 +477,11 @@ All four call the same `@st.cache_data`-decorated engine, so caching is automati
 | `NameError: _re_constants` | `re as _re_constants` alias not in target module | Add `import re as _re_constants` to `shared/utils.py` |
 | Period change is slow | Engine + Excel build running unconditionally | Verify `@st.cache_data` is on engine, exports are gated behind buttons |
 | "Showing N projects · X hrs" doesn't match KPIs | Status line and KPIs computed from different filtered frames | Check that both use the same `df` from `result`, after view-as filter |
+| Employee avail hours warning at page top | `EMPLOYEE_LOCATION` key doesn't match the NS name for that employee | Add both the roster key **and** the exact NS name variant to `EMPLOYEE_LOCATION` in `config.py`. If the NS name differs from the roster key, add both pointing to the same location. Also add an `NS_name_variant` entry to `PS_REGION_OVERRIDE` if region override applies. |
+| PSPT avail hours don't match NS for a contractor | Contractor was using their country's public holiday calendar | Add the employee's roster key to `CONTRACTOR_EMPLOYEES` in `constants.py` |
+| PSPT avail hours higher than NS for a mid-month leaver | `LEAVER_EXIT_DATES` has the exit date but proration isn't applied | Confirm the entry is in `LEAVER_EXIT_DATES` with a `"YYYY-MM-DD"` string (not `None`). The `_prorated_avail()` helper in `3_Utilization_Report.py` reads it at render time. |
+| PSPT shows fewer monthly rows than NS for a consultant | Consultant had no time entries in that month — `emp_sum` is driven by NS rows | Known limitation: capacity rows are only generated for months with at least one time entry. See TODO section. |
+| `ImportError: cannot import name 'CONTRACTOR_EMPLOYEES'` | `constants.py` was deployed without the other files, or vice versa | Always deploy `constants.py`, `utils.py`, and `3_Utilization_Report.py` together when roster/avail changes are made |
 
 #### Cache invalidation
 
@@ -628,9 +639,9 @@ Key exports:
 - `TAG_COLORS`, `TAG_BADGE` — credit tag visual mapping
 - `PTO_KEYWORDS` — strings that mark a row as PTO/sick/vacation
 - `UTIL_EXEMPT_EMPLOYEES` — list of names excluded from utilization calculation
-- `EMPLOYEE_LOCATION` — name → country/region mapping
-- `PS_REGION_MAP`, `PS_REGION_OVERRIDE` — country → PS region grouping
-- `AVAIL_HOURS` — region+month → available capacity hours
+- `EMPLOYEE_LOCATION` — name → country/region mapping. Keys must match the name as it appears in NS time data, not necessarily the legal name. Where NS uses a different name variant (e.g. `"Cadeliña, Mark Enric"` vs roster key `"Cadelina, Macoy"`), add a second entry for the NS form — both pointing to the same location string.
+- `PS_REGION_MAP`, `PS_REGION_OVERRIDE` — country → PS region grouping. Use `PS_REGION_OVERRIDE` for employees whose PS region doesn't follow from their country (e.g. Manila-based PMs reporting into NOAM).
+- `AVAIL_HOURS` — region+month → available capacity hours. Keys are location strings matching `EMPLOYEE_LOCATION` values. Includes a `"Contractor"` key with raw Mon–Fri hours (no public holiday deductions) — see `CONTRACTOR_EMPLOYEES` in `constants.py`.
 - `DEFAULT_SCOPE` — project_type → scoped hours dict (e.g. `"ZoneApp: Capture": 20.0`)
 
 ### `shared/constants.py`
@@ -640,7 +651,10 @@ Roles, employee roster, view-as resolver. Source of truth for who's allowed to s
 Key exports:
 - `MANAGERS_ONLY`, `MANAGER_CONSULTANTS`, `REPORTING_ONLY`, `NO_ACCESS` — role lists
 - `EMPLOYEE_ROLES` — full roster dict (name → role/products/learning)
-- `ACTIVE_EMPLOYEES`, `CONSULTANT_DROPDOWN` — filtered subsets
+- `ACTIVE_EMPLOYEES`, `CONSULTANT_DROPDOWN` — filtered subsets (auto-derived; excludes `NO_ACCESS` and `_LEAVERS`)
+- `_LEAVERS` — set of names excluded from active lists but kept in `EMPLOYEE_ROLES` for historical NS data joins
+- `LEAVER_EXIT_DATES` — dict of `"Name": "YYYY-MM-DD"` for employees with a known exit date. Used by `_prorated_avail()` in `3_Utilization_Report.py` to scale the capacity denominator for mid-month leavers. Set value to `None` for leavers with unknown exit dates.
+- `CONTRACTOR_EMPLOYEES` — set of names whose available hours should use the `"Contractor"` region (raw Mon–Fri, no public holiday deductions) regardless of their location. Currently: Dolha, Jordanova, Zoric. Add new contractors here — no other files need changing.
 - `get_role(name) → str` — primary role resolver
 - `is_manager(name) → bool`, `is_consultant(name) → bool` — convenience checks
 - `resolve_view_as(...)` — used by all manager-aware pages
@@ -648,7 +662,9 @@ Key exports:
 - `name_matches(a, b)` — fuzzy name match (handles "Last, First" vs "First Last")
 - Column-mapping dicts: `MILESTONE_COLS_MAP`, `SS_COL_MAP`, `NS_COL_MAP`, `SFDC_COL_MAP`
 
-⚠️ **Drift warning**: `EMPLOYEE_ROLES` is defined in *both* `shared/constants.py` AND `pages/3_Utilization_Report.py`. The page version was edited locally and differs from the shared version (~157 char delta as of last consolidation). Don't try to deduplicate without reviewing the differences first.
+**Adding a new employee**: Add to `EMPLOYEE_ROLES` with role, products, learning, util_exempt, util_target. Add to `EMPLOYEE_LOCATION` in `config.py` (use the name as it will appear in NS exports). If their location-based region is wrong, add a `PS_REGION_OVERRIDE` entry in `config.py`. If they're a contractor, add to `CONTRACTOR_EMPLOYEES`.
+
+**Adding a leaver**: Add to `NO_ACCESS` (blocks login), `_LEAVERS` (excludes from dropdowns), and `LEAVER_EXIT_DATES` with the exit date. Keep in `EMPLOYEE_ROLES` — removing it breaks historical NS data joins.
 
 ### `shared/utils.py`
 
@@ -659,7 +675,7 @@ Key exports:
 - `build_excel(df, scope_map, consumed) → BytesIO` — full multi-sheet Excel report
 - `auto_detect_columns(df)` — fuzzy column-name resolver for varying NS exports
 - `match_ff_task(task)` — task category resolver
-- `get_avail_hours(region, period)` — capacity lookup
+- `get_avail_hours(region, period, employee=None)` — capacity lookup. Pass `employee` to enable contractor routing: if the name is in `CONTRACTOR_EMPLOYEES`, the `"Contractor"` region is used regardless of the `region` arg. All internal call sites pass `employee`; external callers should do the same.
 - `calc_consultant_util(...)` — consumed externally by Portfolio Analytics
 - Excel styling helpers: `thin_border`, `hdr_fill`, `row_fill`, `group_bg`, `style_header`, `style_cell`, `write_title`
 
@@ -789,6 +805,18 @@ To restart cleanly:
 3. Confirm Trend + Task tabs are lazy-loaded (require explicit click)
 4. If still slow: the engine itself is the bottleneck. See the `assign_credits` vectorization TODO
 
+### When PSPT avail hours don't match NS
+
+Three distinct causes with different fixes:
+
+**Consultant has fewer months than NS** — PSPT only generates capacity rows for months where the consultant logged at least one time entry. A consultant with zero hours in a given month gets no row for that month, making their period total look low. This is a known limitation, not a bug — the denominator is correct for the months shown. See TODO.
+
+**Avail hours are wrong for a specific month** — likely a wrong or missing location in `EMPLOYEE_LOCATION`, or the NS name variant differs from the roster key. Check: (1) the employee appears in the avail hours warning banner at page top, (2) their key in `EMPLOYEE_LOCATION` matches exactly what NS exports for their name. Fix: add the NS name variant as a second key in both `EMPLOYEE_LOCATION` and (if needed) `PS_REGION_OVERRIDE` in `config.py`.
+
+**Contractor shows lower avail than NS** — their country calendar deducts public holidays but NS uses raw working days. Fix: add the employee to `CONTRACTOR_EMPLOYEES` in `constants.py`. Currently: Dolha, Jordanova, Zoric.
+
+**Mid-month leaver shows higher avail than NS** — PSPT is using full-month capacity instead of prorating. Fix: confirm the employee is in `LEAVER_EXIT_DATES` with a `"YYYY-MM-DD"` string (not `None`). The `_prorated_avail()` helper picks it up at render time — no code change needed if the date is populated.
+
 ---
 
 ## TODO / known unknowns
@@ -815,9 +843,11 @@ We mention the columns the codebase expects on `df_ns` and `df_drs` but haven't 
 
 There are no automated tests. Smoke testing happens manually via the staging deploy. As the codebase grows, this becomes a liability. Consider adding pytest with synthetic frames for `assign_credits`, `calc_consultant_util`, and the loaders at minimum.
 
-### Drift between shared and per-page constants
+### Capacity rows missing for zero-entry months
 
-`EMPLOYEE_ROLES` is defined in both `shared/constants.py` and `pages/3_Utilization_Report.py` (and possibly other pages — should audit). When safe, consolidate to the shared version. Currently kept divergent because the page version is what's running.
+`emp_sum` in both the Utilization Report page and `build_excel` is built by `groupby(["employee", "period"])` on NS time entries. Consultants with no hours logged in a given month get no capacity row for that month, so their period total understates available hours when comparing against NS (which always shows full-quarter capacity). 
+
+Fix approach: after building `emp_sum`, expand it to include one row per active employee per period in the selected range, filling missing rows with zero hours and the correct avail hours. Requires knowing which employees were active in each period — cross-reference `LEAVER_EXIT_DATES` and `ACTIVE_EMPLOYEES`. Medium complexity, ~half-day work.
 
 ### Numbering collision
 
@@ -825,4 +855,4 @@ Two pages named `9_*`: Help (`9_Help.py`) and Revenue Report (`9_Revenue_Report.
 
 ---
 
-*Last updated: by author of consolidation pass. When you make a substantive change, update the affected section.*
+*Last updated: June 2026 — roster updates (new hires, leavers), contractor avail hours routing, mid-month leaver proration, avail hours reconciliation playbook. When you make a substantive change, update the affected section.*
