@@ -454,7 +454,7 @@ def build_excel(df, scope_map, consumed):
         emp    = row["employee"]
         period = row["period"]
         region = emp_region.get(emp, "")
-        avail  = get_avail_hours(region, period) if region else None
+        avail  = get_avail_hours(region, period, employee=emp) if region else None
         util   = row["credit_hrs"] / row["hours_this_period"] if row["hours_this_period"] > 0 else 0
         bg, _grp_idx = group_bg(emp, _prev_emp, _grp_idx)
         _prev_emp = emp
@@ -884,7 +884,7 @@ def build_excel(df, scope_map, consumed):
         for _p in _grp["period"].unique():
             if (_emp, _p) not in _seen_ep:
                 _seen_ep.add((_emp, _p))
-                ps_avail[_ps] = ps_avail.get(_ps, 0) + (get_avail_hours(_loc, _p) or 0)
+                ps_avail[_ps] = ps_avail.get(_ps, 0) + (get_avail_hours(_loc, _p, employee=_emp) or 0)
 
     ps_admin = {}
     if "billing_type" in df.columns:
@@ -1134,7 +1134,7 @@ def build_excel(df, scope_map, consumed):
         for _p2 in _grp2["period"].unique():
             if (_emp2, _p2) not in _seen_emp_period:
                 _seen_emp_period.add((_emp2, _p2))
-                ps_avail_d[_ps2] = ps_avail_d.get(_ps2,0) + (get_avail_hours(_loc2,_p2) or 0)
+                ps_avail_d[_ps2] = ps_avail_d.get(_ps2,0) + (get_avail_hours(_loc2,_p2,employee=_emp2) or 0)
 
     for ri, reg in enumerate(["APAC","EMEA","NOAM","Other"], 12):
         if reg not in ps_sum_d.index: continue
@@ -1188,7 +1188,7 @@ def build_excel(df, scope_map, consumed):
         _emp3  = _erow["employee"]
         if any(_emp3.lower().startswith(ex.lower()) for ex in UTIL_EXEMPT_EMPLOYEES): continue
         _loc3  = emp_region.get(_emp3,""); _ps3 = PS_REGION_MAP.get(_loc3,"Other")
-        _p3    = _erow["period"]; _avl3 = get_avail_hours(_loc3, _p3) or 0
+        _p3    = _erow["period"]; _avl3 = get_avail_hours(_loc3, _p3, employee=_emp3) or 0
         _util3 = _erow["credit_hrs"] / _avl3 if _avl3 > 0 else 0
         if _util3 < 0.60 and _avl3 > 0:
             _low_rows.append((_emp3, _loc3, _ps3, _p3, _util3, _erow["credit_hrs"]))
@@ -1228,9 +1228,17 @@ import io
 
 
 
-def get_avail_hours(region, period):
-    """Look up available hours for a region/period."""
-    region_clean = str(region).strip()
+def get_avail_hours(region, period, employee=None):
+    """Look up available hours for a region/period.
+    If employee is in CONTRACTOR_EMPLOYEES, use the 'Contractor' region
+    (raw Mon-Fri hours, no public holiday deductions) regardless of their
+    location-based region.
+    """
+    from shared.constants import CONTRACTOR_EMPLOYEES
+    if employee and employee in CONTRACTOR_EMPLOYEES:
+        region_clean = "Contractor"
+    else:
+        region_clean = str(region).strip()
     for r, months in AVAIL_HOURS.items():
         if r.lower() == region_clean.lower():
             return months.get(str(period), None)

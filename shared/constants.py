@@ -231,6 +231,15 @@ LEAVER_EXIT_DATES = {
     "Rushbrook, Emma C":      None,
     "Strauss, John W":        None,
 }
+
+# Contractors — use raw Mon-Fri hours (no public holiday deductions) for avail hrs.
+# Add any contractor by their roster key name.
+CONTRACTOR_EMPLOYEES = {
+    "Dolha, Madalina",
+    "Jordanova, Marija",
+    "Zoric, Ivan",
+}
+
 ACTIVE_EMPLOYEES = [k for k in EMPLOYEE_ROLES if k not in NO_ACCESS and k not in _LEAVERS]
 
 # Dropdown: consultants + manager-consultants (alphabetical)
