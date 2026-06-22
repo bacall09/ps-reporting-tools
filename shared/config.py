@@ -229,6 +229,7 @@ EMPLOYEE_LOCATION = {
     # ── Project Managers ──────────────────────────────────────────────────────
     "Barrio, Nairobi":        "USA",
     "Cadelina, Macoy":        "Manila (PH)",
+    "Cadeliña, Mark Enric":   "Manila (PH)",  # NS name variant for Cadelina, Macoy
     "Hughes, Madalyn":        "USA",
     "Porangada, Suraj":       "USA",
     "Shchetinin, Yevhen":     "Czech Republic",
@@ -254,6 +255,7 @@ PS_REGION_OVERRIDE = {
     "Cruz, Daniel":        "NOAM",  # Manila-based but reports into NOAM
     "Quiambao, Generalyn": "NOAM",  # Manila-based but reports into NOAM
     "Cadelina, Macoy":     "NOAM",  # Manila-based but reports into NOAM
+    "Cadeliña, Mark Enric":"NOAM",  # NS name variant for Cadelina, Macoy
     # ── DRS display name aliases (First Last) ─────────────────────────────────
     "Christopher Hopkins": "NOAM",
     "Caroline Tuazon":     "APAC",  # DRS display for Tuazon, Carol
