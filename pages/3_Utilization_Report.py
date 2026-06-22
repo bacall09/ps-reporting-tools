@@ -16,7 +16,7 @@ from shared.utils import (
     style_header, style_cell, write_title, auto_detect_columns,
     assign_credits, _xl_val, build_excel,
 )
-from shared.constants import EMPLOYEE_ROLES, LEAVER_EXIT_DATES
+from shared.constants import EMPLOYEE_ROLES, LEAVER_EXIT_DATES, CONTRACTOR_EMPLOYEES
 
 st.session_state["current_page"] = "Utilization Report"
 
@@ -190,7 +190,6 @@ def _emp_util_exempt(name):
     return False
 
 def get_avail_hours(region, period, employee=None):
-    from shared.constants import CONTRACTOR_EMPLOYEES
     region_clean = "Contractor" if (employee and employee in CONTRACTOR_EMPLOYEES) else str(region).strip()
     for r, months in AVAIL_HOURS.items():
         if r.lower() == region_clean.lower():
