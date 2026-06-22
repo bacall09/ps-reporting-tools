@@ -36,11 +36,13 @@ REPORTING_ONLY = [
 # No access (leavers or no Streamlit access)
 NO_ACCESS = [
     "Alam, Laisa",          # No longer employed
+    "Arestarkhov, Yaroslav", # Exited June 9 2026
     "Chan, Joven",          # No longer employed
     "Eyong, Eyong",         # No longer employed
     "Hernandez, Camila",    # No longer employed
     "Centinaje, Rhodechild",# Left March 16 2026
     "Cloete, Bronwyn",      # Left Feb 23 2026 — not part of PS org
+    "Zoric, Ivan",          # Exiting July 3 2026
 ]
 
 def get_role(name: str) -> str:
@@ -149,8 +151,9 @@ EMPLOYEE_ROLES = {
     # ── Project Managers ──────────────────────────────────────────────────────
     # PMs carry a 70% billable utilization target (their PM hours count as billable).
     "Barrio, Nairobi":        {"role": "Project Manager",  "products": [], "learning": [], "util_exempt": False, "util_target": 0.70},
-    "Cadelina, Macoy":        {"role": "Project Manager",  "products": [], "learning": [], "util_exempt": False, "util_target": 0.70, "note": "New as of March 3 2026"},
+    "Cadelina, Macoy":        {"role": "Project Manager",  "products": [], "learning": [], "util_exempt": False, "util_target": 0.70, "note": "Full name: Cadeliña, Mark Enric. New as of March 3 2026"},
     "Hughes, Madalyn":        {"role": "Project Manager",  "products": [], "learning": [], "util_exempt": False, "util_target": 0.70},
+    "Shchetinin, Yevhen":     {"role": "Project Manager",  "products": [], "learning": [], "util_exempt": False, "util_target": 0.70, "note": "New as of April 9 2026. EMEA, Czech Republic"},
     "Porangada, Suraj":       {"role": "Project Manager",  "products": [], "learning": [], "util_exempt": False, "util_target": 0.70},
     # ── Solution Architects ───────────────────────────────────────────────────
     "Bell, Stuart":           {"role": "Solution Architect", "products": ["Billing"],   "learning": [], "util_exempt": False, "util_target": 0.70},
@@ -164,10 +167,11 @@ EMPLOYEE_ROLES = {
     "Law, Brandon":           {"role": "Developer",          "products": ["Reporting"], "learning": [], "util_exempt": False, "util_target": 0.70},
     "Quiambao, Generalyn":    {"role": "Developer",          "products": ["All"],           "learning": [], "util_exempt": False, "util_target": 0.70},
     # ── Consultants ───────────────────────────────────────────────────────────
-    "Arestarkhov, Yaroslav":  {"role": "Consultant", "products": ["Billing", "Capture"],                                                                          "learning": [], "util_exempt": False, "util_target": 0.70},
+    "Arestarkhov, Yaroslav":  {"role": "Consultant", "products": ["Billing", "Capture"],                                                                          "learning": [], "util_exempt": False, "util_target": 0.70, "note": "Exited June 9 2026"},
     "Carpen, Anamaria":       {"role": "Consultant", "products": ["Capture", "Approvals", "e-Invoicing"],                                                       "learning": [], "util_exempt": False, "util_target": 0.70},
     "Cooke, Ellen":           {"role": "Consultant", "products": ["Billing", "Payroll"],                                                                          "learning": [], "util_exempt": False, "util_target": 0.70},
     "Cruz, Daniel":           {"role": "Consultant", "products": ["Capture", "Approvals"],                                                                        "learning": [], "util_exempt": False, "util_target": 0.70},
+    "De Villa, Rodelisa":     {"role": "Consultant", "products": ["Capture"],                                                                                     "learning": [], "util_exempt": False, "util_target": 0.70, "note": "New as of May 4 2026. APAC, Philippines"},
     "Dolha, Madalina":        {"role": "Consultant", "products": ["Capture", "Reconcile", "CC Statement Import", "PSP", "e-Invoicing"],                          "learning": [], "util_exempt": False, "util_target": 0.70},
     "Gardner, Cheryll L":     {"role": "Consultant", "products": ["Billing"],                                                                                          "learning": [], "util_exempt": False, "util_target": 0.70},
     # Hopkins — unofficial team lead, role stays Consultant per leadership
@@ -182,12 +186,14 @@ EMPLOYEE_ROLES = {
     "NAQVI, SYED":            {"role": "Consultant", "products": ["Payroll"],                                                                                          "learning": [], "util_exempt": False, "util_target": 0.70},
     "Olson, Austin D":        {"role": "Consultant", "products": ["Billing"],                                                                                          "learning": [], "util_exempt": False, "util_target": 0.70},
     "Pallone, Daniel":        {"role": "Consultant", "products": ["Payroll"],                                                                                          "learning": [], "util_exempt": False, "util_target": 0.70},
+    "Quintero Ledesma, Marta":{"role": "Consultant", "products": ["Capture", "Reconcile"],                                                                       "learning": [], "util_exempt": False, "util_target": 0.70, "note": "New as of June 1 2026. EMEA, Spain"},
     "Raykova, Silvia":        {"role": "Consultant", "products": ["Capture", "Approvals", "e-Invoicing"],                                                        "learning": [], "util_exempt": False, "util_target": 0.70},
+    "Sanad, Linda":           {"role": "Consultant", "products": ["Capture", "Approvals"],                                                                       "learning": [], "util_exempt": False, "util_target": 0.70, "note": "New as of May 11 2026. EMEA, England UK"},
     "Selvakumar, Sajithan":   {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile"],                                                        "learning": [], "util_exempt": False, "util_target": 0.70},
     "Snee, Stefanie J":       {"role": "Consultant", "products": ["Billing"],                                                                                          "learning": [], "util_exempt": False, "util_target": 0.70},
     "Swanson, Patti":         {"role": "Consultant", "products": ["Billing"],                                                                                          "learning": [], "util_exempt": True,  "util_target": None},
     "Tuazon, Carol":          {"role": "Consultant", "products": ["Payroll", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector"],                                   "learning": [], "util_exempt": False, "util_target": 0.70},
-    "Zoric, Ivan":            {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector", "Payments"], "learning": [], "util_exempt": False, "util_target": 0.70},
+    "Zoric, Ivan":            {"role": "Consultant", "products": ["Capture", "Approvals", "Reconcile", "CC Statement Import", "PSP", "SFTP Connector", "Payments"], "learning": [], "util_exempt": False, "util_target": 0.70, "note": "Exiting July 3 2026"},
     # ── Leadership (managers only — no product delivery, util exempt) ─────────
     "Longi, Sameer":          {"role": "Manager",   "products": [], "learning": [], "util_exempt": True, "util_target": None},
     "Rusnak, Connor":         {"role": "Manager",   "products": [], "learning": [], "util_exempt": True, "util_target": None},
@@ -205,23 +211,25 @@ EMPLOYEE_ROLES = {
 
 # Active employees (excludes no-access and leavers)
 _LEAVERS = {
-    "Alam, Laisa", "Chan, Joven", "Centinaje, Rhodechild", "Cloete, Bronwyn",
-    "Eyong, Eyong", "Hamilton, Julie C", "Hernandez, Camila",
-    "Rushbrook, Emma C", "Strauss, John W",
+    "Alam, Laisa", "Arestarkhov, Yaroslav", "Chan, Joven", "Centinaje, Rhodechild",
+    "Cloete, Bronwyn", "Eyong, Eyong", "Hamilton, Julie C", "Hernandez, Camila",
+    "Rushbrook, Emma C", "Strauss, John W", "Zoric, Ivan",
 }
 
 # Leaver exit dates — used for prorated available hours in team breakdown
 # Format: "Name": "YYYY-MM-DD"
 LEAVER_EXIT_DATES = {
-    "Centinaje, Rhodechild": "2026-03-16",
-    "Cloete, Bronwyn":       "2026-02-23",
-    "Alam, Laisa":           None,   # date unknown
-    "Chan, Joven":           None,
-    "Eyong, Eyong":          None,
-    "Hamilton, Julie C":     None,
-    "Hernandez, Camila":     None,
-    "Rushbrook, Emma C":     None,
-    "Strauss, John W":       None,
+    "Arestarkhov, Yaroslav":  "2026-06-09",
+    "Centinaje, Rhodechild":  "2026-03-16",
+    "Cloete, Bronwyn":        "2026-02-23",
+    "Zoric, Ivan":            "2026-07-03",
+    "Alam, Laisa":            None,   # date unknown
+    "Chan, Joven":            None,
+    "Eyong, Eyong":           None,
+    "Hamilton, Julie C":      None,
+    "Hernandez, Camila":      None,
+    "Rushbrook, Emma C":      None,
+    "Strauss, John W":        None,
 }
 ACTIVE_EMPLOYEES = [k for k in EMPLOYEE_ROLES if k not in NO_ACCESS and k not in _LEAVERS]
 
