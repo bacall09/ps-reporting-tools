@@ -16,7 +16,7 @@ from shared.utils import (
     style_header, style_cell, write_title, auto_detect_columns,
     assign_credits, _xl_val, build_excel,
 )
-from shared.constants import EMPLOYEE_ROLES
+from shared.constants import EMPLOYEE_ROLES, LEAVER_EXIT_DATES
 
 st.session_state["current_page"] = "Utilization Report"
 
@@ -189,12 +189,44 @@ def _emp_util_exempt(name):
     if isinstance(v2, dict): return v2.get("util_exempt", False)
     return False
 
-def get_avail_hours(region, period):
-    region_clean = str(region).strip()
+def get_avail_hours(region, period, employee=None):
+    from shared.constants import CONTRACTOR_EMPLOYEES
+    region_clean = "Contractor" if (employee and employee in CONTRACTOR_EMPLOYEES) else str(region).strip()
     for r, months in AVAIL_HOURS.items():
         if r.lower() == region_clean.lower():
             return months.get(str(period), None)
     return None
+
+
+def _prorated_avail(region, period, employee=None):
+    """Like get_avail_hours but prorates for mid-month leavers.
+    If employee has an exit date in LEAVER_EXIT_DATES that falls within the
+    period month, scales available hours proportionally by working days worked
+    vs total working days in the month.
+    """
+    import calendar, pandas as _pd_pa
+    full_avail = get_avail_hours(region, period, employee=employee)
+    if full_avail is None or not employee:
+        return full_avail
+    exit_date_str = LEAVER_EXIT_DATES.get(employee)
+    if not exit_date_str:
+        return full_avail
+    try:
+        exit_dt = _pd_pa.Timestamp(exit_date_str)
+        period_str = str(period)  # "YYYY-MM"
+        period_month = period_str[:7]
+        if exit_dt.strftime("%Y-%m") != period_month:
+            return full_avail  # exit not in this period — no proration
+        yr, mo = exit_dt.year, exit_dt.month
+        month_start = _pd_pa.Timestamp(yr, mo, 1)
+        month_end = _pd_pa.Timestamp(yr, mo, calendar.monthrange(yr, mo)[1])
+        total_bdays = len(_pd_pa.bdate_range(month_start, month_end))
+        worked_bdays = len(_pd_pa.bdate_range(month_start, exit_dt))
+        if total_bdays <= 0:
+            return full_avail
+        return round(full_avail * worked_bdays / total_bdays, 2)
+    except Exception:
+        return full_avail
 
 # ════════════════════════════════════════════════════════
 # UTILS
@@ -680,7 +712,7 @@ def main():
         _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict()
         _emp_period_ui = df.groupby("employee")["period"].first().to_dict()
         for _e, _r in _emp_region_ui.items():
-            _av = get_avail_hours(_r, _emp_period_ui.get(_e, ""))
+            _av = get_avail_hours(_r, _emp_period_ui.get(_e, ""), employee=_e)
             if _av: _avail_total += _av
     capacity_pct = hours_this_period / _avail_total if _avail_total else 0
 
@@ -816,7 +848,7 @@ def main():
     _emp_region_ui = df.dropna(subset=["region"]).groupby("employee")["region"].first().to_dict() if "region" in df.columns else {}
     emp_sum["location"]  = emp_sum["employee"].map(_emp_region_ui)
     emp_sum["avail_hrs"] = emp_sum.apply(
-        lambda r: get_avail_hours(r["location"], r["period"]) if r["location"] else None, axis=1)
+        lambda r: _prorated_avail(r["location"], r["period"], employee=r["employee"]) if r["location"] else None, axis=1)
     emp_sum["util_vs_logged"]   = emp_sum.apply(lambda r: r["credit_hrs"] / r["hours_this_period"] if r["hours_this_period"] > 0 else None, axis=1)
     emp_sum["util_vs_capacity"] = emp_sum.apply(lambda r: r["credit_hrs"] / r["avail_hrs"] if r["avail_hrs"] and r["avail_hrs"] > 0 else None, axis=1)
     emp_sum["exempt"] = emp_sum["employee"].apply(_emp_util_exempt)
@@ -1758,7 +1790,7 @@ def build_tableau_excel(df, scope_map, consumed):
         loc = df[df["employee"] == emp]["region"].iloc[0] if len(df[df["employee"] == emp]) > 0 else ""
         ps_reg = df[df["employee"] == emp]["ps_region"].iloc[0] if "ps_region" in df.columns and len(df[df["employee"] == emp]) > 0 else ""
         info = EMPLOYEE_ROLES.get(emp, {}); role = info.get("role", "Consultant")
-        avail = get_avail_hours(loc, period) if loc else None
+        avail = _prorated_avail(loc, period, employee=emp) if loc else None
         u_log = _pct(row["credit_hrs"], row["hours_logged"])
         u_cap = _pct(row["credit_hrs"], avail)
         u_proj = _pct(row["credit_hrs"] + row["ff_overrun_hrs"], avail)
