@@ -475,7 +475,8 @@ if df_findings.empty:
 n_error    = int((df_findings["severity"] == "Error").sum())
 n_warning  = int((df_findings["severity"] == "Warning").sum())
 n_info     = int((df_findings["severity"] == "Info").sum())
-n_projects = int(df_findings["project"].nunique())
+_drs_dc_col = "project_id" if "project_id" in df_findings.columns else "project"
+n_projects = int(df_findings[_drs_dc_col].nunique())
 n_total    = len(df_findings)
 _days_vals = df_findings["days_val"].dropna()
 oldest_d   = int(_days_vals.max()) if len(_days_vals) else 0
@@ -806,7 +807,7 @@ for _ti, _cat in enumerate(_cats):
         _render_table(_cat_s, cols=_cfg["cols"], header_labels=_cfg["hdrs"])
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        _n_proj_c = int(_cat_df["project"].nunique())
+        _n_proj_c = int(_cat_df[_drs_dc_col].nunique())
         st.markdown(
             f"<div style='font-size:12px;color:var(--color-text-secondary);margin-top:8px'>"
             f"{_n_cat} findings · {_n_proj_c} project{'s' if _n_proj_c!=1 else ''}</div>",
