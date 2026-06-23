@@ -568,9 +568,8 @@ def build_excel(df, scope_map, consumed, df_drs=None):
         scope_h = max(_pm, key=lambda x: len(x[0]))[1] if _pm else 0
         seed      = float(row["htd_start"]) if row["htd_start"] else 0
         previous_h = max(0.0, seed - row["hours_this_period"])
-        burn = seed / scope_h if scope_h > 0 else 0
-        vari_h   = row["variance_hrs"]
         htd_total = previous_h + row["hours_this_period"]
+        burn = htd_total / scope_h if scope_h > 0 else 0
         if scope_h > 0 and htd_total > scope_h:   status = "OVERRUN"
         elif scope_h > 0 and htd_total == scope_h: status = "AT LIMIT"
         elif scope_h == 0 and htd_total > 0:       status = "REVIEW"
@@ -979,7 +978,7 @@ def build_excel(df, scope_map, consumed, df_drs=None):
     wl_df["previous_htd"] = wl_df.apply(
         lambda r: max(0.0, (float(r["htd_start"]) if r["htd_start"] else 0.0) - r["hours_this_period"]), axis=1)
     wl_df["hours_to_date"] = wl_df.apply(
-        lambda r: (float(r["htd_start"]) if r["htd_start"] else 0.0), axis=1)
+        lambda r: r["previous_htd"] + r["hours_this_period"], axis=1)
 
     def get_scope_wl(row):
         ptype = str(row.get("project_type","") or ""); pname = str(row.get("project","") or "")
@@ -991,9 +990,9 @@ def build_excel(df, scope_map, consumed, df_drs=None):
 
     wl_df["scope_h"] = wl_df.apply(get_scope_wl, axis=1)
     wl_df["burn_pct"] = wl_df.apply(
-        lambda r: (float(r["htd_start"]) if r["htd_start"] else 0) / r["scope_h"] if r["scope_h"] > 0 else None, axis=1)
+        lambda r: r["hours_to_date"] / r["scope_h"] if r["scope_h"] > 0 else None, axis=1)
     def _wl_status(r):
-        s_h = r["scope_h"] or 0; htd = (float(r["htd_start"]) if r["htd_start"] else 0)
+        s_h = r["scope_h"] or 0; htd = r["hours_to_date"]
         if s_h > 0 and htd > s_h:   return "OVERRUN"
         if s_h > 0 and htd == s_h:  return "AT LIMIT"
         if s_h == 0 and htd > 0:    return "REVIEW"
