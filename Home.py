@@ -38,7 +38,7 @@ _manager_pages = [
     st.Page("pages/13_Portfolio_Analytics.py",   title="Portfolio Analytics",   icon=":material/donut_large:"),
     st.Page("pages/14_Capacity_Planner.py",      title="Capacity Planner",      icon=":material/battery_charging_full:"),
     st.Page("pages/5_Capacity_Outlook.py",       title="Resourcing Planner",    icon=":material/groups:"),
-    st.Page("pages/9_Revenue_Report.py",         title="Revenue Report",        icon=":material/payments:"),
+
 ]
 _help_pages = [
     st.Page("pages/9_Help.py", title="Help",                                    icon=":material/help:"),
