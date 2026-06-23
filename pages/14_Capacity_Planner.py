@@ -58,42 +58,11 @@ today    = date.today()
 BILLABLE_HRS  = 28.0
 WORKING_WEEKS = 50
 
-PRODUCT_DATA = {
-    "Capture":            {"avg_hrs": 17.8, "timeline": 7.0,  "oh_hrswk": 3.05},
-    "Approvals":          {"avg_hrs": 17.5, "timeline": 7.0,  "oh_hrswk": 3.00},
-    "Reconcile":          {"avg_hrs": 14.9, "timeline": 8.5,  "oh_hrswk": 2.10},
-    "e-Invoicing":        {"avg_hrs": 10.7, "timeline": 7.0,  "oh_hrswk": 1.84},
-    "Reconcile PSP":      {"avg_hrs": 13.0, "timeline": 8.5,  "oh_hrswk": 1.84},
-    "Reconcile 2.0":      {"avg_hrs": 14.1, "timeline": 8.5,  "oh_hrswk": 1.99},
-    "ZonePayments":       {"avg_hrs": 20.5, "timeline": 8.5,  "oh_hrswk": 2.89},  # 30h scope, T&M-adjacent
-    # Override-only products (limited actuals)
-    "SFTP Connector":     {"avg_hrs": 23.0, "timeline": 7.0,  "oh_hrswk": 3.94},
-    "CC Statement Import":{"avg_hrs": 13.5, "timeline": 7.0,  "oh_hrswk": 2.31},
-    "AP Payments":        {"avg_hrs":  4.0, "timeline": 7.0,  "oh_hrswk": 0.69},  # add-on SKU, 4h scope
-    "Procure":            {"avg_hrs": 20.0, "timeline": 8.5,  "oh_hrswk": 2.82},  # placeholder
-}
-
-CORE_PRODUCTS     = ["Capture", "Approvals", "Reconcile", "e-Invoicing",
-                     "Reconcile PSP", "Reconcile 2.0", "ZonePayments"]
-OVERRIDE_PRODUCTS = ["Procure"]
-OVERRIDE_EXTRAS   = ["SFTP Connector", "CC Statement Import", "AP Payments"]
-ALL_PRODUCTS      = CORE_PRODUCTS + OVERRIDE_EXTRAS + OVERRIDE_PRODUCTS
-
-PRODUCT_MAP = {
-    "Capture":             "Capture",
-    "Approvals":           "Approvals",
-    "Reconcile":           "Reconcile",
-    "e-Invoicing":         "e-Invoicing",
-    "PSP":                 "Reconcile PSP",
-    "CC Statement Import": "CC Statement Import",
-    "SFTP Connector":      "SFTP Connector",
-    "Payments":            "ZonePayments",   # ZonePayments product (30h scope)
-}
-
-APPS_PRODUCT_FAMILIES = {
-    "Capture", "Approvals", "Reconcile", "e-Invoicing", "PSP",
-    "CC Statement Import", "SFTP Connector", "Payments", "Reconcile 2.0",
-}
+# ── Product data imported from shared.config (single source of truth) ──────────
+from shared.config import (
+    PRODUCT_DATA, CORE_PRODUCTS, OVERRIDE_PRODUCTS, OVERRIDE_EXTRAS,
+    ALL_PRODUCTS, PRODUCT_MAP, APPS_PRODUCT_FAMILIES,
+)
 
 def get_region(name):
     loc = EMPLOYEE_LOCATION.get(name, "")

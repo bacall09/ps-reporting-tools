@@ -47,7 +47,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from shared.constants import EMPLOYEE_ROLES, SS_COL_MAP, NS_COL_MAP, PHASE_BENCHMARKS, ACTIVE_EMPLOYEES
-from shared.config import NAVY, TEAL, WHITE, LTGRAY, AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP, UTIL_EXEMPT_EMPLOYEES
+from shared.config import NAVY, TEAL, WHITE, LTGRAY, AVAIL_HOURS, EMPLOYEE_LOCATION, PS_REGION_OVERRIDE, PS_REGION_MAP, UTIL_EXEMPT_EMPLOYEES, PHASE_END_WEEKS
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -73,12 +73,7 @@ def _emp_location(name):
     if v is None:
         return None
     return v[0] if isinstance(v, tuple) else v
-PS_REGION_OVERRIDE = {
-    "NAQVI, SYED":  "EMEA",
-    "Cruz, Daniel": "NOAM",
-    "Chan, Joven":    "NOAM",   # Manila-based but reports into NOAM
-    "Rushbrook, Emma C": "EMEA",  # Wales → EMEA
-}
+# PS_REGION_OVERRIDE — imported from shared.config (single source of truth)
 PS_REGION_MAP = {
     "Sydney (NSW)":     "APAC",
     "Manila (PH)":      "APAC",

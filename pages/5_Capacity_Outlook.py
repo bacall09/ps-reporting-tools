@@ -38,12 +38,7 @@ BLUE   = "4472C4"
 # ── Employee config (mirrors other pages) ─────────────────────────────────────
 
 
-PS_REGION_OVERRIDE = {
-    "NAQVI, SYED":       "EMEA",
-    "Cruz, Daniel":      "NOAM",
-    "Chan, Joven":       "NOAM",
-    "Rushbrook, Emma C": "EMEA",
-}
+# PS_REGION_OVERRIDE — imported from shared.config (single source of truth)
 PS_REGION_MAP = {
     "Sydney (NSW)":     "APAC",
     "Manila (PH)":      "APAC",
@@ -60,90 +55,8 @@ PS_REGION_MAP = {
     "Canada":           "NOAM",
 }
 
-# ── Phase duration table — end week per phase per product type ─────────────────
-# Values = week number from project start when phase completes
-PHASE_END_WEEKS = {
-    "Approvals": {
-        "01. requirements and design": 1,
-        "02. configuration":           2,
-        "03. enablement/training":     3,
-        "04. uat":                     6,
-        "05. prep for go-live":        6,
-        "06. go-live":                 8,
-        "08. ready for support transition": 8,
-    },
-    "Capture": {
-        "01. requirements and design": 1,
-        "02. configuration":           2,
-        "03. enablement/training":     3,
-        "04. uat":                     6,
-        "05. prep for go-live":        6,
-        "06. go-live":                 8,
-        "08. ready for support transition": 8,
-    },
-    "Capture & e-Invoicing": {
-        "01. requirements and design": 1,
-        "02. configuration":           4,
-        "03. enablement/training":     3,
-        "04. uat":                     9,
-        "05. prep for go-live":        6,
-        "06. go-live":                 10,
-        "08. ready for support transition": 10,
-    },
-    "Payments": {
-        "01. requirements and design": 1,
-        "02. configuration":           2,
-        "03. enablement/training":     3,
-        "04. uat":                     8,
-        "05. prep for go-live":        8,
-        "06. go-live":                 10,
-        "08. ready for support transition": 10,
-    },
-    "Reconcile": {
-        "01. requirements and design": 1,
-        "02. configuration":           2,
-        "03. enablement/training":     3,
-        "04. uat":                     7,
-        "05. prep for go-live":        8,
-        "06. go-live":                 10,
-        "08. ready for support transition": 10,
-    },
-    "Reconcile PSP": {
-        "01. requirements and design": 1,
-        "02. configuration":           2,
-        "03. enablement/training":     3,
-        "04. uat":                     7,
-        "05. prep for go-live":        8,
-        "06. go-live":                 10,
-        "08. ready for support transition": 10,
-    },
-    "e-Invoicing": {
-        "01. requirements and design": 1,
-        "02. configuration":           4,
-        "03. enablement/training":     3,
-        "04. uat":                     9,
-        "06. go-live":                 10,
-        "08. ready for support transition": 10,
-    },
-    "SFTP Connector": {
-        "01. requirements and design": 1,
-        "02. configuration":           2,
-        "03. enablement/training":     3,
-        "04. uat":                     7,
-        "05. prep for go-live":        8,
-        "06. go-live":                 10,
-        "08. ready for support transition": 10,
-    },
-    "CC Statement Import": {
-        "01. requirements and design": 1,
-        "02. configuration":           2,
-        "03. enablement/training":     3,
-        "04. uat":                     7,
-        "05. prep for go-live":        8,
-        "06. go-live":                 10,
-        "08. ready for support transition": 10,
-    },
-}
+# PHASE_END_WEEKS imported from shared.config (single source of truth)
+from shared.config import PHASE_END_WEEKS
 
 # Default total duration (weeks) for unknown product types
 DEFAULT_DURATION_WEEKS = 10
