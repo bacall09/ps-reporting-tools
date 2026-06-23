@@ -489,3 +489,132 @@ def get_avail_hours(region, period):
         if r.lower() == region_clean.lower():
             return months.get(str(period), None)
     return None
+
+
+# ── Capacity Planner product benchmarks ──────────────────────────────────────
+# Canonical product data for capacity modelling. Sourced from actuals.
+# Edit here — do not redefine in pages/14_Capacity_Planner.py.
+PRODUCT_DATA = {
+    "Capture":            {"avg_hrs": 17.8, "timeline": 7.0,  "oh_hrswk": 3.05},
+    "Approvals":          {"avg_hrs": 17.5, "timeline": 7.0,  "oh_hrswk": 3.00},
+    "Reconcile":          {"avg_hrs": 14.9, "timeline": 8.5,  "oh_hrswk": 2.10},
+    "e-Invoicing":        {"avg_hrs": 10.7, "timeline": 7.0,  "oh_hrswk": 1.84},
+    "Reconcile PSP":      {"avg_hrs": 13.0, "timeline": 8.5,  "oh_hrswk": 1.84},
+    "Reconcile 2.0":      {"avg_hrs": 14.1, "timeline": 8.5,  "oh_hrswk": 1.99},
+    "ZonePayments":       {"avg_hrs": 20.5, "timeline": 8.5,  "oh_hrswk": 2.89},  # 30h scope, T&M-adjacent
+    # Override-only products (limited actuals)
+    "SFTP Connector":     {"avg_hrs": 23.0, "timeline": 7.0,  "oh_hrswk": 3.94},
+    "CC Statement Import":{"avg_hrs": 13.5, "timeline": 7.0,  "oh_hrswk": 2.31},
+    "AP Payments":        {"avg_hrs":  4.0, "timeline": 7.0,  "oh_hrswk": 0.69},  # add-on SKU, 4h scope
+    "Procure":            {"avg_hrs": 20.0, "timeline": 8.5,  "oh_hrswk": 2.82},  # placeholder
+}
+
+CORE_PRODUCTS     = ["Capture", "Approvals", "Reconcile", "e-Invoicing",
+                     "Reconcile PSP", "Reconcile 2.0", "ZonePayments"]
+OVERRIDE_PRODUCTS = ["Procure"]
+OVERRIDE_EXTRAS   = ["SFTP Connector", "CC Statement Import", "AP Payments"]
+ALL_PRODUCTS      = CORE_PRODUCTS + OVERRIDE_EXTRAS + OVERRIDE_PRODUCTS
+
+PRODUCT_MAP = {
+    "Capture":             "Capture",
+    "Approvals":           "Approvals",
+    "Reconcile":           "Reconcile",
+    "e-Invoicing":         "e-Invoicing",
+    "PSP":                 "Reconcile PSP",
+    "CC Statement Import": "CC Statement Import",
+    "SFTP Connector":      "SFTP Connector",
+    "Payments":            "ZonePayments",   # ZonePayments product (30h scope)
+}
+
+APPS_PRODUCT_FAMILIES = {
+    "Capture", "Approvals", "Reconcile", "e-Invoicing", "PSP",
+    "CC Statement Import", "SFTP Connector", "Payments", "Reconcile 2.0",
+}
+
+
+# ── Phase duration table — end week per phase per product type ──────────────
+# Used by Capacity Outlook and Workload Health Score.
+# Edit here — do not redefine in pages.
+PHASE_END_WEEKS = {
+    "Approvals": {
+        "01. requirements and design": 1,
+        "02. configuration":           2,
+        "03. enablement/training":     3,
+        "04. uat":                     6,
+        "05. prep for go-live":        6,
+        "06. go-live":                 8,
+        "08. ready for support transition": 8,
+    },
+    "Capture": {
+        "01. requirements and design": 1,
+        "02. configuration":           2,
+        "03. enablement/training":     3,
+        "04. uat":                     6,
+        "05. prep for go-live":        6,
+        "06. go-live":                 8,
+        "08. ready for support transition": 8,
+    },
+    "Capture & e-Invoicing": {
+        "01. requirements and design": 1,
+        "02. configuration":           4,
+        "03. enablement/training":     3,
+        "04. uat":                     9,
+        "05. prep for go-live":        6,
+        "06. go-live":                 10,
+        "08. ready for support transition": 10,
+    },
+    "Payments": {
+        "01. requirements and design": 1,
+        "02. configuration":           2,
+        "03. enablement/training":     3,
+        "04. uat":                     8,
+        "05. prep for go-live":        8,
+        "06. go-live":                 10,
+        "08. ready for support transition": 10,
+    },
+    "Reconcile": {
+        "01. requirements and design": 1,
+        "02. configuration":           2,
+        "03. enablement/training":     3,
+        "04. uat":                     7,
+        "05. prep for go-live":        8,
+        "06. go-live":                 10,
+        "08. ready for support transition": 10,
+    },
+    "Reconcile PSP": {
+        "01. requirements and design": 1,
+        "02. configuration":           2,
+        "03. enablement/training":     3,
+        "04. uat":                     7,
+        "05. prep for go-live":        8,
+        "06. go-live":                 10,
+        "08. ready for support transition": 10,
+    },
+    "e-Invoicing": {
+        "01. requirements and design": 1,
+        "02. configuration":           4,
+        "03. enablement/training":     3,
+        "04. uat":                     9,
+        "06. go-live":                 10,
+        "08. ready for support transition": 10,
+    },
+    "SFTP Connector": {
+        "01. requirements and design": 1,
+        "02. configuration":           2,
+        "03. enablement/training":     3,
+        "04. uat":                     7,
+        "05. prep for go-live":        8,
+        "06. go-live":                 10,
+        "08. ready for support transition": 10,
+    },
+    "CC Statement Import": {
+        "01. requirements and design": 1,
+        "02. configuration":           2,
+        "03. enablement/training":     3,
+        "04. uat":                     7,
+        "05. prep for go-live":        8,
+        "06. go-live":                 10,
+        "08. ready for support transition": 10,
+    },
+}
+

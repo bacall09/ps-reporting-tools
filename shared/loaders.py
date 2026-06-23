@@ -107,19 +107,8 @@ def fuzzy_match_sfdc(df_sfdc, project_name, account_name):
     return pd.DataFrame(), None
 
 
-# ── Active employee list (sourced from EMPLOYEE_ROLES — leavers excluded) ────
-ACTIVE_EMPLOYEES = [
-    "Arestarkhov, Yaroslav", "Barrio, Nairobi", "Bell, Stuart", "Cadelina",
-    "Carpen, Anamaria", "Centinaje, Rhodechild", "Church, Jason G", "Cooke, Ellen",
-    "Cruz, Daniel", "DiMarco, Nicole R", "Dolha, Madalina", "Dunn, Steven",
-    "Finalle-Newton, Jesse", "Gardner, Cheryll L", "Hopkins, Chris", "Hughes, Madalyn",
-    "Ickler, Georganne", "Isberg, Eric", "Jordanova, Marija", "Lappin, Thomas",
-    "Law, Brandon", "Longalong, Santiago", "Mohammad, Manaan", "Morris, Lisa",
-    "Murphy, Conor", "NAQVI, SYED", "Olson, Austin D", "Pallone, Daniel",
-    "Porangada, Suraj", "Quiambao, Generalyn", "Raykova, Silvia",
-    "Selvakumar, Sajithan", "Snee, Stefanie J", "Swanson, Patti",
-    "Tuazon, Carol", "Zoric, Ivan",
-]
+# ── Active employee list — sourced from constants.py (single source of truth) ──
+from shared.constants import ACTIVE_EMPLOYEES  # noqa: E402
 
 
 def load_sfdc(file):
