@@ -763,7 +763,7 @@ def main():
 
     # Below-60% consultants
     _below_60 = emp_sum[(~emp_sum["exempt"]) & emp_sum["util_vs_capacity"].notna() & (emp_sum["util_vs_capacity"] < 0.60)]
-    below60_count = len(_below_60)
+    below60_count = _below_60["employee"].nunique()
     below60_names = ", ".join(sorted([short_name(n) for n in _below_60["employee"].unique()]))
 
     # Projects in overrun
