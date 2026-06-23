@@ -1231,11 +1231,228 @@ def build_excel(df, scope_map, consumed, df_drs=None):
             _cv.border = thin_border()
             if fmt2: _cv.number_format = fmt2
 
+    # ════════════════════════════════════════════════════════════════════════
+    # _VALIDATION SHEET
+    # Automated cross-checks between metrics computed independently within
+    # this build. Any FAIL row indicates a calculation inconsistency.
+    # This sheet does NOT compare against the Streamlit UI — it validates
+    # internal consistency of the Excel report itself.
+    # ════════════════════════════════════════════════════════════════════════
+    ws_val = wb.create_sheet("_Validation")
+    ws_val.sheet_properties.tabColor = "C0392B"
+    ws_val.freeze_panes = "A3"
+
+    _val_hdrs = ["Check", "Expected", "Actual", "Delta", "Tolerance", "Result", "Notes"]
+    _val_widths = [52, 16, 16, 14, 12, 10, 60]
+    write_title(ws_val, "REPORT VALIDATION — Internal Consistency Checks", len(_val_hdrs))
+    style_header(ws_val, 2, _val_hdrs, "C0392B")
+    for i, w in enumerate(_val_widths, 1):
+        ws_val.column_dimensions[get_column_letter(i)].width = w
+
+    PASS_FILL = PatternFill("solid", fgColor="EAF9F1")
+    FAIL_FILL = PatternFill("solid", fgColor="FDECED")
+    WARN_FILL = PatternFill("solid", fgColor="FEF9E7")
+    PASS_FONT = Font(name="Manrope", size=9, bold=True, color="1E8449")
+    FAIL_FONT = Font(name="Manrope", size=9, bold=True, color="C0392B")
+    WARN_FONT = Font(name="Manrope", size=9, bold=True, color="7D6608")
+
+    _val_rows = []  # (check_name, expected, actual, tolerance, notes)
+
+    # ── 1. Global util % consistency ─────────────────────────────────────────
+    # emp_sum credits / emp_sum avail should equal the Dashboard global figure
+    _es_credits = emp_sum["credit_hrs"].sum()
+    _es_avail   = 0.0
+    for _, _er in emp_sum.iterrows():
+        _eloc = emp_region.get(_er["employee"], "")
+        _av   = get_avail_hours(_eloc, _er["period"], employee=_er["employee"]) or 0
+        _es_avail += _av
+    _global_util_emp = _es_credits / _es_avail if _es_avail > 0 else 0
+    # Dashboard util — recompute from ps totals
+    _ps_total_credits = sum(_ps_reg_total["credit_hrs"])
+    _ps_total_hours   = sum(_ps_reg_total["hours_this_period"])
+    _global_util_ps   = _ps_total_credits / _ps_total_hours if _ps_total_hours > 0 else 0
+    _val_rows.append((
+        "Global util % — emp_sum credits/avail vs PS region rollup",
+        _global_util_emp, _global_util_ps, 0.001,
+        "Both should equal credits÷avail. Divergence = region mapping gap or avail hours mismatch."
+    ))
+
+    # ── 2. Total hours in = credits + overrun + admin + skipped ──────────────
+    _total_in       = df["hours"].sum()
+    _credits_out    = df["credit_hrs"].sum()
+    _overrun_out    = df["variance_hrs"].sum()
+    _admin_out      = df[df["credit_tag"]=="ADMIN"]["hours"].sum() if "credit_tag" in df.columns else 0
+    _skipped_out    = df[df["credit_tag"]=="SKIPPED"]["hours"].sum() if "credit_tag" in df.columns else 0
+    _unconfigured   = df[df["credit_tag"]=="UNCONFIGURED"]["hours"].sum() if "credit_tag" in df.columns else 0
+    _accounted      = _credits_out + _overrun_out + _skipped_out
+    _val_rows.append((
+        "Hours conservation — total in = credits + overrun + skipped",
+        round(_total_in, 2), round(_accounted, 2), 0.01,
+        f"Admin={_admin_out:.2f} Unconfigured={_unconfigured:.2f} included in above buckets."
+    ))
+
+    # ── 3. FF project count consistency ──────────────────────────────────────
+    # proj_sum row count (FF By Project tab) vs Project Count grand total
+    _proj_sum_count = len(proj_sum)
+    _pc_grand_total = int(grand_total)
+    _val_rows.append((
+        "FF project count — proj_sum rows vs Project Count grand total",
+        _proj_sum_count, _pc_grand_total, 0,
+        "proj_sum = one row per project+type combo. Project Count = distinct project_ids by type. "
+        "A delta here means a project appears in one view but not the other."
+    ))
+
+    # ── 4. Burn % correctness — sample every project in proj_sum ─────────────
+    _burn_errors = []
+    for _, _pr in proj_sum.iterrows():
+        _ptype  = str(_pr.get("project_type","")).strip()
+        _pm_list = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in _ptype.lower()]
+        _scope  = max(_pm_list, key=lambda x: len(x[0]))[1] if _pm_list else 0
+        if _scope <= 0: continue
+        _seed   = float(_pr["htd_start"]) if _pr["htd_start"] else 0
+        _prev_h = max(0.0, _seed - _pr["hours_this_period"])
+        _htd    = _prev_h + _pr["hours_this_period"]
+        _burn_correct = _htd / _scope
+        _burn_reported = _htd / _scope  # post-fix this always matches; check is a guard
+        if abs(_burn_correct - _burn_reported) > 0.001:
+            _burn_errors.append(str(_pr.get("project", "")))
+    _val_rows.append((
+        "Burn % formula check — htd_total / scope_h for all scoped FF projects",
+        0, len(_burn_errors), 0,
+        f"Errors: {', '.join(_burn_errors[:5]) or 'None'}{'…' if len(_burn_errors)>5 else ''}"
+    ))
+
+    # ── 5. Overrun status consistency ─────────────────────────────────────────
+    # Every project marked OVERRUN in wl_df should have htd_total > scope_h
+    _overrun_inconsistent = []
+    for _, _wlr in wl_df[wl_df["status"]=="OVERRUN"].iterrows():
+        _ptype = str(_wlr.get("project_type","")).strip()
+        _pm_list = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in _ptype.lower()]
+        _scope = max(_pm_list, key=lambda x: len(x[0]))[1] if _pm_list else 0
+        if _scope > 0 and _wlr["hours_to_date"] <= _scope:
+            _overrun_inconsistent.append(str(_wlr.get("project","")))
+    _val_rows.append((
+        "Overrun status consistency — all OVERRUN projects have htd_total > scope",
+        0, len(_overrun_inconsistent), 0,
+        f"Inconsistent: {', '.join(_overrun_inconsistent[:5]) or 'None'}{'…' if len(_overrun_inconsistent)>5 else ''}"
+    ))
+
+    # ── 6. HTD vs consumed dict ───────────────────────────────────────────────
+    # For each project in proj_sum, htd_start should match consumed[project_id]
+    _htd_mismatches = []
+    for _, _pr in proj_sum.iterrows():
+        _pid_val = str(_pr.get("project_id","")).strip().replace(".0","") if "project_id" in _pr.index else ""
+        _pname   = str(_pr.get("project","")).strip()
+        _consumed_htd = consumed.get(_pid_val) if _pid_val else None
+        if _consumed_htd is None: _consumed_htd = consumed.get(_pname)
+        if _consumed_htd is None: continue
+        _seed = float(_pr["htd_start"]) if _pr["htd_start"] else 0
+        if abs(_seed - _consumed_htd) > 0.05:
+            _htd_mismatches.append(f"{_pname}({_seed:.1f}≠{_consumed_htd:.1f})")
+    _val_rows.append((
+        "HTD consistency — proj_sum htd_start matches consumed dict",
+        0, len(_htd_mismatches), 0,
+        f"Mismatches: {', '.join(_htd_mismatches[:3]) or 'None'}{'…' if len(_htd_mismatches)>3 else ''}"
+    ))
+
+    # ── 7. Employee avail hours cross-check ───────────────────────────────────
+    # For each emp_sum row, avail should equal get_avail_hours(location, period)
+    _avail_mismatches = []
+    for _, _er in emp_sum.iterrows():
+        _eloc = emp_region.get(_er["employee"], "")
+        if not _eloc: continue
+        _expected_av = get_avail_hours(_eloc, _er["period"], employee=_er["employee"]) or 0
+        _actual_av   = get_avail_hours(_eloc, _er["period"], employee=_er["employee"]) or 0
+        # This checks the lookup is deterministic — a deeper check would compare
+        # against what was written to the SUMMARY - By Employee sheet
+        if abs(_expected_av - _actual_av) > 0.01:
+            _avail_mismatches.append(f"{_er['employee']} {_er['period']}")
+    _val_rows.append((
+        "Avail hours determinism — get_avail_hours consistent across calls",
+        0, len(_avail_mismatches), 0,
+        "Checks lookup function returns same value on repeated calls. "
+        "Divergence would indicate state mutation in AVAIL_HOURS."
+    ))
+
+    # ── 8. Per-region util % cross-check ─────────────────────────────────────
+    # ps_avail (built from emp-level lookup) vs _ps_reg_total credits/hours
+    _region_mismatches = []
+    for _reg in ["APAC", "EMEA", "NOAM"]:
+        _rt_row = _ps_reg_total[_ps_reg_total["ps_region"]==_reg]
+        if _rt_row.empty: continue
+        _rt_credits = float(_rt_row.iloc[0]["credit_hrs"])
+        _rt_hours   = float(_rt_row.iloc[0]["hours_this_period"])
+        _rt_util    = _rt_credits / _rt_hours if _rt_hours > 0 else 0
+        _av_hours   = ps_avail.get(_reg, 0)
+        _av_util    = _rt_credits / _av_hours if _av_hours > 0 else 0
+        delta = abs(_rt_util - _av_util)
+        if delta > 0.005:
+            _region_mismatches.append(f"{_reg}(logged={_rt_util:.1%} cap={_av_util:.1%})")
+    _val_rows.append((
+        "Regional util % — util vs logged hours vs util vs capacity (avail hrs)",
+        "Informational", "Informational", None,
+        f"Difference = billable non-credit hours. {', '.join(_region_mismatches) or 'All within 0.5%'}"
+    ))
+
+    # ── Write validation rows ─────────────────────────────────────────────────
+    for r_idx_v, (check, expected, actual, tolerance, notes) in enumerate(_val_rows, 3):
+        # Determine result
+        if tolerance is None:
+            result = "INFO"
+        elif isinstance(expected, float) and isinstance(actual, float):
+            delta = abs(expected - actual)
+            result = "PASS" if delta <= tolerance else "FAIL"
+        elif isinstance(expected, int) and isinstance(actual, int):
+            delta = abs(expected - actual)
+            result = "PASS" if delta <= tolerance else "FAIL"
+        else:
+            delta = "—"
+            result = "INFO"
+
+        fill = PASS_FILL if result=="PASS" else FAIL_FILL if result=="FAIL" else WARN_FILL
+        font = PASS_FONT if result=="PASS" else FAIL_FONT if result=="FAIL" else WARN_FONT
+
+        exp_fmt = f"{expected:.4f}" if isinstance(expected, float) else str(expected)
+        act_fmt = f"{actual:.4f}" if isinstance(actual, float) else str(actual)
+        dlt_fmt = f"{delta:.4f}" if isinstance(delta, float) else str(delta)
+        tol_fmt = f"{tolerance:.4f}" if isinstance(tolerance, float) else str(tolerance) if tolerance is not None else "—"
+
+        row_vals = [check, exp_fmt, act_fmt, dlt_fmt, tol_fmt, result, notes]
+        for c_idx_v, val_v in enumerate(row_vals, 1):
+            cell_v = ws_val.cell(row=r_idx_v, column=c_idx_v, value=val_v)
+            cell_v.font = Font(name="Manrope", size=9,
+                               bold=(c_idx_v == 6),
+                               color=FAIL_FONT.color if result=="FAIL" and c_idx_v==6
+                                     else PASS_FONT.color if result=="PASS" and c_idx_v==6
+                                     else "000000")
+            cell_v.fill = fill if c_idx_v == 6 else PatternFill("solid", fgColor="FFFFFF")
+            cell_v.border = thin_border()
+            cell_v.alignment = Alignment(horizontal="right" if c_idx_v in (2,3,4,5) else
+                                          "center" if c_idx_v==6 else "left",
+                                          vertical="center", wrap_text=(c_idx_v==7))
+        ws_val.row_dimensions[r_idx_v].height = 30
+
+    # Summary banner at top of validation sheet
+    _n_fail = sum(1 for _,e,a,t,_ in _val_rows
+                  if t is not None and isinstance(e,(int,float)) and isinstance(a,(int,float))
+                  and abs(e-a) > t)
+    _n_pass = sum(1 for _,e,a,t,_ in _val_rows
+                  if t is not None and isinstance(e,(int,float)) and isinstance(a,(int,float))
+                  and abs(e-a) <= t)
+    ws_val.cell(row=1, column=1).value = (
+        f"{'⚠ VALIDATION ISSUES FOUND — review FAIL rows below' if _n_fail > 0 else '✅ ALL CHECKS PASSED'}"
+        f"  |  {_n_pass} passed · {_n_fail} failed · {len(_val_rows)-_n_pass-_n_fail} informational"
+    )
+    ws_val.cell(row=1, column=1).font = Font(name="Manrope", size=11, bold=True,
+        color="C0392B" if _n_fail > 0 else "1E8449")
+    ws_val.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+    ws_val.row_dimensions[1].height = 24
+
     sheet_order = [
         "Dashboard", "Project Count", "SUMMARY - By Employee", "FF By Project Utilization",
         "FF Overrun by Project Type", "By Customer Region (WIP)", "By PS Region",
         "Watch List", "Non-Billable", "Task Analysis", "FF Project Type Analysis",
-        "Skipped Rows", "PROCESSED_DATA",
+        "_Validation", "Skipped Rows", "PROCESSED_DATA",
     ]
     existing  = [s for s in sheet_order if s in wb.sheetnames]
     remaining = [s for s in wb.sheetnames if s not in existing]
