@@ -785,7 +785,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         _gl14_sub = f"Next: {_gl_cust} · {_gl_date}"
 
     # ── Overrun week amount from weekly NS slice ──────────────────────────────
-    _wk_overrun = round(overrun_hrs, 1)  # MTD total — weekly split not available at this point
+    _wk_overrun = round(overrun_hrs, 2)  # MTD total — rounded to 2dp to preserve .25 increments
 
     # ── Pacing badge ──────────────────────────────────────────────────────────
     if _wk_util_pct is not None:
