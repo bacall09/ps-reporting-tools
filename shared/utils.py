@@ -516,27 +516,29 @@ def build_excel(df, scope_map, consumed):
         htd_start=("htd_start","first"),
     ).sort_values("project")
 
-    htd_seeds = dict(zip(proj_sum["project"], proj_sum["htd_start"]))
+    _htd_key_col = "project_id" if "project_id" in proj_sum.columns else "project"
+    htd_seeds = dict(zip(proj_sum[_htd_key_col], proj_sum["htd_start"]))
+    # All per-project lookup dicts keyed by project_id (unique) with fallback to project name
+    _pid_col = "project_id" if "project_id" in df.columns else "project"
     proj_cust_region = {}
     proj_pm = {}
     if "customer_region" in df.columns:
-        proj_cust_region = df.dropna(subset=["customer_region"]).groupby("project")["customer_region"].first().to_dict()
+        proj_cust_region = df.dropna(subset=["customer_region"]).groupby(_pid_col)["customer_region"].first().to_dict()
     if "project_manager" in df.columns:
-        _pid_col = "project_id" if "project_id" in df.columns else "project"
         proj_pm = (df.dropna(subset=["project_manager"])
                      .groupby(_pid_col)["project_manager"]
                      .first().to_dict())
-    proj_ps_region = df.groupby("project")["ps_region"].first().to_dict() if "ps_region" in df.columns else {}
+    proj_ps_region = df.groupby(_pid_col)["ps_region"].first().to_dict() if "ps_region" in df.columns else {}
     proj_phase = {}
     if "project_phase" in df.columns:
-        proj_phase = df.dropna(subset=["project_phase"]).groupby("project")["project_phase"].first().to_dict()
+        proj_phase = df.dropna(subset=["project_phase"]).groupby(_pid_col)["project_phase"].first().to_dict()
     proj_start = {}
     if "start_date" in df.columns:
-        proj_start = df.dropna(subset=["start_date"]).groupby("project")["start_date"].min().to_dict()
+        proj_start = df.dropna(subset=["start_date"]).groupby(_pid_col)["start_date"].min().to_dict()
     _as_of = pd.to_datetime(df["date"], errors="coerce").max() if "date" in df.columns else pd.Timestamp.now()
-    df["project_phase"] = df["project"].map(proj_phase) if proj_phase else ""
+    df["project_phase"] = df[_pid_col].map(proj_phase) if proj_phase else ""
     if proj_start:
-        df["start_date_mapped"] = df["project"].map(proj_start)
+        df["start_date_mapped"] = df[_pid_col].map(proj_start)
         df["days_active"] = df["start_date_mapped"].apply(
             lambda s: int((_as_of - s).days) if pd.notna(s) and pd.notna(_as_of) else None)
         df["start_date_display"] = df["start_date_mapped"]
@@ -564,8 +566,9 @@ def build_excel(df, scope_map, consumed):
         status_bg = {"OVERRUN":"FDECED","AT LIMIT":"FDECED","REVIEW":"FEF9E7","ON TRACK":"EAF9F1"}.get(status, LTGRAY)
         bg, _grp_idx_p = group_bg(ptype, _prev_ptype, _grp_idx_p)
         _prev_ptype = ptype
-        pm_name = proj_pm.get(str(row.get("project_id","")).strip() or row["project"], "")
-        start_dt = proj_start.get(row["project"])
+        _row_pid = str(row.get("project_id","")).strip() or row["project"]
+        pm_name = proj_pm.get(_row_pid, "")
+        start_dt = proj_start.get(_row_pid)
         vals = [row["project"], ptype, pm_name, scope_h or "—", previous_h,
                 row["hours_this_period"], row["credit_hrs"], vari_h,
                 previous_h + row["hours_this_period"],
@@ -986,11 +989,12 @@ def build_excel(df, scope_map, consumed):
         status = row["status"]
         status_bg = "FDECED" if status == "OVERRUN" else "FEF9E7"
         burn_val = row["burn_pct"] if row["burn_pct"] is not None else "—"
-        pm_name = proj_pm.get(str(row.get("project_id","")).strip() or row["project"], "")
-        start_dt = proj_start.get(row["project"])
+        _row_pid = str(row.get("project_id","")).strip() or row["project"]
+        pm_name = proj_pm.get(_row_pid, "")
+        start_dt = proj_start.get(_row_pid)
         _htd_wl = float(row["previous_htd"]) + float(row["hours_this_period"])
         _tot_ov = _htd_wl - row["scope_h"] if row["scope_h"] and row["scope_h"] > 0 else "—"
-        _ps_reg_wl = proj_ps_region.get(row["project"], "")
+        _ps_reg_wl = proj_ps_region.get(_row_pid, "")
         vals = [row["project"], row["project_type"], _ps_reg_wl, pm_name,
                 row["scope_h"] or "—", row["previous_htd"], _htd_wl, _tot_ov,
                 burn_val, row["variance_hrs"], status]
@@ -1011,8 +1015,9 @@ def build_excel(df, scope_map, consumed):
         ["project","project_type"], as_index=False).agg(hours=("hours","sum")).sort_values("hours", ascending=False)
     for _, row in unconf_df.iterrows():
         bg = "FEF3E2"
-        vals = [row["project"], row["project_type"], proj_cust_region.get(row["project"],""),
-                proj_pm.get(str(row.get("project_id","")).strip() or row["project"],""), "—", "—", "—", row["hours"], "FF: NO SCOPE DEFINED"]
+        _row_pid = str(row.get("project_id","")).strip() or row["project"]
+        vals = [row["project"], row["project_type"], proj_cust_region.get(_row_pid,""),
+                proj_pm.get(_row_pid,""), "—", "—", "—", row["hours"], "FF: NO SCOPE DEFINED"]
         fmts = [None,None,None,None,None,None,None,"#,##0.00",None]
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
             cell = ws_wl.cell(row=r_idx, column=c_idx, value=val)
@@ -1164,10 +1169,12 @@ def build_excel(df, scope_map, consumed):
 
     dash_section(ws_dash, 17, 2, "WATCH LIST SUMMARY", ncols=6)
     ws_dash.row_dimensions[17].height = 22
-    n_overrun  = len(wl_df[wl_df["status"]=="OVERRUN"]) if len(wl_df) > 0 else len(df[df["credit_tag"]=="OVERRUN"]["project"].unique())
+    _dc_pid = "project_id" if "project_id" in df.columns else "project"
+    _dc_pid_wl = "project_id" if "project_id" in wl_df.columns else "project"
+    n_overrun  = len(wl_df[wl_df["status"]=="OVERRUN"]) if len(wl_df) > 0 else int(df[df["credit_tag"]=="OVERRUN"][_dc_pid].nunique())
     _wl_at_risk = wl_df[(wl_df["burn_pct"].notna()) & (wl_df["burn_pct"]>=0.9) & (wl_df["status"]!="OVERRUN")]
-    n_at_risk  = len(_wl_at_risk["project"].unique()) if len(_wl_at_risk) > 0 else 0
-    n_unconf   = len(df[df["credit_tag"]=="UNCONFIGURED"]["project"].unique())
+    n_at_risk  = int(_wl_at_risk[_dc_pid_wl].nunique()) if len(_wl_at_risk) > 0 else 0
+    n_unconf   = int(df[df["credit_tag"]=="UNCONFIGURED"][_dc_pid].nunique())
     unconf_hrs_d = df[df["credit_tag"]=="UNCONFIGURED"]["hours"].sum()
     for i, (label, value, fmt, status) in enumerate([
         ("Projects in Overrun", n_overrun, "#,##0", "red" if n_overrun>0 else "green"),
