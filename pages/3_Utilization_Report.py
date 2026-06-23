@@ -1042,15 +1042,15 @@ def main():
             _sum_sort = st.selectbox("Sort by", list(_sum_sort_opts.keys()),
                                      index=0, key="util_summary_sort")
         _ssk, _ssa = _sum_sort_opts[_sum_sort]
-        _sum_sorted = _sum_agg.sort_values(_ssk, ascending=_ssa, na_position="last").reset_index(drop=True)
+        _sum_sorted = _sum_agg[~_sum_agg["exempt"]].sort_values(_ssk, ascending=_ssa, na_position="last").reset_index(drop=True)
 
-        _n_at_risk = int((_sum_sorted["util_cap"].notna() & (_sum_sorted["util_cap"] < 0.60) & (~_sum_sorted["exempt"])).sum())
+        _n_at_risk = int((_sum_sorted["util_cap"].notna() & (_sum_sorted["util_cap"] < 0.60)).sum())
         _n_total   = len(_sum_sorted)
 
         # Build table
         _sum_rows = []
         for _, r in _sum_sorted.iterrows():
-            ex = bool(r["exempt"])
+            ex = False  # exempt rows excluded above
             _avail_str = f"{r['total_avail']:,.1f}" if r["total_avail"] else "—"
             _gap_str   = f"{r['gap_hrs']:,.1f}" if r["gap_hrs"] is not None else "—"
             _sum_rows.append(
