@@ -672,7 +672,7 @@ Excel report builder, credit assignment engine, capacity calc.
 
 Key exports:
 - `assign_credits(df, scope_map) → (df_with_credits, consumed_dict, skipped)` — the engine
-- `build_excel(df, scope_map, consumed) → BytesIO` — full multi-sheet Excel report
+- `build_excel(df, scope_map, consumed, df_drs=None) → BytesIO` — full multi-sheet Excel report. Pass `df_drs` to enable DRS-sourced PM attribution (DRS takes priority over NS; NS fills gaps where DRS PM is blank).
 - `auto_detect_columns(df)` — fuzzy column-name resolver for varying NS exports
 - `match_ff_task(task)` — task category resolver
 - `get_avail_hours(region, period, employee=None)` — capacity lookup. Pass `employee` to enable contractor routing: if the name is in `CONTRACTOR_EMPLOYEES`, the `"Contractor"` region is used regardless of the `region` arg. All internal call sites pass `employee`; external callers should do the same.
@@ -819,6 +819,34 @@ Three distinct causes with different fixes:
 
 ---
 
+### When PSPT billable hours are lower than the NS Quarterly Utilization Report
+
+**Root cause: the NS Quarterly Utilization Report has no effective approval status filter.**
+
+Confirmed June 2026: the NS report filter set contains date range, generic resource exclusion, department, customer/project, resource name, class, subsidiary, and internal project flag — but no `Approval Status` filter. This means the NS report counts **all time entries regardless of status**, including Rejected entries that have been explicitly declined by a manager.
+
+PSPT reads from `customsearch66732` (Time Detail), which filters on approved/submitted time only. PSPT figures will therefore be **lower** than the NS Quarterly Utilization Report in any period where rejected time entries exist. This is correct behaviour — PSPT is more accurate, not less.
+
+**How to confirm:** drill into the NS report for the consultant and period showing the discrepancy. Cross-reference against the Time Detail saved search — rejected entries visible there but not in PSPT confirm this is the cause.
+
+**Attempted fix and known limitation (June 2026):** Adding `Time Tracked: Approval Status is not equal to Rejected` to the report filters had no effect. The relevant field in this report appears to be `Payroll Time: Approval Status`, not `Time Tracked: Approval Status` — a component mismatch that means the filter applies to a different data join and doesn't suppress rejected time entries. This is a NetSuite report architecture issue. NS admin or NetSuite support would need to investigate the correct component to filter on.
+
+**Do not adjust PSPT** to match NS on this discrepancy. The NS native figure is the one that is wrong. The Time Detail saved search (`customsearch66732`) is the reliable source for reconciliation.
+
+---
+
+### When a project shows the wrong consultant in PSPT
+
+**Root cause (fixed June 2026):** per-project lookup dicts (`proj_pm`, `proj_cust_region`, `proj_ps_region`, `proj_start`, `proj_phase`) were keyed by project name. When the same customer has two concurrent projects with different types (e.g. Acer Europe AG — Approvals and Acer Europe AG — Capture), both collapsed to one key and `.first()` picked whichever employee sorted first alphabetically.
+
+**Fix applied:** all per-project dicts in `shared/utils.py` are now keyed by `project_id` (with fallback to project name if `project_id` is absent from the export). Project ID is unique per project in NS and is the correct grouping key throughout.
+
+**If you see wrong consultant attribution after this fix:** check that the NS Time Detail export includes the `Project ID` column. If that column is missing from the export, PSPT falls back to project name and the collision risk returns. The export schema should always include Project ID — verify `customsearch66732` has it in the column list.
+
+**Do not re-key any per-project dict by project name.** Project name is not unique. Always use `project_id`.
+
+---
+
 ## TODO / known unknowns
 
 Things that should be filled in over time. Promote pages from light → deep as you work on them.
@@ -853,6 +881,57 @@ Fix approach: after building `emp_sum`, expand it to include one row per active 
 
 Two pages named `9_*`: Help (`9_Help.py`) and Revenue Report (`9_Revenue_Report.py`). Streamlit's auto-ordering may behave unpredictably. Renumber when convenient.
 
+### Roster & configuration as database records (target state)
+
+**Problem:** Employee names, locations, regions, products, start/exit dates, and capacity benchmarks are currently hardcoded in `shared/constants.py` and `shared/config.py`. Every roster change (new hire, leaver, location update, product reassignment) requires a code edit and a deployment. This creates drift risk, is error-prone, and is not scalable as the team grows.
+
+**Target state:** All roster and configuration data lives in a persistent database. An admin page in PSPT (director/manager-only) provides a UI to add, edit, and deactivate employees without touching code. Deploys are only needed for logic changes, not data changes.
+
+**Proposed two-phase approach:**
+
+**Phase 1 — Google Sheets bridge (near-term, pre-hosting)**
+
+Use a Google Sheet as a lightweight roster store. PSPT reads it at load time via the Drive API (already in the IT approval pipeline). The sheet is the editable source; `constants.py` and `config.py` become fallback/cache only.
+
+- Schema: one row per employee with columns for name, NS name variant, role, region, location, products (comma-separated), start date, exit date, is_contractor, util_exempt, ps_region_override
+- PSPT reads the sheet on Home load, builds the same in-memory dicts currently loaded from Python files
+- If the sheet is unavailable, falls back to the hardcoded files with a warning banner
+- No new IT approvals required beyond the existing Google Workspace submission
+- Roster change = edit the sheet, refresh the app. No deployment.
+- Estimated complexity: medium (~1 day). Dependency: Google Drive API IT approval.
+
+**Phase 2 — Postgres database (target state, post-hosting)**
+
+Once on IT-approved hosting with a persistent DB:
+
+- Replace the Google Sheet with a Postgres schema (or IT-approved equivalent)
+- Add an admin page in PSPT with forms to add/edit/deactivate employees and update location/capacity data
+- `constants.py` and `config.py` are retired or become thin stubs that load from the DB at startup
+- Leavers are deactivated via the UI (exit date stamped); `NO_ACCESS`, `_LEAVERS`, `CONTRACTOR_EMPLOYEES` become DB flags
+- Requires IT architecture review (employee data in a new persistent store is a new data classification surface — similar process to the current Google Workspace/Claude submission)
+- Estimated complexity: large (~3-5 days including schema design, admin page, migration). Dependency: IT-approved hosting, DB provisioning, IT review.
+
+**DB schema (draft — for Phase 2 design)**
+
+```
+employees
+  id, name, ns_name_variant, role, region, location,
+  products[], start_date, exit_date, is_contractor,
+  util_exempt, util_target, ps_region_override, active
+
+avail_hours
+  location, year_month, available_hours
+
+product_benchmarks
+  product_name, avg_hrs, scope_hrs, timeline_weeks, oh_hrswk
+```
+
+**Current state of hardcoded data (all need migrating):**
+- `shared/constants.py` — `EMPLOYEE_ROLES`, `ACTIVE_EMPLOYEES`, `CONTRACTOR_EMPLOYEES`, `LEAVER_EXIT_DATES`, `NO_ACCESS`, `_LEAVERS`
+- `shared/config.py` — `EMPLOYEE_LOCATION`, `PS_REGION_OVERRIDE`, `AVAIL_HOURS`, `DEFAULT_SCOPE`, `PRODUCT_DATA`, `PHASE_END_WEEKS`
+
+Until Phase 1 or 2 is implemented, the rule is: **all roster and configuration changes go through `constants.py` and `config.py` only** — never redefined in individual page files. All page files import from shared; they never hardcode names or product data directly.
+
 ---
 
-*Last updated: June 2026 — roster updates (new hires, leavers), contractor avail hours routing, mid-month leaver proration, avail hours reconciliation playbook. When you make a substantive change, update the affected section.*
+*Last updated: June 2026 — roster updates (new hires, leavers), contractor avail hours routing, mid-month leaver proration, avail hours reconciliation playbook, NS rejected time entry finding, project attribution bug fix (project_id keying), hardcoded roster/product data centralised to shared/constants.py and shared/config.py, roster-as-records roadmap added. When you make a substantive change, update the affected section.*
