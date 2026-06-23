@@ -507,8 +507,10 @@ def build_excel(df, scope_map, consumed):
         (df["billing_type"].str.lower() == "fixed fee")
     ] if "billing_type" in df.columns else df[df["credit_tag"] != "SKIPPED"]
 
+    _has_pid = "project_id" in ff_proj_df.columns
+    _proj_sum_keys = ["project", "project_type"] + (["project_id"] if _has_pid else [])
     proj_sum = ff_proj_df.groupby(
-        ["project","project_type"], as_index=False
+        _proj_sum_keys, as_index=False
     ).agg(
         hours_this_period=("hours","sum"),
         credit_hrs=("credit_hrs","sum"),
@@ -597,7 +599,9 @@ def build_excel(df, scope_map, consumed):
         (df.get("billing_type", pd.Series(dtype="object")).str.lower() == "fixed fee")
     ].copy() if "billing_type" in df.columns else df[df["credit_tag"] != "SKIPPED"].copy()
 
-    _ot_proj = _ot_ff.groupby(["project","project_type"], as_index=False).agg(
+    _ot_has_pid = "project_id" in _ot_ff.columns
+    _ot_keys = ["project","project_type"] + (["project_id"] if _ot_has_pid else [])
+    _ot_proj = _ot_ff.groupby(_ot_keys, as_index=False).agg(
         hours_total=("hours","sum"), overrun_hrs=("variance_hrs","sum"))
     def _ot_scope(ptype):
         _m = [(k, float(v)) for k, v in scope_map.items()
@@ -734,7 +738,8 @@ def build_excel(df, scope_map, consumed):
     if len(ff_df) > 0:
         task_sum = ff_df.groupby(["ff_task","project_type"], as_index=False).agg(hours=("hours","sum")).sort_values(["ff_task","project_type"])
         all_ff = df[df["billing_type"].str.lower() == "fixed fee"] if "billing_type" in df.columns else df
-        proj_count_by_type = all_ff.groupby("project_type")["project"].nunique().to_dict()
+        _pc_pid = "project_id" if "project_id" in all_ff.columns else "project"
+        proj_count_by_type = all_ff.groupby("project_type")[_pc_pid].nunique().to_dict()
         type_totals = ff_df.groupby("project_type")["hours"].sum().to_dict()
         _prev_task_t = None; _grp_idx_t = 0; r_idx_t = 3
         for _, row in task_sum.iterrows():
@@ -811,7 +816,8 @@ def build_excel(df, scope_map, consumed):
         pta_sum = ff_df.groupby(["project_type","ff_task"], as_index=False).agg(hours=("hours","sum"))
         pta_sum = pta_sum[pta_sum["ff_task"].notna() & (pta_sum["ff_task"] != "")].sort_values(["project_type","ff_task"])
         _all_ff_pta = df[df["billing_type"].fillna("").str.lower() == "fixed fee"] if "billing_type" in df.columns else df.copy()
-        _proj_count_pta = _all_ff_pta.groupby("project_type")["project"].nunique().to_dict()
+        _pta_pid = "project_id" if "project_id" in _all_ff_pta.columns else "project"
+        _proj_count_pta = _all_ff_pta.groupby("project_type")[_pta_pid].nunique().to_dict()
         _type_totals_pta = ff_df.groupby("project_type")["hours"].sum().to_dict()
         _prev_ptype_pta = None; _grp_idx_pta = 0; r_idx_pta = 4
         for _, row in pta_sum.iterrows():
@@ -954,7 +960,7 @@ def build_excel(df, scope_map, consumed):
     for i, w in enumerate(wlw, 1):
         ws_wl.column_dimensions[get_column_letter(i)].width = w
 
-    wl_df = ff_proj_df.groupby(["project","project_type"], as_index=False).agg(
+    wl_df = ff_proj_df.groupby(_proj_sum_keys, as_index=False).agg(
         hours_this_period=("hours","sum"), credit_hrs=("credit_hrs","sum"),
         variance_hrs=("variance_hrs","sum"), htd_start=("htd_start","first"))
     wl_df["previous_htd"] = wl_df.apply(
@@ -1012,7 +1018,7 @@ def build_excel(df, scope_map, consumed):
     ws_wl.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=len(wlh))
     r_idx += 1
     unconf_df = df[df["credit_tag"] == "UNCONFIGURED"].groupby(
-        ["project","project_type"], as_index=False).agg(hours=("hours","sum")).sort_values("hours", ascending=False)
+        _proj_sum_keys, as_index=False).agg(hours=("hours","sum")).sort_values("hours", ascending=False)
     for _, row in unconf_df.iterrows():
         bg = "FEF3E2"
         _row_pid = str(row.get("project_id","")).strip() or row["project"]
@@ -1118,7 +1124,8 @@ def build_excel(df, scope_map, consumed):
         ("Util % (target 70%)", util_pct_d, "0.0%", util_status_d),
         ("FF Overrun Hrs", overrun_hrs_d, "#,##0.00", None),
         ("Admin Hrs", admin_hrs_d, "#,##0.00", None),
-        ("Projects This Period", df[df["billing_type"].fillna("").str.lower() != "internal"].groupby(["project","project_type"]).ngroups, "#,##0", None),
+        ("Projects This Period", df[df["billing_type"].fillna("").str.lower() != "internal"]
+            .groupby(["project_id","project_type"] if "project_id" in df.columns else ["project","project_type"]).ngroups, "#,##0", None),
     ]):
         col = 2 + i
         dash_label(ws_dash, 7, col, label)

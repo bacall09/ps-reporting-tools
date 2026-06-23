@@ -1002,8 +1002,9 @@ def join_tm_to_ns(df_sow: pd.DataFrame, df_ns: pd.DataFrame,
                else _tm_ns[_grp_cols].drop_duplicates().assign(hours=0.0))
     ns_rate_by_proj = {}
     if "ns_rate" in _tm_ns.columns:
+        _nr_pid = "project_id" if "project_id" in _tm_ns.columns else "project"
         ns_rate_by_proj = (_tm_ns[_tm_ns["ns_rate"] > 0]
-                           .groupby("project")["ns_rate"].max().to_dict())
+                           .groupby(_nr_pid)["ns_rate"].max().to_dict())
 
     # DRS project list for tier 2
     drs_proj = []
