@@ -583,6 +583,7 @@ def build_excel(df, scope_map, consumed, df_drs=None):
         _row_pid = str(row.get("project_id","")).strip() or row["project"]
         pm_name = proj_pm.get(_row_pid, "")
         start_dt = proj_start.get(_row_pid)
+        vari_h   = row["variance_hrs"]
         vals = [row["project"], ptype, pm_name, scope_h or "—", previous_h,
                 row["hours_this_period"], row["credit_hrs"], vari_h,
                 previous_h + row["hours_this_period"],
