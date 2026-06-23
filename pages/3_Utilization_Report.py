@@ -957,10 +957,12 @@ def main():
             avail_str = f"{r['avail_hrs']:,.1f}" if r["avail_hrs"] else "—"
             pj = r["proj_full_month"]
             pj_str = f"{pj*100:.1f}%" if pj is not None else "—"
+            _region_str = PS_REGION_MAP.get(str(r["location"]).strip(), "—") if r["location"] else "—"
             rows_html.append(
                 f"<tr>"
                 f"<td><span class='util-emp-name'>{avatar_html(emp)}{short_name(emp)}</span></td>"
                 f"<td class='muted'>{r['location'] or '—'}</td>"
+                f"<td class='muted'>{_region_str}</td>"
                 f"<td class='muted'>{r['period']}</td>"
                 f"<td class='num'>{avail_str}</td>"
                 f"<td class='num'>{r['hours_this_period']:,.2f}</td>"
@@ -983,7 +985,7 @@ def main():
             f"<div class='util-table-wrap'>"
             f"<table class='util-emp-table'>"
             f"<thead><tr>"
-            f"<th>Consultant</th><th>Location</th><th>Period</th>"
+            f"<th>Consultant</th><th>Location</th><th>Region</th><th>Period</th>"
             f"<th class='num'>Avail</th><th class='num'>Logged</th>"
             f"<th class='num'>Credits</th><th class='num'>Overrun</th>"
             f"<th class='center'>Util % logged</th><th class='center'>Util % cap</th>"
@@ -1049,52 +1051,27 @@ def main():
         _sum_rows = []
         for _, r in _sum_sorted.iterrows():
             ex = bool(r["exempt"])
-            _util_cap    = r["util_cap"]
-            _util_logged = r["util_logged"]
-            _gap         = r["gap_hrs"]
-            _at_risk     = not ex and _util_cap is not None and _util_cap < 0.60
-
-            _cap_str  = f"{_util_cap*100:.1f}%"  if _util_cap    is not None else "—"
-            _log_str  = f"{_util_logged*100:.1f}%" if _util_logged is not None else "—"
-            _gap_str  = f"{_gap:,.1f}"             if _gap         is not None else "—"
-
-            # Colour cap pill by threshold
-            if ex or _util_cap is None:
-                _cap_pill_col = "rgba(128,128,128,0.15)"
-                _cap_txt_col  = "inherit"
-            elif _util_cap >= 0.70:
-                _cap_pill_col = "rgba(34,197,94,0.18)";  _cap_txt_col = "#15803d"
-            elif _util_cap >= 0.60:
-                _cap_pill_col = "rgba(245,158,11,0.18)"; _cap_txt_col = "#b45309"
-            else:
-                _cap_pill_col = "rgba(239,68,68,0.18)";  _cap_txt_col = "#b91c1c"
-
-            _cap_pill = (f"<span style='background:{_cap_pill_col};color:{_cap_txt_col};"
-                         f"padding:3px 10px;border-radius:12px;font-weight:600;font-size:12px'>"
-                         f"{_cap_str}</span>")
-            _flag = "<span style='color:#b91c1c;font-size:11px'>⚠ Below 60%</span>" if _at_risk else ""
-            _exempt_note = "<span style='opacity:0.4;font-size:11px'>exempt</span>" if ex else ""
-
+            _avail_str = f"{r['total_avail']:,.1f}" if r["total_avail"] else "—"
+            _gap_str   = f"{r['gap_hrs']:,.1f}" if r["gap_hrs"] is not None else "—"
             _sum_rows.append(
                 f"<tr>"
                 f"<td><span class='util-emp-name'>{avatar_html(r['employee'])}{short_name(r['employee'])}</span></td>"
                 f"<td class='muted'>{r['location'] or '—'}</td>"
                 f"<td class='muted'>{r['region'] or '—'}</td>"
-                f"<td class='num'>{r['total_avail']:,.1f}</td>"
+                f"<td class='num'>{_avail_str}</td>"
                 f"<td class='num'>{r['total_logged']:,.2f}</td>"
                 f"<td class='num'>{r['total_credits']:,.2f}</td>"
                 f"<td class='num'>{r['total_overrun']:,.2f}</td>"
-                f"<td class='center'>{_cap_pill}{_exempt_note}</td>"
-                f"<td class='num muted'>{_log_str}</td>"
+                f"<td class='center'>{rag_pill_html(r['util_logged'], ex)}</td>"
+                f"<td class='center'>{rag_pill_html(r['util_cap'], ex)}</td>"
                 f"<td class='num'>{_gap_str}</td>"
-                f"<td>{_flag}</td>"
                 f"</tr>"
             )
 
         st.markdown(
             f"<div class='util-table-header'>"
             f"<span style='font-weight:600'>Aggregate utilization — one row per consultant</span>"
-            f"<span style='opacity:0.7'>{_n_total} consultants · "
+            f"<span style='opacity:0.7'>{_n_total} consultant{'s' if _n_total!=1 else ''} · "
             f"<span style='color:#b91c1c'>{_n_at_risk} below 60% capacity</span></span>"
             f"</div>"
             f"<div class='util-table-wrap'>"
@@ -1103,8 +1080,8 @@ def main():
             f"<th>Consultant</th><th>Location</th><th>Region</th>"
             f"<th class='num'>Avail Hrs</th><th class='num'>Logged</th>"
             f"<th class='num'>Credits</th><th class='num'>Overrun</th>"
-            f"<th class='center'>Util % cap</th><th class='num'>Util % logged</th>"
-            f"<th class='num'>Gap to 70%</th><th>Flag</th>"
+            f"<th class='center'>Util % logged</th><th class='center'>Util % cap</th>"
+            f"<th class='num'>Gap to 70%</th>"
             f"</tr></thead>"
             f"<tbody>{''.join(_sum_rows)}</tbody>"
             f"</table></div>",
