@@ -492,26 +492,11 @@ with tab_glance:
     # ── Projects at risk — identical to Utilization Report ────────────────
     if not active.empty:
         try:
-            from shared.config import DEFAULT_SCOPE as _DS_at
-            def _at_scope(ptype):
-                import re as _re_scope
-                _pt = str(ptype or "").strip().lower()
-                _best = None; _blen = 0
-                for k, v in _DS_at.items():
-                    _kl = k.strip().lower()
-                    if _kl in _pt and len(k) > _blen:
-                        _best = float(v); _blen = len(k)
-                        continue
-                    # Handle reversed order: "20 Premium" matches "Premium - 20"
-                    _km = _re_scope.match(r"premium\s*[-–]?\s*(\d+)", _kl)
-                    if _km:
-                        _hrs = _km.group(1)
-                        if (_re_scope.search(rf"{_hrs}.*premium|premium.*{_hrs}", _pt)
-                                and len(k) > _blen):
-                            _best = float(v); _blen = len(k)
-                return _best
+            from shared.constants import get_ff_scope as _at_scope_fn
+            def _at_scope(ptype, pname=""):
+                return _at_scope_fn(ptype, pname)
         except Exception:
-            def _at_scope(ptype): return None
+            def _at_scope(ptype, pname=""): return None
 
         _risk_rows = []
         # Project types without fixed scope by design — excluded from no-scope flagging
@@ -524,9 +509,9 @@ with tab_glance:
             _ptype_str = str(_r.get("project_type", "") or "").strip()
             _pname_str = str(_r.get("project_name", "") or "").strip()
             # Check project_type; fall back to project name (catches Premium - 10/20 variants)
-            _scope = _at_scope(_ptype_str)
+            _scope = _at_scope(_ptype_str, _pname_str)
             if _scope is None:
-                _scope = _at_scope(_pname_str)
+                _scope = _at_scope(_pname_str, _pname_str)
             _htd_v    = float(_ns_htd.get(_pid_k, 0) or 0)
             _logged   = float(_ns_period_hrs.get(_pid_k, 0) or 0)
             _burn     = (_htd_v / _scope) if (_scope and _scope > 0) else None
