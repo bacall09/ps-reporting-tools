@@ -41,7 +41,7 @@ _manager_pages = [
 
 ]
 _help_pages = [
-    st.Page("pages/9_Help.py", title="Help",                                    icon=":material/help:"),
+    
 ]
 
 # ── Build credentials ─────────────────────────────────────────────────────────
