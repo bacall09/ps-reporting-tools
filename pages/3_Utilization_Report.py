@@ -665,7 +665,7 @@ def main():
             st.session_state["_util_excel_prep_requested"] = None
             try:
                 with st.spinner("Building Excel..."):
-                    st.session_state._util_excel_cache[_excel_cache_key] = build_excel(df, DEFAULT_SCOPE, consumed)
+                    st.session_state._util_excel_cache[_excel_cache_key] = build_excel(df, DEFAULT_SCOPE, consumed, df_drs=_df_drs)
             except Exception as _xl_err:
                 st.error(f"Excel build failed: {_xl_err}")
                 st.exception(_xl_err)
