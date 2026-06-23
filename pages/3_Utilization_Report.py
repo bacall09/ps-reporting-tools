@@ -57,6 +57,27 @@ from shared.config import (
 
 FF_TASKS = ["Configuration", "Enablement", "Training", "Post Go-live", "Project Management"]
 
+def _emp_location(name):
+    """Return location string for an employee from EMPLOYEE_LOCATION."""
+    v = EMPLOYEE_LOCATION.get(name)
+    if v is None: return None
+    return v[0] if isinstance(v, tuple) else v
+
+def _emp_active(name, period_str):
+    """Return True if the employee was active in the given period (YYYY-MM).
+    Uses LEAVER_EXIT_DATES for exit dates; always True if no exit date recorded.
+    """
+    exit_date = LEAVER_EXIT_DATES.get(name)
+    if not exit_date:
+        return True
+    try:
+        p = str(period_str).strip()
+        if len(p) == 6 and "-" not in p:
+            p = p[:4] + "-" + p[4:]
+        return p <= exit_date[:7]
+    except Exception:
+        return True
+
 def _emp_role(name):
     v = EMPLOYEE_ROLES.get(name)
     if v is None: return None
