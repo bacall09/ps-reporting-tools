@@ -800,7 +800,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
     # ── Overrun display ───────────────────────────────────────────────────────
     _overrun_color          = "#F09595" if _wk_overrun > 0 else "rgba(255,255,255,0.85)"
     _overrun_color_adaptive = "#E24B4A" if _wk_overrun > 0 else "var(--color-text-primary)"
-    _overrun_val   = f"{_wk_overrun}h" if _wk_overrun else "—"
+    _overrun_val   = _fmt_hrs(_wk_overrun) if _wk_overrun else "—"
     _overrun_sub   = "MTD overrun" if _wk_overrun else "no overrun this month"
     _n_overrun_proj = sum(1 for _ in [True] if _wk_overrun > 0)
     _overrun_badge = f"<span style='font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(226,75,74,0.2);color:#F09595;font-weight:500;'>{_n_overrun_proj} project{'s' if _n_overrun_proj != 1 else ''}</span>" if _wk_overrun > 0 else ""
@@ -824,7 +824,7 @@ if not my_ns.empty and "date" in my_ns.columns and "hours" in my_ns.columns:
         f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_active_dc}</div>"
         f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_n_onhold_dc} on hold · {int(_n_active_dc + _n_onhold_dc)} assigned total</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>Go-lives next 14d</div>"
-        f"<div style='font-size:26px;font-weight:600;color:#fff;line-height:1.1;'>{_n_gl14}</div>"
+        f"<div style='font-size:26px;font-weight:600;color:{'#4ade80' if _n_gl14 > 0 else '#fff'};line-height:1.1;'>{_n_gl14}</div>"
         f"<div style='font-size:12px;color:rgba(255,255,255,0.45);margin-top:3px;'>{_gl14_sub if _gl14_sub else 'None scheduled'}</div></div>"
         f"<div><div style='font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:rgba(255,255,255,0.4);margin-bottom:4px;'>FF overrun</div>"
         f"<div style='font-size:26px;font-weight:600;color:{_overrun_color};line-height:1.1;'>{_overrun_val}</div>"
