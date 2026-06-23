@@ -320,7 +320,7 @@ def _xl_val(val):
     except (TypeError, ValueError): pass
     return val
 
-def build_excel(df, scope_map, consumed):
+def build_excel(df, scope_map, consumed, df_drs=None):
     wb  = Workbook()
     wb.remove(wb.active)
     bgs = [WHITE, LTGRAY]
@@ -530,6 +530,19 @@ def build_excel(df, scope_map, consumed):
         proj_pm = (df.dropna(subset=["project_manager"])
                      .groupby(_pid_col)["project_manager"]
                      .first().to_dict())
+    # DRS is the authoritative source for PM assignment — overlay on top of NS.
+    # DRS values overwrite NS where populated; NS fills gaps where DRS is blank.
+    if df_drs is not None and not df_drs.empty:
+        _drs_pid_col = "project_id" if "project_id" in df_drs.columns else None
+        _drs_pm_col  = next((c for c in df_drs.columns
+                             if c.lower() in ("project_manager", "pm", "project manager")), None)
+        if _drs_pid_col and _drs_pm_col:
+            _drs_pm = (df_drs.dropna(subset=[_drs_pm_col])
+                              .groupby(_drs_pid_col)[_drs_pm_col]
+                              .first().to_dict())
+            for _pid, _pm in _drs_pm.items():
+                if _pm and str(_pm).strip():
+                    proj_pm[str(_pid).strip()] = str(_pm).strip()
     proj_ps_region = df.groupby(_pid_col)["ps_region"].first().to_dict() if "ps_region" in df.columns else {}
     proj_phase = {}
     if "project_phase" in df.columns:
@@ -783,7 +796,7 @@ def build_excel(df, scope_map, consumed):
         ws_pc.column_dimensions[get_column_letter(i)].width = w
     pc_df = df[df["billing_type"].str.lower() != "internal"].copy() if "billing_type" in df.columns else df.copy()
     pc_sum = pc_df.groupby(["project_type","billing_type"], as_index=False).agg(
-        project_count=("project","nunique")).sort_values(["project_type","billing_type"])
+        project_count=(_pid_col if _pid_col in pc_df.columns else "project","nunique")).sort_values(["project_type","billing_type"])
     grand_total = pc_sum["project_count"].sum()
     for r_idx, (_, row) in enumerate(pc_sum.iterrows(), 3):
         bg = LTGRAY if r_idx % 2 == 0 else WHITE
