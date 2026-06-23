@@ -1849,7 +1849,9 @@ def build_tableau_excel(df, scope_map, consumed):
         _m = [(k, float(v)) for k, v in scope_map.items() if k.strip().lower() in str(ptype).strip().lower()]
         return max(_m, key=lambda x: len(x[0]))[1] if _m else None
 
-    _fot_proj = _fot_ff.groupby(["project","project_type"], as_index=False).agg(
+    _fot_has_pid = "project_id" in _fot_ff.columns
+    _fot_keys = ["project","project_type"] + (["project_id"] if _fot_has_pid else [])
+    _fot_proj = _fot_ff.groupby(_fot_keys, as_index=False).agg(
         hours_total=("hours","sum"), overrun_hrs=("variance_hrs","sum"))
     _fot_proj["scoped_hrs"] = _fot_proj["project_type"].apply(_fot_scope)
     _fot_proj = _fot_proj[_fot_proj["scoped_hrs"].notna()].copy()
