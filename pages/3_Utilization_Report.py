@@ -761,10 +761,18 @@ def main():
     emp_sum["util_vs_capacity"] = emp_sum.apply(lambda r: r["credit_hrs"] / r["avail_hrs"] if r["avail_hrs"] and r["avail_hrs"] > 0 else None, axis=1)
     emp_sum["exempt"] = emp_sum["employee"].apply(_emp_util_exempt)
 
-    # Below-60% consultants
-    _below_60 = emp_sum[(~emp_sum["exempt"]) & emp_sum["util_vs_capacity"].notna() & (emp_sum["util_vs_capacity"] < 0.60)]
-    below60_count = _below_60["employee"].nunique()
-    below60_names = ", ".join(sorted([short_name(n) for n in _below_60["employee"].unique()]))
+    # Below-60% consultants — based on aggregate Util % cap across the full selected period
+    # (total credits ÷ total avail hrs) so the count matches what a manager sees when
+    # drilling into the Consultants tab and filtering on Util % cap < 60%.
+    _emp_agg = emp_sum[~emp_sum["exempt"]].groupby("employee", as_index=False).agg(
+        total_credits=("credit_hrs", "sum"),
+        total_avail=("avail_hrs", "sum"),
+    )
+    _emp_agg["agg_util_cap"] = _emp_agg.apply(
+        lambda r: r["total_credits"] / r["total_avail"] if r["total_avail"] > 0 else None, axis=1)
+    _below_60_emps = _emp_agg[_emp_agg["agg_util_cap"].notna() & (_emp_agg["agg_util_cap"] < 0.60)]
+    below60_count = len(_below_60_emps)
+    below60_names = ", ".join(sorted([short_name(n) for n in _below_60_emps["employee"].tolist()]))
 
     # Projects in overrun
     # credit_tag = OVERRUN is only assigned to FF projects by assign_credits, so this is the
@@ -827,9 +835,10 @@ def main():
     # Tabs
     # ─────────────────────────────────────────────────────
     overrun_badge = f" · <span style='color:#b91c1c'>{overrun_count}</span>" if overrun_count > 0 else ""
-    tab_at_glance, tab_consult, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
+    tab_at_glance, tab_consult, tab_summary, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
         "At a glance",
         f"Consultants · {consultant_count}",
+        f"Util summary{' · ⚠ ' + str(below60_count) if below60_count > 0 else ''}",
         f"Projects at risk{' · ' + str(overrun_count + noscope_proj_count) if (overrun_count + noscope_proj_count) > 0 else ''}",
         "Trend",
         "Task analysis",
@@ -876,7 +885,7 @@ def main():
 
         # Callout 1 — Below 60%
         if below60_count > 0:
-            _names_short = ", ".join(sorted([short_name(n) for n in _below_60["employee"].unique()])[:5])
+            _names_short = ", ".join(sorted([short_name(n) for n in _below_60_emps["employee"].tolist()])[:5])
             _and_more = f" +{below60_count - 5} more" if below60_count > 5 else ""
             _c1 = _callout("#ef4444", "#b91c1c", "⚠", "Consultants below 60%", below60_count, f"{_names_short}{_and_more}")
         else:
@@ -963,11 +972,13 @@ def main():
                 + "</tr>"
             )
 
+        _distinct_consultants = emp_sum_sorted["employee"].nunique()
         proj_th = "<th class='num'>Proj full mo</th>" if _is_partial_emp else ""
         st.markdown(
             f"<div class='util-table-header'>"
             f"<span style='font-weight:600'>By consultant{' · projected to full month' if _is_partial_emp else ''}</span>"
-            f"<span style='opacity:0.7'>{len(emp_sum_sorted)} of {len(emp_sum_sorted)} · sorted by {consult_sort.lower()}</span>"
+            f"<span style='opacity:0.7'>{_distinct_consultants} consultant{'s' if _distinct_consultants!=1 else ''} · "
+            f"{len(emp_sum_sorted)} period row{'s' if len(emp_sum_sorted)!=1 else ''} · sorted by {consult_sort.lower()}</span>"
             f"</div>"
             f"<div class='util-table-wrap'>"
             f"<table class='util-emp-table'>"
@@ -989,6 +1000,117 @@ def main():
 
     # ═══════════════════════════════════════════════════════════════════
     # TAB 3 — Projects at risk
+    # ═══════════════════════════════════════════════════════════════════
+    # TAB — Util Summary (one row per consultant, aggregate period)
+    # ═══════════════════════════════════════════════════════════════════
+    with tab_summary:
+        # Build aggregate per-consultant view from emp_sum
+        # One row per consultant — total credits ÷ total avail across all periods
+        _sum_agg = emp_sum.groupby("employee", as_index=False).agg(
+            total_avail   =("avail_hrs",         "sum"),
+            total_logged  =("hours_this_period",  "sum"),
+            total_credits =("credit_hrs",         "sum"),
+            total_overrun =("ff_overrun_hrs",      "sum"),
+            periods       =("period",             "nunique"),
+        )
+        _sum_agg["location"] = _sum_agg["employee"].map(
+            emp_sum.set_index("employee")["location"].to_dict())
+        _sum_agg["region"] = _sum_agg["location"].map(
+            lambda loc: PS_REGION_MAP.get(str(loc).strip(), "—") if loc else "—")
+        _sum_agg["exempt"] = _sum_agg["employee"].apply(_emp_util_exempt)
+        _sum_agg["util_cap"] = _sum_agg.apply(
+            lambda r: r["total_credits"] / r["total_avail"] if r["total_avail"] > 0 else None, axis=1)
+        _sum_agg["util_logged"] = _sum_agg.apply(
+            lambda r: r["total_credits"] / r["total_logged"] if r["total_logged"] > 0 else None, axis=1)
+        _sum_agg["gap_hrs"] = _sum_agg.apply(
+            lambda r: max(0.0, 0.70 * r["total_avail"] - r["total_credits"])
+                      if r["total_avail"] > 0 else None, axis=1)
+
+        # Sort options
+        _sum_sort_opts = {
+            "Util % cap (low → high)":   ("util_cap",      True),
+            "Util % cap (high → low)":   ("util_cap",      False),
+            "Util % logged (low → high)":("util_logged",   True),
+            "Util % logged (high → low)":("util_logged",   False),
+            "Gap hrs to 70% (high → low)":("gap_hrs",      False),
+            "Consultant (A → Z)":        ("employee",      True),
+        }
+        _sc_col, _ = st.columns([1.6, 4])
+        with _sc_col:
+            _sum_sort = st.selectbox("Sort by", list(_sum_sort_opts.keys()),
+                                     index=0, key="util_summary_sort")
+        _ssk, _ssa = _sum_sort_opts[_sum_sort]
+        _sum_sorted = _sum_agg.sort_values(_ssk, ascending=_ssa, na_position="last").reset_index(drop=True)
+
+        _n_at_risk = int((_sum_sorted["util_cap"].notna() & (_sum_sorted["util_cap"] < 0.60) & (~_sum_sorted["exempt"])).sum())
+        _n_total   = len(_sum_sorted)
+
+        # Build table
+        _sum_rows = []
+        for _, r in _sum_sorted.iterrows():
+            ex = bool(r["exempt"])
+            _util_cap    = r["util_cap"]
+            _util_logged = r["util_logged"]
+            _gap         = r["gap_hrs"]
+            _at_risk     = not ex and _util_cap is not None and _util_cap < 0.60
+
+            _cap_str  = f"{_util_cap*100:.1f}%"  if _util_cap    is not None else "—"
+            _log_str  = f"{_util_logged*100:.1f}%" if _util_logged is not None else "—"
+            _gap_str  = f"{_gap:,.1f}"             if _gap         is not None else "—"
+
+            # Colour cap pill by threshold
+            if ex or _util_cap is None:
+                _cap_pill_col = "rgba(128,128,128,0.15)"
+                _cap_txt_col  = "inherit"
+            elif _util_cap >= 0.70:
+                _cap_pill_col = "rgba(34,197,94,0.18)";  _cap_txt_col = "#15803d"
+            elif _util_cap >= 0.60:
+                _cap_pill_col = "rgba(245,158,11,0.18)"; _cap_txt_col = "#b45309"
+            else:
+                _cap_pill_col = "rgba(239,68,68,0.18)";  _cap_txt_col = "#b91c1c"
+
+            _cap_pill = (f"<span style='background:{_cap_pill_col};color:{_cap_txt_col};"
+                         f"padding:3px 10px;border-radius:12px;font-weight:600;font-size:12px'>"
+                         f"{_cap_str}</span>")
+            _flag = "<span style='color:#b91c1c;font-size:11px'>⚠ Below 60%</span>" if _at_risk else ""
+            _exempt_note = "<span style='opacity:0.4;font-size:11px'>exempt</span>" if ex else ""
+
+            _sum_rows.append(
+                f"<tr>"
+                f"<td><span class='util-emp-name'>{avatar_html(r['employee'])}{short_name(r['employee'])}</span></td>"
+                f"<td class='muted'>{r['location'] or '—'}</td>"
+                f"<td class='muted'>{r['region'] or '—'}</td>"
+                f"<td class='num'>{r['total_avail']:,.1f}</td>"
+                f"<td class='num'>{r['total_logged']:,.2f}</td>"
+                f"<td class='num'>{r['total_credits']:,.2f}</td>"
+                f"<td class='num'>{r['total_overrun']:,.2f}</td>"
+                f"<td class='center'>{_cap_pill}{_exempt_note}</td>"
+                f"<td class='num muted'>{_log_str}</td>"
+                f"<td class='num'>{_gap_str}</td>"
+                f"<td>{_flag}</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f"<div class='util-table-header'>"
+            f"<span style='font-weight:600'>Aggregate utilization — one row per consultant</span>"
+            f"<span style='opacity:0.7'>{_n_total} consultants · "
+            f"<span style='color:#b91c1c'>{_n_at_risk} below 60% capacity</span></span>"
+            f"</div>"
+            f"<div class='util-table-wrap'>"
+            f"<table class='util-emp-table'>"
+            f"<thead><tr>"
+            f"<th>Consultant</th><th>Location</th><th>Region</th>"
+            f"<th class='num'>Avail Hrs</th><th class='num'>Logged</th>"
+            f"<th class='num'>Credits</th><th class='num'>Overrun</th>"
+            f"<th class='center'>Util % cap</th><th class='num'>Util % logged</th>"
+            f"<th class='num'>Gap to 70%</th><th>Flag</th>"
+            f"</tr></thead>"
+            f"<tbody>{''.join(_sum_rows)}</tbody>"
+            f"</table></div>",
+            unsafe_allow_html=True
+        )
+
     # ═══════════════════════════════════════════════════════════════════
     with tab_risk:
         # Build full project summary
