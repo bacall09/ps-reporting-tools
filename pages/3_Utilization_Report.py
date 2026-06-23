@@ -837,12 +837,12 @@ def main():
     overrun_badge = f" · <span style='color:#b91c1c'>{overrun_count}</span>" if overrun_count > 0 else ""
     tab_at_glance, tab_consult, tab_summary, tab_risk, tab_trend, tab_task, tab_detail = st.tabs([
         "At a glance",
-        f"Consultants · {consultant_count}",
-        f"Util summary{' · ⚠ ' + str(below60_count) if below60_count > 0 else ''}",
+        f"Util Detail · {consultant_count}",
+        f"Util Period{' · ⚠ ' + str(below60_count) if below60_count > 0 else ''}",
         f"Projects at risk{' · ' + str(overrun_count + noscope_proj_count) if (overrun_count + noscope_proj_count) > 0 else ''}",
         "Trend",
         "Task analysis",
-        f"Detail · {len(df):,}",
+        f"Time Entry Detail · {len(df):,}",
     ])
 
     # ═══════════════════════════════════════════════════════════════════
@@ -1042,15 +1042,16 @@ def main():
             _sum_sort = st.selectbox("Sort by", list(_sum_sort_opts.keys()),
                                      index=0, key="util_summary_sort")
         _ssk, _ssa = _sum_sort_opts[_sum_sort]
-        _sum_sorted = _sum_agg[~_sum_agg["exempt"]].sort_values(_ssk, ascending=_ssa, na_position="last").reset_index(drop=True)
+        # All consultants including exempt — exempt shown with grey pill, not flagged as at-risk
+        _sum_sorted = _sum_agg.sort_values(_ssk, ascending=_ssa, na_position="last").reset_index(drop=True)
 
-        _n_at_risk = int((_sum_sorted["util_cap"].notna() & (_sum_sorted["util_cap"] < 0.60)).sum())
+        _n_at_risk = int((_sum_sorted["util_cap"].notna() & (_sum_sorted["util_cap"] < 0.60) & (~_sum_sorted["exempt"])).sum())
         _n_total   = len(_sum_sorted)
 
         # Build table
         _sum_rows = []
         for _, r in _sum_sorted.iterrows():
-            ex = False  # exempt rows excluded above
+            ex = bool(r["exempt"])
             _avail_str = f"{r['total_avail']:,.1f}" if r["total_avail"] else "—"
             _gap_str   = f"{r['gap_hrs']:,.1f}" if r["gap_hrs"] is not None else "—"
             _sum_rows.append(
@@ -1072,7 +1073,7 @@ def main():
             f"<div class='util-table-header'>"
             f"<span style='font-weight:600'>Aggregate utilization — one row per consultant</span>"
             f"<span style='opacity:0.7'>{_n_total} consultant{'s' if _n_total!=1 else ''} · "
-            f"<span style='color:#b91c1c'>{_n_at_risk} below 60% capacity</span></span>"
+            f"<span style='color:#b91c1c'>{_n_at_risk} below 60% capacity (excl exempt)</span></span>"
             f"</div>"
             f"<div class='util-table-wrap'>"
             f"<table class='util-emp-table'>"
