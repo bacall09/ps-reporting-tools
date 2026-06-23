@@ -522,7 +522,10 @@ def build_excel(df, scope_map, consumed):
     if "customer_region" in df.columns:
         proj_cust_region = df.dropna(subset=["customer_region"]).groupby("project")["customer_region"].first().to_dict()
     if "project_manager" in df.columns:
-        proj_pm = df.dropna(subset=["project_manager"]).groupby("project")["project_manager"].first().to_dict()
+        _pid_col = "project_id" if "project_id" in df.columns else "project"
+        proj_pm = (df.dropna(subset=["project_manager"])
+                     .groupby(_pid_col)["project_manager"]
+                     .first().to_dict())
     proj_ps_region = df.groupby("project")["ps_region"].first().to_dict() if "ps_region" in df.columns else {}
     proj_phase = {}
     if "project_phase" in df.columns:
@@ -561,7 +564,7 @@ def build_excel(df, scope_map, consumed):
         status_bg = {"OVERRUN":"FDECED","AT LIMIT":"FDECED","REVIEW":"FEF9E7","ON TRACK":"EAF9F1"}.get(status, LTGRAY)
         bg, _grp_idx_p = group_bg(ptype, _prev_ptype, _grp_idx_p)
         _prev_ptype = ptype
-        pm_name = proj_pm.get(row["project"], "")
+        pm_name = proj_pm.get(str(row.get("project_id","")).strip() or row["project"], "")
         start_dt = proj_start.get(row["project"])
         vals = [row["project"], ptype, pm_name, scope_h or "—", previous_h,
                 row["hours_this_period"], row["credit_hrs"], vari_h,
@@ -983,7 +986,7 @@ def build_excel(df, scope_map, consumed):
         status = row["status"]
         status_bg = "FDECED" if status == "OVERRUN" else "FEF9E7"
         burn_val = row["burn_pct"] if row["burn_pct"] is not None else "—"
-        pm_name = proj_pm.get(row["project"], "")
+        pm_name = proj_pm.get(str(row.get("project_id","")).strip() or row["project"], "")
         start_dt = proj_start.get(row["project"])
         _htd_wl = float(row["previous_htd"]) + float(row["hours_this_period"])
         _tot_ov = _htd_wl - row["scope_h"] if row["scope_h"] and row["scope_h"] > 0 else "—"
@@ -1009,7 +1012,7 @@ def build_excel(df, scope_map, consumed):
     for _, row in unconf_df.iterrows():
         bg = "FEF3E2"
         vals = [row["project"], row["project_type"], proj_cust_region.get(row["project"],""),
-                proj_pm.get(row["project"],""), "—", "—", "—", row["hours"], "FF: NO SCOPE DEFINED"]
+                proj_pm.get(str(row.get("project_id","")).strip() or row["project"],""), "—", "—", "—", row["hours"], "FF: NO SCOPE DEFINED"]
         fmts = [None,None,None,None,None,None,None,"#,##0.00",None]
         for c_idx, (val, fmt) in enumerate(zip(vals, fmts), 1):
             cell = ws_wl.cell(row=r_idx, column=c_idx, value=val)
